@@ -116,7 +116,7 @@ Fixpoint update {X : Type} (position : nat) (value : X) (l : list X) : list X :=
   end.
 Notation "[ x ↦  v ] l" := (update x v l) (at level 0).
 
-Fixpoint update_r_env_value (rΓ : r_env) (l : Loc) (v : value) : r_env :=
+Definition update_r_env_value (rΓ : r_env) (l : Loc) (v : value) : r_env :=
   match rΓ with
   {| vars := vars; |} => 
       {| vars := update l v vars;|}

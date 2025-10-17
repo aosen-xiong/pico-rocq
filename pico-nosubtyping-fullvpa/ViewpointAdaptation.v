@@ -8,6 +8,7 @@ Require Import Syntax.
     | _, q2 => q2
     end. *)
 
+(* Adapted bound for defining wf_stypeuse *)
 Definition vpa_mutabilty_bound (q1: q)(q2 : q_c) : q :=
   match q1, q2 with
     | Rd, RDM_c => Lost
@@ -28,12 +29,16 @@ Definition vpa_mutabilty_fld_bound (q1: q_f)(q2 : q_c) : q_f :=
     | _, Mut_c => Mut_f
     end.
 
-(* Definition vpa_mutabilty_rs (q1: q_r)(q2 : q) : q :=
+(* Used to exam runtime typability based on its context, 
+for example, m(Imm C this, RDM C c), 
+the value of c is a Imm obj at runtime but is typable because Imm |> RDM = Imm *)
+Definition vpa_mutabilty_rs (q1: q_r)(q2 : q) : q :=
   match q1, q2 with
     | Imm_r, RDM => Imm
     | Mut_r, RDM => Mut
     | _, q2 => q2
-    end. *)
+    end.
+
 Definition vpa_mutabilty_stype_fld (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
     | Rd, RDM_f => Lost
@@ -64,6 +69,15 @@ Definition vpa_mutabilty_constructor_fld (q1: q_c)(q2 : q_f) : q :=
     | _, Imm_f => Imm
     | _, Mut_f => Mut
     | _, Rd_f => Rd
+    end.
+
+(*  Adapted object creation for operational semantics *)
+Definition vpa_mutabilty_object_creation (q1: q_r)(q2 : q_c) : q_r :=
+  match q1, q2 with
+    | Imm_r, RDM_c => Imm_r
+    | Mut_r, RDM_c => Mut_r
+    | _, Imm_c => Imm_r
+    | _, Mut_c => Mut_r
     end.
 
 (* Build an adapted qualified type *)

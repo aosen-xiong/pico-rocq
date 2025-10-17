@@ -15,6 +15,16 @@ Inductive q_subtype : q -> q -> Prop :=
 where "q1 ⊑ q2" := (q_subtype q1 q2).
 Global Hint Constructors q_subtype: typ.
 
+(* Lost |> RDM = Lost should be wellformed type use *)
+(* Inductive q_subtype_lost_refl : q -> q -> Prop :=
+  | q_refl_lenient : forall q1,
+      q_subtype_lost_refl q1 q1
+  | q_rd_lenient : forall q1,
+      q_subtype_lost_refl q1 Rd
+  | q_bot_lenient: forall q1,
+      q_subtype_lost_refl Bot q1
+. *)
+
 (* Example q_subtype_refl: forall q, q <> Lost -> q ⊑ q. *)
 Example lost_subtype_refl: Lost ⊑ Lost -> False.
 Proof.

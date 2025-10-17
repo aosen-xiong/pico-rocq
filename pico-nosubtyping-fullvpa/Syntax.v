@@ -36,22 +36,11 @@ Inductive q_c : Type :=
   | Imm_c
   | RDM_c.
 
-(* Definition is_q_c (x : q) : Prop := x = Mut \/ x = Imm \/ x = RDM. *)
-(* Definition is_q_c (x : q) : Prop := x = Mut \/ x = Imm. use without RDM first, otherwise need to restrict the main method to be immut/mut only *)
-(* Definition is_q_context (x : q) : Prop := x = Mut \/ x = Imm. *)
-(* Definition is_q_f (x : q) : Prop := x = Rd \/ x = Mut \/ x = Imm. *)
-(* Definition is_q_h (x : q) : Prop := x = Lost \/ x = Bot. *)
-
 (* Assignability qualifier *)
 Inductive a : Type :=
   | Assignable
   | Final
   | RDA.
-
-(* Definition r_a := { x : a | x = Assignable \/ x = Final}. *)
-
-(* Canonical projection for assignability *)
-(* Definition r_a_proj (x : r_a) : a := proj1_sig x. *)
 
 (* Qualified type  *)
 Record qualified_type := {
@@ -71,9 +60,8 @@ Inductive stmt: Type :=
   | SLocal: qualified_type -> var -> stmt (* T x*)
   | SVarAss: var -> expr -> stmt (* x = e *)
   | SFldWrite: var -> var -> var -> stmt (* x.f = y *)
-  | SNew: var -> q -> class_name -> list var -> stmt (* x = new q_c C(y1, ..., yn) *)
+  | SNew: var -> q_c -> class_name -> list var -> stmt (* x = new q_c C(y1, ..., yn) *)
   | SCall: var -> var -> method_name -> list var -> stmt (* x = y.m(z1, ..., zn) *)
-  (* | SCast: var -> q -> class_name -> var -> stmt x = (q C) y  *)
   | SSeq: stmt -> stmt -> stmt. (* s1; s2 *)
 
 Record field_type := {
@@ -208,15 +196,3 @@ Record Obj := mkObj {
 }.
 
 Definition heap          := list Obj.
-
-(* AOSEN: just a test *)
-(* Instance settable_r_env : Settable _ :=
-  mkSettable (generate_setters mkr_env vars init_state). *)
-Record test := mktest {
-  abc: nat;
-  bcd: nat;
-}.
-
-Definition example_env := mktest 42 1.
-
-Definition updated_env := example_env <|abc := 100|>.

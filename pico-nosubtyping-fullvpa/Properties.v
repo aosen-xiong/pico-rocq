@@ -529,7 +529,7 @@ Proof.
     rewrite update_length.
     reflexivity.
   - (* New: h' = h ++ [new_obj] *)
-    rewrite H1.
+    rewrite H4.
     rewrite length_app.
     simpl.
     lia.
@@ -662,19 +662,16 @@ Proof.
     eapply IHHeval2; eauto.
 Qed.
 
-Lemma wf_r_typable_env_independent : forall CT rΓ1 rΓ2 h loc qt,
-  (* get_this_var_mapping (vars rΓ1) = Some l -> *)
-  (* get_this_var_mapping (vars rΓ1) = get_this_var_mapping (vars rΓ2) -> *)
-  (* r_muttype h l = Some qcontext -> *)
-  wf_r_typable CT rΓ1 h loc qt->
-  wf_r_typable CT rΓ2 h loc qt.
+Lemma wf_r_typable_env_independent : forall CT rΓ1 rΓ2 h loc qt l qcontext,
+  get_this_var_mapping (vars rΓ1) = Some l ->
+  get_this_var_mapping (vars rΓ1) = get_this_var_mapping (vars rΓ2) ->
+  r_muttype h l = Some qcontext ->
+  wf_r_typable CT rΓ1 h loc qt qcontext->
+  wf_r_typable CT rΓ2 h loc qt qcontext.
 Proof.
-  intros CT rΓ1 rΓ2 h loc qt Hsame_this.
+  intros CT rΓ1 rΓ2 h loc qt l qcontext Hreceiveraddr Henvsame Hreceiverrmut Hsame_this.
   unfold wf_r_typable in *.
   destruct (r_type h loc) as [rqt|] eqn:Hrtype; [|contradiction].
-  (* rewrite <- Hsame_this. *)
-  (* destruct (get_this_var_mapping (vars rΓ1)) as [ι'|] eqn:Hthis; [|contradiction]. *)
-  (* destruct (r_muttype h ι') as [q|] eqn:Hmut; [|contradiction]. *)
   exact Hsame_this.
 Qed.
 
@@ -735,50 +732,50 @@ Proof.
   exact Heq.
 Qed.
 
-Lemma correspondence_to_typable : forall CT sΓ rΓ h i sqt loc,
+Lemma correspondence_to_typable : forall CT sΓ rΓ h i sqt loc ι qcontext,
+  get_this_var_mapping (vars rΓ) = Some ι ->
+  (r_muttype h ι) = Some qcontext ->
   (forall i : nat,
    i < dom sΓ ->
    forall sqt : qualified_type,
    nth_error sΓ i = Some sqt ->
    match runtime_getVal rΓ i with
    | Some Null_a => True
-   | Some (Iot loc) => wf_r_typable CT rΓ h loc sqt
+   | Some (Iot loc) => wf_r_typable CT rΓ h loc sqt qcontext
    | None => False
    end) ->
   i < dom sΓ ->
   nth_error sΓ i = Some sqt ->
   runtime_getVal rΓ i = Some (Iot loc) ->
-  wf_r_typable CT rΓ h loc sqt.
+  wf_r_typable CT rΓ h loc sqt qcontext.
 Proof.
-  intros CT sΓ rΓ h i sqt loc Hcorr Hi Hnth Hval.
+  intros CT sΓ rΓ h i sqt loc ι qcontext Hreceiveraddr Hreceiverrmut Hcorr Hi Hnth Hval.
   specialize (Hcorr i Hi sqt Hnth).
   rewrite Hval in Hcorr.
   exact Hcorr.
 Qed.
 
-Lemma typable_to_base_and_qualifier : forall CT rΓ h loc sqt rq_obj rc_obj,
-  wf_r_typable CT rΓ h loc sqt ->
+Lemma typable_to_base_and_qualifier : forall CT rΓ h loc sqt rq_obj rc_obj ι qcontext,
+  get_this_var_mapping (vars rΓ) = Some ι ->
+  r_muttype h ι = Some qcontext ->
+  wf_r_typable CT rΓ h loc sqt qcontext ->
   r_type h loc = Some {| rqtype := rq_obj; rctype := rc_obj |} ->
-  (* get_this_var_mapping (vars rΓ) = Some ι' ->
-  r_muttype h ι' = Some q -> *)
   rc_obj = sctype sqt /\
-  qualifier_typable rq_obj ( (sqtype sqt)).
+  qualifier_typable_context rq_obj ( (sqtype sqt)) qcontext.
 Proof.
-  intros CT rΓ h loc sqt rq_obj rc_obj Hwf_typable Hrtype.
+  intros CT rΓ h loc sqt rq_obj rc_obj ι qcontext Hreceiveraddr Hreceiverrmut Hwf_typable Hrtype.
   unfold wf_r_typable in Hwf_typable.
   rewrite Hrtype in Hwf_typable.
-  (* rewrite Hthis in Hwf_typable. *)
-  (* rewrite Hmut in Hwf_typable. *)
   exact Hwf_typable.
 Qed.
 
-Lemma qualifier_typable_subtype_receiver : forall rq Ty1 Ty2,
-  qualifier_typable rq (sqtype Ty1) ->
+Lemma qualifier_typable_subtype_receiver : forall rq Ty1 Ty2 qcontext,
+  qualifier_typable_context rq (sqtype Ty1) qcontext ->
   sqtype Ty1 ⊑ sqtype Ty2 ->
-  qualifier_typable rq (sqtype Ty2).
+  qualifier_typable_context rq (sqtype Ty2) qcontext.
 Proof.
-  intros rq Ty1 Ty2 Hqual_ty1 Hsubtype.
-  unfold qualifier_typable in *.
+  intros rq Ty1 Ty2 qcontext Hqual_ty1 Hsubtype.
+  unfold qualifier_typable_context in *.
   destruct rq as [|]; destruct (sqtype Ty1); destruct (sqtype Ty2);
   simpl in *; auto;
   try (inversion Hsubtype; auto);
@@ -816,13 +813,13 @@ Proof.
     eapply In_gget_method_unique; eauto.
 Qed.
 
-Lemma qualifier_typable_trans_subtype : forall rq T1 T2 T3,
-  qualifier_typable rq (sqtype T1) ->
+Lemma qualifier_typable_trans_subtype : forall rq T1 T2 T3 qcontext,
+  qualifier_typable_context rq (sqtype T1) qcontext ->
   sqtype T1 ⊑ sqtype T2 ->
   sqtype T2 ⊑ sqtype T3 ->
-  qualifier_typable rq (sqtype T3).
+  qualifier_typable_context rq (sqtype T3) qcontext.
 Proof.
-  intros rq T1 T2 T3 Hqual H12 H23.
+  intros rq T1 T2 T3 qcontext Hqual H12 H23.
   eapply qualifier_typable_subtype_receiver; [|exact H23].
   eapply qualifier_typable_subtype_receiver; [exact Hqual|exact H12].
 Qed.
@@ -878,6 +875,14 @@ Proof.
     remember (msignature mdef) as msig.
     have mdeflookupcopy := mdeflookup.
     apply method_lookup_wf_class_by_find in mdeflookup; auto.
+    2:{
+      unfold wf_r_config in Hwf.
+      destruct Hwf as [Hwf_classtable _].
+      exact Hwf_classtable.
+    }
+    (* 2:{
+      unfold r_basetype in H0.
+    } *)
     inversion mdeflookup; revert getmbody; subst.
     intro getmbody.
     (* apply method_body_well_typed_by_find in mdeflookup; auto. *)
@@ -897,6 +902,13 @@ Proof.
     (* TODO: should I do context switch here? how to handle the type context switch; this is very interesting *)
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     { (* Method inner config wellformed.*)
+      assert (get_this_var_mapping (vars rΓmethodinit) = Some ly).
+      {
+        unfold get_this_var_mapping.
+        rewrite HeqrΓmethodinit.
+        simpl.
+        auto.
+      }
       have Hwfcopy := Hwf.
       unfold wf_r_config in Hwf.
       unfold wf_r_config.
@@ -945,7 +957,9 @@ Proof.
       eapply Forall_nth_error in Hallvals; eauto.
       simpl in Hallvals.
       exact Hallvals.
-      eapply runtime_lookup_list_preserves_wf_values; eauto.
+      eapply runtime_lookup_list_preserves_wf_values with (zs:=zs)(vals0 := vals)(rΓ := rΓmethodinit) (CT:=CT); eauto.
+      admit.
+      admit.
 
       rewrite HeqsΓmethodinit.
       simpl.
@@ -1016,12 +1030,13 @@ Proof.
           exact H14.
         }
 
-        assert (Hytypable: wf_r_typable CT rΓ h ly Ty). {
-          eapply correspondence_to_typable; eauto.
+        assert (Hytypable: wf_r_typable CT rΓ h ly Ty q). {
+          (* eapply correspondence_to_typable; eauto. *)
+          admit.
         }
 
         (* Apply correspondence to get wf_r_typable *)
-        specialize (Hcorr y Hy_dom Ty H14).
+        specialize (Hcorr ly q Hy_dom Ty H14).
         rewrite H in Hcorr.
 
         (* Extract subtyping from wf_r_typable *)

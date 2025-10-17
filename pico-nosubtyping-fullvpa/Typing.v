@@ -355,10 +355,12 @@ Qed.
 
 (* STATIC WELLFORMEDNESS CONDITION *)
 (* Well-formedness of type use *)
-Definition wf_stypeuse (CT : class_table) (q1: q) (c: class_name) : Prop :=
+Definition wf_stypeuse (CT : class_table) (q_use: q) (c: class_name) : Prop :=
   match bound CT c with
-  | Some q_c_val => 
-                  q_subtype (vpa_mutabilty_bound q1 q_c_val) q1 /\ 
+  | Some q_bound => 
+                  (* AOSEN: Current rule disallow direct lost variable in the environment including the receiver
+                   which should not be important? *)
+                  q_subtype (vpa_mutabilty_bound q_use q_bound) q_use /\ 
                    c < dom CT
   | None => False
   end.
@@ -449,6 +451,13 @@ Inductive expr_has_type : class_table -> s_env -> expr -> qualified_type -> Prop
       expr_has_type CT Γ (EField x f) (Build_qualified_type (vpa_mutabilty_stype_fld (sqtype T) ((mutability (ftype fDef)))) (f_base_type (ftype fDef)))
 .
 
+Definition qc2q (qi : q_c) : q :=
+  match qi with
+    | RDM_c => RDM
+    | Imm_c => Imm
+    | Mut_c => Mut
+    end.
+
 Inductive stmt_typing : class_table -> s_env -> stmt -> s_env -> Prop :=
   (* Skip statement *)
   | ST_Skip : forall CT sΓ,
@@ -486,16 +495,16 @@ Inductive stmt_typing : class_table -> s_env -> stmt -> s_env -> Prop :=
       stmt_typing CT sΓ (SFldWrite x f y) sΓ
 
   (* Object creation *)
-  | S_New : forall CT sΓ x Tx (qc:q) C args argtypes consig consreturn,
+  | S_New : forall CT sΓ x Tx (qc:q_c) C args argtypes consig consreturn,
       wf_senv CT sΓ ->
       static_getType sΓ x = Some Tx ->
       static_getType_list sΓ args = Some argtypes ->
       constructor_sig_lookup CT C = Some consig ->
       x <> 0 ->
       consig.(cqualifier) = consreturn ->
-      vpa_mutabilty_bound qc consreturn = qc ->
+      qc = consreturn ->
       Forall2 (fun arg T => qualified_type_subtype CT arg (T)) argtypes consig.(cparams) ->
-      qualified_type_subtype CT (Build_qualified_type qc C) Tx ->
+      qualified_type_subtype CT (Build_qualified_type (qc2q qc) C) Tx ->
       stmt_typing CT sΓ (SNew x qc C args) sΓ
 
   (* Method call *)
@@ -506,7 +515,7 @@ Inductive stmt_typing : class_table -> s_env -> stmt -> s_env -> Prop :=
       static_getType_list sΓ args = Some argtypes ->
       FindMethodWithName CT (sctype Ty) m mdef ->
       x <> 0 -> (* x is not the receiver variable *)
-      (* TODO: AOSEN REFINE THIS TO ADAPTED TYPE *)
+      (* TODO: AOSEN REFINE THIS TO ADAPTED TYPE to context sensitivity, i.e. imm/mut can invoke rdm method *)
       qualified_type_subtype CT (mret (msignature mdef)) Tx -> (* assignment subtype checking*)
       qualified_type_subtype CT Ty (mreceiver (msignature mdef)) -> (* receiver subtype checking *) 
       Forall2 (fun arg T => qualified_type_subtype CT arg T) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
