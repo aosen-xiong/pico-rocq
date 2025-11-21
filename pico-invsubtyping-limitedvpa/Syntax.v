@@ -1,5 +1,5 @@
-Require Import String.
-Require Import Coq.Sets.Ensembles.
+From Stdlib Require List.
+Require Import Stdlib.Sets.Ensembles.
 From RecordUpdate Require Import RecordSet.
 From RecordUpdate Require Import RecordUpdate.
 
@@ -13,6 +13,7 @@ Inductive q : Type :=
   (* q_c *)
   | Mut
   | Imm
+  | RDM
   (* q_f *)
   | Rd
   (* q_h *)
@@ -59,7 +60,7 @@ Inductive stmt: Type :=
   | SLocal: qualified_type -> var -> stmt (* T x*)
   | SVarAss: var -> expr -> stmt (* x = e *)
   | SFldWrite: var -> var -> var -> stmt (* x.f = y *)
-  | SNew: var -> q -> class_name -> list var -> stmt (* x = new q_c C(y1, ..., yn) *)
+  | SNew: var -> q_c -> class_name -> list var -> stmt (* x = new q_c C(y1, ..., yn) *)
   | SCall: var -> var -> method_name -> list var -> stmt (* x = y.m(z1, ..., zn) *)
   (* | SCast: var -> q -> class_name -> var -> stmt x = (q C) y  *)
   | SSeq: stmt -> stmt -> stmt. (* s1; s2 *)

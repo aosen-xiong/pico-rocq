@@ -2,7 +2,7 @@ Require Import Syntax Subtyping ViewpointAdaptation Helpers.
 Require Import String.
 Require Import List.
 Import ListNotations.
-Require Import Arith.
+(* Require Import Arith. *)
 
 (* STATIC HELPER FUNCTIONS *)
 Inductive CollectFields : class_table -> class_name -> list field_def -> Prop :=
@@ -447,10 +447,12 @@ Qed.
 
 (* STATIC WELLFORMEDNESS CONDITION *)
 (* Well-formedness of type use *)
-Definition wf_stypeuse (CT : class_table) (q1: q) (c: class_name) : Prop :=
+Definition wf_stypeuse (CT : class_table) (q_use: q) (c: class_name) : Prop :=
   match bound CT c with
-  | Some q_c_val => 
-                  q_subtype (vpa_mutabilty_bound q1 q_c_val) q1 /\ 
+  | Some q_bound =>
+                   (* AOSEN: Current rule disallow direct lost variable in the environment including the receiver
+                   which should not be important? *)
+                  q_subtype (vpa_mutabilty_bound q_use q_bound) q_use /\ 
                    c < dom CT
   | None => False (* or False, depending on your semantics *)
   end.
@@ -551,6 +553,20 @@ Inductive expr_has_type : class_table -> s_env -> expr -> qualified_type -> Prop
       expr_has_type CT Γ (EField x f) (Build_qualified_type (vpa_mutabilty_stype_fld (sqtype T) ((mutability (ftype fDef)))) (f_base_type (ftype fDef)))
 .
 
+Definition qc2q (qi : q_c) : q :=
+  match qi with
+    | RDM_c => RDM
+    | Imm_c => Imm
+    | Mut_c => Mut
+    end.
+
+Definition get_this_qualified_type (sΓ : s_env) : option qualified_type :=
+  match sΓ with
+  | [] => None
+  | T_this :: _ => 
+      Some T_this
+  end.
+
 Inductive stmt_typing : class_table -> s_env -> stmt -> s_env -> Prop :=
   (* Skip statement *)
   | ST_Skip : forall CT sΓ,
@@ -567,51 +583,55 @@ Inductive stmt_typing : class_table -> s_env -> stmt -> s_env -> Prop :=
       stmt_typing CT sΓ (SLocal T x) sΓ'
 
   (* Variable assignment *)
-  | ST_VarAss : forall CT sΓ x e Te Tx,
+  | ST_VarAss : forall CT sΓ x e Te Tthis Tx,
       wf_senv CT sΓ ->
       expr_has_type CT sΓ e Te ->
+      get_this_qualified_type sΓ = Some Tthis ->
       x <> 0 -> (* x is not the receiver variable *)
       static_getType sΓ x = Some Tx -> (* rename the varaibles to be more clear*)
-      qualified_type_subtype CT Te Tx ->
+      qualified_type_subtype CT (vpa_mutabilty_tt Tthis Te) (vpa_mutabilty_tt Tthis Tx) ->
       stmt_typing CT sΓ (SVarAss x e) sΓ
 
   (* Field write *)
-  | ST_FldWrite : forall CT sΓ x f y Tx Ty fieldT a,
+  | ST_FldWrite : forall CT sΓ x f y Tx Ty Tthis fieldT a,
       wf_senv CT sΓ ->
       static_getType sΓ x = Some Tx ->
       static_getType sΓ y = Some Ty ->
+      get_this_qualified_type sΓ = Some Tthis ->
       sf_def_rel CT (sctype Tx) f fieldT ->
       sf_assignability_rel CT (sctype Tx) f a ->
       (* TODO: define a helper method to get the adapated type *)
-      qualified_type_subtype CT Ty (Build_qualified_type (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
+      qualified_type_subtype CT (vpa_mutabilty_tt Tthis Ty) (vpa_mutabilty_tt Tthis (Build_qualified_type (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT)))) ->
       vpa_assignability (sqtype Tx) a = Assignable ->
       stmt_typing CT sΓ (SFldWrite x f y) sΓ
 
   (* Object creation *)
-  | S_New : forall CT sΓ x Tx (qc:q) C args argtypes consig consreturn,
+  | S_New : forall CT sΓ x Tx (qc:q_c) C args argtypes Tthis consig,
       wf_senv CT sΓ ->
       static_getType sΓ x = Some Tx ->
       static_getType_list sΓ args = Some argtypes ->
+      get_this_qualified_type sΓ = Some Tthis ->
       constructor_sig_lookup CT C = Some consig ->
       x <> 0 ->
-      consig.(cqualifier) = consreturn ->
-      (* This rule only allow qc to be imm and mut *)
-      vpa_mutabilty_bound qc consreturn = qc ->
-      Forall2 (fun arg T => qualified_type_subtype CT arg (T)) argtypes consig.(cparams) ->
-      qualified_type_subtype CT (Build_qualified_type qc C) Tx ->
+      (* Aosen: Here we can make it more expressive but not right now *)
+      qc = (cqualifier consig)->
+      Forall2 (fun arg T => qualified_type_subtype CT (vpa_mutabilty_tt Tthis arg) (vpa_mutabilty_tt Tthis T)) argtypes consig.(cparams) ->
+      qualified_type_subtype CT (vpa_mutabilty_tt Tthis (Build_qualified_type (qc2q qc) C)) (vpa_mutabilty_tt Tthis Tx) ->
       stmt_typing CT sΓ (SNew x qc C args) sΓ
 
   (* Method call *)
-  | ST_Call : forall CT sΓ x m y args argtypes Tx Ty mdef,
+  | ST_Call : forall CT sΓ x m y args argtypes Tthis Tx Ty mdef,
       wf_senv CT sΓ ->
       static_getType sΓ x = Some Tx ->
       static_getType sΓ y = Some Ty ->
       static_getType_list sΓ args = Some argtypes ->
+      get_this_qualified_type sΓ = Some Tthis ->
       FindMethodWithName CT (sctype Ty) m mdef ->
       x <> 0 -> (* x is not the receiver variable *)
-      qualified_type_subtype CT (mret (msignature mdef)) Tx -> (* assignment subtype checking*)
-      qualified_type_subtype CT Ty (mreceiver (msignature mdef)) -> (* receiver subtype checking *) 
-      Forall2 (fun arg T => qualified_type_subtype CT arg T) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
+      (* TODO: AOSEN REFINE THIS TO ADAPTED TYPE to context sensitivity, i.e. imm/mut can invoke rdm method *)
+      qualified_type_subtype CT (vpa_mutabilty_tt Tthis (vpa_mutabilty_tt Ty (mret (msignature mdef)))) (vpa_mutabilty_tt Tthis Tx) -> (* assignment subtype checking*)
+      qualified_type_subtype CT (vpa_mutabilty_tt Tthis Ty) (vpa_mutabilty_tt (vpa_mutabilty_tt Tthis Ty) (mreceiver (msignature mdef))) -> (* receiver subtype checking *) 
+      Forall2 (fun arg T => qualified_type_subtype CT (vpa_mutabilty_tt Tthis arg) (vpa_mutabilty_tt (vpa_mutabilty_tt Tthis Ty) T)) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
       stmt_typing CT sΓ (SCall x m y args) sΓ
 
   (* Sequence of statements *)
@@ -684,14 +704,14 @@ Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : P
     let mbodyretvar := mreturn methodbody in
     mbodyretvar < dom sΓ' /\
     nth_error sΓ' mbodyretvar = Some mbodyrettype /\
-    qualified_type_subtype CT mbodyrettype (mret msig) /\
+    qualified_type_subtype CT (vpa_mutabilty_tt msig.(mreceiver) mbodyrettype) (vpa_mutabilty_tt msig.(mreceiver) (mret msig)) /\
     (* Override constraint: if method exists in parent, signatures must match *)
     (* Aosen: let's prove invariant override first *)
     (forall parent_def parent mdef_parent,
       find_class CT C = Some parent_def ->
       super (signature parent_def) = Some parent ->
       FindMethodWithName CT parent (mname msig) mdef_parent ->
-      msignature mdef_parent = msig).  
+      msignature mdef_parent = msig).
 
 (* Well-formedness of class *)
 Inductive wf_class : class_table -> class_def -> Prop :=

@@ -1,6 +1,6 @@
 Require Import Syntax Notations LibTactics Tactics Helpers.
 Require Import List.
-Require Import Coq.Classes.RelationClasses.
+Require Import Stdlib.Classes.RelationClasses.
 Import ListNotations.
 
 (* Qualifier ordering  *)
