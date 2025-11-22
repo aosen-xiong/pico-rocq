@@ -75,7 +75,7 @@ Definition vpa_mutabilty_constructor_fld (q1: q_c)(q2 : q_f) : q :=
   match (q1, q2) with
     | (Imm_c, RDM_f) => Imm
     | (Mut_c, RDM_f) => Mut
-    | (RDM_c, RDM_f) => Bot (* AOSEN: unable to assign to RDM field in RDM constructor because of not support RDM constructor parameter*)
+    | (RDM_c, RDM_f) => RDM
     | (_, Imm_f) => Imm
     | (_, Mut_f) => Mut
     | (_, Rd_f) => Rd
@@ -88,7 +88,7 @@ Definition vpa_mutabilty_object_creation (q1: q_r)(q2 : q_c) : q_r :=
     | Mut_r, RDM_c => Mut_r
     | _, Imm_c => Imm_r
     | _, Mut_c => Mut_r
-    end.    
+    end.
 
 (* Viewpoint adaptation of assignability qualifiers *)
 Definition vpa_assignability (q1: q) (a1: a) : a :=

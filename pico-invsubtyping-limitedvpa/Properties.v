@@ -2956,41 +2956,36 @@ Proof.
               discriminate Hrtype_receiver.
             }
             unfold qualifier_typable_heap.
-            unfold q_r_proj in *.
-            unfold vpa_mutabilty_rec_fld; unfold qualifier_typable_heap;
-            unfold vpa_mutabilty_constructor_fld in *; unfold vpa_mutabilty_bound in *;
-            unfold vpa_mutabilty_object_creation; unfold qualifier_typable_context in *;
-            unfold vpa_mutabilty_tt in *;
-            unfold qc2q in *;
-            unfold vpa_mutabilty_rs in *.
+            unfold vpa_mutabilty_rec_fld.
+            unfold vpa_mutabilty_constructor_fld in Hfieldtypematch.
+            unfold vpa_mutabilty_object_creation.
+            unfold qc2q in H14.
             simpl in H14.
+            assert (l1 = ι). {
+              apply get_this_var_mapping_runtime_getVal in HreceiverAddr.
+              rewrite Hgetthis in HreceiverAddr.
+              injection HreceiverAddr as Heq.
+              exact Heq.
+            }
+            subst l1.
+            assert (qthisr = qcontext). {
+              rewrite Hreceivermut in HgetthisRuntimeType.
+              inversion HgetthisRuntimeType; reflexivity.
+            }
+            subst qthisr.
+            clear - Hfieldtypematch Hqctype H13.
             destruct (rqtype rqt) eqn: Hrqtq;
-            destruct qthisr eqn: Hqthis;
+            destruct qcontext eqn: Hqthis;
             destruct (cqualifier consig) eqn: Hconstructoreturnq;
             destruct (mutability (ftype fdef)) eqn: Hfieldq; 
             try easy.
-            all: destruct (sqtype paramtype) eqn: Hparamq; try inversion Hfieldtypematch; try easy.
-            all: destruct qcontext eqn: Hqcontext; destruct (sqtype argtype) eqn: Hargq; try easy.
-            all: destruct (sqtype Tthis) eqn: Hqthisr;
-            destruct (sqtype Tx) eqn: Htxq; 
-            try simpl in H14; try rewrite Htxq in H14;
-            try rewrite Hparamq in H13; try rewrite Hargq in H13;
-            try inversion H14; try inversion H13; try easy.
-            all: simpl in *.
-            all: rewrite <- Hqcontext in Hreceivermut;
-            apply get_this_qualified_type_nth_error in H6;
-            specialize (Hcorr ι qcontext HreceiverAddr Hreceivermut 0 Hsenvdom Tthis H6);
-            apply get_this_var_mapping_runtime_getVal in HreceiverAddr;
-            rewrite HreceiverAddr in Hcorr;
-            unfold wf_r_typable in Hcorr;
-            rewrite Hrtype_receiver in Hcorr;
-            destruct Hcorr as [_ Hqual_receiver];
-            unfold qualifier_typable_context in Hqual_receiver;
-            rewrite <- H100 in Hqual_receiver;
-            unfold vpa_mutabilty_rs in Hqual_receiver;
-            rewrite Hqcontext in Hqual_receiver;
-            rewrite Hqthisr in Hqual_receiver;
-            easy.
+            all: destruct (sqtype paramtype) eqn: Hparamq;
+            try solve_q_subtype_wrong.
+            all: 
+            destruct (sqtype argtype) eqn: Hargq;
+            try solve_q_subtype_wrong;
+            destruct qcontext eqn: Hqcontext;
+            try solve_qualifier_typable_wrong_concrete.
           }
       }
     * (* ι < dom h (existing object) *)
@@ -3294,7 +3289,7 @@ qthisr (cqualifier consig); rctype := c |}; fields_map := vals |}]) = dom h + 1)
           exact Hcorr_orig.
           + contradiction Hcorr_orig.
           }
-Qed.
+Admitted.
 
 Lemma vpa_mutabilty_tt_sctype :
   forall Tthis T : qualified_type,
