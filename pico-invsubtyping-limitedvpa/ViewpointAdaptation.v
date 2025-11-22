@@ -3,22 +3,16 @@ Require Import Syntax.
 (* Viewpoint adaptation of mutability qualifiers *)
 Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
   match q1, q2 with
-    | Imm, RDM => Imm
-    | Mut, RDM => Mut
     | Rd, RDM => Lost
-    | Lost, RDM => Lost
-    | Bot, RDM => Bot
+    | q1, RDM => q1
     | _, _ => q2
   end.
 
 (* A wrapper around vpa_mutability by taking two full types *)
 Definition vpa_mutabilty_tt (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   match (sqtype t1), (sqtype t2) with
-    | Imm, RDM => Build_qualified_type Imm (sctype t2)
-    | Mut, RDM => Build_qualified_type Mut (sctype t2)
     | Rd, RDM => Build_qualified_type Lost (sctype t2)
-    | Lost, RDM => Build_qualified_type Lost (sctype t2)
-    | Bot, RDM => Build_qualified_type Bot (sctype t2)
+    | q1, RDM => Build_qualified_type q1 (sctype t2)
     | _, _ => t2
   end.
 
