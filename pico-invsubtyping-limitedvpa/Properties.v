@@ -6070,3 +6070,76 @@ destruct Hassign_rel as [Hfinal | Hrda].
   rewrite Hstatic_type in H16; easy.
   rewrite Hstatic_type in H16; easy.
 Qed.
+
+Lemma readonly_pico_method_body_noargs_on_rd_receiver :
+  forall CT sΓ rΓ h x m y rΓ' h' sΓ' l C vals vals' f qt anyrq
+         (Hstatic : static_getType sΓ y = Some qt)
+         (Hrd     : sqtype qt = Rd)
+         (Hwf     : wf_r_config CT sΓ rΓ h)
+         (Htyp    : stmt_typing CT sΓ (SCall x m y []) sΓ')
+         (Heval   : eval_stmt OK CT rΓ h (SCall x m y []) OK rΓ' h')
+         (Hgety   : runtime_getVal rΓ y = Some (Iot l))
+         (Hobj    : runtime_getObj h  l = Some (mkObj (mkruntime_type anyrq C) vals))
+         (Hobj'   : runtime_getObj h' l = Some (mkObj (mkruntime_type anyrq C) vals'))
+         (Hass    : sf_assignability_rel CT C f Final \/
+                    sf_assignability_rel CT C f RDA),
+    nth_error vals f = nth_error vals' f.
+Proof.
+  intros.
+  (* remember (SCall x m y []) as stmt. *)
+  inversion Heval; subst.
+  remember {| vars := Iot ly :: vals0 |} as rΓ_methodInit.
+  rename rΓ'' into rΓ_methodEnd.
+  destruct H5 as [mdeflookup getmbody].
+  assert (HMethodBodyTyping: exists sΓ_methodEnd,
+            stmt_typing CT (mreceiver (msignature mdef) :: mparams (msignature mdef)) (mbody_stmt (Syntax.mbody mdef)) sΓ_methodEnd).
+  {
+    eapply method_body_well_typed_by_find with (C := cy) (m := m); eauto.
+    admit.
+    admit.
+  }
+  remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓ_methodInit.
+  destruct HMethodBodyTyping as [sΓ_methodEnd HMethodBodyTyping].
+  generalize dependent sΓ_methodInit.
+  generalize dependent sΓ_methodEnd.
+  generalize dependent vals.
+  generalize dependent vals'.
+  remember OK as ok.
+  induction H13; try discriminate; subst; intros.
+  - (* Skip *)
+    congruence.
+  - (* Local *)
+    congruence.
+  - (* VarAss *)
+    congruence.
+  - (* FldWrite *)
+    admit.
+  - (* New *)
+    intros.
+    (* from Hobj, l is in the old heap *)
+    assert (Hl_dom : l < dom h).
+    { apply runtime_getObj_dom in Hobj. exact Hobj. }
+    (* reuse Hobj through the heap extension *)
+    assert (Happ :=
+      runtime_getObj_app_left h
+        [{|
+           rt_type :=
+             {|
+               rqtype := vpa_mutabilty_object_creation qthisr q_c;
+               rctype := c
+             |};
+           fields_map := vals
+         |}] l
+        {|
+           rt_type := {| rqtype := anyrq; rctype := C |};
+           fields_map := vals1
+         |} Hl_dom Hobj).
+    rewrite Hobj' in Happ.
+    inversion Happ; subst.
+    reflexivity.
+  - (* Call (the outer call we care about) *)
+    admit.
+  - (* Seq *)
+    admit.
+    (* specialize (IHeval_stmt1 Hwf Htyp Heqok Heval Hass H4 mdeflookup). *)
+Admitted.

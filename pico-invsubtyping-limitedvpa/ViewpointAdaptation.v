@@ -4,6 +4,7 @@ Require Import Syntax.
 Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
   match q1, q2 with
     | Rd, RDM => Lost
+    | Rd, Mut => Lost
     | q1, RDM => q1
     | _, _ => q2
   end.
@@ -12,6 +13,7 @@ Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
 Definition vpa_mutabilty_tt (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   match (sqtype t1), (sqtype t2) with
     | Rd, RDM => Build_qualified_type Lost (sctype t2)
+    | Rd, Mut => Build_qualified_type Lost (sctype t2)
     | q1, RDM => Build_qualified_type q1 (sctype t2)
     | _, _ => t2
   end.
