@@ -10,3 +10,5 @@ Typing.v
 Bigstep.v
 Properties.v
 Main.v
+DeepImmutability.v
+ReadonlyReachability.v

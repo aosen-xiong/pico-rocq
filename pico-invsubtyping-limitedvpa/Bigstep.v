@@ -222,6 +222,7 @@ Definition wf_r_config (CT: class_table) (sΓ: s_env) (rΓ: r_env) (h: heap) : P
   (r_muttype h ι) = Some qcontext ->
   forall i, i < List.length sΓ ->
   forall sqt,
+    (* TODO: unify the method used to static_get_type *)
     nth_error sΓ i = Some sqt ->
     match runtime_getVal rΓ i with
     | Some (Iot loc) => wf_r_typable CT rΓ h loc sqt qcontext
@@ -990,6 +991,7 @@ Proof.
 Qed.
 
 (* Expression Evaluation Preservation *)
+(* AOSEN TODO: This could be refactored and remove the first two premises *)
 Lemma expr_eval_preservation : forall CT sΓ rΓ h e v rΓ' h' T ι qcontext,
   get_this_var_mapping (vars rΓ) = Some ι ->
   (r_muttype h ι) = Some qcontext ->

@@ -4,7 +4,12 @@ Require Import Syntax.
 Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
   match q1, q2 with
     | Rd, RDM => Lost
-    | Rd, Mut => Lost
+    (* AOSEN RO: Change for readonly property *)
+    | Rd, _ => Lost
+    | Lost, _ => Lost
+    (* | Imm, Mut => Lost *)
+    (* | Lost, Mut => Lost *)
+    (* | RDM, Mut => Lost *)
     | q1, RDM => q1
     | _, _ => q2
   end.
@@ -12,8 +17,12 @@ Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
 (* A wrapper around vpa_mutability by taking two full types *)
 Definition vpa_mutabilty_tt (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   match (sqtype t1), (sqtype t2) with
-    | Rd, RDM => Build_qualified_type Lost (sctype t2)
-    | Rd, Mut => Build_qualified_type Lost (sctype t2)
+    (* | Rd, RDM => Build_qualified_type Lost (sctype t2) *)
+    | Rd, _ => Build_qualified_type Lost (sctype t2)
+    | Lost, _ => Build_qualified_type Lost (sctype t2)
+    (* | Imm, Mut => Build_qualified_type Lost (sctype t2) *)
+    (* | Lost, Mut => Build_qualified_type Lost (sctype t2) *)
+    (* | RDM, Mut => Build_qualified_type Lost (sctype t2) *)
     | q1, RDM => Build_qualified_type q1 (sctype t2)
     | _, _ => t2
   end.
@@ -42,10 +51,13 @@ Definition vpa_mutabilty_fld_bound (q1: q_f)(q2 : q_c) : q_f :=
 Definition vpa_mutabilty_stype_fld (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
     | Rd, RDM_f => Lost
+    (* AOSEN RO: Change for readonly property *)
+    | Rd, _ => Lost
+    | Lost, _ => Lost
     | Imm, RDM_f => Imm
     | Mut, RDM_f => Mut
     | RDM, RDM_f => RDM
-    | Lost, RDM_f => Lost
+    (* | Lost, RDM_f => Lost *)
     | Bot, RDM_f => Bot
     | _, Imm_f => Imm
     | _, Mut_f => Mut
@@ -71,7 +83,7 @@ Definition vpa_mutabilty_rec_fld (q1: q_r)(q2 : q_f) : q :=
     | _, Imm_f => Imm
     | _, Mut_f => Mut
     | _, Rd_f => Rd
-    end.    
+    end.
 
 (* Used to exam runtime typability based on its context, 
 for example, m(Imm C this, RDM C c), 
@@ -81,7 +93,7 @@ Definition vpa_mutabilty_rs (q1: q_r)(q2 : q) : q :=
     | Imm_r, RDM => Imm
     | Mut_r, RDM => Mut
     | _, q2 => q2
-  end.    
+  end.
 
 (*  Adapted object creation for operational semantics *)
 Definition vpa_mutabilty_object_creation (q1: q_r)(q2 : q_c) : q_r :=

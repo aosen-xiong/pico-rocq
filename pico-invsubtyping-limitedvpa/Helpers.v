@@ -138,11 +138,18 @@ Proof.
   eauto using update_same.
 Qed.
 
-(* Lemma runtime_getVal_update_same:
-  forall ρ l v, l < dom ρ -> update_r_env_value ([l ↦ v]ρ) l = Some v.
+Lemma runtime_getVal_update_same :
+  forall rΓ l v
+         (Hl : l < dom rΓ.(vars)),
+    runtime_getVal (update_r_env_value rΓ l v) l = Some v.
 Proof.
-  eauto using update_same.
-Qed. *)
+  intros rΓ l v Hl.
+  unfold runtime_getVal, update_r_env_value.
+  destruct rΓ as [vars]; simpl in *.
+  (* Goal now is nth_error ([l ↦ v] vars) l = Some v *)
+  apply update_same.
+  exact Hl.
+Qed.
 
 Lemma static_getType_update_same:
   forall sΓ l T, l < dom sΓ -> static_getType ([l ↦ T]sΓ) l = Some T.
@@ -168,13 +175,17 @@ Proof.
   eauto using update_diff.
 Qed.
 
-(* Lemma runtime_getVal_update_diff:
-  forall ρ l l' v,
+Lemma runtime_getVal_update_diff:
+  forall rΓ l l' v,
     l <> l' ->
-    runtime_getVal ([l ↦ v]ρ) l' = runtime_getVal ρ l'.
+    runtime_getVal (update_r_env_value rΓ l v) l' = runtime_getVal rΓ l'.
 Proof.
-  eauto using update_diff.
-Qed. *)
+  intros rΓ l l' v Hneq.
+  unfold runtime_getVal, update_r_env_value.
+  destruct rΓ as [vars]; simpl.
+  (* nth_error ([l ↦ v] vars) l' = nth_error vars l' *)
+  eapply update_diff; exact Hneq.
+Qed.
 
 Lemma static_getType_update_diff:
   forall sΓ l l' T,
@@ -296,14 +307,14 @@ Proof.
   exfalso. eapply nth_error_None in Heqo. lia.
 Qed.
 
-(* Lemma getVal_Some : forall ρ f,
+Lemma getVal_Some : forall ρ f,
     f < dom ρ ->
     exists v, getVal ρ f = Some v.
 Proof.
   intros.
   destruct (getVal ρ f) as [|] eqn:?; eauto.
   exfalso. eapply nth_error_None in Heqo. lia.
-Qed. *)
+Qed.
 
 Lemma static_getType_Some : forall sΓ l,
     l < dom sΓ ->
@@ -451,23 +462,28 @@ Proof.
     rewrite_anywhere PeanoNat.Nat.sub_diag; steps.
 Qed. *)
 
-(* Lemma getVal_last :
-  forall ω v,
-    getVal (ω++[v]) (dom ω) = Some v.
+Lemma runtime_getVal_last :
+  forall (rΓ : r_env) (v : value),
+    runtime_getVal (rΓ <| vars := vars rΓ ++ [v] |>) (dom rΓ.(vars)) = Some v.
 Proof.
-  induction ω; steps.
+  intros rΓ v.
+  unfold runtime_getVal. simpl.
+  rewrite nth_error_app2.
+  - reflexivity.
+  - rewrite Nat.sub_diag. reflexivity.
 Qed.
-Global Hint Resolve getVal_last: core.
+Global Hint Resolve runtime_getVal_last: core.
 
-Lemma getVal_last2 :
-  forall ω x v,
-    x < (dom ω) ->
-    getVal (ω++[v]) x = getVal ω x.
+Lemma runtime_getVal_last2 :
+  forall (rΓ : r_env) (x : Loc) (v : value)
+    (Hdom : x < dom rΓ.(vars)),
+    runtime_getVal (rΓ <| vars := vars rΓ ++ [v] |>) x = runtime_getVal rΓ x.
 Proof.
-  induction ω; simpl; intros; try lia.
-  destruct x; steps;
-    eauto with lia.
-Qed. *)
+  intros rΓ x v Hdom.
+  unfold runtime_getVal. simpl.
+  apply nth_error_app1.
+  exact Hdom.
+Qed.
 
 Lemma Forall_nth_error {A} (P : A -> Prop) (l : list A) (n : nat) (x : A) :
   Forall P l ->
