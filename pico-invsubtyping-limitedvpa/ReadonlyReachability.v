@@ -1,4 +1,4 @@
-Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties DeepImmutability.
+Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties DeepImmutability Reachability.
 Require Import List.
 Import ListNotations.
 Require Import String.
@@ -11,34 +11,34 @@ Theorem readonly_pico_field_write:
       (sqtype qt) = Rd ->
       wf_r_config CT sΓ rΓ h ->
       stmt_typing CT sΓ stmt sΓ' -> 
-      eval_stmt OK CT rΓ h stmt OK rΓ' h' -> 
+      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' -> 
       runtime_getVal rΓ readonlyx = Some (Iot l)  ->
       runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals) ->
       runtime_getObj h' l = Some (mkObj (mkruntime_type anyrq C) vals') ->
       sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA ->
       nth_error vals f = nth_error vals' f.
 Proof.
-intros CT sΓ rΓ h stmt rΓ' h' sΓ' l C vals vals' f qt readonlyx anyf rhs anyrq.
-intros Hstmt_form Hreceivermut Hstatic_type Hwf_config Htyping Heval Hruntime_val Hobj_before Hobj_after Hassign_rel.
+  intros CT sΓ rΓ h stmt rΓ' h' sΓ' l C vals vals' f qt readonlyx anyf rhs anyrq.
+  intros Hstmt_form Hreceivermut Hstatic_type Hwf_config Htyping Heval Hruntime_val Hobj_before Hobj_after Hassign_rel.
 
-(* Subst the statement form *)
-subst stmt.
+  (* Subst the statement form *)
+  subst stmt.
 
-(* Invert the evaluation to get heap update details *)
-inversion Heval; subst.
+  (* Invert the evaluation to get heap update details *)
+  inversion Heval; subst.
 
-(* Invert typing to get field write constraints *)
-inversion Htyping; subst.
+  (* Invert typing to get field write constraints *)
+  inversion Htyping; subst.
 
-unfold wf_r_config in Hwf_config.
+  unfold wf_r_config in Hwf_config.
   destruct Hwf_config as [_[_[Hrenv [_ [_ Htypable]]]]].
   assert (Hreadonly_dom : readonlyx < dom sΓ').
   {
     apply static_getType_dom in Hreceivermut.
     exact Hreceivermut.
   }
-  rewrite Hruntime_val in H2.
-  inversion H2.
+  rewrite Hruntime_val in H3.
+  inversion H3.
   subst l.
   unfold wf_renv in Hrenv.
   destruct Hrenv as [_ [Hreceiver _]].
@@ -53,138 +53,103 @@ unfold wf_r_config in Hwf_config.
   rewrite Hruntime_val in Htypable.
   unfold wf_r_typable in Htypable.
   unfold r_type in Htypable.
-  rewrite H3 in Htypable.
+  rewrite H4 in Htypable.
   destruct Htypable as [base qualifier].
-  rewrite H3 in Hobj_before.
+  rewrite H4 in Hobj_before.
   inversion Hobj_before.
-  rewrite H0 in base.
+  rewrite H1 in base.
   simpl in base.
 
-(* Use the fact that Final/RDA fields are protected from modification *)
-destruct Hassign_rel as [Hfinal | Hrda].
--  
-  rewrite Hreceivermut in H6.
-  inversion H6.
-  subst Tx.
-  rewrite Hstatic_type in H15.
-  unfold vpa_assignability in H15.
-  destruct a eqn: Haeqn; try easy.
-  assert (Hneq: anyf <> f).
-  {
-    intro Heq.
-    subst anyf.
-    unfold sf_assignability_rel in H13, Hfinal.
-    destruct H13 as [fdef_assign [Hlookup_assign Hassign_assign]].
-    destruct Hfinal as [fdef_final [Hlookup_final Hassign_final]].
-    assert (fdef_final = fdef_assign).
+  (* Use the fact that Final/RDA fields are protected from modification *)
+  destruct Hassign_rel as [Hfinal | Hrda].
+  -  
+    rewrite Hreceivermut in H7.
+    inversion H7.
+    subst Tx.
+    rewrite Hstatic_type in H16.
+    unfold vpa_assignability in H16.
+    destruct a eqn: Haeqn; try easy.
+    assert (Hneq: anyf <> f).
     {
-      eapply field_lookup_deterministic_rel; eauto.
-      eapply field_inheritance_subtyping; eauto.
+      intro Heq.
+      subst anyf.
+      unfold sf_assignability_rel in H14, Hfinal.
+      destruct H14 as [fdef_assign [Hlookup_assign Hassign_assign]].
+      destruct Hfinal as [fdef_final [Hlookup_final Hassign_final]].
+      assert (fdef_final = fdef_assign).
+      {
+        eapply field_lookup_deterministic_rel; eauto.
+        eapply field_inheritance_subtyping; eauto.
+      }
+      subst fdef_final.
+      rewrite Hassign_final in Hassign_assign.
+      discriminate.
     }
-    subst fdef_final.
-    rewrite Hassign_final in Hassign_assign.
-    discriminate.
-  }
-  injection Hobj_before as Hvals_eq.
-  unfold update_field in Hobj_after.
-  rewrite H3 in Hobj_after.
-  simpl in Hobj_after.
-  unfold update_field in Hobj_after.
-  simpl in Hobj_after.
-  assert (Hdom: loc_x < dom h).
-  {
-    apply runtime_getObj_dom in H3.
-    exact H3.
-  }
-  rewrite runtime_getObj_update_same in Hobj_after; auto.
-  inversion Hobj_after; subst.
-  simpl.
-  symmetry.
-  apply update_diff.
-  exact Hneq.
-  unfold vpa_assignability in H16.
-  rewrite Hstatic_type in H16; easy.
-  rewrite Hstatic_type in H16; easy.
-- (* RDA case: RDA fields cannot be written *)
-  rewrite Hreceivermut in H6.
-  inversion H6.
-  subst Tx.
-  rewrite Hstatic_type in H15.
-  unfold vpa_assignability in H15.
-  destruct a eqn: Haeqn; try easy.
-  assert (Hneq: anyf <> f).
-  {
-    intro Heq.
-    subst anyf.
-    unfold sf_assignability_rel in H13, Hrda.
-    destruct H13 as [fdef_assign [Hlookup_assign Hassign_assign]].
-    destruct Hrda as [fdef_final [Hlookup_final Hassign_final]].
-    assert (fdef_final = fdef_assign).
+    injection Hobj_before as Hvals_eq.
+    unfold update_field in Hobj_after.
+    rewrite H4 in Hobj_after.
+    simpl in Hobj_after.
+    unfold update_field in Hobj_after.
+    simpl in Hobj_after.
+    assert (Hdom: loc_x < dom h).
     {
-      eapply field_lookup_deterministic_rel; eauto.
-      eapply field_inheritance_subtyping; eauto.
+      apply runtime_getObj_dom in H4.
+      exact H4.
     }
-    subst fdef_final.
-    rewrite Hassign_final in Hassign_assign.
-    discriminate.
-  }
-  injection Hobj_before as Hvals_eq.
-  unfold update_field in Hobj_after.
-  rewrite H3 in Hobj_after.
-  simpl in Hobj_after.
-  unfold update_field in Hobj_after.
-  simpl in Hobj_after.
-  assert (Hdom: loc_x < dom h).
-  {
-    apply runtime_getObj_dom in H3.
-    exact H3.
-  }
-  rewrite runtime_getObj_update_same in Hobj_after; auto.
-  inversion Hobj_after; subst.
-  simpl.
-  symmetry.
-  apply update_diff.
-  exact Hneq.
-  rewrite Hstatic_type in H16; easy.
-  rewrite Hstatic_type in H16; easy.
+    rewrite runtime_getObj_update_same in Hobj_after; auto.
+    inversion Hobj_after; subst.
+    simpl.
+    symmetry.
+    apply update_diff.
+    exact Hneq.
+    unfold vpa_assignability in H16.
+    rewrite Hstatic_type in H17; easy.
+    rewrite Hstatic_type in H17; easy.
+  - (* RDA case: RDA fields cannot be written *)
+    rewrite Hreceivermut in H7.
+    inversion H7.
+    subst Tx.
+    rewrite Hstatic_type in H16.
+    unfold vpa_assignability in H16.
+    destruct a eqn: Haeqn; try easy.
+    assert (Hneq: anyf <> f).
+    {
+      intro Heq.
+      subst anyf.
+      unfold sf_assignability_rel in H14, Hrda.
+      destruct H14 as [fdef_assign [Hlookup_assign Hassign_assign]].
+      destruct Hrda as [fdef_final [Hlookup_final Hassign_final]].
+      assert (fdef_final = fdef_assign).
+      {
+        eapply field_lookup_deterministic_rel; eauto.
+        eapply field_inheritance_subtyping; eauto.
+      }
+      subst fdef_final.
+      rewrite Hassign_final in Hassign_assign.
+      discriminate.
+    }
+    injection Hobj_before as Hvals_eq.
+    unfold update_field in Hobj_after.
+    rewrite H4 in Hobj_after.
+    simpl in Hobj_after.
+    unfold update_field in Hobj_after.
+    simpl in Hobj_after.
+    assert (Hdom: loc_x < dom h).
+    {
+      apply runtime_getObj_dom in H4.
+      exact H4.
+    }
+    rewrite runtime_getObj_update_same in Hobj_after; auto.
+    inversion Hobj_after; subst.
+    simpl.
+    symmetry.
+    apply update_diff.
+    exact Hneq.
+    rewrite Hstatic_type in H17; easy.
+    rewrite Hstatic_type in H17; easy.
 Qed.
 
 (* TODO: rename RD to RO *)
-Inductive class_reachable (CT : class_table) : class_name -> class_name -> Prop :=
-  (* Base Case: Reflexivity *)
-  | cr_refl : 
-      forall C, 
-        class_reachable CT C C
-
-  (* Inductive Step: Transitivity via Protected Fields *)
-  | cr_step : 
-      forall C f fDef C_next C_target,
-        (* 1. Look up the field definition *)
-        sf_def_rel CT C f fDef ->
-        
-        (* 2. CRITICAL: Only traverse if the field is part of the abstract state 
-             (matches your reachable_abs condition) *)
-        (fDef.(ftype).(mutability) = Imm_f \/ fDef.(ftype).(mutability) = RDM_f) ->
-        
-        (* 3. Get the static type of the field *)
-        C_next = fDef.(ftype).(f_base_type) ->
-        
-        (* 4. Transitivity *)
-        class_reachable CT C_next C_target ->
-        
-        class_reachable CT C C_target.
-
-Inductive static_reachable (CT : class_table) (sΓ : s_env) : var -> class_name -> Prop :=
-  | srch_entry : 
-      forall x T C_target,
-        (* 1. Look up x in the static environment *)
-        static_getType sΓ x = Some T ->
-        
-        (* 2. Check if the class of x reaches C_target *)
-        class_reachable CT (sctype T) C_target ->
-        
-        static_reachable CT sΓ x C_target.
-
 Lemma vpa_mutabilty_stype_fld_rd_not_mut :
   forall q_recv q_field q_res
          (Hrd : q_recv = Rd)
@@ -206,10 +171,6 @@ Definition is_safe_mode (m : q) : Prop :=
   (* Don't use bot because not interesting *)
   (* m = Rd \/ m = Imm \/ m = Lost \/ m = Bot. *)  
 
-Definition protected_locset
-  (CT : class_table) (h : heap) (l_root : Loc) : Ensembles.Ensemble Loc :=
-  fun l_target => reachable_abs CT h l_root l_target.
-
 (* Effectively require all variables *)
 Definition env_respects_protected_set
   (P : Ensembles.Ensemble Loc) (sΓ : s_env) (rΓ : r_env) : Prop :=
@@ -217,10 +178,6 @@ Definition env_respects_protected_set
     static_getType sΓ x = Some T ->
     runtime_getVal rΓ x = Some (Iot l) ->
 
-    (* (exists l_intermediate,
-      reachable_abs CT h l l_intermediate /\
-      Ensembles.In Loc P l_intermediate) -> *)
-    
     (* If the location is in the Protected Set... *)
     Ensembles.In Loc P l ->
 
@@ -560,15 +517,27 @@ Proof.
     exact IHHreach2.
 Qed.
 
+Lemma env_vars_in_protected_locset :
+  forall CT h sΓ rΓ x l T
+         (Hdom_root : l < dom h)
+         (Hstatic : static_getType sΓ x = Some T)
+         (Hruntime : runtime_getVal rΓ x = Some (Iot l)),
+    Ensembles.In Loc (protected_locset_from_env CT h rΓ) l.
+Proof.
+  intros CT h sΓ rΓ x l T Hstatic Hruntime.
+  unfold protected_locset_from_env.
+  eexists. eexists. eexists.
+  repeat split; eauto.
+  apply reachable_abs_heap; auto.
+Qed.
+
 Lemma confinement_from_all_readonly_env :
-  forall CT sΓ rΓ h x l_root
-    (Hdom_root : l_root < dom h)
+  forall CT sΓ rΓ h
     (Hwf : wf_r_config CT sΓ rΓ h)
-    (Hgetval : runtime_getVal rΓ x = Some (Iot l_root))
     (Hall_readonly : forall y T,
       static_getType sΓ y = Some T ->
       is_safe_mode (sqtype T)),
-    confinement_invariant_precise (protected_locset CT h l_root) CT sΓ rΓ h h.
+    confinement_invariant_precise (protected_locset_from_env CT h rΓ) CT sΓ rΓ h h.
 Proof.
   intros.
   unfold confinement_invariant_precise.
@@ -588,14 +557,12 @@ Proof.
     lia.  (* This part depends on heap wellformedness properties *)
 Qed.
 
-(* Lemma expr_eval_to_protected_implies_safe_type :
-  forall P CT sΓ rΓ h l_root e l_res Te
+Lemma expr_eval_to_protected_implies_safe_type :
+  forall P CT sΓ rΓ h e l_res Te
+         (HP_def : P = protected_locset_from_env CT h rΓ)
          (Hwf : wf_r_config CT sΓ rΓ h)
-         (Hdom_root : l_root < dom h)
-         (HP_def : P = protected_locset CT h l_root)
-         (*  *)
          (Hconfined : confinement_invariant_precise P CT sΓ rΓ h h)
-         (Heval : eval_expr OK CT rΓ h e (Iot l_res) OK rΓ h)
+         (Heval : eval_expr OK P CT rΓ h e (Iot l_res) OK P rΓ h)
          (Htyp : expr_has_type CT sΓ e Te)
          (Hin : Ensembles.In Loc P l_res),
     is_safe_mode (sqtype Te).
@@ -633,10 +600,11 @@ Proof.
     (* unfold vpa_mutabilty_stype_fld. *)
     (* unfold confinement_invariant_precise in Hconfined. *)
     destruct Hconfined as [Henv_respects Hheap_respects].
-    set (P := protected_locset CT h l_root).
+    set (P := protected_locset_from_env CT h rΓ).
+    (* set (P := protected_locset CT h l_root). *)
     destruct (classic (Ensembles.In Loc P v)) as [Hv_in | Hv_out].
     +
-      specialize (Henv_respects x v T H7 H Hv_in).
+      specialize (Henv_respects x v T H8 H Hv_in).
       unfold is_safe_mode in Henv_respects.
       subst. simpl.
       destruct Henv_respects as [Hrd | Hlost].
@@ -656,9 +624,14 @@ Proof.
       right; reflexivity.
     +
     assert (Hdom_v : v < dom h) by (apply runtime_getObj_dom in H0; exact H0).
+    unfold protected_locset_from_env in P.
+    exfalso.
+    apply Hv_out.
+    exists x, v.
+    split; [exact H | apply reachable_abs_heap; apply runtime_getObj_dom in H0; exact H0].
 
     (* Extract C and vals from o0 *)
-    destruct o0 as [[anyrq C] vals_v].
+    (* destruct o0 as [[anyrq C] vals_v].
     simpl in H1.
     assert (Hdom_l_res : l_res < dom h) by (apply reachable_abs_dom in Hin; exact Hin).
     unfold env_respects_protected_set in Henv_respects.
@@ -698,8 +671,8 @@ Proof.
       (* Hbaseruntime: base_subtype CT (rctype (rt_type o)) (sctype T) *)
       (* We have rctype (rt_type o) = C from H0 *)
       simpl in Hbaseruntime.
-      exact Hbaseruntime.
-Qed. *)
+      exact Hbaseruntime. *)
+Qed.
 
 Lemma runtime_getObj_app_left_equal : forall h h_ext loc,
   loc < dom h ->
@@ -710,7 +683,7 @@ Proof.
   rewrite nth_error_app1; auto.
 Qed.
 
-Lemma env_respects_weaken :
+(* Lemma env_respects_weaken :
   forall CT sΓ rΓ h l_root l_intermediate
     (Hreach : reachable_abs CT h l_root l_intermediate)
     (Henv_respects : env_respects_protected_set (protected_locset CT h l_root) sΓ rΓ),
@@ -755,17 +728,143 @@ Proof.
     eapply env_respects_weaken; eauto.
   - (* heap_respects_protected_set weakens *)
     eapply heap_respects_weaken; eauto.
+Qed. *)
+
+Lemma protected_locset_from_env_dom :
+  forall CT h rΓ l_y
+    (Hin : Ensembles.In Loc (protected_locset_from_env CT h rΓ) l_y),
+    l_y < dom h.
+Proof.
+  intros.
+  unfold protected_locset_from_env in Hin.
+  (* Hin is now: exists x l_root T, ... *)
+  destruct Hin as [x [l_root [Hruntime_val]]].
+  eapply reachable_abs_dom; exact H.
+Qed.
+
+Lemma protected_locset_from_env_subset :
+  forall CT h rΓ y ly zs vals,
+    runtime_getVal rΓ y = Some (Iot ly) ->
+    runtime_lookup_list rΓ zs = Some vals ->
+    Ensembles.Included Loc 
+      (protected_locset_from_env CT h {| vars := Iot ly :: vals |})
+      (protected_locset_from_env CT h rΓ).
+Proof.
+  intros CT h rΓ y ly zs vals H Hlookup_list l Hin_method.
+  unfold protected_locset_from_env in *.
+  destruct Hin_method as [x_method [l_root [Hruntime_method Hreach]]].
+  simpl in Hruntime_method.
+  
+  (* Now we case-split on x_method *)
+  destruct x_method as [|x_method'].
+  - (* Case: x_method = 0 (the receiver) *)
+    (* At index 0, the method env has Iot ly *)
+    simpl in Hruntime_method.
+    inversion Hruntime_method; subst l_root.
+    (* Now we need to show l is in the original environment's protected set *)
+    exists y, ly.
+    split.
+    + exact H.
+    + exact Hreach.
+  - (* Case: x_method = S x_method' (a parameter) *)
+    (* At index S x_method', the method env has vals[x_method'] *)
+    simpl in Hruntime_method.
+    (* By lemma runtime_lookup_list_nth_zs, there exists z : Loc such that *)
+    (* zs[x_method'] = z and runtime_getVal rΓ z = Some l_root *)
+    destruct (runtime_lookup_list_nth_zs rΓ zs vals x_method' (Iot l_root) Hlookup_list Hruntime_method)
+      as [z [Hnth_zs Hruntime_z]].
+    (* Now we can witness z in the original environment *)
+    exists z, l_root.
+    split.
+    + exact Hruntime_z.
+    + exact Hreach.
+Qed.
+
+Lemma stmt_preserves_unreachable_objects :
+  forall CT rΓ h stmt rΓ' h' l C anyrq vals vals',
+    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals) ->
+    runtime_getObj h' l = Some (mkObj (mkruntime_type anyrq C) vals') ->
+    ~ (Ensembles.In Loc (protected_locset_from_env CT h rΓ) l) ->
+    vals = vals'.
+Proof.
+  intros CT rΓ h stmt rΓ' h' l C anyrq vals vals' Heval Hobj Hobj' Hnot_protected.
+  remember OK as ok.
+  generalize dependent vals.
+  generalize dependent vals'.
+  induction Heval; intros; subst; try discriminate.
+  - (* Skip *) 
+    rewrite Hobj in Hobj'.
+    inversion Hobj'; subst.
+    reflexivity.
+  - (* Local *)
+    rewrite Hobj in Hobj'.
+    inversion Hobj'; subst.
+    reflexivity.
+  - (* VarAss *)
+    rewrite Hobj in Hobj'.
+    inversion Hobj'; subst.
+    reflexivity.
+  - (* FldWrite *)
+    destruct (Nat.eq_dec loc_x l) as [Halias | Hno_alias].
+    -- (* Case: loc_x = l *)
+      subst l.
+      (* Now we have a contradiction: l is reachable from x, so it should be in protected_locset *)
+      exfalso.
+      apply Hnot_protected.
+      unfold protected_locset_from_env.
+      exists x, loc_x.
+      split.
+      + exact H.  (* runtime_getVal rΓ x = Some (Iot loc_x) *)
+      + apply reachable_abs_heap.
+        apply runtime_getObj_dom in H0.
+        exact H0.
+    -- (* Case: loc_x ≠ l *)
+      (* update_field doesn't affect objects at other locations *)
+      unfold update_field in Hobj'.
+      simpl in Hobj'.
+      destruct (runtime_getObj h loc_x) eqn:Hget_loc_x; try discriminate.
+      simpl in Hobj'.
+      rewrite runtime_getObj_update_diff in Hobj'; auto.
+  - (* New *)
+    assert (Hl_old : l < dom h).
+    {
+      apply runtime_getObj_dom in Hobj.
+      exact Hobj.
+    }
+    (* For objects in the old heap, New doesn't change them *)
+    rewrite runtime_getObj_last2 in Hobj'; auto.
+  - (* Call *)
+    eapply IHHeval; eauto.
+    intro Hin_method.
+    apply Hnot_protected.
+    have Hsubset := protected_locset_from_env_subset CT h rΓ y ly zs vals H H4.
+    unfold Ensembles.Included in Hsubset.
+    exact (Hsubset l Hin_method).
+  - (* Seq *)
+    specialize (eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1) as Hh'.
+    have Hlhdom: l < dom h by (apply runtime_getObj_dom in Hobj; exact Hobj). 
+    assert (Hlh'dom: l < dom h') by lia. 
+    specialize (runtime_getObj_Some h' l Hlh'dom) as [C' [values' Hh'some]].
+    specialize (runtime_preserves_r_type_heap CT rΓ h l ({| rqtype := anyrq; rctype := C |})
+    h' vals s1 rΓ' Hobj Heval1) as [vals1 Hrtype]. 
+    rewrite Hrtype in Hh'some; inversion Hh'some; subst.
+    specialize (IHHeval1 eq_refl Hnot_protected values' Hrtype vals Hobj).
+    specialize (IHHeval2 eq_refl Hnot_protected vals' Hobj' values' Hrtype ).
+    rewrite <- IHHeval1 in IHHeval2.
+    auto.
 Qed.
 
 Lemma stmt_preserves_both :
-  forall CT sΓ rΓ h l_root stmt sΓ' rΓ' h'
-    (Hdom_root : l_root < dom h)
-    (Hconfined : confinement_invariant_precise (protected_locset CT h l_root) CT sΓ rΓ h h)
+  forall CT sΓ rΓ h stmt sΓ' rΓ' h'
+    (* (HP_def : P = protected_locset_from_env CT h rΓ) *)
+    (* (Hdom_root : l_root < dom h) *)
+    (Hconfined : confinement_invariant_precise (protected_locset_from_env CT h rΓ) CT sΓ rΓ h h)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ stmt sΓ')
-    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h'),
-  protected_locset CT h l_root = protected_locset CT h' l_root /\
-  confinement_invariant_precise (protected_locset CT h l_root) CT sΓ' rΓ' h h'.
+    (Heval : eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h'),
+  (* protected_locset CT h l_root = protected_locset CT h' l_root /\ *)
+  confinement_invariant_precise (protected_locset_from_env CT h rΓ) CT sΓ' rΓ' h h'.
 Proof.
   intros.
   remember OK as ok.
@@ -775,101 +874,72 @@ Proof.
   induction Heval; intros; subst; try discriminate.
   7:
   {
-  inversion Htyping; subst.
+    inversion Htyping; subst.
+    rename sΓ' into sΓ''.
+    rename sΓ'0 into sΓ'.
 
-  (* Apply IH1 *)
-  pose proof (IHHeval1 Hdom_root eq_refl Heval1 sΓ'0 sΓ Hconfined Hwf H4) as [HeqP1 Hconf1].
+    (* Apply IH1 *)
+    pose proof (IHHeval1 eq_refl Heval1 sΓ' sΓ Hconfined Hwf H4) as [Henv1 Hheap1].
 
-  (* Get wellformedness for intermediate state *)
-  pose proof (preservation_pico _ _ _ _ _ _ _ _ Hwf H4 Heval1) as Hwf'.
+    (* Get wellformedness for intermediate state *)
+    pose proof (preservation_pico _ _ _ _ _ _ _ _ Hwf H4 Heval1) as Hwf'.
 
-  assert (Hdom_root' : l_root < dom h').
-  {
-    apply eval_stmt_preserves_heap_domain_simple in Heval1; eauto.
-    lia.
-  }
-
-  (* Convert Hconf1 from (h, h') to (h', h') parametrization *)
-  assert (Hconf1_for_ih2 : confinement_invariant_precise (protected_locset CT h' l_root) CT sΓ'0 rΓ' h' h').
-  {
-    unfold confinement_invariant_precise in Hconf1.
-    destruct Hconf1 as [Henv1 Hheap1].
-    split.
-    + rewrite <- HeqP1. exact Henv1.
-    + unfold heap_respects_protected_set.
-      intros l_src C anyrq vals k l_dst Hdom_dst Hlsrc_new Hin_dst Hobj_src Hnth.
-      (* For (h', h'): l_src >= dom h' but also runtime_getObj h' l_src = Some(...) requires l_src < dom h' *)
-      exfalso.
-      apply runtime_getObj_dom in Hobj_src.
+    (* assert (Hdom_root' : l_root < dom h').
+    {
+      apply eval_stmt_preserves_heap_domain_simple in Heval1; eauto.
       lia.
-  }
+    } *)
 
-  (* Apply IH2 *)
-  pose proof (IHHeval2 Hdom_root' eq_refl Heval2 sΓ' sΓ'0 Hconf1_for_ih2 Hwf' H6) as [HeqP2 Hconf2].
+    assert (Hconf_for_ih2 : confinement_invariant_precise (protected_locset_from_env CT h rΓ) CT sΓ' rΓ' h' h').
+    {
+      unfold confinement_invariant_precise.
+      destruct (Hconfined) as [Henv0 Hheap0].
+      split.
+      - (* env_respects_protected_set is preserved from IH1 *)
+        exact Henv1.
+      - (* heap_respects_protected_set for (h', h'): same heap, so it's trivial *)
+        unfold heap_respects_protected_set.
+        intros l_src C anyrq vals k l_dst Hdom_dst Hlsrc_new Hin_dst Hobj_src Hnth.
+        (* For (h', h'), we have h_initial = h_curr = h'
+          So l_src >= dom h' but also runtime_getObj h' l_src = Some(...) requires l_src < dom h'
+          This is a contradiction *)
+        exfalso.
+        apply runtime_getObj_dom in Hobj_src.
+        lia.
+    }
 
-  (* Now chain the equalities via transitivity *)
-  assert (HeqP : protected_locset CT h l_root = protected_locset CT h'' l_root).
-  {
-    (* By HeqP1 and HeqP2 *)
-    rewrite HeqP1.
-    exact HeqP2.
-  }
-
-  (* For the invariant part, convert Hconf2 back *)
-  assert (Hconf_final : confinement_invariant_precise (protected_locset CT h l_root) CT sΓ' rΓ'' h h'').
-  {
-    unfold confinement_invariant_precise in Hconf1, Hconf2, Hconfined, Hconf1_for_ih2.
-    destruct Hconf1 as [Henv1 Hheap1].
+    (* Now apply IHHeval2 *)
+    have Hconf2 := IHHeval2 eq_refl Heval2 sΓ'' sΓ' Hconf_for_ih2 Hwf' H6.
+    unfold confinement_invariant_precise in Hconf2, Hconf_for_ih2.
     destruct Hconf2 as [Henv2 Hheap2].
-    destruct Hconfined as [Henv0 Hheap0].
-    destruct Hconf1_for_ih2 as [Henv1' Hheap1'].
+    destruct Hconf_for_ih2 as [Henv2' Hheap2'].
+
+    unfold confinement_invariant_precise.
     split.
-    + rewrite HeqP. rewrite <- HeqP2. exact Henv2.
-    + unfold heap_respects_protected_set in *.
-      intros l_src C anyrq vals k l_dst Hdom_dst_h Hlsrc_new_h Hin_dst Hobj_src Hnth.
-      have Hdom_h_h' : dom h <= dom h' by
-      (apply eval_stmt_preserves_heap_domain_simple in Heval1; lia).
-      destruct (le_lt_dec (dom h') l_src) as [Hlsrc_new_h' | Hlsrc_old_h'].
-    - (* Case: l_src >= dom h' (allocated during second statement) *)
-      have Hin_dst' : Ensembles.In Loc (protected_locset CT h' l_root) l_dst by
-        (rewrite <- HeqP1; exact Hin_dst).
-      have Hdom_dst_h' : l_dst < dom h' by
-        (apply reachable_abs_dom in Hin_dst'; exact Hin_dst').  
-      exact (Hheap2 l_src C anyrq vals k l_dst Hdom_dst_h' Hlsrc_new_h' Hin_dst' Hobj_src Hnth).
-    - (* Case: l_src < dom h' (allocated before or during first statement) *)
-      unfold env_respects_protected_set in *.
-      (* have Hh'some : exists C' vals', runtime_getObj h' l_src = Some (mkObj C' vals').
-      {
-        eapply runtime_getObj_Some; auto.
-      }
-
-      destruct Hh'some as [C' [vals' Hh'some]].
-
-      have Hh''some: exists vals'', runtime_getObj h'' l_src = Some
-      {| rt_type := C'; fields_map :=vals''|}.
-      {
-        eapply runtime_preserves_r_type_heap with (h := h') (h' := h'')(vals := vals'); eauto.
-      }
-
-      destruct Hh''some as [vals'' Hh''some].
-      rewrite Hh''some in Hobj_src.
-      inversion Hobj_src; subst C' vals''.
-      eapply Hheap1 with (l_dst := l_dst) (l_src := l_src) (vals := vals'); eauto.
-      rename vals into vals''. *)
-      admit.
-  }
-
-  split.
-  + exact HeqP.
-  + exact Hconf_final.
+    - (* env_respects_protected_set *)
+      exact Henv2.
+    - (* heap_respects_protected_set from h to h'' *)
+      unfold heap_respects_protected_set in *.
+      intros l_src C anyrq vals k l_dst Hdom_dst Hlsrc_new Hin_dst Hobj_src Hnth.
+      have Hdom_h' : dom h <= dom h'.
+        (apply eval_stmt_preserves_heap_domain_simple in Heval1; lia).
+      have Hdom_dst' : l_dst < dom h' by
+          (lia). 
+        exact (Hheap2 l_src C anyrq vals k l_dst Hdom_dst' Hlsrc_new Hin_dst Hobj_src Hnth).
+      
+      (* Split cases: did l_src get allocated in first or second statement? *)
+      
+      destruct (le_lt_dec (dom h') l_src) as [Hlsrc_new2 | Hlsrc_old2].
+      + (* l_src allocated in second statement: use Hheap2 *)
+        
+        exact (Hheap2 l_src C anyrq vals k l_dst Hdom_dst' Hlsrc_new2 Hin_dst Hobj_src Hnth).
+      + (* l_src allocated in first statement: use Hheap1 *)
+        admit.
   }
   - (* skip *)
     inversion Htyping; subst.
-    split; [reflexivity | exact Hconfined].
+    exact Hconfined.
   - (* local *)
-    split.
-    + reflexivity.
-    + (* Invariant preserved *)
     inversion Htyping; subst.
     unfold confinement_invariant_precise in *.
     destruct Hconfined as [Henv_respects Hheap_respects].
@@ -936,8 +1006,8 @@ Proof.
       unfold heap_respects_protected_set in Hheap_respects.
       exact (Hheap_respects l_src C anyrq vals k l_dst Hdom_src Hin_dst Hobj_src Hnth).
   - (* var assign *)
-    split.
-    + reflexivity.
+    (* split.
+    + reflexivity. *)
     + (* Invariant preserved *)
       inversion Htyping; subst.
       have Hconfined_copy := Hconfined.
@@ -962,8 +1032,7 @@ Proof.
         subst v2.
         assert (Hsafe_e : is_safe_mode (sqtype Te)).
         {
-          admit.
-          (* eapply expr_eval_to_protected_implies_safe_type; eauto. *)
+          eapply expr_eval_to_protected_implies_safe_type; eauto.
         }
         eapply subtype_safe_implies_safe; eauto.
         -- (* y <> x *)
@@ -976,7 +1045,7 @@ Proof.
         unfold heap_respects_protected_set in Hheap_respects.
         exact (Hheap_respects l_src C anyrq vals k l_dst Hdom_src Hin_dst Hobj_src Hnth).
   - (* field write *)
-    split.
+    (* split.
     +
     {
       unfold protected_locset.
@@ -1291,7 +1360,7 @@ Proof.
             rewrite update_field_length in Hreach1; auto.
             eapply confinement_invariant_weaken; eauto.
             exact (IHHreach1 Hdom_root Hconfined).
-    }
+    } *)
  
     + (* Invariant preserved *)
       inversion Htyping; subst sΓ'; subst.
@@ -1333,7 +1402,7 @@ Proof.
           (* rewrite <- H3 in Hdom_src. *)
           exact (Hheap_respects l_src C anyrq vals k l_dst Hdom_dst Hlsrc_new Hin_dst Hobj_src Hnth).
   - (* new *)
-    split.
+    (* split.
     +
     unfold protected_locset.
     apply Ensembles.Extensionality_Ensembles.
@@ -1420,7 +1489,7 @@ Proof.
       have Hconf_l2 : confinement_invariant_precise (protected_locset CT h l2) CT sΓ rΓ h h :=
         confinement_invariant_weaken CT sΓ rΓ h h l0 l2 Hreach1_orig Hconfined.
       have Hreach2_orig : reachable_abs CT h l2 l3 := IHHreach2 Hdom_l2 Hconf_l2.
-      exact (reachable_abs_trans CT h l0 l2 l3 Hreach1_orig Hreach2_orig).   
+      exact (reachable_abs_trans CT h l0 l2 l3 Hreach1_orig Hreach2_orig).    *)
     + (* Invariant preserved *)
       inversion Htyping; subst sΓ'; subst.
       unfold confinement_invariant_precise in *.
@@ -1444,7 +1513,7 @@ Proof.
         rewrite Hlen in Hlookup_s.
         exact Hlookup_s.
         unfold protected_locset in Hin_P.
-        apply reachable_abs_dom in Hin_P.
+        apply protected_locset_from_env_dom in Hin_P.
         inversion Hlookup_r; subst l_y.
         lia.
         -- (* y <> x *)
@@ -1613,7 +1682,7 @@ Proof.
     destruct Hwf as [Hclasstable [Hheap [Hrenv [Hsenv [Henv_len Htypable]]]]].
     unfold confinement_invariant_precise in *.
     destruct Hconfined as [Henv_respects Hheap_respects].
-    specialize (IHHeval Hdom_root (eq_refl)).
+    specialize (IHHeval (eq_refl)).
     destruct H1 as [mdeflookup getmbody].
     remember (msignature mdef) as msig.
     inversion mdeflookup; revert getmbody; subst; intro getmbody.
@@ -2109,7 +2178,7 @@ Proof.
             lia.
     }
     specialize (IHHeval Heval sΓmethodend sΓmethodinit).
-    assert (HenvInvariant: env_respects_protected_set (protected_locset CT h l_root)
+    assert (HenvInvariant: env_respects_protected_set (protected_locset_from_env CT h rΓmethodinit)
     sΓmethodinit rΓmethodinit).
     {
       unfold env_respects_protected_set.
@@ -2123,10 +2192,19 @@ Proof.
       - simpl in Hlookup_s, Hlookup_r.
       injection Hlookup_s as <-. injection Hlookup_r as <-.
       unfold is_safe_mode.
+      have Hin_P_orig : Ensembles.In Loc (protected_locset_from_env CT h rΓ) ly.
+      {
+        unfold protected_locset_from_env.
+        exists y, ly.
+        split.
+        - exact H.  (* runtime_getVal rΓ y = Some (Iot ly) *)
+        - apply reachable_abs_heap.
+          apply protected_locset_from_env_dom in Hin_P; auto.
+      }
       have Hty_safe : is_safe_mode (sqtype Ty).
       {
         unfold env_respects_protected_set in Henv_respects.
-        specialize (Henv_respects y ly Ty H10 H Hin_P).
+        specialize (Henv_respects y ly Ty H10 H Hin_P_orig).
         exact Henv_respects.
       }
       unfold is_safe_mode in Hty_safe.
@@ -2260,24 +2338,38 @@ Proof.
           subst j.
           exact Hget_j.
         }
-        specialize (Henv_respects z_outter l_z T_arg HgetZ_type HgetZ_val Hin_P); auto.
+        have Hin_P_orig : Ensembles.In Loc (protected_locset_from_env CT h rΓ) l_z.
+        {
+          unfold protected_locset_from_env.
+          exists z_outter, l_z.
+          split.
+          - exact HgetZ_val.  (* runtime_getVal rΓ y = Some (Iot ly) *)
+          - apply reachable_abs_heap.
+            apply protected_locset_from_env_dom in Hin_P; auto.
+        }
+        specialize (Henv_respects z_outter l_z T_arg HgetZ_type HgetZ_val Hin_P_orig); auto.
     }
-    assert (HMethodInnerInvariant: env_respects_protected_set (protected_locset CT h l_root)
-    sΓmethodinit rΓmethodinit /\ heap_respects_protected_set (protected_locset CT h l_root) h h CT).
+    assert (HMethodInnerInvariant: env_respects_protected_set (protected_locset_from_env CT h rΓmethodinit)
+    sΓmethodinit rΓmethodinit /\ heap_respects_protected_set (protected_locset_from_env CT h rΓmethodinit) h h CT).
     {
       split.
       exact HenvInvariant.
-      exact Hheap_respects.
+      unfold heap_respects_protected_set.
+      intros l_src C0 anyrq0 vals1 k l_dst Hdom_dst Hlsrc_new Hin_dst Hobj_src Hnth.
+      (* l_src >= dom h but runtime_getObj h l_src = Some(...) requires l_src < dom h *)
+      exfalso.
+      apply runtime_getObj_dom in Hobj_src.
+      lia.
     }
     specialize (IHHeval HMethodInnerInvariant Hwf_method_frame).
     rewrite <- getmbody in Hmethodbody_typing.
     specialize (IHHeval Hmethodbody_typing).
-    destruct IHHeval as [Htopology Hconfinement].
-    destruct Hconfinement as [Henv_respects' Hheap_respects'].
+    destruct IHHeval as [Henv_respects' Hheap_respects'].
+    (* destruct Hconfinement as [Henv_respects' Hheap_respects']. *)
     split.
-    exact Htopology.
-    split.
-    assert (Henv_respects'': env_respects_protected_set (protected_locset CT h l_root) sΓ rΓ''' ).
+    (* exact Henv_respects'. *)
+    (* split. *)
+    assert (Henv_respects'': env_respects_protected_set (protected_locset_from_env CT h rΓ) sΓ rΓ''' ).
     {
       rewrite HeqrΓ'''.
       unfold env_respects_protected_set.
@@ -2355,7 +2447,12 @@ Proof.
         unfold runtime_getVal in Hlookup_r.
         rewrite update_same in Hlookup_r. lia.   (* or by exact Hdom_x *)
         inversion Hlookup_r; subst.
-        specialize (Henv_respects' (mreturn (Syntax.mbody mdef)) l_z mbodyreturntype HGetMethodReturnType H6 Hin_P).
+        have Hin_P_inner: Ensembles.In Loc (protected_locset_from_env CT h
+        {| vars := Iot ly :: vals |}) l_z.
+        {
+          admit.
+        }
+        specialize (Henv_respects' (mreturn (Syntax.mbody mdef)) l_z mbodyreturntype HGetMethodReturnType H6 Hin_P_inner).
         rewrite <- Hsigeq in H18.
         apply subtype_safe_implies_safe in HmethodReturnSubtype; auto.
         apply subtype_safe_implies_safe_adapted in H18; auto.
@@ -2371,7 +2468,8 @@ Proof.
       eapply Henv_respects; eauto.
     }
     exact Henv_respects''.
-    exact Hheap_respects'.
+    (* exact Hheap_respects'. *)
+    admit.
     +
     assert (Hwfmethod: exists D ddef, base_subtype CT cy D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef).
     {
@@ -2860,7 +2958,7 @@ Proof.
             lia.
     }
     specialize (IHHeval Heval sΓmethodend sΓmethodinit).
-    assert (HenvInvariant: env_respects_protected_set (protected_locset CT h l_root)
+    assert (HenvInvariant: env_respects_protected_set (protected_locset_from_env CT h rΓmethodinit)
     sΓmethodinit rΓmethodinit).
     {
       unfold env_respects_protected_set.
@@ -2874,10 +2972,19 @@ Proof.
       - simpl in Hlookup_s, Hlookup_r.
       injection Hlookup_s as <-. injection Hlookup_r as <-.
       unfold is_safe_mode.
+      have Hin_P_orig : Ensembles.In Loc (protected_locset_from_env CT h rΓ) ly.
+      {
+        unfold protected_locset_from_env.
+        exists y, ly.
+        split.
+        - exact H.  (* runtime_getVal rΓ y = Some (Iot ly) *)
+        - apply reachable_abs_heap.
+          apply protected_locset_from_env_dom in Hin_P; auto.
+      }
       have Hty_safe : is_safe_mode (sqtype Ty).
       {
         unfold env_respects_protected_set in Henv_respects.
-        specialize (Henv_respects y ly Ty H10 H Hin_P).
+        specialize (Henv_respects y ly Ty H10 H Hin_P_orig).
         exact Henv_respects.
       }
       unfold is_safe_mode in Hty_safe.
@@ -3011,24 +3118,38 @@ Proof.
           subst j.
           exact Hget_j.
         }
-        specialize (Henv_respects z_outter l_z T_arg HgetZ_type HgetZ_val Hin_P); auto.
+        have Hin_P_orig : Ensembles.In Loc (protected_locset_from_env CT h rΓ) l_z.
+        {
+          unfold protected_locset_from_env.
+          exists z_outter, l_z.
+          split.
+          - exact HgetZ_val.  (* runtime_getVal rΓ y = Some (Iot ly) *)
+          - apply reachable_abs_heap.
+            apply protected_locset_from_env_dom in Hin_P; auto.
+        }
+        specialize (Henv_respects z_outter l_z T_arg HgetZ_type HgetZ_val Hin_P_orig); auto.
     }
-    assert (HMethodInnerInvariant: env_respects_protected_set (protected_locset CT h l_root)
-    sΓmethodinit rΓmethodinit /\ heap_respects_protected_set (protected_locset CT h l_root) h h CT).
+    assert (HMethodInnerInvariant: env_respects_protected_set (protected_locset_from_env CT h rΓmethodinit)
+    sΓmethodinit rΓmethodinit /\ heap_respects_protected_set (protected_locset_from_env CT h rΓmethodinit) h h CT).
     {
       split.
       exact HenvInvariant.
-      exact Hheap_respects.
+      unfold heap_respects_protected_set.
+      intros l_src C0 anyrq0 vals1 k l_dst Hdom_dst Hlsrc_new Hin_dst Hobj_src Hnth.
+      (* l_src >= dom h but runtime_getObj h l_src = Some(...) requires l_src < dom h *)
+      exfalso.
+      apply runtime_getObj_dom in Hobj_src.
+      lia.
     }
     specialize (IHHeval HMethodInnerInvariant Hwf_method_frame).
     rewrite <- getmbody in Hmethodbody_typing.
     specialize (IHHeval Hmethodbody_typing).
-    destruct IHHeval as [Htopology Hconfinement].
-    destruct Hconfinement as [Henv_respects' Hheap_respects'].
+    destruct IHHeval as [Henv_respects' Hheap_respects'].
+    (* destruct Hconfinement as [Henv_respects' Hheap_respects']. *)
     split.
-    exact Htopology.
-    split.
-    assert (Henv_respects'': env_respects_protected_set (protected_locset CT h l_root) sΓ rΓ''' ).
+    (* exact Htopology.
+    split. *)
+    assert (Henv_respects'': env_respects_protected_set (protected_locset_from_env CT h rΓ) sΓ rΓ''' ).
     {
       rewrite HeqrΓ'''.
       unfold env_respects_protected_set.
@@ -3109,7 +3230,16 @@ Proof.
         unfold runtime_getVal in Hlookup_r.
         rewrite update_same in Hlookup_r. lia.   (* or by exact Hdom_x *)
         inversion Hlookup_r; subst.
-        specialize (Henv_respects' (mreturn (Syntax.mbody mdef)) l_z mbodyreturntype HGetMethodReturnType H6 Hin_P).
+        have Hin_P_inner: Ensembles.In Loc (protected_locset_from_env CT h
+        {| vars := Iot ly :: vals |}) l_z.
+        {
+          have Hdom_l_z : l_z < dom h.
+          {
+            apply protected_locset_from_env_dom in Hin_P; auto.
+          }
+          admit.
+        }
+        specialize (Henv_respects' (mreturn (Syntax.mbody mdef)) l_z mbodyreturntype HGetMethodReturnType H6 Hin_P_inner).
         rewrite <- Hsigeq in H18.
         apply subtype_safe_implies_safe in HmethodReturnSubtype; auto.
         apply subtype_safe_implies_safe_adapted in H18; auto.
@@ -3125,23 +3255,21 @@ Proof.
         eapply Henv_respects; eauto.
     }
     exact Henv_respects''.
-    exact Hheap_respects'.
+    admit.
+    (* exact Hheap_respects'. *)
 Admitted.
 
 Theorem deep_readonly_preservation :
-  forall CT sΓ rΓ h l_root stmt rΓ' h' sΓ' l C anyrq vals vals' f
-         (* 1. Initialize P based on the START state *)
-         (* (HP_def : P = protected_locset CT h l_root) *)
+  forall CT sΓ rΓ h stmt rΓ' h' sΓ' l C anyrq vals vals' f
          
          (* 2. Pre-condition: Invariant holds for P *)
          (* (Note: env_respects is trivial by def of P; heap_respects needs wf) *)
-         (Hdom_root : l_root < dom h)
-         (Hconfined : confinement_invariant_precise (protected_locset CT h l_root) CT sΓ rΓ h h)
+         (Hconfined : confinement_invariant_precise (protected_locset_from_env CT h rΓ) CT sΓ rΓ h h)
          (Hwf : wf_r_config CT sΓ rΓ h)
          
          (* 3. Execution *)
          (Htyping : stmt_typing CT sΓ stmt sΓ')
-         (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+         (Heval : eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h')
          
     (* CONCLUSION: *)
     (* 1. The Invariant is preserved (Safety) *)
@@ -3149,11 +3277,10 @@ Theorem deep_readonly_preservation :
     
     (* 2. The Protected Set P is physically unmodified (Deep Immutability) *)
     (* (forall l C anyrq vals vals' f, *)
-       (Hlocalset : Ensembles.In Loc (protected_locset CT h l_root) l)
+       (Hlocalset : Ensembles.In Loc (protected_locset_from_env CT h rΓ) l)
        (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals))
        (Hobj' : runtime_getObj h' l = Some (mkObj (mkruntime_type anyrq C) vals'))
        (* Only protected fields need to be equal, as discussed *)
-       (* forall f,  *)
        (Hassignability : (sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA)),
        nth_error vals f = nth_error vals' f.
 Proof.
@@ -3198,7 +3325,7 @@ Proof.
         destruct Hconfined as [Henv_respects _].
         
         (* Apply the lemma: if x points to l ∈ P, then x is Safe *)
-        have Hx_safe := mut_var_cannot_point_to_P sΓ' rΓ x Tx l (protected_locset CT h l_root) H7 H Henv_respects Hlocalset.
+        have Hx_safe := mut_var_cannot_point_to_P sΓ' rΓ x Tx l (protected_locset_from_env CT h rΓ) H7 H Henv_respects Hlocalset.
         
         (* But from ST_FldWrite typing, we need sqtype Tx to allow writes *)
         (* H15: vpa_assignability (sqtype Tx) a = Assignable *)
@@ -3319,7 +3446,7 @@ Proof.
     destruct Hwf as [Hclasstable [Hheap [Hrenv [Hsenv [_ Htypable]]]]].
     unfold confinement_invariant_precise in *.
     destruct Hconfined as [Henv_respects Hheap_respects].
-    specialize (IHHeval Hdom_root (eq_refl)).
+    specialize (IHHeval (eq_refl)).
     destruct H1 as [mdeflookup getmbody].
     remember (msignature mdef) as msig.
     inversion mdeflookup; revert getmbody; subst; intro getmbody.
@@ -3803,8 +3930,18 @@ Proof.
             rewrite <- Hmsigeq in Hval_i.
             lia.
     }
-    specialize (IHHeval Hlocalset Hassignability vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
-    assert (HenvInvariant: env_respects_protected_set (protected_locset CT h l_root)
+    destruct (classic (Ensembles.In Loc (protected_locset_from_env CT h rΓmethodinit) l)) as [Hlocalset' | Hnot_reachable].
+    2:
+    {
+      have Hunchanged : vals0 = vals'.
+      {
+        eapply stmt_preserves_unreachable_objects; eauto.
+      }
+      subst vals'.
+      reflexivity.
+    }
+    specialize (IHHeval Hlocalset' Hassignability vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
+    assert (HenvInvariant: env_respects_protected_set (protected_locset_from_env CT h rΓmethodinit)
     sΓmethodinit rΓmethodinit).
     {
       unfold env_respects_protected_set.
@@ -3818,10 +3955,19 @@ Proof.
       - simpl in Hlookup_s, Hlookup_r.
       injection Hlookup_s as <-. injection Hlookup_r as <-.
       unfold is_safe_mode.
+      have Hin_P_orig : Ensembles.In Loc (protected_locset_from_env CT h rΓ) ly.
+      {
+        unfold protected_locset_from_env.
+        exists y, ly.
+        split.
+        - exact H.  (* runtime_getVal rΓ y = Some (Iot ly) *)
+        - apply reachable_abs_heap.
+          apply protected_locset_from_env_dom in Hin_P; auto.
+      }
       have Hty_safe : is_safe_mode (sqtype Ty).
       {
         unfold env_respects_protected_set in Henv_respects.
-        specialize (Henv_respects y ly Ty H10 H Hin_P).
+        specialize (Henv_respects y ly Ty H10 H Hin_P_orig).
         exact Henv_respects.
       }
       unfold is_safe_mode in Hty_safe.
@@ -3955,14 +4101,28 @@ Proof.
           subst j.
           exact Hget_j.
         }
-        specialize (Henv_respects z_outter l_z T_arg HgetZ_type HgetZ_val Hin_P); auto.
+        have Hin_P_orig : Ensembles.In Loc (protected_locset_from_env CT h rΓ) l_z.
+        {
+          unfold protected_locset_from_env.
+          exists z_outter, l_z.
+          split.
+          - exact HgetZ_val.  (* runtime_getVal rΓ y = Some (Iot ly) *)
+          - apply reachable_abs_heap.
+            apply protected_locset_from_env_dom in Hin_P; auto.
+        }
+        specialize (Henv_respects z_outter l_z T_arg HgetZ_type HgetZ_val Hin_P_orig); auto.
     }
-    assert (HMethodInnerInvariant: env_respects_protected_set (protected_locset CT h l_root)
-    sΓmethodinit rΓmethodinit /\ heap_respects_protected_set (protected_locset CT h l_root) h h CT).
+    assert (HMethodInnerInvariant: env_respects_protected_set (protected_locset_from_env CT h rΓmethodinit)
+    sΓmethodinit rΓmethodinit /\ heap_respects_protected_set (protected_locset_from_env CT h rΓmethodinit) h h CT).
     {
       split.
       exact HenvInvariant.
-      exact Hheap_respects.
+      unfold heap_respects_protected_set.
+      intros l_src C0 anyrq0 vals1 k l_dst Hdom_dst Hlsrc_new Hin_dst Hobj_src Hnth.
+      (* l_src >= dom h but runtime_getObj h l_src = Some(...) requires l_src < dom h *)
+      exfalso.
+      apply runtime_getObj_dom in Hobj_src.
+      lia.
     }
     specialize (IHHeval HMethodInnerInvariant Hwf_method_frame).
     rewrite <- getmbody in Hmethodbody_typing.
@@ -4454,8 +4614,18 @@ Proof.
             rewrite <- Hmsigeq in Hval_i.
             lia.
     }
-    specialize (IHHeval Hlocalset Hassignability vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
-    assert (HenvInvariant: env_respects_protected_set (protected_locset CT h l_root)
+    destruct (classic (Ensembles.In Loc (protected_locset_from_env CT h rΓmethodinit) l)) as [Hlocalset' | Hnot_reachable].
+    2:
+    {
+      have Hunchanged : vals0 = vals'.
+      {
+        eapply stmt_preserves_unreachable_objects; eauto.
+      }
+      subst vals'.
+      reflexivity.
+    }
+    specialize (IHHeval Hlocalset' Hassignability vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
+    assert (HenvInvariant: env_respects_protected_set (protected_locset_from_env CT h rΓmethodinit)
     sΓmethodinit rΓmethodinit).
     {
       unfold env_respects_protected_set.
@@ -4469,10 +4639,19 @@ Proof.
       - simpl in Hlookup_s, Hlookup_r.
       injection Hlookup_s as <-. injection Hlookup_r as <-.
       unfold is_safe_mode.
+      have Hin_P_orig : Ensembles.In Loc (protected_locset_from_env CT h rΓ) ly.
+      {
+        unfold protected_locset_from_env.
+        exists y, ly.
+        split.
+        - exact H.  (* runtime_getVal rΓ y = Some (Iot ly) *)
+        - apply reachable_abs_heap.
+          apply protected_locset_from_env_dom in Hin_P; auto.
+      }
       have Hty_safe : is_safe_mode (sqtype Ty).
       {
         unfold env_respects_protected_set in Henv_respects.
-        specialize (Henv_respects y ly Ty H10 H Hin_P).
+        specialize (Henv_respects y ly Ty H10 H Hin_P_orig).
         exact Henv_respects.
       }
       unfold is_safe_mode in Hty_safe.
@@ -4606,14 +4785,28 @@ Proof.
           subst j.
           exact Hget_j.
         }
-        specialize (Henv_respects z_outter l_z T_arg HgetZ_type HgetZ_val Hin_P); auto.
+        have Hin_P_orig : Ensembles.In Loc (protected_locset_from_env CT h rΓ) l_z.
+        {
+          unfold protected_locset_from_env.
+          exists z_outter, l_z.
+          split.
+          - exact HgetZ_val.  (* runtime_getVal rΓ y = Some (Iot ly) *)
+          - apply reachable_abs_heap.
+            apply protected_locset_from_env_dom in Hin_P; auto.
+        }
+        specialize (Henv_respects z_outter l_z T_arg HgetZ_type HgetZ_val Hin_P_orig); auto.
     }
-    assert (HMethodInnerInvariant: env_respects_protected_set (protected_locset CT h l_root)
-    sΓmethodinit rΓmethodinit /\ heap_respects_protected_set (protected_locset CT h l_root) h h CT).
+    assert (HMethodInnerInvariant: env_respects_protected_set (protected_locset_from_env CT h rΓmethodinit)
+    sΓmethodinit rΓmethodinit /\ heap_respects_protected_set (protected_locset_from_env CT h rΓmethodinit) h h CT).
     {
       split.
       exact HenvInvariant.
-      exact Hheap_respects.
+      unfold heap_respects_protected_set.
+      intros l_src C0 anyrq0 vals1 k l_dst Hdom_dst Hlsrc_new Hin_dst Hobj_src Hnth.
+      (* l_src >= dom h but runtime_getObj h l_src = Some(...) requires l_src < dom h *)
+      exfalso.
+      apply runtime_getObj_dom in Hobj_src.
+      lia.
     }
     specialize (IHHeval HMethodInnerInvariant Hwf_method_frame).
     rewrite <- getmbody in Hmethodbody_typing.
@@ -4630,43 +4823,44 @@ Proof.
       eapply preservation_pico; eauto.
     }
 
-    assert (Heq_protected_set: protected_locset CT h l_root = protected_locset CT h' l_root /\ confinement_invariant_precise (protected_locset CT h l_root) CT sΓ' rΓ' h h').
+    assert (Hconfined_intermediate: confinement_invariant_precise (protected_locset_from_env CT h rΓ) CT sΓ' rΓ' h h').
     {
       eapply stmt_preserves_both; eauto.
     }
-    destruct Heq_protected_set as [Heq_protected_set Hconfined_intermediate].
+    (* destruct Hconfined_intermediate as [Henvironment Hheap]. *)
 
     specialize (eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1) as Hh'.
-    assert (Hdom_root': l_root < dom h') by lia.
+    (* assert (Hdom_root': l_root < dom h') by lia. *)
     assert (Hldomh': l < dom h') by (apply runtime_getObj_dom in Hobj; lia).
     specialize (runtime_getObj_Some h' l Hldomh') as [T [values' Hh'some]].
     specialize (runtime_preserves_r_type_heap CT rΓ h l ({| rqtype := anyrq; rctype := C |})
     h' vals s1 rΓ' Hobj Heval1) as [vals1 Hrtype].
     rewrite Hrtype in Hh'some; inversion Hh'some; subst.
 
-    specialize (IHHeval1 Hdom_root eq_refl Hlocalset Hassignability values' Hrtype vals Hobj sΓ' sΓ Hconfined Hwf H4).
+    specialize (IHHeval1 eq_refl Hlocalset Hassignability values' Hrtype vals Hobj sΓ' sΓ Hconfined Hwf H4).
 
-    have Hlocalset': Ensembles.In Loc (protected_locset CT h' l_root) l by (rewrite Heq_protected_set in Hlocalset; exact Hlocalset).
-    rewrite Heq_protected_set in Hconfined_intermediate.
+    (* have Hlocalset': Ensembles.In Loc (protected_locset CT h' l_root) l by (rewrite Heq_protected_set in Hlocalset; exact Hlocalset). *)
+    (* rewrite Heq_protected_set in Hconfined_intermediate. *)
 
-    assert (Hconf1_for_ih2 : confinement_invariant_precise (protected_locset CT h' l_root) CT sΓ' rΓ' h' h').
+    assert (Hconf_for_ih2 : confinement_invariant_precise (protected_locset_from_env CT h rΓ) CT sΓ' rΓ' h' h').
     {
       unfold confinement_invariant_precise in Hconfined_intermediate.
       destruct Hconfined_intermediate as [Henv1 Hheap1].
       split.
-      + exact Henv1.
-      + unfold heap_respects_protected_set in Hheap1.
+      - (* env_respects_protected_set is preserved from IH1 *)
+        exact Henv1.
+      - (* heap_respects_protected_set for (h', h'): same heap, so it's trivial *)
+        unfold heap_respects_protected_set.
         intros l_src C0 anyrq0 vals0 k l_dst Hdom_src_h' Hlsrc_new Hin_dst Hobj0 Hnth.
-        (* l_dst < dom h' (from Hin_dst via reachable_abs_dom) *)
-        have Hdom_src_h : l_dst < dom h.
-        rewrite <- Heq_protected_set in Hin_dst.
-        have Hin_dst_copy := Hin_dst.
-        apply reachable_abs_dom in Hin_dst_copy.
-        exact Hin_dst_copy.
-        have hdom_src_h : l_src >= dom h by lia.
-        exact (Hheap1 l_src C0 anyrq0 vals0 k l_dst Hdom_src_h hdom_src_h Hin_dst Hobj0 Hnth).
+        (* intros l_src C0 anyrq vals k l_dst Hdom_dst Hlsrc_new Hin_dst Hobj_src Hnth. *)
+        (* For (h', h'), we have h_initial = h_curr = h'
+          So l_src >= dom h' but also runtime_getObj h' l_src = Some(...) requires l_src < dom h'
+          This is a contradiction *)
+        exfalso.
+        apply runtime_getObj_dom in Hobj0.
+        lia.
     }
 
-    specialize (IHHeval2 Hdom_root' eq_refl Hlocalset' Hassignability vals' Hobj' values' Hrtype sΓ'' sΓ' Hconf1_for_ih2 Hwf' H6).
+    specialize (IHHeval2 eq_refl Hlocalset Hassignability vals' Hobj' values' Hrtype sΓ'' sΓ' Hconf_for_ih2 Hwf' H6).
     rewrite IHHeval2 in IHHeval1; auto.
 Qed.

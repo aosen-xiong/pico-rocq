@@ -1,4 +1,4 @@
-Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties.
+Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties Reachability.
 Require Import List.
 Import ListNotations.
 Require Import String.
@@ -12,7 +12,7 @@ Theorem shallow_immutability_pico :
     runtime_getObj h l = Some (mkObj (mkruntime_type Imm_r C) vals) ->
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ stmt sΓ' -> 
-    eval_stmt OK CT rΓ h stmt OK rΓ' h' ->
+    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
     runtime_getObj h' l = Some (mkObj (mkruntime_type Imm_r C) vals') ->
     sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA ->
     nth_error vals f = nth_error vals' f.
@@ -615,61 +615,16 @@ Proof.
   -  (* Seq *) (* Apply IH transitively *)
   intros. inversion H2; subst. 
   specialize (eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' H3_) as Hh'.
-  assert (l < dom h') by lia. specialize (runtime_getObj_Some h' l H3) as [C' [values' Hh'some]].
+  assert (l < dom h') by lia. 
+  specialize (runtime_getObj_Some h' l H3) as [C' [values' Hh'some]].
   specialize (runtime_preserves_r_type_heap CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
-  h' vals s1 rΓ' H0 H3_) as [vals1 Hrtype]. rewrite Hrtype in Hh'some; inversion Hh'some; subst.
+  h' vals s1 rΓ' H0 H3_) as [vals1 Hrtype]. 
+  rewrite Hrtype in Hh'some; inversion Hh'some; subst.
   specialize (IHeval_stmt1 H Heqok H5 values' Hrtype vals H0 sΓ'0 sΓ H1 H10). 
   specialize (preservation_pico CT sΓ rΓ h s1 rΓ' h' sΓ'0 H1 H10 H3_) as Hwf'.
   specialize (IHeval_stmt2 H3 Heqok H5 vals' H4 values' Hrtype sΓ' sΓ'0 Hwf' H12). 
   rewrite IHeval_stmt2 in IHeval_stmt1; auto.
 Qed.
-
-Inductive reachable (h : heap): Loc -> Loc -> Prop :=
-
-| rch_heap:
-    forall l,
-      l < dom h ->
-      reachable h l l
-
-| rch_step:
-    forall l0 l1 obj f,
-      l1 < dom h ->
-      runtime_getObj h l0 = Some obj ->
-      getVal obj.(fields_map) f = Some (Iot l1) ->
-      reachable h l0 l1
-
-| rch_trans:
-    forall l0 l1 l2,
-      reachable h l0 l1 ->
-      reachable h l1 l2 ->
-      reachable h l0 l2.
-
-
-Inductive reachable_abs (CT : class_table) (h : heap) : Loc -> Loc -> Prop :=
-
-| reachable_abs_heap :
-    forall l,
-      l < dom h ->
-      reachable_abs CT h l l
-
-| reachable_abs_step :
-    forall l0 l1 any C vals k,
-      (* concrete step, as in [rch_step] *)
-      l1 < dom h ->
-      runtime_getObj h l0 = Some (mkObj (mkruntime_type any C) vals) ->
-      (* field [f] corresponds to index [k] and is RDM/Imm in the abstract state *)
-      nth_error vals k = Some (Iot l1) ->
-      (sf_mutability_rel CT C k RDM_f \/
-       sf_mutability_rel CT C k Imm_f) ->
-      (sf_assignability_rel CT C k RDA \/
-      sf_assignability_rel CT C k Final) ->
-      reachable_abs CT h l0 l1
-
-| reachable_abs_trans :
-    forall l0 l1 l2,
-      reachable_abs CT h l0 l1 ->
-      reachable_abs CT h l1 l2 ->
-      reachable_abs CT h l0 l2.
 
 (* TODO: clean up to one place  *)
 (* Lemma runtime_getObj_to_r_muttype :
@@ -834,10 +789,6 @@ Proof.
     exact Himm2.
 Qed.
 
-Definition reachable_locset
-           (CT : class_table) (h : heap) (root : Loc) : Ensembles.Ensemble Loc :=
-  fun l => reachable_abs CT h root l.
-
 (* All reachable objects in the abstract state from immutable root object are immutable *)
 Lemma reachable_locset_all_imm :
   forall CT sΓ rΓ h root C0 vals0 l
@@ -879,7 +830,7 @@ Theorem deep_immutability_pico :
          (Hreach : reachable_abs CT h root l)
          (Hwf : wf_r_config CT sΓ rΓ h)
          (Htyping : stmt_typing CT sΓ stmt sΓ')
-         (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+         (Heval : eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h')
          (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals))
          (Hobj' : runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals'))
          (Hprotected : sf_assignability_rel CT C f Final \/ 
