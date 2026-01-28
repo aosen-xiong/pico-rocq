@@ -12,7 +12,7 @@ Theorem shallow_immutability_pico :
     runtime_getObj h l = Some (mkObj (mkruntime_type Imm_r C) vals) ->
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ stmt sΓ' -> 
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     runtime_getObj h' l = Some (mkObj (mkruntime_type Imm_r C) vals') ->
     sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA ->
     nth_error vals f = nth_error vals' f.
@@ -626,33 +626,6 @@ Proof.
   rewrite IHeval_stmt2 in IHeval_stmt1; auto.
 Qed.
 
-(* TODO: clean up to one place  *)
-(* Lemma runtime_getObj_to_r_muttype :
-  forall h l q C vals
-      (HgetObj : runtime_getObj h l = Some (mkObj (mkruntime_type q C) vals)),
-      r_muttype h l = Some q.
-Proof.
-  intros.
-  unfold r_muttype.
-  rewrite HgetObj.
-  simpl.
-  reflexivity.
-Qed. *)
-
-(* Lemma r_type_to_r_muttype :
-  forall h l1 rqt q
-         (Hrtype : r_type h l1 = Some rqt)
-         (Hrqt : rqtype rqt = q),
-    r_muttype h l1 = Some q.
-Proof.
-  intros.
-  unfold r_muttype.
-  unfold r_type in Hrtype.
-  destruct (runtime_getObj h l1) eqn:HgetObj; try easy.
-  inversion Hrtype; subst.
-  reflexivity.
-Qed. *)
-
 Lemma imm_step_preserves_imm :
   forall CT sΓ rΓ h l0 C vals l1 k
          (Hwf   : wf_r_config CT sΓ rΓ h)
@@ -663,7 +636,6 @@ Lemma imm_step_preserves_imm :
          exists C' vals',
             runtime_getObj h l1 =
               Some (mkObj (mkruntime_type Imm_r C') vals').
-         (* r_muttype h l1 = Some Imm_r. *)
 Proof.
   intros.
   unfold wf_r_config in Hwf.
@@ -830,7 +802,7 @@ Theorem deep_immutability_pico :
          (Hreach : reachable_abs CT h root l)
          (Hwf : wf_r_config CT sΓ rΓ h)
          (Htyping : stmt_typing CT sΓ stmt sΓ')
-         (Heval : eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h')
+         (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
          (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals))
          (Hobj' : runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals'))
          (Hprotected : sf_assignability_rel CT C f Final \/ 

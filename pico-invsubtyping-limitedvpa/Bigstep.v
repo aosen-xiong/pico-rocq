@@ -269,7 +269,7 @@ Inductive eval_result :=
 | MUTATIONEXP: eval_result
 | NPE : eval_result.
 
-Definition protected_locset_from_env
+Definition reachable_locations_from_initial_env
   (CT : class_table) (h : heap) (rΓ : r_env) : Ensembles.Ensemble Loc :=
   fun l_target => 
     exists x l_root ,
@@ -282,24 +282,24 @@ Definition protected_locset_from_env
 Inductive eval_expr : eval_result -> (Loc -> Prop) -> class_table -> r_env -> heap -> expr -> value -> eval_result -> (Loc -> Prop)  -> r_env -> heap -> Prop :=
   (* evalutate null expression  *)
   | EBS_Null : forall CT rΓ h,
-      eval_expr OK (protected_locset_from_env CT h rΓ) CT rΓ h ENull Null_a OK (protected_locset_from_env CT h rΓ) rΓ h
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h ENull Null_a OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
 
   (* evaluate value expression *)
   | EBS_Val : forall CT rΓ h x v,
       runtime_getVal rΓ x = Some v ->
-      eval_expr OK (protected_locset_from_env CT h rΓ) CT rΓ h (EVar x) v OK (protected_locset_from_env CT h rΓ) rΓ h
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (EVar x) v OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
 
   (* evaluate field access expression *)  
   | EBS_Field : forall CT rΓ h x f v o v1,
       runtime_getVal rΓ x = Some (Iot v) ->
       runtime_getObj h v = Some o ->
       getVal o.(fields_map) f = Some v1 ->
-      eval_expr OK (protected_locset_from_env CT h rΓ) CT rΓ h (EField x f) v1 OK (protected_locset_from_env CT h rΓ) rΓ h
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (EField x f) v1 OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
 
   (* evaluate field access expression yields NPE *)
   | EBS_Field_NPE : forall CT rΓ h x f v,
       runtime_getVal rΓ x = Some (Null_a) ->
-      eval_expr OK (protected_locset_from_env CT h rΓ) CT rΓ h (EField x f) v NPE (protected_locset_from_env CT h rΓ) rΓ h
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (EField x f) v NPE (reachable_locations_from_initial_env CT h rΓ) rΓ h
   .
 Notation "rΓ ',' h '⟦' e '⟧' '-->' v ',' rΓ' ',' h'" := (eval_expr OK rΓ h e v OK rΓ' h') (at level 200).
 
@@ -307,27 +307,27 @@ Notation "rΓ ',' h '⟦' e '⟧' '-->' v ',' rΓ' ',' h'" := (eval_expr OK rΓ 
 Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> heap -> stmt -> eval_result -> (Loc -> Prop)  -> r_env -> heap -> Prop :=
   (* evaluate skip statement *)
   | SBS_Skip : forall CT rΓ h,
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h SSkip OK (protected_locset_from_env CT h rΓ) rΓ h
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h SSkip OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
 
   (* evaluate local variable declaration statement *)
   | SBS_Local : forall CT rΓ h T x,
       runtime_getVal rΓ x = None ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SLocal T x) OK (protected_locset_from_env CT h rΓ)
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SLocal T x) OK (reachable_locations_from_initial_env CT h rΓ)
       (rΓ <|vars := rΓ.(vars)++[Null_a] |> )
       h
 
   (* evaluate variable assignment statement *)
   | SBS_Assign : forall CT rΓ h x e v1 v2,
       runtime_getVal rΓ x = Some v1 ->
-      eval_expr OK (protected_locset_from_env CT h rΓ) CT rΓ h e v2 OK (protected_locset_from_env CT h rΓ) rΓ h ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SVarAss x e) OK (protected_locset_from_env CT h rΓ) 
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h e v2 OK (reachable_locations_from_initial_env CT h rΓ) rΓ h ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SVarAss x e) OK (reachable_locations_from_initial_env CT h rΓ) 
       (rΓ <|vars := update x v2 rΓ.(vars)|>)
       h
 
   | SBS_Assign_NPE : forall CT rΓ h x e v1 v2 rΓ' h',
     runtime_getVal rΓ x = Some v1 ->
-    eval_expr OK (protected_locset_from_env CT h rΓ) CT rΓ h e v2 NPE (protected_locset_from_env CT h rΓ) rΓ h ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SVarAss x e) NPE (protected_locset_from_env CT h rΓ)
+    eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h e v2 NPE (reachable_locations_from_initial_env CT h rΓ) rΓ h ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SVarAss x e) NPE (reachable_locations_from_initial_env CT h rΓ)
     rΓ'
     h'
 
@@ -338,12 +338,12 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       getVal o.(fields_map) f = Some vf ->
       runtime_getVal rΓ y = Some val_y ->
       h' = update_field h loc_x f val_y ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SFldWrite x f y) OK (protected_locset_from_env CT h rΓ) rΓ h'
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SFldWrite x f y) OK (reachable_locations_from_initial_env CT h rΓ) rΓ h'
 
   (* evaluate field write statement NPE *)
   | SBS_FldWrite_NPE: forall CT rΓ h x f y rΓ' h',
       runtime_getVal rΓ x = Some (Null_a) ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SFldWrite x f y) NPE (protected_locset_from_env CT h rΓ) rΓ' h'
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SFldWrite x f y) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
 
   (* evaluate object creation statement *)
   | SBS_New: forall CT rΓ h x (q_c:q_c) c ys l1 qthisr vals o qadapted rΓ' h',
@@ -354,7 +354,7 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       o = mkObj (mkruntime_type qadapted c) (vals) ->
       h' = h++[o] ->
       rΓ' = rΓ <| vars := update x (Iot (dom h)) rΓ.(vars) |> ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SNew x q_c c ys) OK (protected_locset_from_env CT h rΓ) rΓ' h'
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SNew x q_c c ys) OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
 
   (* evaluate method call statement *)
   | SBS_Call: forall CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret retval h' rΓ' rΓ'' rΓ''',
@@ -365,15 +365,15 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
     mret = mbody.(mreturn) ->
     runtime_lookup_list rΓ zs = Some vals ->
     rΓ' = mkr_env (Iot ly :: vals) ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ') CT rΓ' h mstmt OK (protected_locset_from_env CT h rΓ') rΓ'' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ') CT rΓ' h mstmt OK (reachable_locations_from_initial_env CT h rΓ') rΓ'' h' ->
     runtime_getVal rΓ'' mret = Some retval ->
     rΓ''' = rΓ <| vars := update x retval rΓ.(vars) |> ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SCall x m y zs) OK (protected_locset_from_env CT h rΓ) rΓ''' h'
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SCall x m y zs) OK (reachable_locations_from_initial_env CT h rΓ) rΓ''' h'
 
   (* evaluate method call statement NPE *)
   | SBS_Call_NPE: forall CT rΓ h x y m zs rΓ' h',
       runtime_getVal rΓ y = Some (Null_a) ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SCall x m y zs) NPE (protected_locset_from_env CT h rΓ) rΓ' h'
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SCall x m y zs) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
 
   | SBS_Call_NPE_Body: forall CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret h' rΓ' rΓ'',
     runtime_getVal rΓ y = Some (Iot ly) ->
@@ -383,22 +383,22 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
     mret = mbody.(mreturn) ->
     runtime_lookup_list rΓ zs = Some vals ->
     rΓ' = mkr_env (Iot ly :: vals) ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ') CT rΓ' h mstmt NPE (protected_locset_from_env CT h rΓ') rΓ'' h' ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SCall x m y zs) NPE (protected_locset_from_env CT h rΓ) rΓ'' h'
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ') CT rΓ' h mstmt NPE (reachable_locations_from_initial_env CT h rΓ') rΓ'' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SCall x m y zs) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'
   (* evaluate sequence of statements *)
   | SBS_Seq: forall CT rΓ h s1 s2 rΓ' h' rΓ'' h'',
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h s1 OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ' h' s2 OK (protected_locset_from_env CT h rΓ) rΓ'' h'' ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SSeq s1 s2) OK (protected_locset_from_env CT h rΓ) rΓ'' h''
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ' h' s2 OK (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'' ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) OK (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
 
   | SBS_Seq_NPE_first: forall CT rΓ h s1 s2 rΓ' h',
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h s1 NPE (protected_locset_from_env CT h rΓ) rΓ' h' ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SSeq s1 s2) NPE (protected_locset_from_env CT h rΓ) rΓ' h'
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 NPE (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
 
   | SBS_Seq_NPE_second: forall CT rΓ h s1 s2 rΓ' h' rΓ'' h'',
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h s1 OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ' h' s2 NPE (protected_locset_from_env CT h rΓ) rΓ'' h'' ->
-      eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h (SSeq s1 s2) NPE (protected_locset_from_env CT h rΓ) rΓ'' h''
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ' h' s2 NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'' ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
 .
 
 Lemma q_r_proj_imm_or_mut : forall qr,
@@ -900,7 +900,7 @@ Qed.
 (* evaluation preserves runtime type on heap. *)
 Lemma runtime_preserves_r_type_heap : forall CT rΓ h loc C h' vals s rΓ',
   runtime_getObj h loc = Some {| rt_type := C; fields_map := vals |}->
-  eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h s OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+  eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
   exists vals', runtime_getObj h' loc = Some {| rt_type := C; fields_map := vals' |}.
 Proof.
   intros. remember OK as ok. generalize dependent vals. 

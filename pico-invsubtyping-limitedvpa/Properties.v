@@ -1041,7 +1041,7 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_heap_domain_simple : forall CT rΓ h stmt rΓ' h',
-  eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+  eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
   dom h <= dom h'.
 Proof.
   intros CT rΓ h stmt rΓ' h' Heval.
@@ -1081,7 +1081,7 @@ Qed.
 (* Not just length, there is no statement can do strong update. *)
 Lemma eval_stmt_preserves_r_type : 
   forall CT rΓ h stmt rΓ' h' loc rqt,
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     r_type h loc = Some rqt ->
     loc < dom h ->
     r_type h' loc = Some rqt.
@@ -1129,7 +1129,7 @@ Qed.
 
 Lemma eval_stmt_preserves_r_muttype : 
   forall CT rΓ h stmt rΓ' h' loc q,
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     r_muttype h loc = Some q ->
     loc < dom h ->
     r_muttype h' loc = Some q.
@@ -1505,7 +1505,7 @@ Qed.
 Lemma eval_stmt_preserves_receiver_addr_typed :
   forall CT sΓ rΓ h stmt sΓ' rΓ' h' ι,
     stmt_typing CT sΓ stmt sΓ' ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ) = Some ι ->
     get_this_var_mapping (vars rΓ') = Some ι.
 Proof.
@@ -1578,7 +1578,7 @@ Lemma eval_stmt_preserves_receiver_addr_typed_backwards :
   forall CT sΓ rΓ h stmt sΓ' rΓ' h' ι,
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ stmt sΓ' ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ') = Some ι ->
     get_this_var_mapping (vars rΓ) = Some ι.
 Proof.
@@ -1609,7 +1609,7 @@ Lemma eval_stmt_preserves_receiver_addr_mapping_eq :
   forall CT sΓ rΓ h stmt sΓ' rΓ' h',
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ stmt sΓ' ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ) =
     get_this_var_mapping (vars rΓ').
 Proof.
@@ -1638,7 +1638,7 @@ Corollary eval_stmt_preserves_receiver_addr_eq_loc' :
   forall CT sΓ rΓ h stmt sΓ' rΓ' h' ι1 ι2,
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ stmt sΓ' ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ)  = Some ι1 ->
     get_this_var_mapping (vars rΓ') = Some ι2 ->
     ι1 = ι2.
@@ -1655,7 +1655,7 @@ Qed.
 Lemma eval_stmt_preserves_receiver_r_type_typed :
   forall CT sΓ rΓ h stmt sΓ' rΓ' h' ι rqt,
     stmt_typing CT sΓ stmt sΓ' ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ) = Some ι ->
     r_type h ι = Some rqt ->
     ι < dom h ->
@@ -1677,7 +1677,7 @@ Qed.
 Lemma eval_stmt_preserves_receiver_r_muttype_typed :
   forall CT sΓ rΓ h stmt sΓ' rΓ' h' ι q,
     stmt_typing CT sΓ stmt sΓ' ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ) = Some ι ->
     r_muttype h ι = Some q ->
     ι < dom h ->
@@ -1698,7 +1698,7 @@ Qed.
 
 Lemma eval_stmt_preserves_r_type_backwards : 
   forall CT rΓ h stmt rΓ' h' loc rqt,
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     r_type h' loc = Some rqt ->
     loc < dom h ->
     r_type h loc = Some rqt.
@@ -1724,7 +1724,7 @@ Lemma eval_stmt_preserves_receiver_r_type_typed_backwards :
   forall CT sΓ rΓ h stmt sΓ' rΓ' h' ι rqt,
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ stmt sΓ' ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ') = Some ι ->
     r_type h' ι = Some rqt ->
     ι < dom h ->
@@ -1756,7 +1756,7 @@ Qed.
 
 Lemma eval_stmt_preserves_r_muttype_backwards : 
   forall CT rΓ h stmt rΓ' h' loc q,
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     r_muttype h' loc = Some q ->
     loc < dom h ->
     r_muttype h loc = Some q.
@@ -1779,7 +1779,7 @@ Lemma eval_stmt_preserves_receiver_r_muttype_typed_backwards :
   forall CT sΓ rΓ h stmt sΓ' rΓ' h' ι q,
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ stmt sΓ' ->
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ') = Some ι ->
     r_muttype h' ι = Some q ->
     ι < dom h ->
@@ -3481,7 +3481,7 @@ Theorem preservation_pico :
   forall CT sΓ rΓ h stmt rΓ' h' sΓ',
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ stmt sΓ' -> 
-    eval_stmt OK (protected_locset_from_env CT h rΓ) CT rΓ h stmt OK (protected_locset_from_env CT h rΓ) rΓ' h' -> 
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' -> 
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
   intros CT sΓ rΓ h stmt rΓ' h' sΓ' Hwf Htyping Heval.
@@ -4448,8 +4448,6 @@ Proof.
             exact Hcorr.
           }
       }
-
-      (* The second case TODO: understand why can not I just prove once... *)
       assert (exists D ddef, base_subtype CT cy D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef).
       {
         eapply method_lookup_in_wellformed_inherited; eauto.
