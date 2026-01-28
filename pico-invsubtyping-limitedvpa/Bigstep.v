@@ -7,7 +7,6 @@ Require Import Stdlib.Sets.Ensembles.
 From RecordUpdate Require Import RecordUpdate.
 Require Import Stdlib.Logic.Classical_Prop.
 Require Import Stdlib.Classes.RelationClasses.
-
 (* ------------------RUNTIME H ELPER FUNCTION------------------*)
 (* The first element should also be a Loc because that is the receiver type*)
 Definition get_this_var_mapping (vm : var_mapping) : option Loc :=
@@ -113,14 +112,14 @@ Definition qualifier_typable_context (qr: q_r) (qs: q) (qcontext: q_r): Prop :=
   | Imm_r =>
     match vpa_mutabilty_rs qcontext qs with
     | Imm => True
-    | Rd => True
+    | RO => True
     | Lost => True
     | _ => False
     end
   | Mut_r =>
     match vpa_mutabilty_rs qcontext qs with	
     | Mut => True
-    | Rd => True
+    | RO => True
     | Lost => True
     | _ => False
     end
@@ -132,13 +131,13 @@ Definition qualifier_typable_heap (qr: q_r) (qs: q): Prop :=
   | Imm_r =>
     match qs with 
     | Imm => True
-    | Rd => True
+    | RO => True
     | _ => False
     end
   | Mut_r =>
     match qs with
     | Mut => True
-    | Rd => True
+    | RO => True
     | _ => False
     end
   end.
@@ -263,7 +262,7 @@ Global Hint Resolve not_in_both_env: rch. *)
 (* ------------------EVALUATION RULES------------------*)
 
 (* Evaluation resulting state *)
-
+(* TODO: add mutation exception case *)
 Inductive eval_result :=
 | OK : eval_result
 | MUTATIONEXP: eval_result

@@ -3,26 +3,20 @@ Require Import Syntax.
 (* Viewpoint adaptation of mutability qualifiers *)
 Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
   match q1, q2 with
-    | Rd, RDM => Lost
-    (* AOSEN RO: Change for readonly property *)
-    | Rd, _ => Lost
+    | RO, RO => RO
+    | _, RO => RO
+    | RO, _ => Lost
     | Lost, _ => Lost
-    (* | Imm, Mut => Lost *)
-    (* | Lost, Mut => Lost *)
-    (* | RDM, Mut => Lost *)
     | q1, RDM => q1
-    | _, _ => q2
+    | _, q2 => q2
   end.
 
 (* A wrapper around vpa_mutability by taking two full types *)
 Definition vpa_mutabilty_tt (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   match (sqtype t1), (sqtype t2) with
-    (* | Rd, RDM => Build_qualified_type Lost (sctype t2) *)
-    | Rd, _ => Build_qualified_type Lost (sctype t2)
+    | _, RO => Build_qualified_type RO (sctype t2)
+    | RO, _ => Build_qualified_type Lost (sctype t2)
     | Lost, _ => Build_qualified_type Lost (sctype t2)
-    (* | Imm, Mut => Build_qualified_type Lost (sctype t2) *)
-    (* | Lost, Mut => Build_qualified_type Lost (sctype t2) *)
-    (* | RDM, Mut => Build_qualified_type Lost (sctype t2) *)
     | q1, RDM => Build_qualified_type q1 (sctype t2)
     | _, _ => t2
   end.
@@ -30,7 +24,7 @@ Definition vpa_mutabilty_tt (t1: qualified_type)(t2 : qualified_type) : qualifie
 (* Check whether a type respect its bound *)
 Definition vpa_mutabilty_bound (q1: q)(q2 : q_c) : q :=
   match q1, q2 with
-    | Rd, RDM_c => Lost
+    | RO, RDM_c => Lost
     | q1, RDM_c => q1
     | _, Imm_c => Imm
     | _, Mut_c => Mut
@@ -42,7 +36,7 @@ Definition vpa_mutabilty_fld_bound (q1: q_f)(q2 : q_c) : q_f :=
     | Imm_f, RDM_c => Imm_f
     | Mut_f, RDM_c => Mut_f
     | RDM_f, RDM_c => RDM_f
-    | RD_f, RDM_c => RD_f (* This is not the rule used to check assignability, use it for wellformedness only*)
+    | RO_f, RDM_c => RO_f (* This is not the rule used to check assignability, use it for wellformedness only*)
     | _, Imm_c => Imm_f
     | _, Mut_c => Mut_f
     end.
@@ -50,18 +44,16 @@ Definition vpa_mutabilty_fld_bound (q1: q_f)(q2 : q_c) : q_f :=
 (* Adapting field type from a type use *)
 Definition vpa_mutabilty_stype_fld (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
-    | Rd, RDM_f => Lost
+    | _, RO_f => RO
     (* AOSEN RO: Change for readonly property *)
-    | Rd, _ => Lost
+    | RO, _ => Lost
     | Lost, _ => Lost
     | Imm, RDM_f => Imm
     | Mut, RDM_f => Mut
     | RDM, RDM_f => RDM
-    (* | Lost, RDM_f => Lost *)
     | Bot, RDM_f => Bot
     | _, Imm_f => Imm
     | _, Mut_f => Mut
-    | _, Rd_f => Rd
     end.
 
 (* Adapting field type from constructor *)
@@ -72,7 +64,7 @@ Definition vpa_mutabilty_constructor_fld (q1: q_c)(q2 : q_f) : q :=
     | RDM_c, RDM_f => RDM
     | _, Imm_f => Imm
     | _, Mut_f => Mut
-    | _, Rd_f => Rd
+    | _, Rd_f => RO
     end.
 
 (* Adapting field type from a runtime type *)
@@ -82,7 +74,7 @@ Definition vpa_mutabilty_rec_fld (q1: q_r)(q2 : q_f) : q :=
     | Mut_r, RDM_f => Mut
     | _, Imm_f => Imm
     | _, Mut_f => Mut
-    | _, Rd_f => Rd
+    | _, Rd_f => RO
     end.
 
 (* Used to exam runtime typability based on its context, 

@@ -9,7 +9,7 @@ Inductive q_subtype : q -> q -> Prop :=
       q1 <> Lost ->
       q_subtype q1 q1
   | q_rd : forall q1,
-      q_subtype q1 Rd
+      q_subtype q1 RO
   | q_bot: forall q1,
       q_subtype Bot q1
 where "q1 ⊑ q2" := (q_subtype q1 q2).

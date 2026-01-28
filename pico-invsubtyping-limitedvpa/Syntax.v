@@ -15,7 +15,7 @@ Inductive q : Type :=
   | Imm
   | RDM
   (* q_f *)
-  | Rd
+  | RO
   (* q_h *)
   | Lost
   | Bot.  
@@ -27,7 +27,7 @@ Inductive q_f : Type :=
   | Imm_f
   | RDM_f
   (* q_f *)
-  | Rd_f
+  | RO_f
   (* q_h *). 
 
 Inductive q_c : Type :=
