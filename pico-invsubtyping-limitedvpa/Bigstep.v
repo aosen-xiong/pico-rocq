@@ -276,7 +276,7 @@ Definition protected_locset_from_env
       (* static_getType sΓ x = Some T /\ *)
       (* is_safe_mode (sqtype T) /\ *)
       runtime_getVal rΓ x = Some (Iot l_root) /\
-      reachable_abs CT h l_root l_target.
+      reachable h l_root l_target.
 
 (* PICO expression evaluation *)
 Inductive eval_expr : eval_result -> (Loc -> Prop) -> class_table -> r_env -> heap -> expr -> value -> eval_result -> (Loc -> Prop)  -> r_env -> heap -> Prop :=
