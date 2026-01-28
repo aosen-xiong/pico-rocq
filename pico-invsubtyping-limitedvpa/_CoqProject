@@ -13,4 +13,5 @@ Properties.v
 Main.v
 DeepImmutability.v
 ReadonlyReachability.v
+ReadonlyMethodCall.v
 WFNOMutationEXP.v
