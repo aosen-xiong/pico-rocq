@@ -2003,18 +2003,6 @@ Proof.
 
         unfold env_respects_protected_set in Hconfined.
         exact (Hconfined y l_y Ty Hlookup_s_old Hlookup_r_old Hin_P).
-    (* *
-      unfold heap_respects_protected_set.
-      intros l_src C anyrq vals k l_dst Hdom_src Hnotin_src Hin_dst Hobj_src Hnth.
-      unfold heap_respects_protected_set in Hheap_respects.
-      have Hsubset := protected_locset_shrinks_with_null_binding CT h rΓ.
-      unfold Ensembles.Included in Hsubset.
-      specialize (Hsubset l_src Hdom_src).
-      contradiction. *)
-      (* have Hin_src_old : Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) l_src.
-      {
-      }
-      exact (Hheap_respects l_src C anyrq vals k l_dst Hin_src_old Hnotin_src Hin_dst Hobj_src Hnth). *)
   - (* var assign *)
     (* split.
     + reflexivity. *)
@@ -3596,24 +3584,9 @@ Proof.
         }
         specialize (Hconfined z_outter l_z T_arg HgetZ_type HgetZ_val Hin_P_orig); auto.
     }
-    (* assert (HMethodInnerInvariant: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓmethodinit)
-    sΓmethodinit rΓmethodinit /\ heap_respects_protected_set (reachable_locations_from_initial_env CT h rΓmethodinit) h CT rΓmethodinit).
-    {
-      split.
-      exact HenvInvariant.
-      unfold heap_respects_protected_set.
-      intros l_src C0 anyrq0 vals1 k l_dst Hin_lsrc Hnotin_lsrc Hin_dst Hobj_src Hnth.
-      exfalso.
-      easy.
-    } *)
     specialize (IHHeval HenvInvariant Hwf_method_frame).
     rewrite <- getmbody in Hmethodbody_typing.
     specialize (IHHeval Hmethodbody_typing).
-    (* destruct IHHeval as [Henv_respects' Hheap_respects']. *)
-    (* destruct Hconfinement as [Henv_respects' Hheap_respects']. *)
-    (* split. *)
-    (* exact Htopology.
-    split. *)
     assert (Henv_respects'': env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ''' ).
     {
       rewrite HeqrΓ'''.
@@ -3890,7 +3863,6 @@ Proof.
     unfold wf_r_config in Hwf.
     destruct Hwf as [Hclasstable [Hheap [Hrenv [Hsenv [_ Htypable]]]]].
     unfold env_respects_protected_set in *.
-    (* destruct Hconfined as [Henv_respects Hheap_respects]. *)
     specialize (IHHeval (eq_refl)).
     destruct H1 as [mdeflookup getmbody].
     remember (msignature mdef) as msig.
@@ -5358,3 +5330,4 @@ Proof.
     specialize (IHHeval2 eq_refl Hlocalset Hassignability vals' Hobj' values' Hrtype sΓ'' sΓ' Hconfined_intermediate Hwf' H6).
     rewrite IHHeval2 in IHHeval1; auto.
 Qed.
+  
