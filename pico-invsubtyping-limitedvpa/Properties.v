@@ -4,35 +4,35 @@ Import ListNotations.
 Require Import String.
 From RecordUpdate Require Import RecordUpdate.
 
-Lemma q_subtype_Rd_Imm_false : Rd ⊑ Imm -> False.
+Lemma q_subtype_RO_Imm_false : RO ⊑ Imm -> False.
 Proof.
   intro H; inversion H; subst; auto.
 Qed.
 
-Lemma q_subtype_Rd_Mut_false : Rd ⊑ Mut -> False.
+Lemma q_subtype_RO_Mut_false : RO ⊑ Mut -> False.
 Proof.
   intro H; inversion H; subst; auto.
 Qed.
 
-Lemma q_subtype_Rd_Lost_false : Rd ⊑ Lost -> False.
+Lemma q_subtype_RO_Lost_false : RO ⊑ Lost -> False.
 Proof.
   intro H; inversion H; subst; auto.
 Qed.
 
-Lemma q_subtype_Rd_RDM_false : Rd ⊑ RDM -> False.
+Lemma q_subtype_RO_RDM_false : RO ⊑ RDM -> False.
 Proof.
   intro H; inversion H; subst; auto.
 Qed.
 
-Lemma q_subtype_Rd_Bot_false : Rd ⊑ Bot -> False.
+Lemma q_subtype_RO_Bot_false : RO ⊑ Bot -> False.
 Proof.
   intro H; inversion H; subst; auto.
 Qed.
-Hint Resolve q_subtype_Rd_Imm_false
-             q_subtype_Rd_Mut_false
-             q_subtype_Rd_Lost_false
-             q_subtype_Rd_RDM_false
-             q_subtype_Rd_Bot_false
+Hint Resolve q_subtype_RO_Imm_false
+             q_subtype_RO_Mut_false
+             q_subtype_RO_Lost_false
+             q_subtype_RO_RDM_false
+             q_subtype_RO_Bot_false
   : qsub_wrong.
 
 
@@ -148,11 +148,11 @@ Hint Resolve q_subtype_Lost_Imm_false
 
 Ltac solve_q_subtype_wrong :=
   lazymatch goal with
-  | [ H : q_subtype Rd Imm |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Rd Mut |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Rd RDM |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Rd Lost |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Rd Bot  |- _ ] => exfalso; eauto with qsub_wrong
+  | [ H : q_subtype RO Imm |- _ ] => exfalso; eauto with qsub_wrong
+  | [ H : q_subtype RO Mut |- _ ] => exfalso; eauto with qsub_wrong
+  | [ H : q_subtype RO RDM |- _ ] => exfalso; eauto with qsub_wrong
+  | [ H : q_subtype RO Lost |- _ ] => exfalso; eauto with qsub_wrong
+  | [ H : q_subtype RO Bot  |- _ ] => exfalso; eauto with qsub_wrong
   | [ H : q_subtype Imm Mut  |- _ ] => exfalso; eauto with qsub_wrong
   | [ H : q_subtype Imm RDM |- _ ] => exfalso; eauto with qsub_wrong
   | [ H : q_subtype Imm Lost |- _ ] => exfalso; eauto with qsub_wrong
@@ -173,7 +173,7 @@ Ltac solve_q_subtype_wrong :=
   | _ => idtac
   end.
 
-Lemma q_subtype_Bot_Rd_true : Bot ⊑ Rd.
+Lemma q_subtype_Bot_RO_true : Bot ⊑ RO.
 Proof.
   constructor.
 Qed.
@@ -204,7 +204,7 @@ Proof.
   easy.
 Qed.
 
-Hint Resolve q_subtype_Bot_Rd_true
+Hint Resolve q_subtype_Bot_RO_true
              q_subtype_Bot_Imm_true
              q_subtype_Bot_Mut_true
              q_subtype_Bot_RDM_true
@@ -218,7 +218,7 @@ Proof.
   easy.
 Qed.
 
-Lemma q_subtype_Imm_Rd_true : Imm ⊑ Rd.
+Lemma q_subtype_Imm_RO_true : Imm ⊑ RO.
 Proof.
   constructor.
 Qed.
@@ -229,7 +229,7 @@ Proof.
   easy.
 Qed.
 
-Lemma q_subtype_Mut_Rd_true : Mut ⊑ Rd.
+Lemma q_subtype_Mut_RO_true : Mut ⊑ RO.
 Proof.
   constructor.
 Qed.
@@ -240,30 +240,30 @@ Proof.
   easy.
 Qed.
 
-Lemma q_subtype_RDM_Rd_true : RDM ⊑ Rd.
+Lemma q_subtype_RDM_RO_true : RDM ⊑ RO.
 Proof.
   constructor.  
 Qed.
 
-Lemma q_subtype_Lost_Rd_true : Lost ⊑ Rd.
+Lemma q_subtype_Lost_RO_true : Lost ⊑ RO.
 Proof.
   constructor.  
 Qed.
 
-Lemma q_subtype_Rd_Rd_true : Rd ⊑ Rd.
+Lemma q_subtype_RO_RO_true : RO ⊑ RO.
 Proof.
   constructor.
   easy.
 Qed.
 
 Hint Resolve q_subtype_Imm_Imm_true
-             q_subtype_Imm_Rd_true
+             q_subtype_Imm_RO_true
              q_subtype_Mut_Mut_true
-             q_subtype_Mut_Rd_true
+             q_subtype_Mut_RO_true
              q_subtype_RDM_RDM_true
-             q_subtype_RDM_Rd_true
-             q_subtype_Lost_Rd_true
-             q_subtype_Rd_Rd_true
+             q_subtype_RDM_RO_true
+             q_subtype_Lost_RO_true
+             q_subtype_RO_RO_true
   : qsub_correct.
 
 Lemma qualifier_typable_context_Imm_r_Mut_Mut_r_false : 
@@ -384,11 +384,11 @@ Ltac solve_qualifier_typable_wrong_concrete :=
       exfalso; eauto with qtypable_wrong
     | [ H : qualifier_typable_context Imm_r Imm Mut_r |- _ ] =>
       clear H
-  | [ H : qualifier_typable_context Imm_r Rd  Mut_r |- _ ] =>
+  | [ H : qualifier_typable_context Imm_r RO  Mut_r |- _ ] =>
       clear H
   | [ H : qualifier_typable_context Imm_r Lost Mut_r |- _ ] =>
       clear H
-  | [ H : qualifier_typable_context Imm_r Rd  Imm_r |- _ ] =>
+  | [ H : qualifier_typable_context Imm_r RO  Imm_r |- _ ] =>
       clear H
   | [ H : qualifier_typable_context Imm_r Imm Imm_r |- _ ] =>
       clear H
@@ -399,13 +399,13 @@ Ltac solve_qualifier_typable_wrong_concrete :=
 
   | [ H : qualifier_typable_context Mut_r Mut Mut_r |- _ ] =>
       clear H
-  | [ H : qualifier_typable_context Mut_r Rd  Mut_r |- _ ] =>
+  | [ H : qualifier_typable_context Mut_r RO  Mut_r |- _ ] =>
       clear H
   | [ H : qualifier_typable_context Mut_r Lost Mut_r |- _ ] =>
       clear H
   | [ H : qualifier_typable_context Mut_r RDM Mut_r |- _ ] =>
       clear H
-  | [ H : qualifier_typable_context Mut_r Rd  Imm_r |- _ ] =>
+  | [ H : qualifier_typable_context Mut_r RO  Imm_r |- _ ] =>
       clear H
   | [ H : qualifier_typable_context Mut_r Mut Imm_r |- _ ] =>
       clear H
@@ -421,8 +421,8 @@ Proof.
   easy.
 Qed.
 
-Lemma qualifier_typable_context_Imm_r_Rd_Mut_r_true : 
-  qualifier_typable_context Imm_r (Rd) Mut_r.
+Lemma qualifier_typable_context_Imm_r_RO_Mut_r_true : 
+  qualifier_typable_context Imm_r (RO) Mut_r.
 Proof.
   easy.
 Qed.
@@ -433,8 +433,8 @@ Proof.
   easy.
 Qed.
 
-Lemma qualifier_typable_context_Imm_r_Rd_Imm_r_true : 
-  qualifier_typable_context Imm_r (Rd) Imm_r.
+Lemma qualifier_typable_context_Imm_r_RO_Imm_r_true : 
+  qualifier_typable_context Imm_r (RO) Imm_r.
 Proof.
   easy.
 Qed.
@@ -458,9 +458,9 @@ Proof.
 Qed.
 
 Hint Resolve qualifier_typable_context_Imm_r_Imm_Mut_r_true
-             qualifier_typable_context_Imm_r_Rd_Mut_r_true
+             qualifier_typable_context_Imm_r_RO_Mut_r_true
              qualifier_typable_context_Imm_r_Lost_Mut_r_true
-             qualifier_typable_context_Imm_r_Rd_Imm_r_true
+             qualifier_typable_context_Imm_r_RO_Imm_r_true
              qualifier_typable_context_Imm_r_Imm_Imm_r_true
              qualifier_typable_context_Imm_r_Lost_Imm_r_true
              qualifier_typable_context_Imm_r_RDM_Imm_r_true
@@ -472,8 +472,8 @@ Proof.
   easy.
 Qed.
 
-Lemma qualifier_typable_context_Mut_r_Rd_Mut_r_true : 
-  qualifier_typable_context Mut_r (Rd) Mut_r.
+Lemma qualifier_typable_context_Mut_r_RO_Mut_r_true : 
+  qualifier_typable_context Mut_r (RO) Mut_r.
 Proof.
   easy.
 Qed.
@@ -491,8 +491,8 @@ Proof.
 Qed.
 
 
-Lemma qualifier_typable_context_Mut_r_Rd_Imm_r_true : 
-  qualifier_typable_context Mut_r (Rd) Imm_r.
+Lemma qualifier_typable_context_Mut_r_RO_Imm_r_true : 
+  qualifier_typable_context Mut_r (RO) Imm_r.
 Proof.
   easy.
 Qed.
@@ -510,10 +510,10 @@ Proof.
 Qed.
 
 Hint Resolve qualifier_typable_context_Mut_r_Mut_Mut_r_true
-             qualifier_typable_context_Mut_r_Rd_Mut_r_true
+             qualifier_typable_context_Mut_r_RO_Mut_r_true
              qualifier_typable_context_Mut_r_Lost_Mut_r_true
              qualifier_typable_context_Mut_r_RDM_Mut_r_true
-             qualifier_typable_context_Mut_r_Rd_Imm_r_true
+             qualifier_typable_context_Mut_r_RO_Imm_r_true
              qualifier_typable_context_Mut_r_Mut_Imm_r_true
              qualifier_typable_context_Mut_r_Lost_Imm_r_true
   : qtypable_correct.
@@ -523,11 +523,11 @@ Ltac solve_qualifier_typable_correct_concrete :=
   (* --- goal is a "correct" concrete qualifier_typable_context --- *)
   | |- qualifier_typable_context Imm_r Imm Mut_r =>
       eauto with qtypable_correct
-  | |- qualifier_typable_context Imm_r Rd Mut_r =>
+  | |- qualifier_typable_context Imm_r RO Mut_r =>
       eauto with qtypable_correct
   | |- qualifier_typable_context Imm_r Lost Mut_r =>
       eauto with qtypable_correct
-  | |- qualifier_typable_context Imm_r Rd Imm_r =>
+  | |- qualifier_typable_context Imm_r RO Imm_r =>
       eauto with qtypable_correct
   | |- qualifier_typable_context Imm_r Imm Imm_r =>
       eauto with qtypable_correct
@@ -538,13 +538,13 @@ Ltac solve_qualifier_typable_correct_concrete :=
 
   | |- qualifier_typable_context Mut_r Mut Mut_r =>
       eauto with qtypable_correct
-  | |- qualifier_typable_context Mut_r Rd Mut_r =>
+  | |- qualifier_typable_context Mut_r RO Mut_r =>
       eauto with qtypable_correct
   | |- qualifier_typable_context Mut_r Lost Mut_r =>
       eauto with qtypable_correct
   | |- qualifier_typable_context Mut_r RDM Mut_r =>
       eauto with qtypable_correct
-  | |- qualifier_typable_context Mut_r Rd Imm_r =>
+  | |- qualifier_typable_context Mut_r RO Imm_r =>
       eauto with qtypable_correct
   | |- qualifier_typable_context Mut_r Mut Imm_r =>
       eauto with qtypable_correct

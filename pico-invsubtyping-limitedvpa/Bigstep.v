@@ -87,26 +87,6 @@ Definition wf_rtypeuse (CT: class_table) (q: q_r) (c: class_name) : Prop :=
   | Some q' => c < dom CT /\ vpa_mutabilty_runtime_bound_agree q q'
   end.
 
-(* Determine whether a static qualifier is assiganble/typable under a runtime qualifeir  *)
-(* Definition qualifier_typable (qr: q_r) (qs: q): Prop :=
-(* is_q_context qcontext /\ *)
-  match qr with
-  | Imm_r =>
-    match qs with 
-    | Imm => True
-    | Rd => True
-    | Lost => True
-    | _ => False
-    end
-  | Mut_r =>
-    match qs with
-    | Mut => True
-    | Rd => True
-    | Lost => True
-    | _ => False
-    end
-  end. *)
-
 Definition qualifier_typable_context (qr: q_r) (qs: q) (qcontext: q_r): Prop :=
   match qr with
   | Imm_r =>
@@ -262,18 +242,22 @@ Global Hint Resolve not_in_both_env: rch. *)
 (* ------------------EVALUATION RULES------------------*)
 
 (* Evaluation resulting state *)
-(* TODO: add mutation exception case *)
 Inductive eval_result :=
 | OK : eval_result
 | MUTATIONEXP: eval_result
 | NPE : eval_result.
 
+Definition runtime_vpa_assignability (q1: q_r) (a1: a) : a :=
+  match q1, a1 with
+    | _, Assignable => Assignable
+    | Mut_r, RDA => Assignable
+    | _, _ => Final
+  end.
+
 Definition reachable_locations_from_initial_env
   (CT : class_table) (h : heap) (rΓ : r_env) : Ensembles.Ensemble Loc :=
   fun l_target => 
     exists x l_root ,
-      (* static_getType sΓ x = Some T /\ *)
-      (* is_safe_mode (sqtype T) /\ *)
       runtime_getVal rΓ x = Some (Iot l_root) /\
       reachable h l_root l_target.
 
@@ -343,6 +327,15 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
   | SBS_FldWrite_NPE: forall CT rΓ h x f y rΓ' h',
       runtime_getVal rΓ x = Some (Null_a) ->
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SFldWrite x f y) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
+
+  | SBS_FldWrite_MUTATIONEXP: forall CT rΓ h x f y loc_x o a vf val_y h',
+      runtime_getVal rΓ x = Some (Iot loc_x) ->
+      runtime_getObj h loc_x = Some o ->
+      getVal o.(fields_map) f = Some vf ->
+      sf_assignability_rel CT (rctype (rt_type o)) f a -> 
+      runtime_getVal rΓ y = Some val_y ->
+      runtime_vpa_assignability (rqtype (rt_type o)) a = Final -> 
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SFldWrite x f y) MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ h'
 
   (* evaluate object creation statement *)
   | SBS_New: forall CT rΓ h x (q_c:q_c) c ys l1 qthisr vals o qadapted rΓ' h',
