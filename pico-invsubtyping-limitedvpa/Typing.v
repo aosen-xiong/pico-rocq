@@ -1,8 +1,8 @@
+Require Import Syntax Subtyping ViewpointAdaptation Helpers.
+
 From Stdlib Require String.
 From Stdlib Require Import List.
 Import ListNotations.
-Require Import Syntax Subtyping ViewpointAdaptation Helpers.
-
 
 (* STATIC HELPER FUNCTIONS *)
 Inductive CollectFields : class_table -> class_name -> list field_def -> Prop :=

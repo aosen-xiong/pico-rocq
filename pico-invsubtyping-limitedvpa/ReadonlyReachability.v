@@ -1,8 +1,8 @@
+Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties DeepImmutability Reachability.
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
 From RecordUpdate Require Import RecordUpdate.
-Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties DeepImmutability Reachability.
 
 Lemma vpa_mutabilty_stype_fld_ro_not_mut :
   forall q_recv q_field q_res

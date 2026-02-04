@@ -64,7 +64,7 @@ Definition vpa_mutabilty_constructor_fld (q1: q_c)(q2 : q_f) : q :=
     | RDM_c, RDM_f => RDM
     | _, Imm_f => Imm
     | _, Mut_f => Mut
-    | _, Rd_f => RO
+    | _, RO_f => RO
     end.
 
 (* Adapting field type from a runtime type *)
@@ -74,7 +74,7 @@ Definition vpa_mutabilty_rec_fld (q1: q_r)(q2 : q_f) : q :=
     | Mut_r, RDM_f => Mut
     | _, Imm_f => Imm
     | _, Mut_f => Mut
-    | _, Rd_f => RO
+    | _, RO_f => RO
     end.
 
 (* Used to exam runtime typability based on its context, 

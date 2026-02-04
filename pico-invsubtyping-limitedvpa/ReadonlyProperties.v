@@ -1,10 +1,10 @@
+Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation.
+Require Import Properties DeepImmutability Reachability.
+Require Import ReadonlyReachability.
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
 From RecordUpdate Require Import RecordUpdate.
-Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation.
-Require Import Properties DeepImmutability Reachability.
-Require Import ReadonlyReachability.
 
 Theorem readonly_pico_field_write :
   forall CT sΓ rΓ h stmt rΓ' h' sΓ' l C vals vals' f qt readonlyx anyf rhs anyrq
