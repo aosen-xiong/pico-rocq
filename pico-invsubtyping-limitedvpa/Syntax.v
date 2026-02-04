@@ -8,7 +8,7 @@ Definition var : Type := nat.
 Definition method_name : Type := nat.
 Definition class_name : Type := nat.
 
-(* Mutability qualifer *)
+(** All Mutability Qualifer *)
 Inductive q : Type :=
   (* q_c *)
   | Mut
@@ -20,23 +20,23 @@ Inductive q : Type :=
   | Lost
   | Bot.  
 
-
+(** User-facing Mutability Qualifier  *)
 Inductive q_f : Type :=
   (* q_c *)
   | Mut_f
   | Imm_f
   | RDM_f
   (* q_f *)
-  | RO_f
-  (* q_h *). 
+  | RO_f.
 
+(** Class Declaration Mutability Qualifier *)
 Inductive q_c : Type :=
   (* q_c *)
   | Mut_c
   | Imm_c
   | RDM_c.
 
-(* Assignability qualifier *)
+(* Assignability Qualifier *)
 Inductive a : Type :=
   | Assignable
   | Final
@@ -135,57 +135,42 @@ Definition class_table := list class_def.
 
 (* ------------------RUNTIME MODEL------------------*)
 
-(* Runtime mutability type *)
+(** Runtime Mutability Qualifier *)
 Inductive q_r : Type :=
   | Mut_r
   | Imm_r
   .
-(* Definition q_r := { x : q | x = Mut \/ x = Imm }. *)
 
-Definition q_r_proj (x : q_r) : q := 
-  match x with
-  | Mut_r => Mut
-  | Imm_r => Imm
-  end.
-
-Definition q_project_q_r (q : q) : option q_r :=
-  match q with
-  | Mut => Some Mut_r
-  | Imm => Some Imm_r
-  | _ => None
-  end.
-
-(* Static qualified type *)
-(* Runtime type *)
+(** Runtime Type *)
 Record runtime_type := mkruntime_type {
   rqtype: q_r; (* Runtime mutability *)
   rctype: class_name; (* Class name *)
 }.
 
-(* Convert runtime type to static qualified type *)
-Definition runtime_type_to_qualified_type (rt : runtime_type) : qualified_type :=
-  {| sqtype := q_r_proj (rqtype rt); sctype := rctype rt |}.
-
-(* Memory address *)
+(** Memory Address *)
 Definition Loc : Type := nat.
 
-(* Runtime value *)
+(** Runtime Value *)
 Inductive value : Type :=
   | Null_a : value
   | Iot: Loc -> value.
 
-(* Field mapping *)
-Definition fields_mapping := list value. 
+(** Variable Mapping *)
 Definition var_mapping   := list value.
 
+(** Runtime Environment *)
 Record r_env := mkr_env {
   vars: var_mapping; (* Variable mapping *)
 }.
 
-(* Runtime object *)
+(** Field Mapping *)
+Definition fields_mapping := list value. 
+
+(** Runtime Object *)
 Record Obj := mkObj {
   rt_type: runtime_type; (* Runtime type *)
   fields_map: fields_mapping; (* Field mapping *)
 }.
 
+(** Heap *)
 Definition heap          := list Obj.

@@ -365,14 +365,6 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
 .
 
-Lemma q_r_proj_imm_or_mut : forall qr,
-  q_r_proj qr = Imm \/ q_r_proj qr = Mut.
-Proof.
-  intros qr. destruct qr; simpl.
-  -- right; reflexivity.
-  -- left; reflexivity.
-Qed.
-
 Lemma r_type_dom : forall h loc rqt,
   r_type h loc = Some rqt ->
   loc < dom h.
