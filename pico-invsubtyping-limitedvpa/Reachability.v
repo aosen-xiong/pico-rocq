@@ -1,12 +1,12 @@
 From Stdlib Require Import Lia.
-Require Import List.
-Import ListNotations.
-Require Import Syntax Typing Subtyping ViewpointAdaptation Helpers.
-Require Import String.
+From Stdlib Require Import List.
+From Stdlib Require String.
 Require Import Stdlib.Sets.Ensembles.
-From RecordUpdate Require Import RecordUpdate.
-Require Import Stdlib.Logic.Classical_Prop.
 Require Import Stdlib.Classes.RelationClasses.
+Require Import Stdlib.Logic.Classical_Prop.
+Import ListNotations.
+From RecordUpdate Require Import RecordUpdate.
+Require Import Syntax Typing Subtyping ViewpointAdaptation Helpers.
 
 Inductive reachable (h : heap): Loc -> Loc -> Prop :=
 

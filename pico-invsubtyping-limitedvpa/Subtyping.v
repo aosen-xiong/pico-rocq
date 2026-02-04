@@ -1,7 +1,7 @@
-Require Import Syntax Notations LibTactics Tactics Helpers.
-Require Import List.
+From Stdlib Require Import List.
 Require Import Stdlib.Classes.RelationClasses.
 Import ListNotations.
+Require Import Syntax Notations LibTactics Tactics Helpers.
 
 (* Qualifier ordering  *)
 Inductive q_subtype : q -> q -> Prop :=

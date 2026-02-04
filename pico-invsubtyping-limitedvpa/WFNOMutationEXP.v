@@ -1,10 +1,10 @@
+From Stdlib Require Import List.
+From Stdlib Require String.
+Import ListNotations.
+From RecordUpdate Require Import RecordUpdate.
 Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation.
 Require Import Properties DeepImmutability Reachability.
 Require Import ReadonlyReachability.
-Require Import List.
-Import ListNotations.
-Require Import String.
-From RecordUpdate Require Import RecordUpdate.
 
 Lemma well_typed_no_mutation_exp :
   forall CT sΓ rΓ h x f y sΓ' loc_x o a vf val_y

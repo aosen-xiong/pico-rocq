@@ -1,8 +1,9 @@
-Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation.
-Require Import List.
+From Stdlib Require Import List.
+From Stdlib Require String.
 Import ListNotations.
-Require Import String.
 From RecordUpdate Require Import RecordUpdate.
+
+Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation.
 
 Lemma q_subtype_RO_Imm_false : RO ⊑ Imm -> False.
 Proof.

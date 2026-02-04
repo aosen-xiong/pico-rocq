@@ -10,8 +10,7 @@ Typing.v
 Reachability.v
 Bigstep.v
 Properties.v
-Main.v
 DeepImmutability.v
 ReadonlyReachability.v
-ReadonlyMethodCall.v
+ReadonlyProperties.v
 WFNOMutationEXP.v

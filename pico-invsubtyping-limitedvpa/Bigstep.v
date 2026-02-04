@@ -1,12 +1,14 @@
 From Stdlib Require Import Lia.
-Require Import List.
-Import ListNotations.
-Require Import Syntax Typing Subtyping ViewpointAdaptation Helpers Reachability.
-Require Import String.
-Require Import Stdlib.Sets.Ensembles.
+From Stdlib Require Import List.
+From Stdlib Require String.
 From RecordUpdate Require Import RecordUpdate.
+Require Import Stdlib.Sets.Ensembles.
 Require Import Stdlib.Logic.Classical_Prop.
 Require Import Stdlib.Classes.RelationClasses.
+Import ListNotations.
+
+Require Import Syntax Typing Subtyping ViewpointAdaptation Helpers Reachability.
+
 (* ------------------RUNTIME H ELPER FUNCTION------------------*)
 (* The first element should also be a Loc because that is the receiver type*)
 Definition get_this_var_mapping (vm : var_mapping) : option Loc :=
@@ -208,36 +210,6 @@ Definition wf_r_config (CT: class_table) (sΓ: s_env) (rΓ: r_env) (h: heap) : P
     | Some Null_a => True
     | None => False
     end.
-
-(* Lemma not_in_both_env: forall CT sΓ rΓ h,
-    List.length sΓ = List.length rΓ.(vars)->
-    forall i, i < List.length sΓ ->
-    forall sqt, nth_error sΓ i = Some sqt ->
-    match runtime_getVal rΓ i with
-    | Some (Iot loc) => wf_r_typable CT rΓ h loc sqt
-    | Some Null_a => True
-    | None => False
-    end -> (forall x, x >= List.length sΓ -> (static_getType sΓ x = None <-> runtime_getVal rΓ x = None)).
-Proof.
-  intros.
-  unfold static_getType in H1.
-  destruct (lt_dec x (List.length sΓ)). 
-  - (* x < dom sΓ *)
-    unfold runtime_getVal.
-    rewrite nth_error_None.
-    rewrite <- H.
-    lia.
-  - (* x >= dom sΓ *)
-    unfold runtime_getVal.
-    rewrite nth_error_None.
-    rewrite <- H.
-    split.
-    + lia.
-    + unfold static_getType.
-      apply nth_error_None.
-Qed.
-
-Global Hint Resolve not_in_both_env: rch. *)
 
 (* ------------------EVALUATION RULES------------------*)
 
@@ -757,47 +729,6 @@ Proof.
       * unfold static_getType_list. reflexivity.
       * unfold runtime_lookup_list. reflexivity.
 Qed.
-
-(* Lemma runtime_lookup_list_preserves_typing_strong : forall CT sΓ rΓ h args vals argtypes ι qcontext,
-  get_this_var_mapping (vars rΓ) = Some ι ->
-  (r_muttype h ι) = Some qcontext ->  wf_r_config CT sΓ rΓ h ->
-  static_getType_list sΓ args = Some argtypes ->
-  runtime_lookup_list rΓ args = Some vals ->
-  Forall2 (fun v T => match v with
-    | Null_a => True
-    | Iot loc => wf_r_typable CT (mkr_env vals) h loc T
-    end) vals argtypes.
-Proof.
-  intros CT sΓ rΓ h args vals argtypes Hwf Hstatic Hruntime.
-  unfold wf_r_config in Hwf.
-  destruct Hwf as [_ [_ [_ [_ [Hlen Hcorr]]]]].
-  generalize dependent vals. generalize dependent argtypes.
-  induction args as [|a args' IH]; intros argtypes Hstatic vals Hruntime.
-  - (* Base case: empty list *)
-    unfold static_getType_list, runtime_lookup_list in *.
-    simpl in Hstatic, Hruntime.
-    injection Hstatic as Hstatic. injection Hruntime as Hruntime.
-    subst. constructor.
-  - (* Inductive case: a :: args' *)
-    unfold static_getType_list, runtime_lookup_list in *.
-    simpl in Hstatic, Hruntime.
-    destruct (static_getType sΓ a) as [T|] eqn:HstaticT; [|discriminate].
-    destruct (mapM (static_getType sΓ) args') as [Ts|] eqn:HstaticTs; [|discriminate].
-    destruct (runtime_getVal rΓ a) as [v|] eqn:HruntimeV; [|discriminate].
-    destruct (mapM (runtime_getVal rΓ) args') as [vs|] eqn:HruntimeVs; [|discriminate].
-    injection Hstatic as Hstatic. injection Hruntime as Hruntime.
-    subst. constructor.
-    + (* Show v is well-typed with T *)
-      assert (Ha_bound : a < List.length sΓ) by (apply static_getType_dom in HstaticT; exact HstaticT).
-      specialize (Hcorr a Ha_bound T HstaticT).
-      rewrite HruntimeV in Hcorr.
-      destruct v as [|loc]; [trivial|].
-      eapply wf_r_typable_env_independent_simple; eauto.
-
-    + (* Apply IH to the tail *)
-    specialize (IH Ts eq_refl vs eq_refl).
-  exact IH.
-Qed. *)
 
 (* 2. Heap Extension Preservation *)
 Lemma heap_extension_preserves_objects : forall h obj loc,

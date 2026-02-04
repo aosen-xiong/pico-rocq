@@ -1,0 +1,3 @@
+[submodule "pico-invsubtyping-limitedvpa/coqdocjs"]
+	path = pico-invsubtyping-limitedvpa/coqdocjs
+	url = git@github.com:rocq-community/coqdocjs.git
