@@ -3290,7 +3290,7 @@ qthisr (cqualifier consig); rctype := c |}; fields_map := vals |}]) = dom h + 1)
           exact Hcorr_orig.
           + contradiction Hcorr_orig.
           }
-Admitted.
+Qed.
 
 Lemma vpa_mutabilty_tt_sctype :
   forall Tthis T : qualified_type,
