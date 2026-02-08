@@ -763,38 +763,18 @@ Proof.
 Qed.
 
 (* All reachable objects in the abstract state from immutable root object are immutable *)
-Lemma reachable_locset_all_imm :
+Lemma protected_locset_all_imm :
   forall CT sΓ rΓ h root C0 vals0 l
          (Hwf : wf_r_config CT sΓ rΓ h)
          (Himm : runtime_getObj h root = Some (mkObj (mkruntime_type Imm_r C0) vals0))
-         (Hin : reachable_locset CT h root l),
+         (Hin : protected_locset CT h root l),
     exists C' vals',
       runtime_getObj h l = Some (mkObj (mkruntime_type Imm_r C') vals').
 Proof.
   intros.
-  unfold reachable_locset in Hin.
+  unfold protected_locset in Hin.
   eapply reachable_abs_from_imm_points_to_imm; eauto.
 Qed.
-
-(* 
-Theorem topology_stability_pico :
-  forall CT sΓ rΓ h stmt rΓ' h' sΓ' root C P P' vals
-         (Hdom : root < dom h)
-         (Himm_root : runtime_getObj h root = Some (mkObj (mkruntime_type Imm_r C) vals))
-         (Hprotected_before : P = reachable_locset CT h root)
-         (Hwf : wf_r_config CT sΓ rΓ h)
-         (Htyping : stmt_typing CT sΓ stmt sΓ')
-         (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
-         (Hprotected_after : P' = reachable_locset CT h' root),
-    P = P'.
-Proof.
-  intros.
-  admit.
-  (* eapply reachable_locset_all_imm in Hreach; eauto.
-  destruct Hreach as [C' [vals'' Himm_l]].
-  eapply shallow_immutability_pico with (l := l); eauto.
-  apply runtime_getObj_dom in Hobj. exact Hobj. *)
-Admitted. *)
 
 Theorem deep_immutability_pico :
   forall CT sΓ rΓ h stmt rΓ' h' sΓ' root C0 vals0 l C qr vals vals' f
@@ -811,7 +791,7 @@ Theorem deep_immutability_pico :
     nth_error vals f = nth_error vals' f.
 Proof.
   intros.
-  eapply reachable_locset_all_imm in Hreach; eauto.
+  eapply protected_locset_all_imm in Hreach; eauto.
   destruct Hreach as [C' [vals'' Himm_l]].
   eapply shallow_immutability_pico with (l := l); eauto.
   apply runtime_getObj_dom in Hobj. exact Hobj.

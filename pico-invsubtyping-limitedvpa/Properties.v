@@ -5300,6 +5300,3 @@ Proof.
 Qed.
 
 Notation "l [ i ]" := (nth_error l i) (at level 50).
-(* TODO: property type paper - case study *)
-(* TODO: running PICO on glicier *)
-(* TODO: running PICO on constrictor *)

@@ -3,7 +3,7 @@ Require Import Stdlib.Classes.RelationClasses.
 Import ListNotations.
 Require Import Syntax Notations LibTactics Tactics Helpers.
 
-(* Qualifier ordering  *)
+(** Qualifier Ordering *)
 Inductive q_subtype : q -> q -> Prop :=
   | q_refl : forall q1,
       q1 <> Lost ->
@@ -15,7 +15,6 @@ Inductive q_subtype : q -> q -> Prop :=
 where "q1 ⊑ q2" := (q_subtype q1 q2).
 Global Hint Constructors q_subtype: typ.
 
-(* Example q_subtype_refl: forall q, q <> Lost -> q ⊑ q. *)
 Example lost_subtype_refl: Lost ⊑ Lost -> False.
 Proof.
   intros H.
@@ -137,7 +136,7 @@ Proof.
   intros CT C D Hsub.
   induction Hsub.
   - (* Reflexive *) 
-    split; exact H. (* Need to extract from wf_class_table *)
+    split; exact H.
   - (* Transitive *)
     destruct IHHsub1 as [HC HD].
     destruct IHHsub2 as [_ HE].

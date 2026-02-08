@@ -907,17 +907,6 @@ Proof.
     destruct (f - 0); simpl in Hown_field; discriminate.
 Qed.
 
-(* Lemma vpa_type_to_type_sctype : forall T fieldType,
-  sctype (vpa_type_to_type T fieldType) = sctype fieldType.
-Proof.
-  intros T fieldType.
-  unfold vpa_type_to_type.
-  destruct T as [q1 c1].
-  destruct fieldType as [q2 c2].
-  simpl.
-  reflexivity.
-Qed. *)
-
 Lemma expr_has_type_class_in_table : forall CT sΓ e T,
   wf_class_table CT ->
   expr_has_type CT sΓ e T ->

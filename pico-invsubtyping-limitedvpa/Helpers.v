@@ -2,7 +2,7 @@
 (* Adapted from Celsius project : https://github.com/clementblaudeau/celsius *)
 
 Require Export Syntax.
-Require Export List.
+From Stdlib Require Import List.
 Import ListNotations.
 Require Export Notations LibTactics Tactics.
 Require Export ssreflect ssrbool Coq.Sets.Finite_sets_facts.

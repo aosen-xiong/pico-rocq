@@ -55,10 +55,6 @@ Inductive reachable_abs (CT : class_table) (h : heap) : Loc -> Loc -> Prop :=
       reachable_abs CT h l1 l2 ->
       reachable_abs CT h l0 l2.
 
-Definition reachable_locset
-           (CT : class_table) (h : heap) (root : Loc) : Ensembles.Ensemble Loc :=
-  fun l => reachable_abs CT h root l.
-
 Definition protected_locset
   (CT : class_table) (h : heap) (l_root : Loc) : Ensembles.Ensemble Loc :=
   fun l_target => reachable_abs CT h l_root l_target.

@@ -6,7 +6,7 @@ Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdapta
 Require Import Properties DeepImmutability Reachability.
 Require Import ReadonlyReachability.
 
-Lemma well_typed_no_mutation_exp :
+Theorem well_typed_no_mutation_exp :
   forall CT sΓ rΓ h x f y sΓ' loc_x o a vf val_y
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ (SFldWrite x f y) sΓ')
