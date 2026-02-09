@@ -539,95 +539,6 @@ Proof.
   all: inversion Hsub; easy.
 Qed.
 
-(* Lemma wf_r_typable_adapted_subtype : forall CT sΓ rΓ h Tthis locthis var loc T1 T2 TthisRuntime qcontext,
-  wf_r_config CT sΓ rΓ h ->
-  get_this_qualified_type sΓ = Some Tthis ->
-  get_this_var_mapping (vars rΓ) = Some locthis ->
-  r_type h locthis  = Some TthisRuntime ->
-  r_muttype h locthis = Some qcontext ->
-  var <> 0 ->
-  runtime_getVal rΓ var = Some (Iot loc) ->
-  nth_error sΓ var = Some T1 ->
-  wf_r_typable CT rΓ h loc T1 qcontext ->
-  qualified_type_subtype CT (vpa_mutabilty_tt Tthis T1) (vpa_mutabilty_tt Tthis T2) ->
-  wf_r_typable CT rΓ h loc T2 qcontext.
-Proof.
-  intros CT sΓ rΓ h Tthis locthis var loc T1 T2 TthisRuntime qcontext HwfConfig HThisType HThisVal HThisRuntimeType HthisMutability Hvarnotzero Hvarloc Hvartype Hwf Hsub.
-  unfold wf_r_typable in *.
-  destruct (r_type h loc) as [rt|] eqn:Hrtype; [|contradiction].
-  split.
-- (* Base type equality *)
-  destruct Hwf as [Hbase _].
-  apply qualified_type_subtype_base_subtype in Hsub.
-  assert (base_subtype CT (sctype T1) (sctype T2)).
-  {
-    eapply vpa_preserve_basetype_subtype; eauto.
-  }
-  inversion Hsub; subst.
-  eapply base_trans; eauto.
-  eapply base_trans; eauto.
-  eapply base_trans; eauto.
-- destruct Hwf as [_ Hqualifier].
-  unfold wf_r_config in HwfConfig.
-  destruct HwfConfig as [_ [_ [_ [Hsenv [_ Hcorr]]]]].
-  specialize (Hcorr locthis qcontext HThisVal HthisMutability).
-  assert (var < dom sΓ). 
-  {
-    apply static_getType_dom in Hvartype.
-    exact Hvartype.
-  }
-  have Hcorrcopy := Hcorr.
-  specialize (Hcorr var H T1 Hvartype).
-  rewrite Hvarloc in Hcorr.
-  unfold vpa_mutabilty_tt in *.
-  (* inversion Hsub; subst. *)
-  destruct qcontext; destruct (rqtype rt) eqn: qr; destruct (sqtype Tthis) eqn: qtthis; destruct (sqtype T1) eqn: qt1; destruct (sqtype T2) eqn: qt2; simpl in *; try easy.
-  (* all: try rewrite qt1 in H1; try rewrite qt2 in H1; try constructor; try easy. *)
-  all: apply qualified_type_subtype_q_subtype in Hsub; try rewrite qt1 in Hsub; try rewrite qt2 in Hsub.
-  all: try easy.
-  all: unfold wf_r_typable in Hcorr; rewrite Hrtype in Hcorr;
-  destruct Hcorr as [_ Hqualifier2];
-  rewrite qr in Hqualifier2; rewrite qt1 in Hqualifier2;
-  unfold wf_senv in Hsenv;
-  destruct Hsenv as [Hsenvdom _];
-  apply get_this_qualified_type_nth_error in HThisType;
-  apply get_this_var_mapping_runtime_getVal in HThisVal;
-  specialize (Hcorrcopy 0 Hsenvdom Tthis HThisType);
-  rewrite HThisVal in Hcorrcopy;
-  unfold wf_r_typable in Hcorrcopy;
-  rewrite HThisRuntimeType in Hcorrcopy;
-  destruct Hcorrcopy as [_ HqualifierThis];
-  rewrite qtthis in HqualifierThis;
-  unfold qualifier_typable_context in HqualifierThis;
-  unfold vpa_mutabilty_rs in HqualifierThis.
-  assert (Hrq : rqtype TthisRuntime = Mut_r).
-  {
-    rewrite (r_muttype_of_r_type h locthis TthisRuntime HThisRuntimeType) in HthisMutability.
-    inversion HthisMutability; reflexivity.
-  }
-  rewrite Hrq in HqualifierThis; easy.
-  assert (Hrq : rqtype TthisRuntime = Mut_r).
-  {
-    rewrite (r_muttype_of_r_type h locthis TthisRuntime HThisRuntimeType) in HthisMutability.
-    inversion HthisMutability; reflexivity.
-  }
-  rewrite Hrq in HqualifierThis; easy.
-  simpl in Hsub. inversion Hsub; easy.
-  assert (Hrq : rqtype TthisRuntime = Imm_r).
-  {
-    rewrite (r_muttype_of_r_type h locthis TthisRuntime HThisRuntimeType) in HthisMutability.
-    inversion HthisMutability; reflexivity.
-  }
-  rewrite Hrq in HqualifierThis; easy.
-  simpl in Hsub. inversion Hsub; easy.
-  assert (Hrq : rqtype TthisRuntime = Imm_r).
-  {
-    rewrite (r_muttype_of_r_type h locthis TthisRuntime HThisRuntimeType) in HthisMutability.
-    inversion HthisMutability; reflexivity.
-  }
-  rewrite Hrq in HqualifierThis; easy.
-Qed. *)
-
 Lemma Forall2_nth_error_prop : forall {A B : Type} (P : A -> B -> Prop) (l1 : list A) (l2 : list B) (n : nat) (a : A) (b : B),
   Forall2 P l1 l2 ->
   nth_error l1 n = Some a ->
@@ -661,8 +572,6 @@ Proof.
   apply update_diff.
   exact Hneq.
 Qed.
-
-(* evaluate program *)
 
 (* 1. Static-Runtime Correspondence Lemmas *)
 Lemma runtime_lookup_list_preserves_length : forall rΓ args vals,
@@ -1133,53 +1042,55 @@ Proof.
   -- (* Qualifier typability *)
   destruct Hsubtype as [Hbasesubtyp Hqualifiertypable].
   unfold qualifier_typable_context.
+  inversion Hreceiveraddr; subst ι'.
+  rewrite Hmut in Hreceiverrmut.
+  inversion Hreceiverrmut; subst q.
+  unfold vpa_mutabilty_rs; unfold vpa_mutabilty_stype_fld in *; unfold vpa_mutabilty_rec_fld in Hqualifiertypable;
   destruct (rqtype rqt) eqn: Hrqttype;
   destruct (sqtype T0) eqn: HsqtypeT0;
   destruct (mutability (ftype fDef)) eqn: Hfieldqualifier;
-  simpl in *; auto;
+  destruct qcontext eqn: Hqcontext;
+  simpl;
   try (inversion Hsubtype; auto);
   destruct T0 as [q0 c0] eqn: HT0type;
-  try discriminate.
-  all: try simpl.
-  all: try split.
-  all:  destruct q0 eqn: Hq0value; simpl; auto.
-  all: try simpl in HsqtypeT0.
-  all: try easy.
-  all: try destruct q_this eqn: Hqthistype; try reflexivity.
-  all: try destruct (rqtype (rt_type o)) eqn: HreceiverRuntimeQualifier.
-  all: try destruct qcontext eqn: Hqcontext.
-  all: try easy.
+  try discriminate;
+  try trivial.
+  all: 
+  try destruct (rqtype (rt_type o)) eqn: HreceiverRuntimeQualifier;
+  unfold qualifier_typable_heap in Hqualifiertypable;
+  try easy.
+  all: try simpl in HsqtypeT0; subst q0.
   all: try have H7copy := H7; try apply static_getType_dom in H7.
   all: try unfold static_getType in H7copy.
-  all: try specialize (Hcorr ι Mut_r Hreceiveraddr Hreceiverrmut x H7 {|
+  all: try specialize (Hcorr ι Mut_r Hreceiveraddr Hmut x H7 {|
   sqtype := Imm; sctype :=
   c0
   |} H7copy).
-  all: try specialize (Hcorr ι Imm_r Hreceiveraddr Hreceiverrmut x H7 {|
+  all: try specialize (Hcorr ι Imm_r Hreceiveraddr Hmut x H7 {|
   sqtype := Imm; sctype :=
   c0
   |} H7copy).
-  all: try specialize (Hcorr ι Mut_r Hreceiveraddr Hreceiverrmut x H7 {|
+  all: try specialize (Hcorr ι Mut_r Hreceiveraddr Hmut x H7 {|
   sqtype := RDM; sctype :=
   c0
   |} H7copy).
-  all: try specialize (Hcorr ι Imm_r Hreceiveraddr Hreceiverrmut x H7 {|
+  all: try specialize (Hcorr ι Imm_r Hreceiveraddr Hmut x H7 {|
   sqtype := RDM; sctype :=
   c0
   |} H7copy).
-  all: try specialize (Hcorr ι Mut_r Hreceiveraddr Hreceiverrmut x H7 {|
+  all: try specialize (Hcorr ι Mut_r Hreceiveraddr Hmut x H7 {|
   sqtype := Bot; sctype :=
   c0
   |} H7copy).
-  all: try specialize (Hcorr ι Imm_r Hreceiveraddr Hreceiverrmut x H7 {|
+  all: try specialize (Hcorr ι Imm_r Hreceiveraddr Hmut x H7 {|
   sqtype := Bot; sctype :=
   c0
   |} H7copy).
-  all: try specialize (Hcorr ι Mut_r Hreceiveraddr Hreceiverrmut x H7 {|
+  all: try specialize (Hcorr ι Mut_r Hreceiveraddr Hmut x H7 {|
   sqtype := Mut; sctype :=
   c0
   |} H7copy).
-  all: try specialize (Hcorr ι Imm_r Hreceiveraddr Hreceiverrmut x H7 {|
+  all: try specialize (Hcorr ι Imm_r Hreceiveraddr Hmut x H7 {|
   sqtype := Mut; sctype :=
   c0
   |} H7copy).
@@ -1209,7 +1120,6 @@ Proof.
   unfold runtime_lookup_list in Hlookup.
   unfold wf_renv in Hwf_renv.
   destruct Hwf_renv as [_ [_ Hallvals]].
-  
   (* Prove by induction on zs and vals0 simultaneously *)
   generalize dependent vals0.
   induction zs as [|z zs' IH]; intros vals0 Hlookup.
@@ -1271,7 +1181,6 @@ Proof.
   intros CT C Hwf_ct Hwf_class Hdom.
   unfold wf_class_table in Hwf_ct.
   destruct Hwf_ct as [Hforall Hcname_consistent].
-  
   (* Use the bidirectional consistency directly *)
   apply Hcname_consistent.
   reflexivity.
