@@ -630,7 +630,11 @@ Inductive stmt_typing : class_table -> s_env -> stmt -> s_env -> Prop :=
       FindMethodWithName CT (sctype Ty) m mdef ->
       x <> 0 -> (* x is not the receiver variable *)
       qualified_type_subtype CT (vpa_mutabilty_tt Ty (mret (msignature mdef))) Tx -> (* assignment subtype checking*)
-      qualified_type_subtype CT Ty (vpa_mutabilty_tt Ty (mreceiver (msignature mdef))) -> (* receiver subtype checking *) 
+      qualified_type_subtype CT Ty (vpa_mutabilty_tt Ty (mreceiver (msignature mdef)))
+      \/ 
+      ((sqtype Ty) = RO /\ mdef.(msignature).(mreceiver).(sqtype) = RDM
+      /\ base_subtype CT (sctype Ty) mdef.(msignature).(mreceiver).(sctype))
+       -> (* receiver subtype checking *) 
       Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutabilty_tt Ty T)) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
       stmt_typing CT sΓ (SCall x m y args) sΓ
 

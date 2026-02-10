@@ -477,83 +477,151 @@ Proof.
 
         (* Base type subtyping *)
         rewrite Hmsigeq.
+        destruct H22 as [H22 | H22].
         apply qualified_type_subtype_base_subtype in H22.
         rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef1))) in H22.
+        eapply base_trans; eauto.
+        destruct H22 as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
         eapply base_trans; eauto.
 
         (* Qualifier typbility *)
         1: 
         {
-          apply qualified_type_subtype_q_subtype in H22.
-          specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
-          apply get_this_qualified_type_nth_error in H15.
-          unfold wf_senv in Hsenv.
-          destruct Hsenv as [Hsenvdom _].
-          specialize (Hcorrcopy 0 Hsenvdom Tthis H15).
-          rewrite <- Hvars in HOutterReceiverAddr.
-          apply get_this_var_mapping_runtime_getVal in HOutterReceiverAddr.
-          rewrite HOutterReceiverAddr in Hcorrcopy.
-          unfold wf_r_typable in Hcorrcopy.
-          unfold r_type in Hcorrcopy.
-          destruct (runtime_getObj h lOutterReceiver) as [outterreceiverobj|] eqn:Houtterobj; [|easy].
-          destruct Hcorrcopy as [_ Houtter_qualifier_typable].
+          destruct H22 as [H22 | H22].
+          1:{
+            apply qualified_type_subtype_q_subtype in H22.
+            specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
+            apply get_this_qualified_type_nth_error in H15.
+            unfold wf_senv in Hsenv.
+            destruct Hsenv as [Hsenvdom _].
+            specialize (Hcorrcopy 0 Hsenvdom Tthis H15).
+            rewrite <- Hvars in HOutterReceiverAddr.
+            apply get_this_var_mapping_runtime_getVal in HOutterReceiverAddr.
+            rewrite HOutterReceiverAddr in Hcorrcopy.
+            unfold wf_r_typable in Hcorrcopy.
+            unfold r_type in Hcorrcopy.
+            destruct (runtime_getObj h lOutterReceiver) as [outterreceiverobj|] eqn:Houtterobj; [|easy].
+            destruct Hcorrcopy as [_ Houtter_qualifier_typable].
 
-          assert (rqtype (rt_type outterreceiverobj) = OutterReceiverMutability).
-          {
-            unfold r_muttype in HOutterReceiverMutabilityType.
-            rewrite Houtterobj in HOutterReceiverMutabilityType.
-            simpl in HOutterReceiverMutabilityType.
-            inversion HOutterReceiverMutabilityType; subst OutterReceiverMutability.
-            reflexivity.
+            assert (rqtype (rt_type outterreceiverobj) = OutterReceiverMutability).
+            {
+              unfold r_muttype in HOutterReceiverMutabilityType.
+              rewrite Houtterobj in HOutterReceiverMutabilityType.
+              simpl in HOutterReceiverMutabilityType.
+              inversion HOutterReceiverMutabilityType; subst OutterReceiverMutability.
+              reflexivity.
+            }
+            subst OutterReceiverMutability.
+
+            assert (ly = ι). 
+            {
+              rewrite HeqrΓmethodinit in HreceiverAddr.
+              unfold get_this_var_mapping in HreceiverAddr.
+              simpl in HreceiverAddr.
+              inversion HreceiverAddr; reflexivity.
+            }
+            subst ι.
+
+            assert (r_muttype h ly = Some rq_obj).
+            {
+              unfold r_muttype.
+              rewrite Hobjy.
+              simpl.
+              reflexivity.
+            }
+
+            assert (rq_obj = qinner).
+            {
+              rewrite H1 in Hqcontext.
+              inversion Hqcontext; subst qinner.
+              reflexivity.
+            }
+            subst rq_obj.
+
+            unfold qualifier_typable_context.
+            unfold qualifier_typable_context in HyQualifierTypablility.
+            unfold qualifier_typable_context in Houtter_qualifier_typable.
+            unfold vpa_mutabilty_rs.
+            unfold vpa_mutabilty_rs in HyQualifierTypablility.
+            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+            unfold vpa_mutabilty_tt in H22.
+            rewrite <- Hmsigeq in H22.
+
+            destruct qinner eqn:HInnerReceiverMutability;
+            destruct (sqtype (mreceiver (msignature mdef))) eqn:HMethodReceiverDeclaredType;
+            try trivial.
+            all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
+            destruct (sqtype Ty) eqn:HTyStaticMutability;
+            try trivial.
+            all: destruct (sqtype Tthis) eqn:HTthisStaticMutability;
+            try rewrite HTyStaticMutability in H22;
+            simpl in H22;
+            try rewrite HMethodReceiverDeclaredType in H22;
+            try inversion H22; try trivial.
+            all: try inversion H22; try easy.
           }
-          subst OutterReceiverMutability.
+          1:{
+            destruct H22 as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
+            specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
+            apply get_this_qualified_type_nth_error in H15.
+            unfold wf_senv in Hsenv.
+            destruct Hsenv as [Hsenvdom _].
+            specialize (Hcorrcopy 0 Hsenvdom Tthis H15).
+            rewrite <- Hvars in HOutterReceiverAddr.
+            apply get_this_var_mapping_runtime_getVal in HOutterReceiverAddr.
+            rewrite HOutterReceiverAddr in Hcorrcopy.
+            unfold wf_r_typable in Hcorrcopy.
+            unfold r_type in Hcorrcopy.
+            destruct (runtime_getObj h lOutterReceiver) as [outterreceiverobj|] eqn:Houtterobj; [|easy].
+            destruct Hcorrcopy as [_ Houtter_qualifier_typable].
 
-          assert (ly = ι). 
-          {
-            rewrite HeqrΓmethodinit in HreceiverAddr.
-            unfold get_this_var_mapping in HreceiverAddr.
-            simpl in HreceiverAddr.
-            inversion HreceiverAddr; reflexivity.
+            assert (rqtype (rt_type outterreceiverobj) = OutterReceiverMutability).
+            {
+              unfold r_muttype in HOutterReceiverMutabilityType.
+              rewrite Houtterobj in HOutterReceiverMutabilityType.
+              simpl in HOutterReceiverMutabilityType.
+              inversion HOutterReceiverMutabilityType; subst OutterReceiverMutability.
+              reflexivity.
+            }
+            subst OutterReceiverMutability.
+
+            assert (ly = ι). 
+            {
+              rewrite HeqrΓmethodinit in HreceiverAddr.
+              unfold get_this_var_mapping in HreceiverAddr.
+              simpl in HreceiverAddr.
+              inversion HreceiverAddr; reflexivity.
+            }
+            subst ι.
+
+            assert (r_muttype h ly = Some rq_obj).
+            {
+              unfold r_muttype.
+              rewrite Hobjy.
+              simpl.
+              reflexivity.
+            }
+
+            assert (rq_obj = qinner).
+            {
+              rewrite H1 in Hqcontext.
+              inversion Hqcontext; subst qinner.
+              reflexivity.
+            }
+            subst rq_obj.
+
+            unfold qualifier_typable_context.
+            unfold qualifier_typable_context in HyQualifierTypablility.
+            unfold qualifier_typable_context in Houtter_qualifier_typable.
+            unfold vpa_mutabilty_rs.
+            unfold vpa_mutabilty_rs in HyQualifierTypablility.
+            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+            rewrite <- Hmsigeq in HReceiverDeclearedQualifier.
+
+            rewrite HReceiverDeclearedQualifier.
+            destruct qinner eqn:HInnerReceiverMutability;
+            try trivial.
           }
-          subst ι.
-
-          assert (r_muttype h ly = Some rq_obj).
-          {
-            unfold r_muttype.
-            rewrite Hobjy.
-            simpl.
-            reflexivity.
-          }
-
-          assert (rq_obj = qinner).
-          {
-            rewrite H1 in Hqcontext.
-            inversion Hqcontext; subst qinner.
-            reflexivity.
-          }
-          subst rq_obj.
-
-          unfold qualifier_typable_context.
-          unfold qualifier_typable_context in HyQualifierTypablility.
-          unfold qualifier_typable_context in Houtter_qualifier_typable.
-          unfold vpa_mutabilty_rs.
-          unfold vpa_mutabilty_rs in HyQualifierTypablility.
-          unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
-          unfold vpa_mutabilty_tt in H22.
-          rewrite <- Hmsigeq in H22.
-
-          destruct qinner eqn:HInnerReceiverMutability;
-          destruct (sqtype (mreceiver (msignature mdef))) eqn:HMethodReceiverDeclaredType;
-          try trivial.
-          all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
-          destruct (sqtype Ty) eqn:HTyStaticMutability;
-          try trivial.
-          all: destruct (sqtype Tthis) eqn:HTthisStaticMutability;
-          try rewrite HTyStaticMutability in H22;
-          simpl in H22;
-          try rewrite HMethodReceiverDeclaredType in H22;
-          try inversion H22; try trivial.
-          all: try inversion H22; try easy.
         }
 
         (* -------------------------------------------------- *)
@@ -1030,84 +1098,151 @@ Proof.
 
         (* Base type subtyping *)
         rewrite Hmsigeq.
+        destruct H22 as [H22 | H22].
         apply qualified_type_subtype_base_subtype in H22.
         (* rewrite (vpa_mutabilty_tt_sctype Tthis Ty) in H23. *)
         rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef1))) in H22.
+        eapply base_trans; eauto.
+        destruct H22 as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
         eapply base_trans; eauto.
 
         (* Qualifier typbility *)
         1: 
         {
-          apply qualified_type_subtype_q_subtype in H22.
-          specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
-          apply get_this_qualified_type_nth_error in H15.
-          unfold wf_senv in Hsenv.
-          destruct Hsenv as [Hsenvdom _].
-          specialize (Hcorrcopy 0 Hsenvdom Tthis H15).
-          rewrite <- Hvars in HOutterReceiverAddr.
-          apply get_this_var_mapping_runtime_getVal in HOutterReceiverAddr.
-          rewrite HOutterReceiverAddr in Hcorrcopy.
-          unfold wf_r_typable in Hcorrcopy.
-          unfold r_type in Hcorrcopy.
-          destruct (runtime_getObj h lOutterReceiver) as [outterreceiverobj|] eqn:Houtterobj; [|easy].
-          destruct Hcorrcopy as [_ Houtter_qualifier_typable].
+          destruct H22 as [H22 | H22].
+          1:{
+            apply qualified_type_subtype_q_subtype in H22.
+            specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
+            apply get_this_qualified_type_nth_error in H15.
+            unfold wf_senv in Hsenv.
+            destruct Hsenv as [Hsenvdom _].
+            specialize (Hcorrcopy 0 Hsenvdom Tthis H15).
+            rewrite <- Hvars in HOutterReceiverAddr.
+            apply get_this_var_mapping_runtime_getVal in HOutterReceiverAddr.
+            rewrite HOutterReceiverAddr in Hcorrcopy.
+            unfold wf_r_typable in Hcorrcopy.
+            unfold r_type in Hcorrcopy.
+            destruct (runtime_getObj h lOutterReceiver) as [outterreceiverobj|] eqn:Houtterobj; [|easy].
+            destruct Hcorrcopy as [_ Houtter_qualifier_typable].
 
-          assert (rqtype (rt_type outterreceiverobj) = OutterReceiverMutability).
-          {
-            unfold r_muttype in HOutterReceiverMutabilityType.
-            rewrite Houtterobj in HOutterReceiverMutabilityType.
-            simpl in HOutterReceiverMutabilityType.
-            inversion HOutterReceiverMutabilityType; subst OutterReceiverMutability.
-            reflexivity.
+            assert (rqtype (rt_type outterreceiverobj) = OutterReceiverMutability).
+            {
+              unfold r_muttype in HOutterReceiverMutabilityType.
+              rewrite Houtterobj in HOutterReceiverMutabilityType.
+              simpl in HOutterReceiverMutabilityType.
+              inversion HOutterReceiverMutabilityType; subst OutterReceiverMutability.
+              reflexivity.
+            }
+            subst OutterReceiverMutability.
+
+            assert (ly = ι). 
+            {
+              rewrite HeqrΓmethodinit in HreceiverAddr.
+              unfold get_this_var_mapping in HreceiverAddr.
+              simpl in HreceiverAddr.
+              inversion HreceiverAddr; reflexivity.
+            }
+            subst ι.
+
+            assert (r_muttype h ly = Some rq_obj).
+            {
+              unfold r_muttype.
+              rewrite Hobjy.
+              simpl.
+              reflexivity.
+            }
+
+            assert (rq_obj = qinner).
+            {
+              rewrite H1 in Hqcontext.
+              inversion Hqcontext; subst qinner.
+              reflexivity.
+            }
+            subst rq_obj.
+
+            unfold qualifier_typable_context.
+            unfold qualifier_typable_context in HyQualifierTypablility.
+            unfold qualifier_typable_context in Houtter_qualifier_typable.
+            unfold vpa_mutabilty_rs.
+            unfold vpa_mutabilty_rs in HyQualifierTypablility.
+            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+            unfold vpa_mutabilty_tt in H22.
+            rewrite <- Hmsigeq in H22.
+
+            destruct qinner eqn:HInnerReceiverMutability;
+            destruct (sqtype (mreceiver (msignature mdef))) eqn:HMethodReceiverDeclaredType;
+            try trivial.
+            all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
+            destruct (sqtype Ty) eqn:HTyStaticMutability;
+            try trivial.
+            all: destruct (sqtype Tthis) eqn:HTthisStaticMutability;
+            try rewrite HTyStaticMutability in H22;
+            simpl in H22;
+            try rewrite HMethodReceiverDeclaredType in H22;
+            try inversion H22; try trivial.
+            all: try inversion H22; try easy.
           }
-          subst OutterReceiverMutability.
+          1:{
+            destruct H22 as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
+            specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
+            apply get_this_qualified_type_nth_error in H15.
+            unfold wf_senv in Hsenv.
+            destruct Hsenv as [Hsenvdom _].
+            specialize (Hcorrcopy 0 Hsenvdom Tthis H15).
+            rewrite <- Hvars in HOutterReceiverAddr.
+            apply get_this_var_mapping_runtime_getVal in HOutterReceiverAddr.
+            rewrite HOutterReceiverAddr in Hcorrcopy.
+            unfold wf_r_typable in Hcorrcopy.
+            unfold r_type in Hcorrcopy.
+            destruct (runtime_getObj h lOutterReceiver) as [outterreceiverobj|] eqn:Houtterobj; [|easy].
+            destruct Hcorrcopy as [_ Houtter_qualifier_typable].
 
-          assert (ly = ι). 
-          {
-            rewrite HeqrΓmethodinit in HreceiverAddr.
-            unfold get_this_var_mapping in HreceiverAddr.
-            simpl in HreceiverAddr.
-            inversion HreceiverAddr; reflexivity.
+            assert (rqtype (rt_type outterreceiverobj) = OutterReceiverMutability).
+            {
+              unfold r_muttype in HOutterReceiverMutabilityType.
+              rewrite Houtterobj in HOutterReceiverMutabilityType.
+              simpl in HOutterReceiverMutabilityType.
+              inversion HOutterReceiverMutabilityType; subst OutterReceiverMutability.
+              reflexivity.
+            }
+            subst OutterReceiverMutability.
+
+            assert (ly = ι). 
+            {
+              rewrite HeqrΓmethodinit in HreceiverAddr.
+              unfold get_this_var_mapping in HreceiverAddr.
+              simpl in HreceiverAddr.
+              inversion HreceiverAddr; reflexivity.
+            }
+            subst ι.
+
+            assert (r_muttype h ly = Some rq_obj).
+            {
+              unfold r_muttype.
+              rewrite Hobjy.
+              simpl.
+              reflexivity.
+            }
+
+            assert (rq_obj = qinner).
+            {
+              rewrite H1 in Hqcontext.
+              inversion Hqcontext; subst qinner.
+              reflexivity.
+            }
+            subst rq_obj.
+
+            unfold qualifier_typable_context.
+            unfold qualifier_typable_context in HyQualifierTypablility.
+            unfold qualifier_typable_context in Houtter_qualifier_typable.
+            unfold vpa_mutabilty_rs.
+            unfold vpa_mutabilty_rs in HyQualifierTypablility.
+            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+            rewrite <- Hmsigeq in HReceiverDeclearedQualifier.
+            rewrite HReceiverDeclearedQualifier;
+            destruct qinner eqn:HInnerReceiverMutability;
+            try trivial.
           }
-          subst ι.
-
-          assert (r_muttype h ly = Some rq_obj).
-          {
-            unfold r_muttype.
-            rewrite Hobjy.
-            simpl.
-            reflexivity.
-          }
-
-          assert (rq_obj = qinner).
-          {
-            rewrite H1 in Hqcontext.
-            inversion Hqcontext; subst qinner.
-            reflexivity.
-          }
-          subst rq_obj.
-
-          unfold qualifier_typable_context.
-          unfold qualifier_typable_context in HyQualifierTypablility.
-          unfold qualifier_typable_context in Houtter_qualifier_typable.
-          unfold vpa_mutabilty_rs.
-          unfold vpa_mutabilty_rs in HyQualifierTypablility.
-          unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
-          unfold vpa_mutabilty_tt in H22.
-          rewrite <- Hmsigeq in H22.
-
-          destruct qinner eqn:HInnerReceiverMutability;
-          destruct (sqtype (mreceiver (msignature mdef))) eqn:HMethodReceiverDeclaredType;
-          try trivial.
-          all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
-          destruct (sqtype Ty) eqn:HTyStaticMutability;
-          try trivial.
-          all: destruct (sqtype Tthis) eqn:HTthisStaticMutability;
-          try rewrite HTyStaticMutability in H22;
-          simpl in H22;
-          try rewrite HMethodReceiverDeclaredType in H22;
-          try inversion H22; try trivial.
-          all: try inversion H22; try easy.
         }
         (* clear_dups. amazing.... *)
 

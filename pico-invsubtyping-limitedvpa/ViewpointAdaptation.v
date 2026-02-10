@@ -7,6 +7,8 @@ Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
     | _, RO => RO
     | RO, _ => Lost
     | Lost, _ => Lost
+    | RDM, RDM => RDM
+    | RDM, _ => Lost
     | q1, RDM => q1
     | _, q2 => q2
   end.
@@ -17,6 +19,8 @@ Definition vpa_mutabilty_tt (t1: qualified_type)(t2 : qualified_type) : qualifie
     | _, RO => Build_qualified_type RO (sctype t2)
     | RO, _ => Build_qualified_type Lost (sctype t2)
     | Lost, _ => Build_qualified_type Lost (sctype t2)
+    | RDM, RDM => Build_qualified_type RDM (sctype t2)
+    | RDM, _ => Build_qualified_type Lost (sctype t2)
     | q1, RDM => Build_qualified_type q1 (sctype t2)
     | _, _ => t2
   end.
@@ -51,6 +55,7 @@ Definition vpa_mutabilty_stype_fld (q1: q)(q2 : q_f) : q :=
     | Imm, RDM_f => Imm
     | Mut, RDM_f => Mut
     | RDM, RDM_f => RDM
+    | RDM, _ => Lost
     | Bot, RDM_f => Bot
     | _, Imm_f => Imm
     | _, Mut_f => Mut
