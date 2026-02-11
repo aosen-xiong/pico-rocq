@@ -240,6 +240,26 @@ Proof.
   apply (sf_def_subtyping CT C D f fdef); auto.
 Qed.
 
+Lemma sf_mutability_subtyping_not_same_implies_false : forall CT C D f q1 q2,
+  base_subtype CT C D ->
+  sf_mutability_rel CT D f q1 ->
+  sf_mutability_rel CT C f q2 ->
+  q1 <> q2 ->
+  false.
+Proof.
+  intros.
+  unfold sf_mutability_rel in *.
+  destruct H0 as [fdef [Hfield Hmut]].
+  destruct H1 as [fdef' [Hfield' Hmut']].
+  have HfieldLookup: FieldLookup CT C f fdef.
+  eapply field_inheritance_subtyping; eauto.
+  have Heq: fdef = fdef'.
+  eapply field_lookup_deterministic_rel; eauto.
+  subst fdef'.
+  rewrite Hmut in Hmut'.
+  easy.
+Qed.
+
 Lemma sf_base_subtyping : forall CT C D f base,
   base_subtype CT C D ->
   sf_base_rel CT D f base ->

@@ -12,5 +12,7 @@ Bigstep.v
 Properties.v
 DeepImmutability.v
 ReadonlyReachability.v
+ReadonlyConfinement.v
+ReadonlyNoMutation.v
 ReadonlyProperties.v
 WFNOMutationEXP.v

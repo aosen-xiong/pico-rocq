@@ -3,10 +3,7 @@ Require Import Syntax.
 (* Viewpoint adaptation of mutability qualifiers *)
 Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
   match q1, q2 with
-    | RO, RO => RO
-    | _, RO => RO
-    | RO, _ => Lost
-    | Lost, _ => Lost
+    | RO, RDM => Lost
     | q1, RDM => q1
     | _, q2 => q2
   end.
@@ -14,9 +11,7 @@ Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
 (* A wrapper around vpa_mutability by taking two full types *)
 Definition vpa_mutabilty_tt (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   match (sqtype t1), (sqtype t2) with
-    | _, RO => Build_qualified_type RO (sctype t2)
-    | RO, _ => Build_qualified_type Lost (sctype t2)
-    | Lost, _ => Build_qualified_type Lost (sctype t2)
+    | RO, RDM => Build_qualified_type Lost (sctype t2)
     | q1, RDM => Build_qualified_type q1 (sctype t2)
     | _, _ => t2
   end.
@@ -44,16 +39,11 @@ Definition vpa_mutabilty_fld_bound (q1: q_f)(q2 : q_c) : q_f :=
 (* Adapting field type from a type use *)
 Definition vpa_mutabilty_stype_fld (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
-    | _, RO_f => RO
-    (* AOSEN RO: Change for readonly property *)
-    | RO, _ => Lost
-    | Lost, _ => Lost
-    | Imm, RDM_f => Imm
-    | Mut, RDM_f => Mut
-    | RDM, RDM_f => RDM
-    | Bot, RDM_f => Bot
-    | _, Imm_f => Imm
+    | RO, RDM_f => Lost
+    | q1, RDM_f => q1
     | _, Mut_f => Mut
+    | _, RO_f => RO
+    | _, Imm_f => Imm
     end.
 
 (* Adapting field type from constructor *)

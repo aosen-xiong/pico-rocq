@@ -8,12 +8,12 @@ Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdapta
 Definition LocSet      : Type := Ensembles.Ensemble Loc.
 
 Theorem shallow_immutability_pico :
-  forall CT sΓ rΓ h stmt rΓ' h' sΓ' l C vals vals' f,
+  forall TouchNonMutOnly TouchNonMutOnly' CT sΓ rΓ h stmt rΓ' h' sΓ' l C vals vals' f,
     l < dom h ->
     runtime_getObj h l = Some (mkObj (mkruntime_type Imm_r C) vals) ->
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ stmt sΓ' -> 
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     runtime_getObj h' l = Some (mkObj (mkruntime_type Imm_r C) vals') ->
     sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA ->
     nth_error vals f = nth_error vals' f.
@@ -48,7 +48,7 @@ Proof.
     - (* Case: l = lx (same object being written to) *)
       subst l.
       (* Extract the object type from H0 and H6 *)
-      rewrite H7 in H1.
+      rewrite H8 in H1.
       injection H1 as H1_eq.
       subst o.
       (* Now we have an immutable object, but can_assign returned true *)
@@ -58,10 +58,10 @@ Proof.
         subst f.
         (* Show contradiction: can_assign should be false for immutable Final/RDA fields *)
         exfalso.
-        unfold wf_r_config in H8.
-        destruct H8 as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
+        unfold wf_r_config in H9.
+        destruct H9 as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
         assert (Hx_bound : x < dom sΓ) by (apply runtime_getVal_dom in H0; rewrite <- Hlen in H0; exact H0).
-        inversion H9; subst.
+        inversion H10; subst.
         unfold wf_renv in Hrenv.
         destruct Hrenv as [HrEnvLen [Hreceiver _]].
         destruct Hreceiver as [iot [Hget_iot Hiot_dom]].
@@ -70,12 +70,12 @@ Proof.
           eapply receiver_mutability_exists_from_bound; eauto.
         }
         destruct H1 as [qcontext Hqcontext].
-        specialize (Hcorr iot qcontext Hget_iot Hqcontext x Hx_bound Tx H12).
+        specialize (Hcorr iot qcontext Hget_iot Hqcontext x Hx_bound Tx H13).
         rewrite H0 in Hcorr.
         unfold wf_r_typable in Hcorr.
         destruct (r_type h loc_x) as [rqt|] eqn:Hrtype; [|contradiction].
         unfold r_type in Hrtype.
-        rewrite H7 in Hrtype.
+        rewrite H8 in Hrtype.
         simpl in Hrtype.
         injection Hrtype as Hrtype_eq.
         destruct Hcorr as [Hbase_sub Htypable].
@@ -86,17 +86,17 @@ Proof.
         {
           eapply sf_assignability_consistent_subtype with (f := f0) (C := rctype rqt) (D := sctype Tx); eauto.
         }
-        apply vpa_assingability_assign_cases in H21.
-        destruct H21 as [HAassignable | HARDA ].
+        apply vpa_assingability_assign_cases in H22.
+        destruct H22 as [HAassignable | HARDA ].
         rewrite HAassignable in Heq.
         discriminate.
         destruct HARDA as [_ HFinalRDA].
         rewrite HFinalRDA in Heq.
         discriminate.
-        apply vpa_assingability_assign_cases in H21.
-        destruct H21 as [HAassignable | HARDA ].
+        apply vpa_assingability_assign_cases in H22.
+        destruct H22 as [HAassignable | HARDA ].
         have Hrctype_eq : rctype rqt = C by (rewrite <- Hrtype_eq; reflexivity).
-        rewrite HAassignable in H18.
+        rewrite HAassignable in H19.
         subst C.
         assert (RDA = Assignable). {
           eapply sf_assignability_consistent_subtype with (f := f0) (C := rctype rqt) (D := sctype Tx); eauto.
@@ -115,9 +115,9 @@ Proof.
         { 
           (* Use the definition of update_field and the fact that h' contains the updated object *)
           unfold update_field in H4.
-          rewrite H7 in H4.
-          rewrite H4 in H6.
-          unfold runtime_getObj in H6.
+          rewrite H8 in H4.
+          rewrite H4 in H7.
+          unfold runtime_getObj in H7.
           (* Apply update_same to get the updated object *)
           assert (Hget_same : nth_error (update loc_x {| rt_type := {| rqtype := Imm_r; rctype := C |}; fields_map := [f0 ↦ val_y] (vals) |} h) loc_x = 
                               Some {| rt_type := {| rqtype := Imm_r; rctype := C |}; fields_map := [f0 ↦ val_y] (vals) |}).
@@ -125,9 +125,9 @@ Proof.
             apply update_same.
             exact H.
           }
-          rewrite Hget_same in H6.
-          injection H6 as H6_eq.
-          symmetry. exact H6_eq.
+          rewrite Hget_same in H7.
+          injection H7 as H7_eq.
+          symmetry. exact H7_eq.
         }
         rewrite Hvals_eq.
         unfold getVal.
@@ -144,10 +144,119 @@ Proof.
       apply update_diff.
       easy.
     }
-    rewrite H7 in Hl_unchanged.
-    rewrite Hl_unchanged in H6.
-    injection H6 as H6_eq.
-    rewrite <- H6_eq.
+    rewrite H8 in Hl_unchanged.
+    rewrite Hl_unchanged in H7.
+    injection H7 as H7_eq.
+    rewrite <- H7_eq.
+    reflexivity.
+  }
+  - (* FldWrite *) 
+  {
+    intros.
+    destruct (Nat.eq_dec l loc_x) as [Heq_l | Hneq_l].
+    - (* Case: l = lx (same object being written to) *)
+      subst l.
+      (* Extract the object type from H0 and H6 *)
+      rewrite H8 in H1.
+      injection H1 as H1_eq.
+      subst o.
+      (* Now we have an immutable object, but can_assign returned true *)
+      (* This should be impossible for Final/RDA fields on immutable objects *)
+      destruct (Nat.eq_dec f f0) as [Heq_f | Hneq_f].
+      + (* Case: f = f0 (same field being written) *)
+        subst f.
+        (* Show contradiction: can_assign should be false for immutable Final/RDA fields *)
+        exfalso.
+        unfold wf_r_config in H9.
+        destruct H9 as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
+        assert (Hx_bound : x < dom sΓ) by (apply runtime_getVal_dom in H0; rewrite <- Hlen in H0; exact H0).
+        inversion H10; subst.
+        unfold wf_renv in Hrenv.
+        destruct Hrenv as [HrEnvLen [Hreceiver _]].
+        destruct Hreceiver as [iot [Hget_iot Hiot_dom]].
+        assert (exists qcontext, r_muttype h iot = Some qcontext).
+        {
+          eapply receiver_mutability_exists_from_bound; eauto.
+        }
+        destruct H1 as [qcontext Hqcontext].
+        specialize (Hcorr iot qcontext Hget_iot Hqcontext x Hx_bound Tx H13).
+        rewrite H0 in Hcorr.
+        unfold wf_r_typable in Hcorr.
+        destruct (r_type h loc_x) as [rqt|] eqn:Hrtype; [|contradiction].
+        unfold r_type in Hrtype.
+        rewrite H8 in Hrtype.
+        simpl in Hrtype.
+        injection Hrtype as Hrtype_eq.
+        destruct Hcorr as [Hbase_sub Htypable].
+        destruct H5 as [Hffinal | HfRDA].
+        have Hrctype_eq : rctype rqt = C by (rewrite <- Hrtype_eq; reflexivity).
+        subst C.
+        assert (Heq : Final = a).
+        {
+          eapply sf_assignability_consistent_subtype with (f := f0) (C := rctype rqt) (D := sctype Tx); eauto.
+        }
+        apply vpa_assingability_assign_cases in H22.
+        destruct H22 as [HAassignable | HARDA ].
+        rewrite HAassignable in Heq.
+        discriminate.
+        destruct HARDA as [_ HFinalRDA].
+        rewrite HFinalRDA in Heq.
+        discriminate.
+        apply vpa_assingability_assign_cases in H22.
+        destruct H22 as [HAassignable | HARDA ].
+        have Hrctype_eq : rctype rqt = C by (rewrite <- Hrtype_eq; reflexivity).
+        rewrite HAassignable in H19.
+        subst C.
+        assert (RDA = Assignable). {
+          eapply sf_assignability_consistent_subtype with (f := f0) (C := rctype rqt) (D := sctype Tx); eauto.
+        }
+        discriminate.
+        destruct HARDA as [HsqtypeMut _].
+        unfold qualifier_typable_context in Htypable.
+        unfold vpa_mutabilty_rs in Htypable.
+        have Hrqtype_eq : rqtype rqt = Imm_r by (rewrite <- Hrtype_eq; reflexivity).
+        rewrite Hrqtype_eq in Htypable.
+        rewrite HsqtypeMut in Htypable.
+        destruct qcontext;
+        easy.
+        + 
+        assert (Hvals_eq : vals' = [f0 ↦ val_y] (vals)).
+        { 
+          (* Use the definition of update_field and the fact that h' contains the updated object *)
+          unfold update_field in H4.
+          rewrite H8 in H4.
+          rewrite H4 in H7.
+          unfold runtime_getObj in H7.
+          (* Apply update_same to get the updated object *)
+          assert (Hget_same : nth_error (update loc_x {| rt_type := {| rqtype := Imm_r; rctype := C |}; fields_map := [f0 ↦ val_y] (vals) |} h) loc_x = 
+                              Some {| rt_type := {| rqtype := Imm_r; rctype := C |}; fields_map := [f0 ↦ val_y] (vals) |}).
+          {
+            apply update_same.
+            exact H.
+          }
+          rewrite Hget_same in H7.
+          injection H7 as H7_eq.
+          symmetry. exact H7_eq.
+        }
+        rewrite Hvals_eq.
+        unfold getVal.
+        rewrite update_diff.
+        symmetry. exact Hneq_f.
+        reflexivity.
+    -
+    assert (Hl_unchanged : runtime_getObj h' l = runtime_getObj h l).
+    {
+      unfold update_field in H4.
+      rewrite H1 in H4.
+      rewrite H4.
+      unfold runtime_getObj.
+      apply update_diff.
+      easy.
+    }
+    rewrite H8 in Hl_unchanged.
+    rewrite Hl_unchanged in H7.
+    injection H7 as H7_eq.
+    rewrite <- H7_eq.
     reflexivity.
   }
   - (* New *) (* h' = h ++ [new_obj], so l < dom h means same object *)
@@ -615,14 +724,14 @@ Proof.
     contradiction.
   -  (* Seq *) (* Apply IH transitively *)
   intros. inversion H2; subst. 
-  specialize (eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' H3_) as Hh'.
+  specialize (eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓ h s1 rΓ' h' H3_) as Hh'.
   assert (l < dom h') by lia. 
   specialize (runtime_getObj_Some h' l H3) as [C' [values' Hh'some]].
-  specialize (runtime_preserves_r_type_heap CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
+  specialize (runtime_preserves_r_type_heap TouchNonMutOnly TouchNonMutOnly' CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
   h' vals s1 rΓ' H0 H3_) as [vals1 Hrtype]. 
   rewrite Hrtype in Hh'some; inversion Hh'some; subst.
   specialize (IHeval_stmt1 H Heqok H5 values' Hrtype vals H0 sΓ'0 sΓ H1 H10). 
-  specialize (preservation_pico CT sΓ rΓ h s1 rΓ' h' sΓ'0 H1 H10 H3_) as Hwf'.
+  specialize (preservation_pico TouchNonMutOnly TouchNonMutOnly' CT sΓ rΓ h s1 rΓ' h' sΓ'0 H1 H10 H3_) as Hwf'.
   specialize (IHeval_stmt2 H3 Heqok H5 vals' H4 values' Hrtype sΓ' sΓ'0 Hwf' H12). 
   rewrite IHeval_stmt2 in IHeval_stmt1; auto.
 Qed.
@@ -777,13 +886,13 @@ Proof.
 Qed.
 
 Theorem deep_immutability_pico :
-  forall CT sΓ rΓ h stmt rΓ' h' sΓ' root C0 vals0 l C qr vals vals' f
+  forall TouchNonMutOnly TouchNonMutOnly' CT sΓ rΓ h stmt rΓ' h' sΓ' root C0 vals0 l C qr vals vals' f
          (Hdom : root < dom h)
          (Himm_root : runtime_getObj h root = Some (mkObj (mkruntime_type Imm_r C0) vals0))
          (Hreach : reachable_abs CT h root l)
          (Hwf : wf_r_config CT sΓ rΓ h)
          (Htyping : stmt_typing CT sΓ stmt sΓ')
-         (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+         (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
          (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals))
          (Hobj' : runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals'))
          (Hprotected : sf_assignability_rel CT C f Final \/ 

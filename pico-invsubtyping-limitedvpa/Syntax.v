@@ -11,7 +11,7 @@ Definition class_name : Type := nat.
 (** All Mutability Qualifer *)
 Inductive q : Type :=
   (* q_c *)
-  | Mut
+  | Mut (* Abs_Mut *)
   | Imm
   | RDM
   (* q_f *)
@@ -44,6 +44,7 @@ Inductive a : Type :=
 
 (* Qualified type  *)
 Record qualified_type := {
+  (* sabs: abs; Abstract state or Non-abstract state *)
   sqtype: q; (* Type qualifier *)
   sctype: class_name; (* Class name *)
 }.
