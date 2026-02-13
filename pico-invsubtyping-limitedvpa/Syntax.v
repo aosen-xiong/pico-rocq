@@ -42,9 +42,13 @@ Inductive a : Type :=
   | Final
   | RDA.
 
+Inductive abs_type : Type :=
+  | Abs
+  | Nonabs.
+
 (* Qualified type  *)
 Record qualified_type := {
-  (* sabs: abs; Abstract state or Non-abstract state *)
+  sabs: abs_type; (* Abstract or non-abstract type *)
   sqtype: q; (* Type qualifier *)
   sctype: class_name; (* Class name *)
 }.
@@ -66,6 +70,7 @@ Inductive stmt: Type :=
   (* | SCast: var -> q -> class_name -> var -> stmt x = (q C) y  *)
   | SSeq: stmt -> stmt -> stmt. (* s1; s2 *)
 
+(* abs_type need to be derived from assignability and mutability *)
 Record field_type := {
   assignability: a;
   mutability: q_f;
@@ -97,7 +102,12 @@ Record method_body := {
   mreturn: var; (* Return variable *)
 }.
 
+Inductive method_type : Type :=
+  | normal
+  | retain_nonabs.
+
 Record method_sig := {
+  mtype: method_type; (* Method declaration *)
   mret : qualified_type; (* Return type *)
   mname : method_name; (* Method name *)
   mreceiver: qualified_type; (*T this*)

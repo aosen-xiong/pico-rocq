@@ -3,6 +3,27 @@ Require Import Stdlib.Classes.RelationClasses.
 Import ListNotations.
 Require Import Syntax Notations LibTactics Tactics Helpers.
 
+(* Inductive abs_subtype : abs_type -> abs_type -> Prop :=
+  | abs_refl : forall abs,
+      abs_subtype abs abs
+  | abs_top : forall abs,
+      abs_subtype abs Nonabs
+  | abs_bot: forall abs,
+      abs_subtype Abs abs.
+
+Lemma abs_subtype_trans: 
+  forall x y z, 
+    abs_subtype x y ->
+    abs_subtype y z ->
+    abs_subtype x z.
+Proof.
+  intros.
+  inversion H; steps.
+  inversion H0. 
+  exact H.
+  exact H.
+Qed. *)
+
 (** Qualifier Ordering *)
 Inductive q_subtype : q -> q -> Prop :=
   | q_refl : forall q1,
@@ -58,6 +79,7 @@ Inductive qualified_type_subtype : class_table -> qualified_type -> qualified_ty
   | qtype_sub : forall CT qt1 qt2,
 	 		(sctype qt1) < (dom CT) ->
       (sctype qt2) < (dom CT) ->
+      (sabs qt1) = (sabs qt2) ->
       q_subtype (sqtype qt1) (sqtype qt2) ->
       base_subtype CT (sctype qt1) (sctype qt2) ->
       qualified_type_subtype CT qt1 qt2
@@ -103,7 +125,7 @@ Proof.
     induction H.
     generalize dependent qt1.
     generalize dependent qt2.
-    - intros. exact H2.
+    - intros. exact H3.
     - eapply base_trans; eauto.
     - eapply base_refl; eauto.
 Qed.
@@ -116,16 +138,29 @@ Proof.
   intros CT qt1 qt2 H.
   induction H.
   - (* qtype_sub case *)
+    intros. exact H2.
+  - (* qtype_trans case *)
+    eapply q_subtype_trans; eauto.
+  - (* qtype_refl case *)
+    intros.
+    apply q_refl.
+    exact H0.
+Qed.
+
+Lemma qualified_type_subtype_abs_eq :
+  forall CT qt1 qt2,
+    qualified_type_subtype CT qt1 qt2 ->
+    (sabs qt1) = (sabs qt2).
+Proof.
+  intros CT qt1 qt2 H.
+  induction H.
+  - (* qtype_sub case *)
     intros. exact H1.
   - (* qtype_trans case *)
-  eapply q_subtype_trans; eauto.
+    rewrite <- IHqualified_type_subtype1 in IHqualified_type_subtype2.
+    exact IHqualified_type_subtype2.
   - (* qtype_refl case *)
-    intros. 
-    destruct qt as [q c]; simpl.
-    destruct q; try (apply q_refl; discriminate).
-    exfalso.
-    simpl in H0.
-    apply H0.
+    intros.
     reflexivity.
 Qed.
 

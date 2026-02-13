@@ -10,11 +10,22 @@ Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
 
 (* A wrapper around vpa_mutability by taking two full types *)
 Definition vpa_mutabilty_tt (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
-  match (sqtype t1), (sqtype t2) with
-    | RO, RDM => Build_qualified_type Lost (sctype t2)
-    | q1, RDM => Build_qualified_type q1 (sctype t2)
-    | _, _ => t2
-  end.
+  (* let abs_result := 
+    match (sabs t1), (sabs t2) with
+    | Nonabs, _ => Nonabs
+    | _, Nonabs => Nonabs
+    | Abs, Abs => Abs
+    end
+  in *)
+  let qual_result :=
+    match (sqtype t1), (sqtype t2) with
+    | RO, RDM => Lost
+    | q1, RDM => q1
+    | _, _ => sqtype t2
+    end
+  in
+  (* Do not adapt abs at method invocation *)
+  Build_qualified_type (sabs t2) qual_result (sctype t2).
 
 (* Check whether a type respect its bound *)
 Definition vpa_mutabilty_bound (q1: q)(q2 : q_c) : q :=
