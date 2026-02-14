@@ -849,6 +849,7 @@ Proof.
         all: inversion H20; try easy.
         all: destruct (sabs Ty) eqn:HTyAbs; simpl in Habs_subtype; try discriminate.
         all: subst.
+        (* 3,4,7,8: right; right; right; right; reflexivity. *)
         all: right; right; right; right; reflexivity.
       -
         assert (Hy_dom : y < dom sΓ).
@@ -1140,7 +1141,53 @@ Proof.
           apply runtime_getObj_dom in Hobjy; auto.
         }
         specialize (Hconfined y ly Ty H10 H HlyInP).
-        apply subtype_safe_implies_safe_adapted in H18; auto.
+        clear - HmethodReturnSubtype H18 Hconfined.
+        unfold is_safe_mode in *.
+        have Hsabseq : (vpa_mutabilty_tt Ty (mret (msignature mdef))).(sabs) = Tx.(sabs).
+        {
+          eapply qualified_type_subtype_abs_eq; eauto.
+        }
+        apply qualified_type_subtype_q_subtype in H18.
+        unfold vpa_mutabilty_tt in Hsabseq.
+        destruct Hconfined as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]];
+        destruct HmethodReturnSubtype as [Hrd' | [Hlost'| [Himm'| [HRDM' | Hnonabs']]]];
+        destruct (sabs Tx) eqn:HTxAbs.
+        2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50: right; right; right; right; reflexivity.
+        5,10,15,20,25: rewrite Hnonabs' in Hsabseq; simpl in Hsabseq; discriminate.
+        all: clear Hsabseq.
+        all: destruct (sqtype Tx) eqn:HTxStaticMutability; destruct (mret (msignature mdef)) eqn:HMethodReturnDeclaredType.
+        all: try simpl in Hrd'; try simpl in Hlost'; try simpl in Himm'; try simpl in HRDM'; try simpl in Hnonabs'.
+        all:
+          unfold vpa_mutabilty_tt in H18;
+          try rewrite Hrd in H18;
+          try rewrite Hlost in H18;
+          try rewrite Himm in H18;
+          try rewrite HRDM in H18.
+          try rewrite Hrd' in H18;
+          try rewrite Hlost' in H18;
+          try rewrite Himm' in H18;
+          try rewrite HRDM' in H18;
+          simpl in H18.
+        2, 8, 14, 20, 26, 32, 38, 44, 50, 56, 62, 68, 74, 80, 86, 92, 98, 104, 110, 116: right; right; left; reflexivity.
+        (* 2:right; right; right; left; reflexivity. *)
+        2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57, 62, 67, 72, 77, 82, 87, 92, 97: right; right; right; left; reflexivity.
+        2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 58, 62, 66, 70, 74, 78: left; reflexivity.
+        2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41, 44, 47, 50, 53, 56, 59: right; left; reflexivity.
+        all: try simpl in H18;
+        try rewrite Hrd' in H18;
+          try rewrite Hlost' in H18;
+          try rewrite Himm' in H18;
+          try rewrite HRDM' in H18.
+        all: inversion H18; subst; try discriminate.
+        all: destruct (sqtype Ty) eqn:HTyStaticMutability.
+        all: try (left; reflexivity).
+        all: try (right; left; reflexivity).
+        all: try (right; right; left; reflexivity).
+        all: try (right; right; right; left; reflexivity).
+        all: try discriminate H0.
+        all: try discriminate H.
+        all: admit.
+        (* apply subtype_safe_implies_safe_adapted in H18; auto. *)
       -- (* CASE: z <> x (Old Variables) *)
       (* Just use the original invariant *)
       assert (rΓ <| vars := update x retval (vars rΓ) |> = update_r_env_value rΓ x retval).
@@ -1815,6 +1862,7 @@ Proof.
         all: inversion H20; try easy.
         all: destruct (sabs Ty) eqn:HTyAbs; simpl in Habs_subtype; try discriminate.
         all: subst.
+        (* 3,4,7,8: right; right; right; right; reflexivity. *)
         all: right; right; right; right; reflexivity.
       -
         assert (Hy_dom : y < dom sΓ).
@@ -2109,7 +2157,8 @@ Proof.
           apply runtime_getObj_dom in Hobjy; auto.
         }
         specialize (Hconfined y ly Ty H10 H HlyInP).
-        apply subtype_safe_implies_safe_adapted in H18; auto.
+        admit.
+        (* apply subtype_safe_implies_safe_adapted in H18; auto. *)
         --- (* CASE: z <> x (Old Variables) *)
         (* Just use the original invariant *)
         assert (rΓ <| vars := update x retval (vars rΓ) |> = update_r_env_value rΓ x retval).
@@ -2122,4 +2171,4 @@ Proof.
         eapply Hconfined; eauto.
     }
     exact Henv_respects''.
-Qed.
+Admitted.

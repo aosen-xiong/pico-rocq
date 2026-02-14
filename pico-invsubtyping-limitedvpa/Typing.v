@@ -655,7 +655,7 @@ Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> 
       get_this_qualified_type sΓ = Some Tthis ->
       sf_def_rel CT (sctype Tx) f fieldT ->
       sf_assignability_rel CT (sctype Tx) f a ->
-      ~abstract_state_field CT (sctype Tx) f ->
+      ~abstract_state_field CT (sctype Tx) f \/ Tx.(sabs) = Nonabs ->
       qualified_type_subtype CT Ty (Build_qualified_type Nonabs (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
       vpa_assignability (sqtype Tx) a = Assignable ->
       stmt_typing CT normal sΓ (SFldWrite x f y) sΓ
@@ -667,8 +667,8 @@ Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> 
       get_this_qualified_type sΓ = Some Tthis ->
       sf_def_rel CT (sctype Tx) f fieldT ->
       sf_assignability_rel CT (sctype Tx) f a ->
-      Tx.(sabs) = Abs ->
       abstract_state_field CT (sctype Tx) f ->
+      Tx.(sabs) = Abs ->
       qualified_type_subtype CT Ty (Build_qualified_type Abs (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
       vpa_assignability (sqtype Tx) a = Assignable ->
       stmt_typing CT retain_nonabs sΓ (SFldWrite x f y) sΓ
@@ -794,6 +794,9 @@ Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : P
     mbodyretvar < dom sΓ' /\
     nth_error sΓ' mbodyretvar = Some mbodyrettype /\
     qualified_type_subtype CT mbodyrettype (mret msig) /\
+    (* TODO: Think about how to understand this *)
+    (* (msig.(mreceiver).(sabs) = Nonabs -> 
+       msig.(mret).(sabs) = Nonabs) /\ *)
     (* Override constraint: if method exists in parent, signatures must match *)
     (* Aosen: let's prove invariant override first *)
     (forall parent_def parent mdef_parent,

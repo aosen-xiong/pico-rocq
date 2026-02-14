@@ -146,7 +146,7 @@ Proof.
   all: destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]]; try discriminate.
 Qed.
 
-Lemma subtype_safe_implies_safe_adapted :
+(* Lemma subtype_safe_implies_safe_adapted :
   forall CT T_sub T_Receiver T_super
          (Hsub : qualified_type_subtype CT (vpa_mutabilty_tt T_Receiver T_sub) T_super)
          (Hsafe_sub : is_safe_mode T_sub)
@@ -180,8 +180,7 @@ Proof.
   try discriminate.
   all: try inversion Hsub; subst; auto.
   all: destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]]; try discriminate.
-  all: admit.
-Admitted.
+Qed. *)
 
 Lemma reachable_dom :
   forall h l_src l_dst

@@ -110,7 +110,7 @@ Proof.
           apply HTxNoMut.
           exact Hx_mut.
           apply HTxNoAbs.
-          exact H12.
+          exact H14.
       + (* Different field case: trivial *)
         unfold update_field in Hobj'.
         rewrite H0 in Hobj'.
@@ -801,6 +801,7 @@ Proof.
         all: inversion H20; try easy.
         all: destruct (sabs Ty) eqn:HTyAbs; simpl in Habs_subtype; try discriminate.
         all: subst.
+        (* 3,4,7,8: right; right; right; right; reflexivity. *)
         all: right; right; right; right; reflexivity.
       -
         assert (Hy_dom : y < dom sΓ).
@@ -1619,6 +1620,7 @@ Proof.
         all: inversion H20; try easy.
         all: destruct (sabs Ty) eqn:HTyAbs; simpl in Habs_subtype; try discriminate.
         all: subst.
+        (* 3,4,7,8: right; right; right; right; reflexivity. *)
         all: right; right; right; right; reflexivity.
       -
         assert (Hy_dom : y < dom sΓ).
