@@ -3,13 +3,13 @@ Require Import Stdlib.Classes.RelationClasses.
 Import ListNotations.
 Require Import Syntax Notations LibTactics Tactics Helpers.
 
-(* Inductive abs_subtype : abs_type -> abs_type -> Prop :=
+Inductive abs_subtype : abs_type -> abs_type -> Prop :=
   | abs_refl : forall abs,
       abs_subtype abs abs
   | abs_top : forall abs,
-      abs_subtype abs Nonabs
+      abs_subtype abs Protected
   | abs_bot: forall abs,
-      abs_subtype Abs abs.
+      abs_subtype Normal abs.
 
 Lemma abs_subtype_trans: 
   forall x y z, 
@@ -22,7 +22,7 @@ Proof.
   inversion H0. 
   exact H.
   exact H.
-Qed. *)
+Qed.
 
 (** Qualifier Ordering *)
 Inductive q_subtype : q -> q -> Prop :=
@@ -79,7 +79,8 @@ Inductive qualified_type_subtype : class_table -> qualified_type -> qualified_ty
   | qtype_sub : forall CT qt1 qt2,
 	 		(sctype qt1) < (dom CT) ->
       (sctype qt2) < (dom CT) ->
-      (sabs qt1) = (sabs qt2) ->
+      abs_subtype (sabs qt1) (sabs qt2) ->
+      (* (sabs qt1) = (sabs qt2) -> *)
       q_subtype (sqtype qt1) (sqtype qt2) ->
       base_subtype CT (sctype qt1) (sctype qt2) ->
       qualified_type_subtype CT qt1 qt2
@@ -147,21 +148,23 @@ Proof.
     exact H0.
 Qed.
 
-Lemma qualified_type_subtype_abs_eq :
+Lemma qualified_type_subtype_abs_subtype :
   forall CT qt1 qt2,
     qualified_type_subtype CT qt1 qt2 ->
-    (sabs qt1) = (sabs qt2).
+    abs_subtype (sabs qt1) (sabs qt2).
 Proof.
   intros CT qt1 qt2 H.
   induction H.
   - (* qtype_sub case *)
     intros. exact H1.
   - (* qtype_trans case *)
-    rewrite <- IHqualified_type_subtype1 in IHqualified_type_subtype2.
-    exact IHqualified_type_subtype2.
+    eapply abs_subtype_trans; eauto.
+    (* rewrite <- IHqualified_type_subtype1 in IHqualified_type_subtype2. *)
+    (* exact IHqualified_type_subtype2. *)
   - (* qtype_refl case *)
     intros.
-    reflexivity.
+    apply abs_refl.
+    (* reflexivity. *)
 Qed.
 
 Lemma base_subtype_domain : forall CT C D,

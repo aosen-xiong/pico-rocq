@@ -8,12 +8,12 @@ Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdapta
 Definition LocSet      : Type := Ensembles.Ensemble Loc.
 
 Theorem shallow_immutability_pico :
-  forall TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt rΓ' h' sΓ' l C vals vals' f,
+  forall   CT mt sΓ rΓ h stmt rΓ' h' sΓ' l C vals vals' f,
     l < dom h ->
     runtime_getObj h l = Some (mkObj (mkruntime_type Imm_r C) vals) ->
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT mt sΓ stmt sΓ' -> 
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     runtime_getObj h' l = Some (mkObj (mkruntime_type Imm_r C) vals') ->
     sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA ->
     nth_error vals f = nth_error vals' f.
@@ -1170,14 +1170,14 @@ Proof.
     contradiction.
   -  (* Seq *) (* Apply IH transitively *)
     intros. inversion H2; subst. 
-    specialize (eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓ h s1 rΓ' h' H3_) as Hh'.
+    specialize (eval_stmt_preserves_heap_domain_simple   CT rΓ h s1 rΓ' h' H3_) as Hh'.
     assert (l < dom h') by lia. 
     specialize (runtime_getObj_Some h' l H3) as [C' [values' Hh'some]].
-    specialize (runtime_preserves_r_type_heap TouchNonMutOnly TouchNonMutOnly' CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
+    specialize (runtime_preserves_r_type_heap   CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
     h' vals s1 rΓ' H0 H3_) as [vals1 Hrtype]. 
     rewrite Hrtype in Hh'some; inversion Hh'some; subst.
     specialize (IHeval_stmt1 H Heqok H5 values' Hrtype vals H0 mt sΓ'0 sΓ H1 H11). 
-    specialize (preservation_pico TouchNonMutOnly TouchNonMutOnly' mt CT sΓ rΓ h s1 rΓ' h' sΓ'0 H1 H11 H3_) as Hwf'.
+    specialize (preservation_pico   mt CT sΓ rΓ h s1 rΓ' h' sΓ'0 H1 H11 H3_) as Hwf'.
     specialize (IHeval_stmt2 H3 Heqok H5 vals' H4 values' Hrtype mt sΓ' sΓ'0 Hwf' H13). 
     rewrite IHeval_stmt2 in IHeval_stmt1; auto.
 Qed.
@@ -1332,13 +1332,13 @@ Proof.
 Qed.
 
 Theorem deep_immutability_pico :
-  forall TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt rΓ' h' sΓ' root C0 vals0 l C qr vals vals' f
+  forall   CT mt sΓ rΓ h stmt rΓ' h' sΓ' root C0 vals0 l C qr vals vals' f
          (Hdom : root < dom h)
          (Himm_root : runtime_getObj h root = Some (mkObj (mkruntime_type Imm_r C0) vals0))
          (Hreach : reachable_abs CT h root l)
          (Hwf : wf_r_config CT sΓ rΓ h)
          (Htyping : stmt_typing CT mt sΓ stmt sΓ')
-         (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+         (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
          (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals))
          (Hobj' : runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals'))
          (Hprotected : sf_assignability_rel CT C f Final \/ 

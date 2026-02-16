@@ -241,111 +241,111 @@ Definition protected_locations_from_initial_env
       reachable_abs CT h l_root l_target.
 
 (* Whether you read non-abstract state or not *)
-Definition TouchNonMutOnly : Type := bool.
+(* Definition  : Type := bool.
 
 Definition non_mut_field_ref
   (CT : class_table) (C : class_name) (k : var) : Prop :=
   (sf_mutability_rel CT C k RDM_f \/
    sf_mutability_rel CT C k Imm_f \/
    sf_mutability_rel CT C k RO_f)
-   .
+   . *)
 
 (* PICO expression evaluation *)
-Inductive eval_expr : eval_result -> (Loc -> Prop) -> TouchNonMutOnly -> class_table -> r_env -> heap -> expr -> value -> eval_result -> TouchNonMutOnly -> (Loc -> Prop)  -> r_env -> heap -> Prop :=
+Inductive eval_expr : eval_result -> (Loc -> Prop) -> class_table -> r_env -> heap -> expr -> value -> eval_result -> (Loc -> Prop)  -> r_env -> heap -> Prop :=
   (* evalutate null expression  *)
-  | EBS_Null : forall CT rΓ h TouchNonMutOnly,
-      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h ENull Null_a OK TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ h
+  | EBS_Null : forall CT rΓ h,
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h ENull Null_a OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
 
   (* evaluate value expression *)
-  | EBS_Val : forall CT rΓ h x v TouchNonMutOnly,
+  | EBS_Val : forall CT rΓ h x v ,
       runtime_getVal rΓ x = Some v ->
-      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (EVar x) v OK TouchNonMutOnly(reachable_locations_from_initial_env CT h rΓ) rΓ h
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (EVar x) v OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
 
   (* evaluate field access expression *)  
-  | EBS_Field_touch_abs : forall CT rΓ h x f v o v1 TouchNonMutOnly,
+  | EBS_Field_touch_abs : forall CT rΓ h x f v o v1 ,
       runtime_getVal rΓ x = Some (Iot v) ->
       runtime_getObj h v = Some o ->
       getVal o.(fields_map) f = Some v1 ->
       (* non_mut_field_ref CT (rctype (rt_type o)) f -> *)
-      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (EField x f) v1 OK TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ h
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (EField x f) v1 OK  (reachable_locations_from_initial_env CT h rΓ) rΓ h
 
-  (* | EBS_Field_touch_non_abs : forall CT rΓ h x f v o v1 TouchNonMutOnly,
+  (* | EBS_Field_touch_non_abs : forall CT rΓ h x f v o v1 ,
     runtime_getVal rΓ x = Some (Iot v) ->
     runtime_getObj h v = Some o ->
     getVal o.(fields_map) f = Some v1 ->
     ~ non_mut_field_ref CT (rctype (rt_type o)) f ->
-    eval_expr OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (EField x f) v1 OK false (reachable_locations_from_initial_env CT h rΓ) rΓ h     *)
+    eval_expr OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (EField x f) v1 OK false (reachable_locations_from_initial_env CT h rΓ) rΓ h     *)
 
   (* evaluate field access expression yields NPE *)
-  | EBS_Field_NPE : forall CT rΓ h x f v TouchNonMutOnly,
+  | EBS_Field_NPE : forall CT rΓ h x f v ,
       runtime_getVal rΓ x = Some (Null_a) ->
-      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (EField x f) v NPE TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ h
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (EField x f) v NPE  (reachable_locations_from_initial_env CT h rΓ) rΓ h
   .
 Notation "rΓ ',' h '⟦' e '⟧' '-->' v ',' rΓ' ',' h'" := (eval_expr OK rΓ h e v OK rΓ' h') (at level 200).
 
 (* PICO Statement evaluation *)
-Inductive eval_stmt : eval_result -> (Loc -> Prop) -> TouchNonMutOnly -> class_table -> r_env -> heap -> stmt -> eval_result -> TouchNonMutOnly -> (Loc -> Prop) -> r_env -> heap -> Prop :=
+Inductive eval_stmt : eval_result -> (Loc -> Prop) -> class_table -> r_env -> heap -> stmt -> eval_result -> (Loc -> Prop) -> r_env -> heap -> Prop :=
   (* evaluate skip statement *)
-  | SBS_Skip : forall CT rΓ h TouchNonMutOnly,
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h SSkip OK TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ h
+  | SBS_Skip : forall CT rΓ h ,
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h SSkip OK  (reachable_locations_from_initial_env CT h rΓ) rΓ h
 
   (* evaluate local variable declaration statement *)
-  | SBS_Local : forall CT rΓ h T x TouchNonMutOnly,
+  | SBS_Local : forall CT rΓ h T x ,
       runtime_getVal rΓ x = None ->
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SLocal T x) OK TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ)
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SLocal T x) OK  (reachable_locations_from_initial_env CT h rΓ)
       (rΓ <|vars := rΓ.(vars)++[Null_a] |> )
       h
 
   (* evaluate variable assignment statement *)
-  | SBS_Assign: forall CT rΓ h x e v1 v2 TouchNonMutOnly TouchNonMutOnly',
+  | SBS_Assign: forall CT rΓ h x e v1 v2  ,
       runtime_getVal rΓ x = Some v1 ->
-      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h e v2 OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ h ->
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SVarAss x e) OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) 
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h e v2 OK  (reachable_locations_from_initial_env CT h rΓ) rΓ h ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SVarAss x e) OK  (reachable_locations_from_initial_env CT h rΓ) 
       (rΓ <|vars := update x v2 rΓ.(vars)|>)
       h
 
-  | SBS_Assign_NPE : forall CT rΓ h x e v1 v2 rΓ' h' TouchNonMutOnly,
+  | SBS_Assign_NPE : forall CT rΓ h x e v1 v2 rΓ' h' ,
     runtime_getVal rΓ x = Some v1 ->
-    eval_expr OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h e v2 NPE TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ h ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SVarAss x e) NPE TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ)
+    eval_expr OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h e v2 NPE  (reachable_locations_from_initial_env CT h rΓ) rΓ h ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SVarAss x e) NPE  (reachable_locations_from_initial_env CT h rΓ)
     rΓ'
     h'
 
   (* evaluate field write statement *)
-  | SBS_FldWrite_touch_abs: forall CT rΓ h x f y loc_x o vf val_y h' TouchNonMutOnly,
+  | SBS_FldWrite_touch_abs: forall CT rΓ h x f y loc_x o vf val_y h' ,
       runtime_getVal rΓ x = Some (Iot loc_x) ->
       runtime_getObj h loc_x = Some o ->
       getVal o.(fields_map) f = Some vf ->
       runtime_getVal rΓ y = Some val_y ->
       h' = update_field h loc_x f val_y ->
       (* non_mut_field_ref CT (rctype (rt_type o)) f -> *)
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SFldWrite x f y) OK TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ h'
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SFldWrite x f y) OK  (reachable_locations_from_initial_env CT h rΓ) rΓ h'
 
-  (* | SBS_FldWrite_touch_non_abs: forall CT rΓ h x f y loc_x o vf val_y h' TouchNonMutOnly,
+  (* | SBS_FldWrite_touch_non_abs: forall CT rΓ h x f y loc_x o vf val_y h' ,
     runtime_getVal rΓ x = Some (Iot loc_x) ->
     runtime_getObj h loc_x = Some o ->
     getVal o.(fields_map) f = Some vf ->
     runtime_getVal rΓ y = Some val_y ->
     h' = update_field h loc_x f val_y ->
     ~ non_mut_field_ref CT (rctype (rt_type o)) f ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SFldWrite x f y) OK false (reachable_locations_from_initial_env CT h rΓ) rΓ h' *)
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SFldWrite x f y) OK false (reachable_locations_from_initial_env CT h rΓ) rΓ h' *)
 
   (* evaluate field write statement NPE *)
-  | SBS_FldWrite_NPE: forall CT rΓ h x f y rΓ' h' TouchNonMutOnly,
+  | SBS_FldWrite_NPE: forall CT rΓ h x f y rΓ' h' ,
       runtime_getVal rΓ x = Some (Null_a) ->
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SFldWrite x f y) NPE TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SFldWrite x f y) NPE  (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
 
-  | SBS_FldWrite_MUTATIONEXP: forall CT rΓ h x f y loc_x o a vf val_y h' TouchNonMutOnly,
+  | SBS_FldWrite_MUTATIONEXP: forall CT rΓ h x f y loc_x o a vf val_y h' ,
       runtime_getVal rΓ x = Some (Iot loc_x) ->
       runtime_getObj h loc_x = Some o ->
       getVal o.(fields_map) f = Some vf ->
       sf_assignability_rel CT (rctype (rt_type o)) f a -> 
       runtime_getVal rΓ y = Some val_y ->
       runtime_vpa_assignability (rqtype (rt_type o)) a = Final -> 
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SFldWrite x f y) MUTATIONEXP TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ h'
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SFldWrite x f y) MUTATIONEXP  (reachable_locations_from_initial_env CT h rΓ) rΓ h'
 
   (* evaluate object creation statement *)
-  | SBS_New: forall CT rΓ h x (q_c:q_c) c ys l1 qthisr vals o qadapted rΓ' h' TouchNonMutOnly,
+  | SBS_New: forall CT rΓ h x (q_c:q_c) c ys l1 qthisr vals o qadapted rΓ' h' ,
       runtime_getVal rΓ 0 = Some (Iot l1) ->
       runtime_lookup_list rΓ ys = Some vals ->
       r_muttype h l1 = Some qthisr ->
@@ -353,10 +353,10 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop) -> TouchNonMutOnly -> class_t
       o = mkObj (mkruntime_type qadapted c) (vals) ->
       h' = h++[o] ->
       rΓ' = rΓ <| vars := update x (Iot (dom h)) rΓ.(vars) |> ->
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SNew x q_c c ys) OK TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SNew x q_c c ys) OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
 
   (* evaluate method call statement *)
-  | SBS_Call: forall CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret retval h' rΓ' rΓ'' rΓ''' TouchNonMutOnly TouchNonMutOnly',
+  | SBS_Call: forall CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret retval h' rΓ' rΓ'' rΓ'''  ,
     runtime_getVal rΓ y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m mdef /\ mbody = Syntax.mbody mdef ->
@@ -364,17 +364,17 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop) -> TouchNonMutOnly -> class_t
     mret = mbody.(mreturn) ->
     runtime_lookup_list rΓ zs = Some vals ->
     rΓ' = mkr_env (Iot ly :: vals) ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ') TouchNonMutOnly CT rΓ' h mstmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ') rΓ'' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ')  CT rΓ' h mstmt OK  (reachable_locations_from_initial_env CT h rΓ') rΓ'' h' ->
     runtime_getVal rΓ'' mret = Some retval ->
     rΓ''' = rΓ <| vars := update x retval rΓ.(vars) |> ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly' CT rΓ h (SCall x m y zs) OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ''' h'
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SCall x m y zs) OK  (reachable_locations_from_initial_env CT h rΓ) rΓ''' h'
 
   (* evaluate method call statement NPE *)
-  | SBS_Call_NPE: forall CT rΓ h x y m zs rΓ' h' TouchNonMutOnly,
+  | SBS_Call_NPE: forall CT rΓ h x y m zs rΓ' h' ,
       runtime_getVal rΓ y = Some (Null_a) ->
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SCall x m y zs) NPE TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SCall x m y zs) NPE  (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
 
-  | SBS_Call_NPE_Body: forall CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret h' rΓ' rΓ'' TouchNonMutOnly,
+  | SBS_Call_NPE_Body: forall CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret h' rΓ' rΓ'' ,
     runtime_getVal rΓ y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m mdef /\ mbody = Syntax.mbody mdef ->
@@ -382,22 +382,22 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop) -> TouchNonMutOnly -> class_t
     mret = mbody.(mreturn) ->
     runtime_lookup_list rΓ zs = Some vals ->
     rΓ' = mkr_env (Iot ly :: vals) ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ') TouchNonMutOnly CT rΓ' h mstmt NPE TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ') rΓ'' h' ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SCall x m y zs) NPE TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ')  CT rΓ' h mstmt NPE  (reachable_locations_from_initial_env CT h rΓ') rΓ'' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SCall x m y zs) NPE  (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'
   (* evaluate sequence of statements *)
-  | SBS_Seq: forall CT rΓ h s1 s2 rΓ' h' rΓ'' h'' TouchNonMutOnly TouchNonMutOnly' TouchNonMutOnly'',
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h s1 OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly' CT rΓ' h' s2 OK TouchNonMutOnly''(reachable_locations_from_initial_env CT h rΓ) rΓ'' h'' ->
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SSeq s1 s2) OK TouchNonMutOnly'' (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
+  | SBS_Seq: forall CT rΓ h s1 s2 rΓ' h' rΓ'' h'',
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h s1 OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ' h' s2 OK (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'' ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SSeq s1 s2) OK (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
 
-  | SBS_Seq_NPE_first: forall CT rΓ h s1 s2 rΓ' h' TouchNonMutOnly,
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h s1 NPE TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SSeq s1 s2) NPE TouchNonMutOnly (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
+  | SBS_Seq_NPE_first: forall CT rΓ h s1 s2 rΓ' h' ,
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h s1 NPE  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SSeq s1 s2) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
 
-  | SBS_Seq_NPE_second: forall CT rΓ h s1 s2 rΓ' h' rΓ'' h'' TouchNonMutOnly TouchNonMutOnly',
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h s1 OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly' CT rΓ' h' s2 NPE TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'' ->
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h (SSeq s1 s2) NPE TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
+  | SBS_Seq_NPE_second: forall CT rΓ h s1 s2 rΓ' h' rΓ'' h''  ,
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h s1 OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ' h' s2 NPE  (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'' ->
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SSeq s1 s2) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
 .
 
 Lemma r_type_dom : forall h loc rqt,
@@ -759,9 +759,9 @@ Proof.
 Qed.
 
 (* evaluation preserves runtime type on heap. *)
-Lemma runtime_preserves_r_type_heap : forall TouchNonMutOnly TouchNonMutOnly' CT rΓ h loc C h' vals s rΓ',
+Lemma runtime_preserves_r_type_heap : forall   CT rΓ h loc C h' vals s rΓ',
   runtime_getObj h loc = Some {| rt_type := C; fields_map := vals |}->
-  eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h s OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+  eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h s OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
   exists vals', runtime_getObj h' loc = Some {| rt_type := C; fields_map := vals' |}.
 Proof.
   intros. remember OK as ok. generalize dependent vals. 
@@ -869,18 +869,18 @@ Qed.
 
 (* Expression Evaluation Preservation *)
 (* AOSEN TODO: This could be refactored and remove the first two premises *)
-Lemma expr_eval_preservation : forall TouchNonMutOnly TouchNonMutOnly' P CT mt sΓ rΓ h e v rΓ' h' T ι qcontext,
+Lemma expr_eval_preservation : forall   P CT mt sΓ rΓ h e v rΓ' h' T ι qcontext,
   get_this_var_mapping (vars rΓ) = Some ι ->
   (r_muttype h ι) = Some qcontext ->
   wf_r_config CT sΓ rΓ h->
   expr_has_type CT mt sΓ e T ->
-  eval_expr OK P TouchNonMutOnly CT rΓ h e v OK TouchNonMutOnly' P rΓ' h' ->
+  eval_expr OK P  CT rΓ h e v OK  P rΓ' h' ->
   match v with
   | Null_a => True
   | Iot loc => wf_r_typable CT rΓ h loc T qcontext
   end.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' P CT mt sΓ rΓ h e v rΓ' h' T ι qcontext Hreceiveraddr Hreceiverrmut Hwf Htype Heval.
+  intros   P CT mt sΓ rΓ h e v rΓ' h' T ι qcontext Hreceiveraddr Hreceiverrmut Hwf Htype Heval.
   have Hevalcopy := Heval.
   remember OK as ok.
   induction Heval; inversion Htype; subst; try discriminate.

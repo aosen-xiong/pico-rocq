@@ -551,16 +551,16 @@ Proof.
     exact IHFindMethodWithName.
 Qed.
 
-Definition abstract_state_field
+Definition ProtectedField
   (CT : class_table) (C : class_name) (k : var) : Prop :=
   (
-   sf_mutability_rel CT C k RDM_f \/
-   sf_mutability_rel CT C k Imm_f
-  ) /\ 
+   sf_mutability_rel CT C k Mut_f
+  ).
+  (* /\ 
    (
    sf_assignability_rel CT C k Final \/
    sf_assignability_rel CT C k RDA
-   ).
+   ). *)
 
 (* EXPRESSION TYPING RULES *)
 Inductive expr_has_type : class_table -> method_type -> s_env -> expr -> qualified_type -> Prop :=
@@ -582,16 +582,16 @@ Inductive expr_has_type : class_table -> method_type -> s_env -> expr -> qualifi
       wf_senv CT Γ ->
       static_getType Γ x = Some T ->
       sf_def_rel CT (sctype T) f fDef ->
-      abstract_state_field CT (sctype T) f ->
-      T.(sabs) = Abs ->
-      expr_has_type CT mt Γ (EField x f) (Build_qualified_type Abs (vpa_mutabilty_stype_fld (sqtype T) ((mutability (ftype fDef)))) (f_base_type (ftype fDef)))
+      ~ProtectedField CT (sctype T) f ->
+      T.(sabs) = Normal ->
+      expr_has_type CT mt Γ (EField x f) (Build_qualified_type Normal (vpa_mutabilty_stype_fld (sqtype T) ((mutability (ftype fDef)))) (f_base_type (ftype fDef)))
 
   | ET_Field_nonabs : forall CT mt Γ x T fDef f,
       wf_senv CT Γ ->
       static_getType Γ x = Some T ->
       sf_def_rel CT (sctype T) f fDef ->
-      ~abstract_state_field CT (sctype T) f \/ T.(sabs) = Nonabs ->
-      expr_has_type CT mt Γ (EField x f) (Build_qualified_type Nonabs (vpa_mutabilty_stype_fld (sqtype T) ((mutability (ftype fDef)))) (f_base_type (ftype fDef)))
+      ProtectedField CT (sctype T) f \/ T.(sabs) = Protected ->
+      expr_has_type CT mt Γ (EField x f) (Build_qualified_type Protected (vpa_mutabilty_stype_fld (sqtype T) ((mutability (ftype fDef)))) (f_base_type (ftype fDef)))
 .
 
 Definition qc2q (qi : q_c) : q :=
@@ -602,11 +602,12 @@ Definition qc2q (qi : q_c) : q :=
     end.
 
 Definition get_this_qualified_type (sΓ : s_env) : option qualified_type :=
-  match sΓ with
+  static_getType sΓ 0.
+  (* match sΓ with
   | [] => None
   | T_this :: _ => 
       Some T_this
-  end.
+  end. *)
 
 Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> Prop :=
   (* Skip statement *)
@@ -642,11 +643,11 @@ Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> 
       get_this_qualified_type sΓ = Some Tthis ->
       sf_def_rel CT (sctype Tx) f fieldT ->
       sf_assignability_rel CT (sctype Tx) f a ->
-      abstract_state_field CT (sctype Tx) f ->
-      Tx.(sabs) = Abs ->
-      qualified_type_subtype CT Ty (Build_qualified_type Abs (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
+      ~ProtectedField CT (sctype Tx) f ->
+      Tx.(sabs) = Normal ->
+      qualified_type_subtype CT Ty (Build_qualified_type Normal (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
       vpa_assignability (sqtype Tx) a = Assignable ->
-      stmt_typing CT normal sΓ (SFldWrite x f y) sΓ
+      stmt_typing CT normal_method sΓ (SFldWrite x f y) sΓ
 
   | ST_FldWrite_normal_nonabs : forall CT sΓ x f y Tx Ty Tthis fieldT a,
       wf_senv CT sΓ ->
@@ -655,11 +656,12 @@ Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> 
       get_this_qualified_type sΓ = Some Tthis ->
       sf_def_rel CT (sctype Tx) f fieldT ->
       sf_assignability_rel CT (sctype Tx) f a ->
-      ~abstract_state_field CT (sctype Tx) f \/ Tx.(sabs) = Nonabs ->
-      qualified_type_subtype CT Ty (Build_qualified_type Nonabs (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
+      ~ProtectedField CT (sctype Tx) f \/ Tx.(sabs) = Protected ->
+      qualified_type_subtype CT Ty (Build_qualified_type Protected (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
       vpa_assignability (sqtype Tx) a = Assignable ->
-      stmt_typing CT normal sΓ (SFldWrite x f y) sΓ
+      stmt_typing CT normal_method sΓ (SFldWrite x f y) sΓ
 
+  (* can not write to protected field *)
   | ST_FldWrite_retain_nonabs : forall CT sΓ x f y Tx Ty Tthis fieldT a,
       wf_senv CT sΓ ->
       static_getType sΓ x = Some Tx ->
@@ -667,14 +669,14 @@ Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> 
       get_this_qualified_type sΓ = Some Tthis ->
       sf_def_rel CT (sctype Tx) f fieldT ->
       sf_assignability_rel CT (sctype Tx) f a ->
-      abstract_state_field CT (sctype Tx) f ->
-      Tx.(sabs) = Abs ->
-      qualified_type_subtype CT Ty (Build_qualified_type Abs (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
+      ~ProtectedField CT (sctype Tx) f ->
+      Tx.(sabs) = Normal ->
+      qualified_type_subtype CT Ty (Build_qualified_type Normal (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
       vpa_assignability (sqtype Tx) a = Assignable ->
-      stmt_typing CT retain_nonabs sΓ (SFldWrite x f y) sΓ
+      stmt_typing CT retain_nonabs_method sΓ (SFldWrite x f y) sΓ
 
   (* Object creation *)
-  | S_New : forall CT mt sΓ x Tx abs (qc:q_c) C args argtypes Tthis consig,
+  | S_New : forall CT mt sΓ x Tx (qc:q_c) C args argtypes Tthis consig,
       wf_senv CT sΓ ->
       static_getType sΓ x = Some Tx ->
       static_getType_list sΓ args = Some argtypes ->
@@ -684,7 +686,7 @@ Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> 
       (* Aosen: Here we can make it more expressive but not right now *)
       qc = (cqualifier consig)->
       Forall2 (fun arg T => qualified_type_subtype CT arg T) argtypes consig.(cparams) ->
-      qualified_type_subtype CT (Build_qualified_type abs (qc2q qc) C) Tx ->
+      qualified_type_subtype CT (Build_qualified_type Normal (qc2q qc) C) Tx ->
       stmt_typing CT mt sΓ (SNew x qc C args) sΓ
 
   (* Method call *)
@@ -699,7 +701,7 @@ Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> 
       qualified_type_subtype CT (vpa_mutabilty_tt Ty (mret (msignature mdef))) Tx -> (* assignment subtype checking*)
       qualified_type_subtype CT Ty (vpa_mutabilty_tt Ty (mreceiver (msignature mdef))) -> (* receiver subtype checking *) 
       Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutabilty_tt Ty T)) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
-      stmt_typing CT normal sΓ (SCall x m y args) sΓ
+      stmt_typing CT normal_method sΓ (SCall x m y args) sΓ
   
   | ST_Call_retain_nonabs : forall CT sΓ x m y args argtypes Tthis Tx Ty mdef,
       wf_senv CT sΓ ->
@@ -708,12 +710,12 @@ Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> 
       static_getType_list sΓ args = Some argtypes ->
       get_this_qualified_type sΓ = Some Tthis ->
       FindMethodWithName CT (sctype Ty) m mdef ->
-      mdef.(msignature).(mtype) = retain_nonabs ->
+      mdef.(msignature).(mtype) = retain_nonabs_method ->
       x <> 0 -> (* x is not the receiver variable *)
       qualified_type_subtype CT (vpa_mutabilty_tt Ty (mret (msignature mdef))) Tx -> (* assignment subtype checking*)
       qualified_type_subtype CT Ty (vpa_mutabilty_tt Ty (mreceiver (msignature mdef))) -> (* receiver subtype checking *) 
       Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutabilty_tt Ty T)) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
-      stmt_typing CT retain_nonabs sΓ (SCall x m y args) sΓ 
+      stmt_typing CT retain_nonabs_method sΓ (SCall x m y args) sΓ 
 
   (* Sequence of statements *)
   | ST_Seq : forall CT mt sΓ s1 sΓ' s2 sΓ'',
@@ -770,14 +772,14 @@ Definition wf_constructor (CT : class_table) (c : class_name) (ctor : constructo
     
   (* 4. Parameter types are compatible with field types *)
   Forall2 (fun param_type field_def =>
-      (abstract_state_field CT c (fname field_def) ->
+      (ProtectedField CT c (fname field_def) ->
         qualified_type_subtype CT param_type 
-          {| sabs := Abs;
+          {| sabs := Protected;
              sqtype := vpa_mutabilty_constructor_fld (cqualifier ctor) (mutability (ftype field_def));
              sctype := f_base_type (ftype field_def) |}) /\
-      (~abstract_state_field CT c (fname field_def) ->
+      (~ProtectedField CT c (fname field_def) ->
         qualified_type_subtype CT param_type 
-          {| sabs := Nonabs;
+          {| sabs := Normal;
              sqtype := vpa_mutabilty_constructor_fld (cqualifier ctor) (mutability (ftype field_def));
              sctype := f_base_type (ftype field_def) |}))
       (cparams ctor) field_defs.

@@ -21,7 +21,7 @@ Theorem deep_readonly_preservation :
 Proof.
   intros.
   remember OK as ok.
-  remember true as TouchNonMutOnly.
+  remember true as .
   generalize dependent sΓ.
   generalize dependent sΓ'.
   generalize dependent vals. 
@@ -1825,16 +1825,16 @@ Proof.
       eapply preservation_pico; eauto.
     }
 
-    have HtrueVal': TouchNonMutOnly' = true.
+    have HtrueVal': ' = true.
     eapply eval_stmt_did_not_touch_abs_start_with_true; eauto.
 
     rewrite HtrueVal' in Heval1.
 
-    have HtrueVal: TouchNonMutOnly = true.
+    have HtrueVal:  = true.
     eapply eval_stmt_did_not_touch_abs_start_with_true with (stmt:=s1) (sΓ:=sΓ) (sΓ':=sΓ'); eauto.
 
-    subst TouchNonMutOnly'.
-    subst TouchNonMutOnly.
+    subst '.
+    subst .
 
     assert (Hconfined_intermediate: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ' rΓ').
     {

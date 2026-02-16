@@ -43,8 +43,8 @@ Inductive a : Type :=
   | RDA.
 
 Inductive abs_type : Type :=
-  | Abs
-  | Nonabs.
+  | Protected
+  | Normal.
 
 (* Qualified type  *)
 Record qualified_type := {
@@ -103,8 +103,8 @@ Record method_body := {
 }.
 
 Inductive method_type : Type :=
-  | normal
-  | retain_nonabs.
+  | normal_method
+  | retain_nonabs_method.
 
 Record method_sig := {
   mtype: method_type; (* Method declaration *)

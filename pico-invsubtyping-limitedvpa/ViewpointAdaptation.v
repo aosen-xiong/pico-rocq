@@ -12,9 +12,9 @@ Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
 Definition vpa_mutabilty_tt (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   (* let abs_result := 
     match (sabs t1), (sabs t2) with
-    | Nonabs, _ => Nonabs
-    | _, Nonabs => Nonabs
-    | Abs, Abs => Abs
+    | Protected, _ => Protected
+    | _, Protected => Protected
+    | Normal, Normal => Normal
     end
   in *)
   let qual_result :=

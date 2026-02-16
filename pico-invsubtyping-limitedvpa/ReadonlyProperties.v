@@ -740,7 +740,6 @@ Proof.
             lia.
     }
     rewrite getmbody in H7.
-    have HtrueVal: TouchNonMutOnly = true.
     (* rewrite getmbody in Heval. *)
     eapply eval_stmt_did_not_touch_abs_start_with_true with (P:=(reachable_locations_from_initial_env CT h rΓmethodinit)) (rΓ':=rΓ'')(h':=h'); eauto.
     assert (Hy_dom : y < dom sΓ).
@@ -791,7 +790,7 @@ Proof.
     rewrite <- Hmsigeq in H17.
     rewrite H17 in Hmethodbody_typing.
     exact Hmethodbody_typing.
-    subst TouchNonMutOnly.
+    subst .
     eapply deep_readonly_preservation with (stmt := (mbody_stmt mbody)) (sΓ' := sΓmethodend) (rΓ' := rΓ''); eauto.
     assert (HenvImpliesEnvRespect: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓmethodinit) sΓmethodinit rΓmethodinit).
     {
@@ -1393,7 +1392,7 @@ Proof.
             lia.
     }
     rewrite getmbody in H7.
-    have HtrueVal: TouchNonMutOnly = true.
+    have HtrueVal:  = true.
     eapply eval_stmt_did_not_touch_abs_start_with_true with (P:=(reachable_locations_from_initial_env CT h rΓmethodinit)) (rΓ':=rΓ'')(h':=h'); eauto.
     assert (Hy_dom : y < dom sΓ).
     {
@@ -1443,7 +1442,7 @@ Proof.
     rewrite <- Hmsigeq in H17.
     rewrite H17 in Hmethodbody_typing.
     exact Hmethodbody_typing.
-    subst TouchNonMutOnly.
+    subst .
     eapply deep_readonly_preservation with (stmt := (mbody_stmt mbody)) (sΓ' := sΓmethodend)(rΓ':=rΓ''); eauto.
     assert (HenvImpliesEnvRespect: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓmethodinit) sΓmethodinit rΓmethodinit).
     {

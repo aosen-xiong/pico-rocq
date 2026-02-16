@@ -1043,11 +1043,11 @@ Proof.
   exact Hwf_ctor.
 Qed.
 
-Lemma eval_stmt_preserves_heap_domain_simple : forall TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h',
-  eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+Lemma eval_stmt_preserves_heap_domain_simple : forall   CT rΓ h stmt rΓ' h',
+  eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
   dom h <= dom h'.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' Heval.
+  intros   CT rΓ h stmt rΓ' h' Heval.
   remember OK as ok.
   induction Heval; try reflexivity; try discriminate.
   - (* FldWrite: h' = update_field h lx f v2 *)
@@ -1089,13 +1089,13 @@ Qed.
 
 (* Not just length, there is no statement can do strong update. *)
 Lemma eval_stmt_preserves_r_type : 
-  forall TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' loc rqt,
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+  forall   CT rΓ h stmt rΓ' h' loc rqt,
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     r_type h loc = Some rqt ->
     loc < dom h ->
     r_type h' loc = Some rqt.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' loc rqt Heval Hrtype Hloc_dom.
+  intros   CT rΓ h stmt rΓ' h' loc rqt Heval Hrtype Hloc_dom.
   remember OK as ok.
   induction Heval; try discriminate; try (subst; exact Hrtype).
   - (* FldWrite: only fields change, not type *)
@@ -1142,7 +1142,7 @@ Proof.
   - (* Seq: transitivity *)
     assert (Hloc_dom' : loc < dom h').
     {
-      have Hdom_le := eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓ h s1 rΓ' h' Heval1.
+      have Hdom_le := eval_stmt_preserves_heap_domain_simple   CT rΓ h s1 rΓ' h' Heval1.
       lia.
     }
     assert (Hrtype' : r_type h' loc = Some rqt).
@@ -1153,13 +1153,13 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_r_muttype : 
-  forall TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' loc q,
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+  forall   CT rΓ h stmt rΓ' h' loc q,
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     r_muttype h loc = Some q ->
     loc < dom h ->
     r_muttype h' loc = Some q.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' loc q Heval Hmut Hloc_dom.
+  intros   CT rΓ h stmt rΓ' h' loc q Heval Hmut Hloc_dom.
   remember OK as ok.
   induction Heval; try discriminate; try (subst; exact Hmut).
   - (* FldWrite: only fields change, not mutability type *)
@@ -1224,7 +1224,7 @@ Proof.
   - (* Seq: transitivity *)
     assert (Hloc_dom' : loc < dom h').
     {
-      have Hdom_le := eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓ h s1 rΓ' h' Heval1.
+      have Hdom_le := eval_stmt_preserves_heap_domain_simple   CT rΓ h s1 rΓ' h' Heval1.
       lia.
     }
     assert (Hmut' : r_muttype h' loc = Some q).
@@ -1550,13 +1550,13 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_addr_typed :
-  forall TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι,
+  forall   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι,
     stmt_typing CT mt sΓ stmt sΓ' ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ) = Some ι ->
     get_this_var_mapping (vars rΓ') = Some ι.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι Htyp Heval Hthis.
+  intros   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι Htyp Heval Hthis.
   remember OK as ok eqn:Hok.
   revert sΓ sΓ' Htyp Hthis.
   induction Heval; intros sΓ sΓ' Htyp Hthis; subst; try discriminate;
@@ -1638,14 +1638,14 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_addr_typed_backwards :
-  forall TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι,
+  forall   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι,
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT mt sΓ stmt sΓ' ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ') = Some ι ->
     get_this_var_mapping (vars rΓ) = Some ι.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι Hwf Htyp Heval Hthis'.
+  intros   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι Hwf Htyp Heval Hthis'.
   (* get some initial receiver address ι0 *)
   assert (Hthis : exists ι0, get_this_var_mapping (vars rΓ) = Some ι0).
   { 
@@ -1660,7 +1660,7 @@ Proof.
   destruct Hthis as [ι0 Hthis0].
   (* forward preservation gives 'ι0' also at the end *)
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι0
+                  CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι0
                 Htyp Heval Hthis0) as Hthis0'.
   (* uniqueness of Some _ *)
   rewrite Hthis' in Hthis0'.
@@ -1669,14 +1669,14 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_addr_mapping_eq :
-  forall TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h',
+  forall   CT mt sΓ rΓ h stmt sΓ' rΓ' h',
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT mt sΓ stmt sΓ' ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ) =
     get_this_var_mapping (vars rΓ').
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' Hwf Htyp Heval.
+  intros   CT mt sΓ rΓ h stmt sΓ' rΓ' h' Hwf Htyp Heval.
   (* get some initial receiver address ι₀ from wf_r_config *)
   assert (Hthis : exists ι0, get_this_var_mapping (vars rΓ) = Some ι0).
   { 
@@ -1690,7 +1690,7 @@ Proof.
   }
   destruct Hthis as [ι0 Hthis0].
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι0
+                  CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι0
                 Htyp Heval Hthis0) as Hthis0'.
   rewrite Hthis0.
   symmetry.
@@ -1698,39 +1698,39 @@ Proof.
 Qed.
 
 Corollary eval_stmt_preserves_receiver_addr_eq_loc' :
-  forall TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι1 ι2,
+  forall   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι1 ι2,
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT mt sΓ stmt sΓ' ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ)  = Some ι1 ->
     get_this_var_mapping (vars rΓ') = Some ι2 ->
     ι1 = ι2.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι1 ι2
+  intros   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι1 ι2
          Hwf Htyp Heval Hthis1 Hthis2.
   pose proof (eval_stmt_preserves_receiver_addr_mapping_eq
-               TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' Hwf Htyp Heval) as Heq.
+                 CT mt sΓ rΓ h stmt sΓ' rΓ' h' Hwf Htyp Heval) as Heq.
   rewrite Hthis1 in Heq.
   rewrite Hthis2 in Heq.
   inversion Heq; reflexivity.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_r_type_typed :
-  forall TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι rqt,
+  forall   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι rqt,
     stmt_typing CT mt sΓ stmt sΓ' ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ) = Some ι ->
     r_type h ι = Some rqt ->
     ι < dom h ->
     r_type h' ι = Some rqt.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι rqt Htyp Heval Hthis Hrtype Hι_dom.
+  intros   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι rqt Htyp Heval Hthis Hrtype Hι_dom.
   (* receiver address is preserved *)
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι
+                  CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι
                 Htyp Heval Hthis) as Hthis'.
   (* heap domain grows *)
-  pose proof (eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' Heval)
+  pose proof (eval_stmt_preserves_heap_domain_simple   CT rΓ h stmt rΓ' h' Heval)
     as Hdom_le.
   assert (Hι_dom' : ι < dom h') by lia.
   (* type invariant on that fixed loc *)
@@ -1738,21 +1738,21 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_r_muttype_typed :
-  forall TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι q,
+  forall   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι q,
     stmt_typing CT mt sΓ stmt sΓ' ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ) = Some ι ->
     r_muttype h ι = Some q ->
     ι < dom h ->
     r_muttype h' ι = Some q.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι q Htyp Heval Hthis Hmut Hι_dom.
+  intros   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι q Htyp Heval Hthis Hmut Hι_dom.
   (* receiver address is preserved *)
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι
+                  CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι
                 Htyp Heval Hthis) as Hthis'.
   (* heap domain grows *)
-  pose proof (eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' Heval)
+  pose proof (eval_stmt_preserves_heap_domain_simple   CT rΓ h stmt rΓ' h' Heval)
     as Hdom_le.
   assert (Hι_dom' : ι < dom h') by lia.
   (* mutability invariant on that fixed loc *)
@@ -1760,17 +1760,17 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_r_type_backwards : 
-  forall TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' loc rqt,
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+  forall   CT rΓ h stmt rΓ' h' loc rqt,
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     r_type h' loc = Some rqt ->
     loc < dom h ->
     r_type h loc = Some rqt.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' loc rqt Heval Hrtype' Hloc_dom.
+  intros   CT rΓ h stmt rΓ' h' loc rqt Heval Hrtype' Hloc_dom.
   (* Case on r_type h loc *)
   destruct (r_type h loc) as [rqt0|] eqn:Hrtype0.
   - (* Some rqt0; use forward lemma and equality *)
-    specialize (eval_stmt_preserves_r_type TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' loc rqt0 Heval Hrtype0 Hloc_dom)
+    specialize (eval_stmt_preserves_r_type   CT rΓ h stmt rΓ' h' loc rqt0 Heval Hrtype0 Hloc_dom)
       as Hforward.
     rewrite Hforward in Hrtype'.
     inversion Hrtype'; subst rqt0.
@@ -1784,16 +1784,16 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_r_type_typed_backwards :
-  forall TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι rqt,
+  forall   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι rqt,
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT mt sΓ stmt sΓ' ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ') = Some ι ->
     r_type h' ι = Some rqt ->
     ι < dom h ->
     r_type h ι = Some rqt.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι rqt
+  intros   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι rqt
          Hwf Htyp Heval Hthis' Hrtype' Hι_dom.
   (* get initial receiver address ι0 from wf_r_config *)
   assert (Hthis : exists ι0, get_this_var_mapping (vars rΓ) = Some ι0).
@@ -1809,7 +1809,7 @@ Proof.
   destruct Hthis as [ι0 Hthis0].
   (* receiver addr is preserved forward, so at end we also have ι0 *)
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι0
+                  CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι0
                 Htyp Heval Hthis0) as Hthis0'.
   rewrite Hthis' in Hthis0'.
   inversion Hthis0'; subst ι0.
@@ -1818,15 +1818,15 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_r_muttype_backwards : 
-  forall TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' loc q,
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+  forall   CT rΓ h stmt rΓ' h' loc q,
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     r_muttype h' loc = Some q ->
     loc < dom h ->
     r_muttype h loc = Some q.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' loc q Heval Hmut' Hloc_dom.
+  intros   CT rΓ h stmt rΓ' h' loc q Heval Hmut' Hloc_dom.
   destruct (r_muttype h loc) as [q0|] eqn:Hmut0.
-  - specialize (eval_stmt_preserves_r_muttype TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' loc q0
+  - specialize (eval_stmt_preserves_r_muttype   CT rΓ h stmt rΓ' h' loc q0
                Heval Hmut0 Hloc_dom) as Hforward.
     rewrite Hforward in Hmut'.
     inversion Hmut'; subst q0.
@@ -1839,16 +1839,16 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_r_muttype_typed_backwards :
-  forall TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι q,
+  forall   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι q,
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT mt sΓ stmt sΓ' ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     get_this_var_mapping (vars rΓ') = Some ι ->
     r_muttype h' ι = Some q ->
     ι < dom h ->
     r_muttype h ι = Some q.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι q
+  intros   CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι q
          Hwf Htyp Heval Hthis' Hmut' Hι_dom.
   (* same receiver address argument as in type lemma *)
   assert (Hthis : exists ι0, get_this_var_mapping (vars rΓ) = Some ι0).
@@ -1863,7 +1863,7 @@ Proof.
   }
   destruct Hthis as [ι0 Hthis0].
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                TouchNonMutOnly TouchNonMutOnly' CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι0
+                  CT mt sΓ rΓ h stmt sΓ' rΓ' h' ι0
                 Htyp Heval Hthis0) as Hthis0'.
   rewrite Hthis' in Hthis0'.
   inversion Hthis0'; subst ι0.
@@ -1996,15 +1996,15 @@ Proof.
 Qed.
 
 Lemma preservation_varass_ok :
-  forall TouchNonMutOnly TouchNonMutOnly' P CT mt sΓ rΓ h x e v2 sΓ',
+  forall   P CT mt sΓ rΓ h x e v2 sΓ',
     OK = OK ->
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT mt sΓ (SVarAss x e) sΓ' ->
-    eval_expr OK P TouchNonMutOnly CT rΓ h e v2 OK TouchNonMutOnly' P rΓ h ->
+    eval_expr OK P  CT rΓ h e v2 OK  P rΓ h ->
     runtime_getVal rΓ x <> None ->
     wf_r_config CT sΓ' (rΓ <| vars := update x v2 (vars rΓ) |>) h.
 Proof.
-    intros TouchNonMutOnly TouchNonMutOnly' P CT mt sΓ rΓ h x e v2 sΓ' HOK Hwf Htyping Heval Hruntime_getVal.
+    intros   P CT mt sΓ rΓ h x e v2 sΓ' HOK Hwf Htyping Heval Hruntime_getVal.
     inversion Htyping; subst.
     have Hwfcopy := Hwf.
     revert Hwfcopy.
@@ -2150,7 +2150,7 @@ Proof.
           assert (H_loc_Te : wf_r_typable CT rΓ h loc Te qcontext).
           {
             (* Apply expression evaluation preservation lemma *)
-            apply (expr_eval_preservation TouchNonMutOnly TouchNonMutOnly' P CT mt sΓ' rΓ h e (Iot loc) rΓ h Te ι).
+            apply (expr_eval_preservation   P CT mt sΓ' rΓ h e (Iot loc) rΓ h Te ι).
             auto.
             - rewrite get_this_var_mapping_update_vars_nonzero in HreceiverAddr. exact H4. exact HreceiverAddr.
             - exact Hreceivermut.
@@ -3932,7 +3932,7 @@ Proof.
         }
         eapply Forall2_nth_error with (i:=i) (b:=fdef) (a:=paramtype) in Hfieldtypematch.
         destruct Hfieldtypematch as [Habs_case Hnonabs_case].
-        destruct (classic (abstract_state_field CT c (fname fdef))) as [Habs | Hnonabs].
+        destruct (classic (ProtectedField CT c (fname fdef))) as [Habs | Hnonabs].
         apply qualified_type_subtype_base_subtype in Habs_case.
         eapply Forall2_nth_error with (i:=i) (b:=paramtype) (a:=argtype) in H14.
         apply qualified_type_subtype_base_subtype in H14.
@@ -3967,7 +3967,7 @@ Proof.
             }
             eapply Forall2_nth_error with (i:=i) (b:=fdef) (a:=paramtype) in Hfieldtypematch.
             destruct Hfieldtypematch as [Habs_case Hnonabs_case].
-            destruct (classic (abstract_state_field CT c (fname fdef))) as [Habs | Hnonabs].
+            destruct (classic (ProtectedField CT c (fname fdef))) as [Habs | Hnonabs].
             3: exact Hparamtype.
             3: exact Hfdef.
             1:{
@@ -4575,13 +4575,13 @@ Qed.
 (* ------------------------------------------------------------- *)
 (* Soundness properties for PICO *)
 Theorem preservation_pico :
-  forall TouchNonMutOnly TouchNonMutOnly' mt CT sΓ rΓ h stmt rΓ' h' sΓ',
+  forall   mt CT sΓ rΓ h stmt rΓ' h' sΓ',
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT mt sΓ stmt sΓ' ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' -> 
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' -> 
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' mt CT sΓ rΓ h stmt rΓ' h' sΓ' Hwf Htyping Heval.
+  intros   mt CT sΓ rΓ h stmt rΓ' h' sΓ' Hwf Htyping Heval.
   generalize dependent sΓ.
   generalize dependent sΓ'.
   generalize dependent mt.
@@ -5232,7 +5232,7 @@ Proof.
         destruct v0 as [|loc]; [trivial|].
         exact Hget_iot.
         (* rewrite <- getmbody in Htyping_method. *)
-        have Hdom_le := eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
+        have Hdom_le := eval_stmt_preserves_heap_domain_simple   CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
         lia.
 
         (* Outter runtime env is wellformed*)
@@ -5244,7 +5244,7 @@ Proof.
         destruct v as [|loc]; [trivial|].
         destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
-        have Hdom_le := eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
+        have Hdom_le := eval_stmt_preserves_heap_domain_simple   CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.
@@ -6067,7 +6067,7 @@ Proof.
         exact Hget_iot.
 
         (* length constraint *)
-        have Hdom_le := eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
+        have Hdom_le := eval_stmt_preserves_heap_domain_simple   CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
         lia.
 
         (* Outter runtime env is wellformed*)
@@ -6079,7 +6079,7 @@ Proof.
         destruct v as [|loc]; [trivial|].
         destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
-        have Hdom_le := eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
+        have Hdom_le := eval_stmt_preserves_heap_domain_simple   CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.
@@ -7009,7 +7009,7 @@ Proof.
         destruct v0 as [|loc]; [trivial|].
         exact Hget_iot.
         (* rewrite <- getmbody in Htyping_method. *)
-        have Hdom_le := eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
+        have Hdom_le := eval_stmt_preserves_heap_domain_simple   CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
         lia.
 
         (* Outter runtime env is wellformed*)
@@ -7021,7 +7021,7 @@ Proof.
         destruct v as [|loc]; [trivial|].
         destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
-        have Hdom_le := eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
+        have Hdom_le := eval_stmt_preserves_heap_domain_simple   CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.
@@ -7844,7 +7844,7 @@ Proof.
         exact Hget_iot.
 
         (* length constraint *)
-        have Hdom_le := eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
+        have Hdom_le := eval_stmt_preserves_heap_domain_simple   CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
         lia.
 
         (* Outter runtime env is wellformed*)
@@ -7856,7 +7856,7 @@ Proof.
         destruct v as [|loc]; [trivial|].
         destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
-        have Hdom_le := eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
+        have Hdom_le := eval_stmt_preserves_heap_domain_simple   CT rΓmethodinit h (mbody_stmt (mbody mdef)) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.

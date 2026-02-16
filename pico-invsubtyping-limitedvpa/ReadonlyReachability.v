@@ -5,19 +5,20 @@ Import ListNotations.
 From RecordUpdate Require Import RecordUpdate.
 
 (* Safe means preserve shallow immutability *)
-Definition is_safe_mode (T : qualified_type) : Prop :=
-  T.(sqtype) = RO \/
-  T.(sqtype) = Lost \/
-  T.(sqtype) = Imm \/
-  T.(sqtype) = RDM \/
+Definition is_safe_mode_adapted (Tthis: qualified_type) (T : qualified_type) : Prop :=
+  (vpa_mutabilty_tt Tthis T).(sqtype) = RO \/
+  (vpa_mutabilty_tt Tthis T).(sqtype) = Imm \/
+  (vpa_mutabilty_tt Tthis T).(sqtype) = Lost \/
+  (vpa_mutabilty_tt Tthis T).(sqtype) = RDM \/
   (* Bot is not safe because it can be subcomsued into mut *)
   (* T.(sqtype) = Bot \/ *)
-  T.(sabs) = Nonabs.
+  T.(sabs) = Protected.
 
 (* Effectively require all variables *)
 Definition env_respects_protected_set
   (P : Ensembles.Ensemble Loc) (sΓ : s_env) (rΓ : r_env) : Prop :=
-  forall x l T,
+  forall x l Tthis T,
+    get_this_qualified_type sΓ = Some Tthis ->
     static_getType sΓ x = Some T ->
     runtime_getVal rΓ x = Some (Iot l) ->
 
@@ -25,23 +26,29 @@ Definition env_respects_protected_set
     Ensembles.In Loc P l ->
 
     (* ...the variable must be ReadOnly, or Lost. *)
-    is_safe_mode T.
+    is_safe_mode_adapted Tthis T.
 
-Lemma mut_var_cannot_point_to_P :
-  forall sΓ rΓ x T l P
+(* Lemma mut_var_cannot_point_to_P :
+  forall sΓ rΓ x T Tthis l P
+         (HlookupThis: get_this_qualified_type sΓ = Some Tthis)
          (Hlookup : static_getType sΓ x = Some T)
          (Hval : runtime_getVal rΓ x = Some (Iot l))
          (Henv_safe : env_respects_protected_set P sΓ rΓ)
          (Hin_P : Ensembles.In Loc P l),
-    sqtype T <> Mut \/ T.(sabs) <> Abs.
+    sqtype T <> Mut \/ T.(sabs) <> Normal.
 Proof.
   intros.
   (* Unfold the invariant *)
   unfold env_respects_protected_set in Henv_safe.
-  specialize (Henv_safe x l T Hlookup Hval Hin_P).
+  specialize (Henv_safe x l Tthis T  HlookupThis Hlookup Hval Hin_P).
   (* Henv_safe says T is Rd/Imm/Lost. Thus it is not Mut. *)
-  unfold is_safe_mode in Henv_safe.
-  destruct Henv_safe as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
+  unfold is_safe_mode_adapted in Henv_safe.
+  unfold vpa_mutabilty_tt in Henv_safe.
+  destruct Henv_safe as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]];
+  destruct (sqtype Tthis) eqn: Hthis_qtype;
+  destruct (sqtype T) eqn: Hqtype;
+  simpl in *.
+  all: try inversion Hrd; subst; auto.
   1-4: left; intro Heq.
   rewrite Hrd in Heq; discriminate.
   rewrite Hlost in Heq; discriminate.
@@ -49,7 +56,7 @@ Proof.
   rewrite HRDM in Heq; discriminate.
   right; intro Heq.
   rewrite Hnonabs in Heq; discriminate.
-Qed.
+Qed. *)
 
 Lemma extract_receiver_from_wf_config :
   forall CT sΓ rΓ h
@@ -78,109 +85,6 @@ Proof.
   exact Hiot_dom.
   exact Hqcontext. 
 Qed.
-
-Lemma subtype_safe_implies_safe :
-  forall CT T_sub T_super
-         (Hsub : qualified_type_subtype CT T_sub T_super)
-         (Hsafe_sub : is_safe_mode T_sub),
-    is_safe_mode T_super.
-Proof.
-  intros. unfold is_safe_mode in *.
-  have Habs_same: (sabs T_sub) = T_super.(sabs) by (eapply qualified_type_subtype_abs_eq; eauto).
-
-  apply qualified_type_subtype_q_subtype in Hsub.
-  inversion Hsub; subst; auto.
-
-  (* rewrite <- H1 in Hsafe_sub. *)
-  -
-    destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
-    left; exact Hrd.
-    right; left; exact Hlost.
-    right; right; left; exact Himm.
-    right; right; right; left; exact HRDM.
-    rewrite Habs_same in Hnonabs.
-    right; right; right; right; exact Hnonabs. 
-  -
-    destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
-    rewrite Hrd in H0; discriminate.
-    rewrite Hlost in H0; discriminate.
-    rewrite Himm in H0; discriminate.
-    rewrite HRDM in H0; discriminate.
-    rewrite Habs_same in Hnonabs.
-    right; right; right; right; exact Hnonabs. 
-Qed.
-
-Lemma adapated_subtype_safe_implies_safe :
-  forall CT T_sub T_Receiver T_super
-         (Hsub : qualified_type_subtype CT T_sub (vpa_mutabilty_tt T_Receiver T_super))
-         (Hsafe_sub : is_safe_mode T_sub)
-         (Hsafe_receiver : is_safe_mode T_Receiver),
-    is_safe_mode T_super.
-Proof.
-  intros.
-  unfold is_safe_mode in *.
-  have Habs_subtype: (sabs T_sub) = (vpa_mutabilty_tt T_Receiver T_super).(sabs) by (eapply qualified_type_subtype_abs_eq; eauto).
-  apply qualified_type_subtype_q_subtype in Hsub.
-  unfold vpa_mutabilty_tt in Hsub.
-  unfold vpa_mutabilty_tt in Habs_subtype.
-  destruct (sabs T_Receiver) eqn: Habs_receiver;
-  destruct (sabs T_sub) eqn: Habs_sub;
-  destruct (sabs T_super) eqn: Habs_super;
-  simpl in Habs_subtype;
-  inversion Habs_subtype; subst; auto.
-  destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
-  5:{
-    right; right; right; right.
-    inversion Habs_subtype. exact Hnonabs.
-  }
-  all: destruct Hsafe_receiver as [Hrd_receiver | [Hlost_receiver| [Himm_receiver| [HRDM_receiver | Hnonabs_receiver]]]].
-  5, 10, 15, 20:
-    discriminate Hnonabs_receiver.
-
-  all: destruct (sqtype T_Receiver) eqn: Hreceiver;
-  destruct (sqtype T_sub) eqn: Hsub_qtype;
-  destruct (sqtype T_super) eqn: HSuper;
-  simpl in Hsub;
-  try discriminate.
-  all: try inversion Hsub; subst; auto.
-  all: destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]]; try discriminate.
-Qed.
-
-(* Lemma subtype_safe_implies_safe_adapted :
-  forall CT T_sub T_Receiver T_super
-         (Hsub : qualified_type_subtype CT (vpa_mutabilty_tt T_Receiver T_sub) T_super)
-         (Hsafe_sub : is_safe_mode T_sub)
-         (Hsafe_receiver : is_safe_mode T_Receiver),
-    is_safe_mode T_super.
-Proof.
-  intros.
-  unfold is_safe_mode in *.
-  have Habs_subtype: (vpa_mutabilty_tt T_Receiver T_sub).(sabs) = (sabs T_super) by (eapply qualified_type_subtype_abs_eq; eauto).
-  apply qualified_type_subtype_q_subtype in Hsub.
-  unfold vpa_mutabilty_tt in Hsub.
-  unfold vpa_mutabilty_tt in Habs_subtype.
-  destruct (sabs T_Receiver) eqn: Habs_receiver;
-  destruct (sabs T_sub) eqn: Habs_sub;
-  destruct (sabs T_super) eqn: Habs_super;
-  simpl in Habs_subtype;
-  inversion Habs_subtype; subst; auto.
-  destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
-  5:{
-    right; right; right; right.
-    inversion Habs_subtype. exact Hnonabs.
-  }
-  all: destruct Hsafe_receiver as [Hrd_receiver | [Hlost_receiver| [Himm_receiver| [HRDM_receiver | Hnonabs_receiver]]]].
-  5, 10, 15, 20:
-    discriminate Hnonabs_receiver.
-
-  all: destruct (sqtype T_Receiver) eqn: Hreceiver;
-  destruct (sqtype T_sub) eqn: Hsub_qtype;
-  destruct (sqtype T_super) eqn: HSuper;
-  simpl in Hsub;
-  try discriminate.
-  all: try inversion Hsub; subst; auto.
-  all: destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]]; try discriminate.
-Qed. *)
 
 Lemma reachable_dom :
   forall h l_src l_dst
@@ -226,12 +130,13 @@ Proof.
   apply rch_heap; auto.
 Qed.
 
-Lemma confinement_from_all_readonly_env :
+(* Lemma confinement_from_all_readonly_env :
   forall CT sΓ rΓ h
     (Hwf : wf_r_config CT sΓ rΓ h)
-    (Hall_readonly : forall y T,
+    (Hall_readonly : forall y T Tthis,
       static_getType sΓ y = Some T ->
-      is_safe_mode T),
+      get_this_qualified_type sΓ = Some Tthis ->
+      is_safe_mode_adapted Tthis T),
     env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ.
 Proof.
   intros.
@@ -239,17 +144,18 @@ Proof.
   unfold env_respects_protected_set.
   intros z l T Hlookup_s Hlookup_r Hin_P.
   exact (Hall_readonly z T Hlookup_s).
-Qed.
+Qed. *)
 
 Lemma expr_eval_to_protected_implies_safe_type :
-  forall P CT sΓ rΓ h e l_res Te
+  forall P CT sΓ rΓ h e l_res Te Tthis
          (HP_def : P = reachable_locations_from_initial_env CT h rΓ)
          (Hwf : wf_r_config CT sΓ rΓ h)
          (Hconfined : env_respects_protected_set P sΓ rΓ)
-         (Heval : eval_expr OK P true CT rΓ h e (Iot l_res) OK true P rΓ h)
-         (Htyp : expr_has_type CT retain_nonabs sΓ e Te)
+         (HTthis : get_this_qualified_type sΓ = Some Tthis)
+         (Heval : eval_expr OK P CT rΓ h e (Iot l_res) OK P rΓ h)
+         (Htyp : expr_has_type CT retain_nonabs_method sΓ e Te)
          (Hin : Ensembles.In Loc P l_res),
-    is_safe_mode Te.
+    is_safe_mode_adapted Tthis Te.
 Proof.
   intros.
   destruct (extract_receiver_from_wf_config CT sΓ rΓ h Hwf) as [iot [qcontext [Hget_iot[Hiot_dom Hqcontext]]]].
@@ -262,264 +168,107 @@ Proof.
   - (* EVar case *)
     inversion htyp_copy; subst.
     unfold env_respects_protected_set in Hconfined.
-    specialize (Hconfined x l_res Te).
+    specialize (Hconfined x l_res Tthis).
     have H_static : static_getType sΓ x = Some Te.
     {
       auto.
     }
     
-    specialize (Hconfined H_static H Hin).
+    specialize (Hconfined Te HTthis H_static H Hin).
     exact Hconfined.
   - (* EField case *)
-    inversion htyp_copy; subst.
-    (* destruct Htyp as [Hbasetype Hqualifier]. *)
-    (* simpl in Hbasetype. *)
-    (* unfold non_mut_field_ref in H2. *)
+    inversion htyp_copy; subst; try discriminate.
     set (P := reachable_locations_from_initial_env CT h rΓ).
     destruct (classic (Ensembles.In Loc P v)) as [Hv_in | Hv_out].
     +
-      specialize (Hconfined x v T H6 H Hv_in).
-      unfold is_safe_mode in Hconfined.
+      remember {|
+      sabs := Normal;
+      sqtype := vpa_mutabilty_stype_fld (sqtype T) (mutability (ftype fDef));
+      sctype := f_base_type (ftype fDef)
+      |} as Te.
+      specialize (Hconfined x v Tthis T HTthis H6 H Hv_in).
+      unfold is_safe_mode_adapted in Hconfined.
       subst. simpl.
+      unfold vpa_mutabilty_tt in Hconfined.
       destruct Hconfined as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
       *
-      rewrite Hrd.
-      unfold vpa_mutabilty_stype_fld.
-      unfold is_safe_mode.
-      destruct (mutability (ftype fDef)) eqn: Hmut; simpl; try easy.
-
-      unfold abstract_state_field in H11.
-      destruct H11 as [HfieldMutability HfieldAssignability].
-      destruct HfieldMutability as [HfieldRDM | HfieldImm].
-      unfold sf_mutability_rel in HfieldRDM.
-      destruct HfieldRDM as [fDef' [HfieldDefRel Hmut']].
-      unfold sf_def_rel in H7.
-      assert (fDef = fDef') by (eapply field_lookup_deterministic_rel; eauto).
-      subst fDef'.
-      rewrite Hmut in Hmut'; discriminate.
-      unfold sf_mutability_rel in HfieldImm.
-      destruct HfieldImm as [fDef' [HfieldDefRel Hmut']].
-      unfold sf_def_rel in H7.
-      assert (fDef = fDef') by (eapply field_lookup_deterministic_rel; eauto).
-      subst fDef'.
-      rewrite Hmut in Hmut'; discriminate.
-      (* right; reflexivity. *)
-      right; right; left; reflexivity.
-      right; left; reflexivity.
-      left; reflexivity.
+        destruct (sqtype Tthis) eqn: Hthis_qtype; destruct (sqtype T) eqn: Tttype; simpl in Hrd;
+        try inversion Hrd; subst; auto.
+        all: unfold vpa_mutabilty_stype_fld;
+        unfold is_safe_mode_adapted.
+        all: destruct (mutability (ftype fDef)) eqn: Hmut.
+        all: unfold vpa_mutabilty_tt;
+        rewrite Hthis_qtype; simpl.
+        2, 6, 10, 14, 18, 22: right; left; reflexivity.
+        2, 5, 8, 11, 14, 17: right; right; left; reflexivity.
+        2, 4, 6, 8, 10, 12: left; reflexivity.
+        all:
+        unfold ProtectedField in H13;
+        unfold sf_mutability_rel in H13;
+        unfold sf_def_rel in H7;
+        exfalso;
+        apply H13;
+        exists fDef;
+        split; auto.
       *
-      rewrite Hlost.
-      unfold vpa_mutabilty_stype_fld.
-      unfold is_safe_mode.
-      destruct (mutability (ftype fDef)) eqn: Hmut; simpl; try easy.
-      unfold abstract_state_field in H11.
-      destruct H11 as [HfieldMutability HfieldAssignability].
-      destruct HfieldMutability as [HfieldRDM | HfieldImm].
-      unfold sf_mutability_rel in HfieldRDM.
-      destruct HfieldRDM as [fDef' [HfieldDefRel Hmut']].
-      unfold sf_def_rel in H7.
-      assert (fDef = fDef') by (eapply field_lookup_deterministic_rel; eauto).
-      subst fDef'.
-      rewrite Hmut in Hmut'; discriminate.
-      unfold sf_mutability_rel in HfieldImm.
-      destruct HfieldImm as [fDef' [HfieldDefRel Hmut']].
-      unfold sf_def_rel in H7.
-      assert (fDef = fDef') by (eapply field_lookup_deterministic_rel; eauto).
-      subst fDef'.
-      rewrite Hmut in Hmut'; discriminate.
-      (* unfold wf_r_config in Hwf.
-      destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
-      have Hx_dom : x < dom sΓ by (apply static_getType_dom in H9; exact H9).
-      specialize (Hcorr iot qcontext Hget_iot Hqcontext x Hx_dom T H9).
-      rewrite H in Hcorr.
-      unfold wf_r_typable in Hcorr.
-      unfold r_type in Hcorr.
-      rewrite H0 in Hcorr.
-      destruct Hcorr as [Hbasetype Hqualifier].
-      destruct H2 as [HfieldRDM | [HfieldImm | HfieldRO]].
-      have HfieldRDMSub: sf_mutability_rel CT (sctype T) f Mut_f.
-      unfold sf_mutability_rel.
-      exists fDef.
-      split.
-      unfold sf_def_rel in H11; exact H11.
-      exact Hmut.
-      assert (false).
-      {
-        eapply sf_mutability_subtyping_not_same_implies_false; eauto.
-        easy.
-      }
-      easy.
-      have HfieldRDMSub: sf_mutability_rel CT (sctype T) f Mut_f.
-      unfold sf_mutability_rel.
-      exists fDef.
-      split.
-      unfold sf_def_rel in H11; exact H11.
-      exact Hmut.
-      assert (false).
-      {
-        eapply sf_mutability_subtyping_not_same_implies_false; eauto.
-        easy.
-      }
-      easy.
-      have HfieldRDMSub: sf_mutability_rel CT (sctype T) f Mut_f.
-      unfold sf_mutability_rel.
-      exists fDef.
-      split.
-      unfold sf_def_rel in H11; exact H11.
-      exact Hmut.
-      assert (false).
-      {
-        eapply sf_mutability_subtyping_not_same_implies_false; eauto.
-        easy.
-      }
-      easy. *)
-      (* right; reflexivity. *)
-      right; right; left; reflexivity.
-      right; left; reflexivity.
-      left; reflexivity.
+        destruct (sqtype Tthis) eqn: Hthis_qtype; destruct (sqtype T) eqn: Tttype; simpl in Hlost;
+        try inversion Hlost; subst; auto.
+        all: unfold vpa_mutabilty_stype_fld;
+        unfold is_safe_mode_adapted.
+        all: destruct (mutability (ftype fDef)) eqn: Hmut.
+        all: unfold vpa_mutabilty_tt;
+        rewrite Hthis_qtype; simpl.
+        2, 6, 10, 14, 18, 22: right; left; reflexivity.
+        2, 5, 8, 11, 14, 17, 20, 21: right; left; reflexivity.
+        2, 4, 6, 8, 10, 12, 14: left; reflexivity.
+        all:
+        unfold ProtectedField in H13;
+        unfold sf_mutability_rel in H13;
+        unfold sf_def_rel in H7;
+        exfalso;
+        apply H13;
+        exists fDef;
+        split; auto.
       *
-      rewrite Himm.
-      unfold vpa_mutabilty_stype_fld.
-      unfold is_safe_mode.
-      destruct (mutability (ftype fDef)) eqn: Hmut; simpl; try easy.
-      unfold abstract_state_field in H11.
-      destruct H11 as [HfieldMutability HfieldAssignability].
-      destruct HfieldMutability as [HfieldRDM | HfieldImm].
-      unfold sf_mutability_rel in HfieldRDM.
-      destruct HfieldRDM as [fDef' [HfieldDefRel Hmut']].
-      unfold sf_def_rel in H7.
-      assert (fDef = fDef') by (eapply field_lookup_deterministic_rel; eauto).
-      subst fDef'.
-      rewrite Hmut in Hmut'; discriminate.
-      unfold sf_mutability_rel in HfieldImm.
-      destruct HfieldImm as [fDef' [HfieldDefRel Hmut']].
-      unfold sf_def_rel in H7.
-      assert (fDef = fDef') by (eapply field_lookup_deterministic_rel; eauto).
-      subst fDef'.
-      rewrite Hmut in Hmut'; discriminate.
-      (* unfold wf_r_config in Hwf.
-      destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
-      have Hx_dom : x < dom sΓ by (apply static_getType_dom in H9; exact H9).
-      specialize (Hcorr iot qcontext Hget_iot Hqcontext x Hx_dom T H9).
-      rewrite H in Hcorr.
-      unfold wf_r_typable in Hcorr.
-      unfold r_type in Hcorr.
-      rewrite H0 in Hcorr.
-      destruct Hcorr as [Hbasetype Hqualifier].
-      destruct H2 as [HfieldRDM | [HfieldImm | HfieldRO]].
-      have HfieldRDMSub: sf_mutability_rel CT (sctype T) f Mut_f.
-      unfold sf_mutability_rel.
-      exists fDef.
-      split.
-      unfold sf_def_rel in H11; exact H11.
-      exact Hmut.
-      assert (false).
-      {
-        eapply sf_mutability_subtyping_not_same_implies_false; eauto.
-        easy.
-      }
-      easy.
-      have HfieldRDMSub: sf_mutability_rel CT (sctype T) f Mut_f.
-      unfold sf_mutability_rel.
-      exists fDef.
-      split.
-      unfold sf_def_rel in H11; exact H11.
-      exact Hmut.
-      assert (false).
-      {
-        eapply sf_mutability_subtyping_not_same_implies_false; eauto.
-        easy.
-      }
-      easy.
-      have HfieldRDMSub: sf_mutability_rel CT (sctype T) f Mut_f.
-      unfold sf_mutability_rel.
-      exists fDef.
-      split.
-      unfold sf_def_rel in H11; exact H11.
-      exact Hmut.
-      assert (false).
-      {
-        eapply sf_mutability_subtyping_not_same_implies_false; eauto.
-        easy.
-      }
-      easy. *)
-      (* right; reflexivity. *)
-      right; right; left; reflexivity.
-      right; right; left; reflexivity.
-      left; reflexivity.
+        destruct (sqtype Tthis) eqn: Hthis_qtype; destruct (sqtype T) eqn: Tttype; simpl in Himm;
+        try inversion Himm; subst; auto.
+        all: unfold vpa_mutabilty_stype_fld;
+        unfold is_safe_mode_adapted.
+        all: destruct (mutability (ftype fDef)) eqn: Hmut.
+        all: unfold vpa_mutabilty_tt;
+        rewrite Hthis_qtype; simpl.
+        2, 6, 10, 14, 18, 22, 26, 30: right; left; reflexivity.
+        2, 5, 8, 11, 14, 17, 20, 23: right; right; left; reflexivity.
+        2, 4, 6, 8, 10, 12, 14, 16: left; reflexivity.
+        all:
+        unfold ProtectedField in H13;
+        unfold sf_mutability_rel in H13;
+        unfold sf_def_rel in H7;
+        exfalso;
+        apply H13;
+        exists fDef;
+        split; auto.
       *
-      rewrite HRDM.
-      unfold vpa_mutabilty_stype_fld.
-      unfold is_safe_mode.
-      destruct (mutability (ftype fDef)) eqn: Hmut; simpl; try easy.
-      unfold abstract_state_field in H11.
-      destruct H11 as [HfieldMutability HfieldAssignability].
-      destruct HfieldMutability as [HfieldRDM | HfieldImm].
-      unfold sf_mutability_rel in HfieldRDM.
-      destruct HfieldRDM as [fDef' [HfieldDefRel Hmut']].
-      unfold sf_def_rel in H7.
-      assert (fDef = fDef') by (eapply field_lookup_deterministic_rel; eauto).
-      subst fDef'.
-      rewrite Hmut in Hmut'; discriminate.
-      unfold sf_mutability_rel in HfieldImm.
-      destruct HfieldImm as [fDef' [HfieldDefRel Hmut']].
-      unfold sf_def_rel in H7.
-      assert (fDef = fDef') by (eapply field_lookup_deterministic_rel; eauto).
-      subst fDef'.
-      rewrite Hmut in Hmut'; discriminate.
-      (* unfold wf_r_config in Hwf.
-      destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
-      have Hx_dom : x < dom sΓ by (apply static_getType_dom in H9; exact H9).
-      specialize (Hcorr iot qcontext Hget_iot Hqcontext x Hx_dom T H9).
-      rewrite H in Hcorr.
-      unfold wf_r_typable in Hcorr.
-      unfold r_type in Hcorr.
-      rewrite H0 in Hcorr.
-      destruct Hcorr as [Hbasetype Hqualifier].
-      destruct H2 as [HfieldRDM | [HfieldImm | HfieldRO]].
-      have HfieldRDMSub: sf_mutability_rel CT (sctype T) f Mut_f.
-      unfold sf_mutability_rel.
-      exists fDef.
-      split.
-      unfold sf_def_rel in H11; exact H11.
-      exact Hmut.
-      assert (false).
-      {
-        eapply sf_mutability_subtyping_not_same_implies_false; eauto.
-        easy.
-      }
-      easy.
-      have HfieldRDMSub: sf_mutability_rel CT (sctype T) f Mut_f.
-      unfold sf_mutability_rel.
-      exists fDef.
-      split.
-      unfold sf_def_rel in H11; exact H11.
-      exact Hmut.
-      assert (false).
-      {
-        eapply sf_mutability_subtyping_not_same_implies_false; eauto.
-        easy.
-      }
-      easy.
-      have HfieldRDMSub: sf_mutability_rel CT (sctype T) f Mut_f.
-      unfold sf_mutability_rel.
-      exists fDef.
-      split.
-      unfold sf_def_rel in H11; exact H11.
-      exact Hmut.
-      assert (false).
-      {
-        eapply sf_mutability_subtyping_not_same_implies_false; eauto.
-        easy.
-      }
-      easy. *)
-      (* right; reflexivity. *)
-      right; right; left; reflexivity.
-      right; right; right; left; reflexivity.
-      left; reflexivity.
+        destruct (sqtype Tthis) eqn: Hthis_qtype; destruct (sqtype T) eqn: Tttype; simpl in HRDM;
+        try inversion HRDM; subst; auto.
+        all: unfold vpa_mutabilty_stype_fld;
+        unfold is_safe_mode_adapted.
+        all: destruct (mutability (ftype fDef)) eqn: Hmut.
+        all: unfold vpa_mutabilty_tt;
+        rewrite Hthis_qtype; simpl.
+        2: right; left; reflexivity.
+        2: right; right; right; left; reflexivity.
+        2: left; reflexivity.
+        unfold ProtectedField in H13;
+        unfold sf_mutability_rel in H13;
+        unfold sf_def_rel in H7;
+        exfalso;
+        apply H13;
+        exists fDef;
+        split; auto.
       *
-      rewrite Hnonabs in H15.
-      discriminate.
+        rewrite Hnonabs in H15.
+        discriminate.
     +
       assert (Hdom_v : v < dom h) by (apply runtime_getObj_dom in H0; exact H0).
       unfold reachable_locations_from_initial_env in P.
@@ -528,7 +277,7 @@ Proof.
       exists x, v.
       split; [exact H | apply rch_heap; apply runtime_getObj_dom in H0; exact H0].
     +
-      unfold is_safe_mode; simpl.
+      unfold is_safe_mode_adapted; simpl.
       right; right; right; right; reflexivity.
 Qed.
 
@@ -592,14 +341,14 @@ Proof.
 Qed.
 
 Lemma stmt_preserves_unreachable_objects :
-  forall TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' l C anyrq vals vals',
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) TouchNonMutOnly CT rΓ h stmt OK TouchNonMutOnly' (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
+  forall CT rΓ h stmt rΓ' h' l C anyrq vals vals',
+    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h stmt OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
     runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals) ->
     runtime_getObj h' l = Some (mkObj (mkruntime_type anyrq C) vals') ->
     ~ (Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) l) ->
     vals = vals'.
 Proof.
-  intros TouchNonMutOnly TouchNonMutOnly' CT rΓ h stmt rΓ' h' l C anyrq vals vals' Heval Hobj Hobj' Hnot_protected.
+  intros   CT rΓ h stmt rΓ' h' l C anyrq vals vals' Heval Hobj Hobj' Hnot_protected.
   remember OK as ok.
   generalize dependent vals.
   generalize dependent vals'.
@@ -653,11 +402,11 @@ Proof.
     unfold Ensembles.Included in Hsubset.
     exact (Hsubset l Hin_method).
   - (* Seq *)
-    specialize (eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓ h s1 rΓ' h' Heval1) as Hh'.
+    specialize (eval_stmt_preserves_heap_domain_simple   CT rΓ h s1 rΓ' h' Heval1) as Hh'.
     have Hlhdom: l < dom h by (apply runtime_getObj_dom in Hobj; exact Hobj). 
     assert (Hlh'dom: l < dom h') by lia. 
     specialize (runtime_getObj_Some h' l Hlh'dom) as [C' [values' Hh'some]].
-    specialize (runtime_preserves_r_type_heap TouchNonMutOnly TouchNonMutOnly' CT rΓ h l ({| rqtype := anyrq; rctype := C |})
+    specialize (runtime_preserves_r_type_heap   CT rΓ h l ({| rqtype := anyrq; rctype := C |})
     h' vals s1 rΓ' Hobj Heval1) as [vals1 Hrtype]. 
     rewrite Hrtype in Hh'some; inversion Hh'some; subst.
     specialize (IHHeval1 eq_refl Hnot_protected values' Hrtype vals Hobj).
@@ -740,7 +489,7 @@ Lemma expr_eval_result_in_protected_set :
          (Hwf: wf_r_config CT sΓ rΓ h)
          (HP_def : P = reachable_locations_from_initial_env CT h rΓ)
          (Htyping : expr_has_type CT mt sΓ e Te)
-         (Heval : eval_expr OK P true CT rΓ h e v2 OK true P rΓ h),
+         (Heval : eval_expr OK P CT rΓ h e v2 OK P rΓ h),
     (forall l, v2 = Iot l -> Ensembles.In Loc P l) \/
     (v2 = Null_a).
 Proof.
@@ -795,46 +544,62 @@ Proof.
     apply runtime_getObj_dom in Hobj_l0; auto.
 Qed.
 
-Lemma protected_loc_has_safe_type :
-  forall CT sΓ rΓ h z l_z T_z P
+Lemma protected_loc_has_safe_receiver :
+  forall CT sΓ rΓ h lthis Tthis P
          (HP_def : P = reachable_locations_from_initial_env CT h rΓ)
          (Henv_respects : env_respects_protected_set P sΓ rΓ)
-         (Hlookup_s : static_getType sΓ z = Some T_z)
-         (Hlookup_r : runtime_getVal rΓ z = Some (Iot l_z))
-         (Hin_P : Ensembles.In Loc P l_z),
-    is_safe_mode T_z.
+         (HTthis: static_getType sΓ 0 = Some Tthis)
+         (Hlthis: runtime_getVal rΓ 0 = Some (Iot lthis))
+         (Hin_P : Ensembles.In Loc P lthis),
+    is_safe_mode_adapted Tthis Tthis.
 Proof.
   intros.
   subst P.
   unfold env_respects_protected_set in Henv_respects.
-  exact (Henv_respects z l_z T_z Hlookup_s Hlookup_r Hin_P).
+  exact (Henv_respects 0 lthis Tthis Tthis HTthis HTthis Hlthis Hin_P).
 Qed.
 
-Lemma eval_expr_did_not_touch_abs_start_with_true:
-  forall P CT mt sΓ rΓ h e v sΓ' rΓ' h' TouchNonMutOnly
+Lemma protected_loc_has_safe_type :
+  forall CT sΓ rΓ h z l_z T_z Tthis P
+         (HP_def : P = reachable_locations_from_initial_env CT h rΓ)
+         (Henv_respects : env_respects_protected_set P sΓ rΓ)
+         (HTthis: static_getType sΓ 0 = Some Tthis)
+         (Hlookup_s : static_getType sΓ z = Some T_z)
+         (Hlookup_r : runtime_getVal rΓ z = Some (Iot l_z))
+         (Hin_P : Ensembles.In Loc P l_z),
+    is_safe_mode_adapted Tthis T_z.
+Proof.
+  intros.
+  subst P.
+  unfold env_respects_protected_set in Henv_respects.
+  exact (Henv_respects z l_z Tthis T_z HTthis Hlookup_s Hlookup_r Hin_P).
+Qed.
+
+(* Lemma eval_expr_did_not_touch_abs_start_with_true:
+  forall P CT mt sΓ rΓ h e v sΓ' rΓ' h' 
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : expr_has_type CT mt sΓ e sΓ')
-    (Heval : eval_expr OK P TouchNonMutOnly CT rΓ h e v OK true P rΓ' h'),
-    TouchNonMutOnly = true.
+    (Heval : eval_expr OK P  CT rΓ h e v OK true P rΓ' h'),
+     = true.
 Proof.
   intros.
   remember OK as ok.
-  remember true as TouchNonMutOnly'.
+  remember true as .
   generalize dependent sΓ.
   generalize dependent sΓ'.
   induction Heval; intros; subst; try discriminate; try reflexivity.
 Qed.
 
 Lemma eval_stmt_did_not_touch_abs_start_with_true:
-  forall P CT sΓ rΓ h stmt sΓ' rΓ' h' TouchNonMutOnly
+  forall P CT sΓ rΓ h stmt sΓ' rΓ' h' 
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT retain_nonabs sΓ stmt sΓ')
-    (Heval : eval_stmt OK P TouchNonMutOnly CT rΓ h stmt OK true P rΓ' h'),
-    TouchNonMutOnly = true.
+    (Heval : eval_stmt OK P  CT rΓ h stmt OK true P rΓ' h'),
+     = true.
 Proof.
   intros.
   remember OK as ok.
-  remember true as TouchNonMutOnly'.
+  remember true as .
   generalize dependent sΓ.
   generalize dependent sΓ'.
   induction Heval; intros; subst; try discriminate; try reflexivity.
@@ -849,13 +614,13 @@ Proof.
     specialize (IHHeval1 eq_refl IHHeval2 sΓ' sΓ Hwf H5).
     rewrite IHHeval2 in IHHeval1.
     exact IHHeval1.
-Qed.
+Qed. *)
 
 Lemma reachable_return_implies_reachable_args :
   forall CT mt sΓ rΓ h stmt sΓ' rΓ' h' ret_var l_z
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT mt sΓ stmt sΓ')
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) true CT rΓ h stmt OK true (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (HgetVal: runtime_getVal rΓ' ret_var = Some (Iot l_z))
     (Hdom: l_z < dom h),
     (* CONCLUSION: l_z was reachable from the start *)
@@ -863,7 +628,6 @@ Lemma reachable_return_implies_reachable_args :
 Proof.
   intros.
   remember OK as ok.
-  remember true as TouchNonMutOnly.
   generalize dependent sΓ.
   generalize dependent sΓ'.
   generalize dependent mt.
@@ -910,9 +674,8 @@ Proof.
   - (* varass *)
     inversion Htyping; subst.
     rename sΓ' into sΓ.
-    have HtrueVal: TouchNonMutOnly = true.
-    eapply eval_expr_did_not_touch_abs_start_with_true; eauto.
-    subst TouchNonMutOnly.
+    (* eapply eval_expr_did_not_touch_abs_start_with_true; eauto. *)
+    (* subst . *)
     have Hv2_cases := expr_eval_result_in_protected_set CT mt sΓ rΓ h e Te v2 
     (reachable_locations_from_initial_env CT h rΓ) Hwf eq_refl H4 H0.
     destruct Hv2_cases as [Hv2_protected | Hv2_null].
@@ -1566,7 +1329,7 @@ Proof.
             lia.
     }
     rewrite <- getmbody in Hmethodbody_typing.
-    specialize (IHHeval eq_refl eq_refl Hdom (mreturn mbody) H6 (mtype (msignature mdef)) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
+    specialize (IHHeval eq_refl Hdom (mreturn mbody) H6 (mtype (msignature mdef)) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
     rewrite HeqrΓmethodinit in IHHeval.
     eapply reachable_locations_from_initial_env_subset; eauto.
   +
@@ -2056,7 +1819,7 @@ Proof.
             lia.
     }
     rewrite <- getmbody in Hmethodbody_typing.
-    specialize (IHHeval eq_refl eq_refl Hdom (mreturn mbody) H6 (mtype (msignature mdef)) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
+    specialize (IHHeval eq_refl Hdom (mreturn mbody) H6 (mtype (msignature mdef)) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
     rewrite HeqrΓmethodinit in IHHeval.
     eapply reachable_locations_from_initial_env_subset; eauto.
     +
@@ -2583,7 +2346,7 @@ Proof.
             lia.
     }
     rewrite <- getmbody in Hmethodbody_typing.
-    specialize (IHHeval eq_refl eq_refl Hdom (mreturn mbody) H6 (mtype (msignature mdef)) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
+    specialize (IHHeval eq_refl Hdom (mreturn mbody) H6 (mtype (msignature mdef)) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
     rewrite HeqrΓmethodinit in IHHeval.
     eapply reachable_locations_from_initial_env_subset; eauto.
   
@@ -3073,13 +2836,98 @@ Proof.
             lia.
     }
     rewrite <- getmbody in Hmethodbody_typing.
-    specialize (IHHeval eq_refl eq_refl Hdom (mreturn mbody) H6 (mtype (msignature mdef)) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
+    specialize (IHHeval eq_refl Hdom (mreturn mbody) H6 (mtype (msignature mdef)) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
     rewrite HeqrΓmethodinit in IHHeval.
     eapply reachable_locations_from_initial_env_subset; eauto.
   - (* seq *)
   inversion Htyping; subst.
-  specialize(preservation_pico _ _ _ _ _ _ _ _ _ _ _ Hwf H5 Heval1) as Hwf'.
-  specialize (eval_stmt_preserves_heap_domain_simple TouchNonMutOnly TouchNonMutOnly' CT rΓ h s1 rΓ' h' Heval1) as Hh'.
+  specialize(preservation_pico _ _ _ _ _ _ _ _ _ Hwf H5 Heval1) as Hwf'.
+  specialize (eval_stmt_preserves_heap_domain_simple   CT rΓ h s1 rΓ' h' Heval1) as Hh'.
   assert (l_z < dom h') by lia.
   eapply IHHeval2; eauto.
+Qed.
+
+Lemma subtype_safe_implies_safe :
+  forall CT T_sub T_super T_Receiver
+         (Hsub : qualified_type_subtype CT T_sub T_super)
+         (Hsafe_receiver : is_safe_mode_adapted T_Receiver T_Receiver)
+         (Hsafe_sub : is_safe_mode_adapted T_Receiver T_sub),
+    is_safe_mode_adapted T_Receiver T_super.
+Proof.
+  intros. unfold is_safe_mode_adapted in *.
+  unfold vpa_mutabilty_tt in *.
+  have Habs_subtype: abs_subtype (sabs T_sub) T_super.(sabs) by (eapply qualified_type_subtype_abs_subtype; eauto).
+
+  apply qualified_type_subtype_q_subtype in Hsub.
+  destruct (sabs T_Receiver) eqn: Habs_receiver;
+  destruct (sabs T_sub) eqn: Habs_sub;
+  destruct (sabs T_super) eqn: Habs_super;
+  simpl in Habs_subtype;
+  inversion Habs_subtype; subst; auto.
+  all: destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
+  all: destruct Hsafe_receiver as [Hrd_receiver | [Hlost_receiver| [Himm_receiver| [HRDM_receiver | Hnonabs_receiver]]]].
+  all: destruct (sqtype T_Receiver) eqn: Hreceiver;
+  destruct (sqtype T_sub) eqn: Hsub_qtype;
+  destruct (sqtype T_super) eqn: HSuper;
+  simpl in *;
+  try discriminate.
+  all: try inversion Hsub; subst; auto.
+Qed.
+
+Lemma adapated_subtype_safe_implies_safe :
+  forall CT T_sub T_Receiver T_super
+         (Hsub : qualified_type_subtype CT T_sub (vpa_mutabilty_tt T_Receiver T_super))
+         (Hsafe_sub : is_safe_mode_adapted T_Receiver T_sub)
+         (Hsafe_receiver : is_safe_mode_adapted T_Receiver T_Receiver),
+    is_safe_mode_adapted T_Receiver T_super.
+Proof.
+  intros.
+  unfold is_safe_mode_adapted in *.
+  have Habs_subtype: abs_subtype (sabs T_sub) (vpa_mutabilty_tt T_Receiver T_super).(sabs) by (eapply qualified_type_subtype_abs_subtype; eauto).
+  apply qualified_type_subtype_q_subtype in Hsub.
+  unfold vpa_mutabilty_tt in Hsub.
+  unfold vpa_mutabilty_tt in Habs_subtype.
+  destruct (sabs T_Receiver) eqn: Habs_receiver;
+  destruct (sabs T_sub) eqn: Habs_sub;
+  destruct (sabs T_super) eqn: Habs_super;
+  simpl in Habs_subtype;
+  inversion Habs_subtype; subst; auto.
+  all: destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
+  all: destruct Hsafe_receiver as [Hrd_receiver | [Hlost_receiver| [Himm_receiver| [HRDM_receiver | Hnonabs_receiver]]]].
+  all: unfold vpa_mutabilty_tt in *.
+  all: destruct (sqtype T_Receiver) eqn: Hreceiver;
+  destruct (sqtype T_sub) eqn: Hsub_qtype;
+  destruct (sqtype T_super) eqn: HSuper;
+  simpl in Hsub;
+  try discriminate.
+  all: try inversion Hsub; subst; auto.
+Qed.
+
+Lemma subtype_safe_implies_safe_adapted :
+  forall CT T_sub T_Receiver T_super
+         (Hsub : qualified_type_subtype CT (vpa_mutabilty_tt T_Receiver T_sub) T_super)
+         (Hsafe_sub : is_safe_mode_adapted T_Receiver T_sub)
+         (Hsafe_receiver : is_safe_mode_adapted T_Receiver T_Receiver),
+    is_safe_mode_adapted T_Receiver T_super.
+Proof.
+  intros.
+  unfold is_safe_mode_adapted in *.
+  have Habs_subtype: abs_subtype (vpa_mutabilty_tt T_Receiver T_sub).(sabs) (sabs T_super) by (eapply qualified_type_subtype_abs_subtype; eauto).
+  apply qualified_type_subtype_q_subtype in Hsub.
+  unfold vpa_mutabilty_tt in Hsub.
+  unfold vpa_mutabilty_tt in Habs_subtype.
+  destruct (sabs T_Receiver) eqn: Habs_receiver;
+  destruct (sabs T_sub) eqn: Habs_sub;
+  destruct (sabs T_super) eqn: Habs_super;
+  simpl in Habs_subtype;
+  inversion Habs_subtype; subst; auto.
+  all: destruct Hsafe_sub as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
+  all: destruct Hsafe_receiver as [Hrd_receiver | [Hlost_receiver| [Himm_receiver| [HRDM_receiver | Hnonabs_receiver]]]].
+  all: unfold vpa_mutabilty_tt in *.
+  all: destruct (sqtype T_Receiver) eqn: Hreceiver;
+  destruct (sqtype T_sub) eqn: Hsub_qtype;
+  destruct (sqtype T_super) eqn: HSuper;
+  simpl in Hsub;
+  try discriminate.
+  all: try inversion Hsub; subst; auto.
 Qed.
