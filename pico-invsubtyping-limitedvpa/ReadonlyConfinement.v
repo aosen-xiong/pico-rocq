@@ -6,6 +6,32 @@ From Stdlib Require String.
 Import ListNotations.
 From RecordUpdate Require Import RecordUpdate.
 
+Lemma exists_an_abs_RDM_type :
+  forall CT sΓ rΓ h stmt sΓ' rΓ' h' ret_var l_z ret_type
+  (* (Hconfined : env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ) *)
+  (Hwf : wf_r_config CT sΓ rΓ h)
+  (Htyping : stmt_typing CT retain_nonabs_method sΓ stmt sΓ')
+  (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+  (HgetVal: runtime_getVal rΓ' ret_var = Some (Iot l_z))
+  (Hdom: Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) l_z)
+  (HgetType: static_getType sΓ' ret_var = Some ret_type)
+  (HretAbs: ret_type.(sabs) = Normal)
+  (HretMut: ret_type.(sqtype) = RDM \/ ret_type.(sqtype) = Bot),
+  (* (HretMut: ret_type.(sqtype) = RDM), *)
+  (* exists x type lx, lx < dom h /\ runtime_getVal rΓ x = Some (Iot lx) /\ static_getType sΓ x = Some type /\ type.(sabs) = Abs /\ type.(sqtype) = RDM. *)
+  exists x type l_x, Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) l_x  /\ runtime_getVal rΓ x = Some (Iot l_x) /\ static_getType sΓ x = Some type /\ type.(sabs) = Normal /\ (type.(sqtype) = RDM \/ type.(sqtype)=Bot).
+Proof.
+  intros.
+  remember OK as ok.
+  generalize dependent sΓ.
+  generalize dependent sΓ'.
+  have Heval_copy := Heval.
+  induction Heval; intros; subst; try discriminate.
+  7:
+  {
+
+  }
+
 (* TODO: move this to all where helper should located *)
 
 Lemma wf_config_has_static_env_dom_greater_than_zero :
@@ -43,7 +69,7 @@ Proof.
   apply rch_heap; auto.
 Qed.
 
-Lemma confined_env_implies_receiver_safe :
+(* Lemma confined_env_implies_receiver_safe :
   forall CT sΓ rΓ h Tthis lthis
     (Hconfined : env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ)
     (Hdom : lthis < dom h)
@@ -56,7 +82,7 @@ Proof.
   have HinP: Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) lthis by (apply receiver_addr_in_protection_set; auto).
   specialize (Hconfined _ _ Tthis Tthis HTthis HTthis Hlthis HinP).
   exact Hconfined.
-Qed.
+Qed. *)
 
 Ltac solve_safe_mode :=
   match goal with
@@ -126,7 +152,7 @@ Proof.
     unfold env_respects_protected_set in *.
     *
       unfold env_respects_protected_set.
-      intros y l_y Tthis Ty HTthis Hlookup_s Hlookup_r Hin_P.
+      intros y l_y Ty Hlookup_s Hlookup_r Hin_P.
       destruct (Nat.eq_dec x y); subst.
       --
         assert (y = dom sΓ).
@@ -162,13 +188,13 @@ Proof.
           lia.
         }
 
-        assert (HTthis_old: static_getType sΓ 0 = Some Tthis).
+        (* assert (HTthis_old: static_getType sΓ 0 = Some Tthis).
         {
           unfold get_this_qualified_type in HTthis.
           unfold static_getType in HTthis.
           rewrite nth_error_app1 in HTthis; auto.
           eapply wf_config_has_static_env_dom_greater_than_zero in Hwf; eauto.
-        }
+        } *)
 
         assert (Hlookup_s_old : static_getType sΓ y = Some Ty).
         {
@@ -186,7 +212,7 @@ Proof.
         }
 
         unfold env_respects_protected_set in Hconfined.
-        exact (Hconfined y l_y Tthis Ty HTthis_old Hlookup_s_old Hlookup_r_old Hin_P).
+        exact (Hconfined y l_y Ty Hlookup_s_old Hlookup_r_old Hin_P).
   - (* var assign *)
     inversion Htyping; subst.
     have Hconfined_copy := Hconfined.
@@ -194,9 +220,9 @@ Proof.
     unfold env_respects_protected_set in Hconfined.
     rename sΓ' into sΓ.
     *
-      intros y l_y Tthis' Ty HTthis Hlookup_s Hlookup_r Hin_P.
-      rewrite H5 in HTthis.
-      inversion HTthis; subst Tthis'.
+      intros y l_y Ty Hlookup_s Hlookup_r Hin_P.
+      (* rewrite H5 in HTthis.
+      inversion HTthis; subst Tthis'. *)
       destruct (extract_receiver_from_wf_config CT sΓ rΓ h Hwf) as [iot [qcontext [Hget_iot[Hiot_dom Hqcontext]]]].
       unfold runtime_getVal in Hlookup_r.
       simpl in Hlookup_r.
@@ -212,24 +238,24 @@ Proof.
         (* have HtrueVal:  = true.
         eapply eval_expr_did_not_touch_abs_start_with_true; eauto. *)
         (* rewrite HtrueVal in H0. *)
-        assert (Hsafe_expr : is_safe_mode_adapted Tthis Te).
+        assert (Hsafe_expr : is_safe_mode Te).
         {
           eapply expr_eval_to_protected_implies_safe_type; eauto.
         }
         (* TODO: redefine get_this_var_mapping *)
         eapply subtype_safe_implies_safe; eauto.
-        eapply confined_env_implies_receiver_safe; eauto.
+        (* eapply confined_env_implies_receiver_safe; eauto.
         unfold runtime_getVal.
         unfold get_this_var_mapping in Hget_iot.
         destruct (vars rΓ) as [|v0 vs] eqn:Hvars; [discriminate|].
         unfold nth_error.
         destruct v0 as [|loc]; [discriminate|].
-        inversion Hget_iot; subst iot.
-        reflexivity.
+        inversion Hget_iot; subst iot. *)
+        (* reflexivity. *)
       -- (* y <> x *)
         rewrite update_diff in Hlookup_r; auto.
         unfold env_respects_protected_set in Hconfined.
-        exact (Hconfined y l_y Tthis Ty H5 Hlookup_s Hlookup_r Hin_P).
+        exact (Hconfined y l_y Ty Hlookup_s Hlookup_r Hin_P).
   - (* Field Write *)
     inversion Htyping; subst sΓ'; subst.
     unfold env_respects_protected_set in *.
@@ -237,7 +263,7 @@ Proof.
   - (* New Object *)
     inversion Htyping; subst sΓ'; subst.
     unfold env_respects_protected_set in *.
-    intros y l_y Tthis' Ty HTthis' Hlookup_s Hlookup_r Hin_P.
+    intros y l_y Ty Hlookup_s Hlookup_r Hin_P.
     assert (rΓ <| vars := update x (Iot dom h) (vars rΓ) |> = update_r_env_value rΓ x (Iot (dom h))).
     {
       destruct rΓ.
@@ -795,7 +821,7 @@ Proof.
     sΓmethodinit rΓmethodinit).
     {
       unfold env_respects_protected_set.
-      intros z l_z Tthisinner Tz HTthisInner Hlookup_s Hlookup_r Hin_P.
+      intros z l_z Tz Hlookup_s Hlookup_r Hin_P.
       rewrite HeqsΓmethodinit in Hlookup_s.
       rewrite HeqrΓmethodinit in Hlookup_r.
       unfold static_getType in Hlookup_s.
@@ -805,7 +831,7 @@ Proof.
       -
         simpl in Hlookup_s, Hlookup_r.
         injection Hlookup_s as <-. injection Hlookup_r as <-.
-        unfold is_safe_mode_adapted.
+        (* unfold is_safe_mode. *)
         have Hin_P_orig : Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) ly.
         {
           unfold reachable_locations_from_initial_env.
@@ -815,66 +841,18 @@ Proof.
           - apply rch_heap.
             apply reachable_locations_from_initial_env_dom in Hin_P; auto.
         }
-        have Hty_safe : is_safe_mode_adapted Tthis Ty.
+        have Hty_safe : is_safe_mode Ty.
         {
           unfold env_respects_protected_set in Hconfined.
-          specialize (Hconfined y ly Tthis Ty H12 H10 H Hin_P_orig).
+          specialize (Hconfined y ly Ty H10 H Hin_P_orig).
           exact Hconfined.
         }
-        unfold is_safe_mode_adapted in Hty_safe.
+        (* unfold is_safe_mode in Hty_safe. *)
         unfold vpa_mutabilty_tt.
-        have Habs_subtype: abs_subtype Ty.(sabs) (vpa_mutabilty_tt Ty (mreceiver (msignature mdef0))).(sabs) by (eapply qualified_type_subtype_abs_subtype; eauto).
-        apply qualified_type_subtype_q_subtype in H20.
-        (* assert (Hy_dom : y < dom sΓ).
-        {
-          apply static_getType_dom in H10.
-          exact H10.
-        }
-        assert (HOutterReceiverAddr: exists lOutterReceiver, get_this_var_mapping (vars rΓ) = Some lOutterReceiver).
-        {
-          eapply get_this_exists_from_wf_r_config; eauto.
-        }
-        destruct HOutterReceiverAddr as [lOutterReceiver HOutterReceiverAddr].
-        assert (HOutterReceiverMutability: exists qcontext, r_muttype h lOutterReceiver = Some qcontext).
-        {
-          eapply receiver_mutability_exists_wf_renv; eauto.
-        }
-        destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
-        have Hcorr := Htypable.
-        have Hcorrcopy := Hcorr.
-        specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty H10).
-        unfold wf_r_typable in Hcorr.
-        unfold r_basetype in H0.
-        unfold r_type.
-        destruct (runtime_getObj h ly) as [obj|] eqn:Hobjy; [|discriminate].
-        injection H0 as Hcy_eq.
-        subst cy.
-        destruct obj as [rt_obj fields_obj].
-        destruct rt_obj as [rq_obj rc_obj].
-
-        have Hrenvcopy := Hrenv.
-        unfold wf_renv in Hrenv.
-        destruct Hrenv as [_ [Hreceiver _]].
-        destruct Hreceiver as [iot [Hget_iot _]].
-        unfold get_this_var_mapping.
-        unfold gget in Hget_iot.
-        destruct (vars rΓ) as [|v0 vs] eqn:Hvars; [discriminate|].
-
-        unfold r_type in Hcorr.
-        rewrite H in Hcorr.
-        rewrite Hobjy in Hcorr.
-        simpl in Hcorr.
-        destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-        assert (Hmsigeq: msignature mdef = msignature mdef0).
-        {
-          eapply method_signature_consistent_subtype; eauto.
-        } *)
-        rewrite HeqsΓmethodinit in HTthisInner.
-        unfold get_this_qualified_type in HTthisInner.
-        unfold static_getType in HTthisInner.
-        simpl in HTthisInner.
-        inversion HTthisInner; subst.
-        clear - Hmsigeq Hty_safe H20 Habs_subtype.
+        (* have Habs_subtype: abs_subtype Ty.(sabs) (vpa_mutabilty_tt Ty (mreceiver (msignature mdef0))).(sabs) by (eapply qualified_type_subtype_abs_subtype; eauto). *)
+        rewrite <- Hmsigeq in H20.
+        eapply adapated_subtype_safe_implies_safe in H20; eauto.
+        (* clear - Hmsigeq Hty_safe H20 Habs_subtype.
         rewrite Hmsigeq.
         unfold vpa_mutabilty_tt in *.
         destruct Hty_safe as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
@@ -940,7 +918,7 @@ Proof.
           simpl in H20.
           all: inversion H20; try easy.
           all: destruct (sabs Ty) eqn:HTyAbs; simpl in Habs_subtype; try discriminate.
-          all: try inversion Habs_subtype; try easy.
+          all: try inversion Habs_subtype; try easy. *)
       -
         have Hnth_param_type : nth_error (mparams (msignature mdef)) z' = Some Tz.
         {
@@ -979,12 +957,12 @@ Proof.
 
         destruct Hnth_arg as [T_arg Hnth_arg].
         eapply Forall2_nth_error with (i := z') (a := T_arg) (b := Tz) in H21; [|auto|rewrite <- Hmsigeq; exact Hnth_param_type].
-        rewrite HeqsΓmethodinit in HTthisInner.
+        (* rewrite HeqsΓmethodinit in HTthisInner.
         unfold get_this_qualified_type in HTthisInner.
         unfold static_getType in HTthisInner.
         simpl in HTthisInner.
-        inversion HTthisInner; subst.
-        rewrite Hmsigeq.
+        inversion HTthisInner; subst. *)
+        (* rewrite Hmsigeq. *)
         have HargtypeFromsEnv :
           exists z_outter,
             static_getType sΓ z_outter = Some T_arg /\
@@ -1021,8 +999,8 @@ Proof.
             apply reachable_locations_from_initial_env_dom in Hin_P; auto.
         }
         have Hconfined_copy := Hconfined.
-        specialize (Hconfined z_outter l_z Tthis T_arg H12 HgetZ_type HgetZ_val Hin_P_orig).
-        (* have HlyInP: Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) ly.
+        specialize (Hconfined z_outter l_z T_arg HgetZ_type HgetZ_val Hin_P_orig).
+        have HlyInP: Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) ly.
         {
           unfold reachable_locations_from_initial_env.
           exists y, ly.
@@ -1030,10 +1008,10 @@ Proof.
           apply rch_heap.
           apply reachable_locations_from_initial_env_dom in Hin_P; auto.
           apply runtime_getObj_dom in Hobjy; auto.
-        } *)
-        (* specialize (Hconfined_copy y ly Tthis Ty H12 H10 H HlyInP); auto. *)
-        (* eapply subtype_safe_implies_safe in H21. *)
-        clear - H21 H20 Hconfined.
+        }
+        specialize (Hconfined_copy y ly Ty H10 H HlyInP); auto.
+        eapply adapated_subtype_safe_implies_safe in H21; auto.
+        (* clear - H21 H20 Hconfined.
         have Habs1: abs_subtype T_arg.(sabs) (vpa_mutabilty_tt Ty Tz).(sabs).
         {
           eapply qualified_type_subtype_abs_subtype in H21; eauto.
@@ -1059,7 +1037,7 @@ Proof.
         all: destruct (sabs Tz) eqn:HTzAbs; try solve [solve_safe_mode].
         all: destruct Hconfined as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]];
         try discriminate Hrd; try discriminate Hlost; try discriminate Himm; try discriminate HRDM.
-        all: rewrite Hnonabs in Habs1; try inversion Habs1; subst; auto.
+        all: rewrite Hnonabs in Habs1; try inversion Habs1; subst; auto. *)
     }
     specialize (IHHeval HenvInvariant Hwf_method_frame).
     rewrite <- getmbody in Hmethodbody_typing.
@@ -1068,11 +1046,12 @@ Proof.
     {
       rewrite HeqrΓ'''.
       unfold env_respects_protected_set.
-      intros z l_z Tthis' T_z HTthis Hlookup_s Hlookup_r Hin_P.
-      rewrite H12 in HTthis.
-      inversion HTthis; subst Tthis'.
-      destruct (Nat.eq_dec x z); subst.
+      intros z l_z T_z Hlookup_s Hlookup_r Hin_P.
+      (* rewrite H12 in HTthis.
+      inversion HTthis; subst Tthis'. *)
+      destruct (Nat.eq_dec x z).
       -- (* CASE: z = x (New Variable) *)
+        subst z.
         assert (T_z = Tx). 
         {
           rewrite H9 in Hlookup_s. 
@@ -1085,7 +1064,7 @@ Proof.
         {
           unfold static_getType; auto.
         }
-        have Hdom_z : z < dom (vars rΓ). 
+        have Hdom_z : x < dom (vars rΓ). 
         { 
           apply runtime_getVal_dom in Hlookup_r.
           rewrite update_length in Hlookup_r.
@@ -1103,33 +1082,14 @@ Proof.
           eapply reachable_return_implies_reachable_args; eauto.
           apply reachable_locations_from_initial_env_dom in Hin_P; auto. (* This is not provable, need a lot changes *)
         }
-        have HgetReceverEndingFrame: get_this_qualified_type sΓmethodend = Some (mreceiver (msignature mdef)).
-        {
-          admit.
-        }
-        have HgetReceiverAddrEndingFrame: runtime_getVal rΓ'' 0 = Some (Iot ly).
-        {
-          admit.
-        }
-        assert (HlyInPinner: Ensembles.In Loc (reachable_locations_from_initial_env CT h {| vars := Iot ly :: vals |}) ly).
-        {
-          eapply reachable_return_implies_reachable_args; eauto.
-          apply reachable_locations_from_initial_env_dom in Hin_P; auto.
-          apply runtime_getObj_dom in Hobjy; auto.
-        }
-        have IHHeval_copy := IHHeval.
-        specialize (IHHeval (mreturn (Syntax.mbody mdef)) l_z (mreceiver (msignature mdef)) mbodyreturntype HgetReceverEndingFrame HGetMethodReturnType H6 Hin_P_inner).
-        specialize (IHHeval_copy 0 ly (mreceiver (msignature mdef)) (mreceiver (msignature mdef)) HgetReceverEndingFrame HgetReceverEndingFrame HgetReceiverAddrEndingFrame HlyInPinner).
+
+        specialize (IHHeval (mreturn (Syntax.mbody mdef)) l_z mbodyreturntype HGetMethodReturnType H6 Hin_P_inner).
         rewrite <- Hmsigeq in H18.
         
         (* have Hconfined_copy := Hconfined.
         unfold env_respects_protected_set in HenvInvariant.
         specialize (HenvInvariant ). *)
         rewrite <- Hmsigeq in H20.
-        have test: is_safe_mode_adapted Tthis Tthis.
-        {
-          admit.
-        }
         have HlyInP: Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) ly.
         {
           unfold reachable_locations_from_initial_env.
@@ -1139,10 +1099,11 @@ Proof.
           apply reachable_locations_from_initial_env_dom in Hin_P; auto.
           apply runtime_getObj_dom in Hobjy; auto.
         }
-        specialize (Hconfined y ly Tthis Ty H12 H10 H HlyInP).
+        specialize (Hconfined y ly Ty H10 H HlyInP).
+        admit.
         (* eapply subtype_safe_implies_safe_adapted in H18; eauto. *)
         (* specialize (Hconfined 0 lOutterReceiver Tthis Tthis H12 H12 HOutterReceiverAddr ) *)
-        clear - IHHeval IHHeval_copy H18 H20 HmethodReturnSubtype Hconfined.
+        (* clear - IHHeval IHHeval_copy H18 H20 HmethodReturnSubtype Hconfined.
         have Habs1: abs_subtype (vpa_mutabilty_tt Ty (mret (msignature mdef))).(sabs) Tx.(sabs).
         {
           eapply qualified_type_subtype_abs_subtype in H18; eauto.
@@ -1226,8 +1187,7 @@ Proof.
         (* specialize (Hconfined y ly Ty H10 H HlyInP). *)
         rewrite <- Hmsigeq in H20.
         rewrite <- Hmsigeq in H21.
-        apply subtype_safe_implies_safe_adapted in H18; auto.
-        all: admit.
+        apply subtype_safe_implies_safe_adapted in H18; auto. *)
       -- (* CASE: z <> x (Old Variables) *)
       (* Just use the original invariant *)
       assert (rΓ <| vars := update x retval (vars rΓ) |> = update_r_env_value rΓ x retval).
