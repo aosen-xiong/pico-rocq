@@ -603,11 +603,6 @@ Definition qc2q (qi : q_c) : q :=
 
 Definition get_this_qualified_type (sΓ : s_env) : option qualified_type :=
   static_getType sΓ 0.
-  (* match sΓ with
-  | [] => None
-  | T_this :: _ => 
-      Some T_this
-  end. *)
 
 Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> Prop :=
   (* Skip statement *)
@@ -796,9 +791,6 @@ Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : P
     mbodyretvar < dom sΓ' /\
     nth_error sΓ' mbodyretvar = Some mbodyrettype /\
     qualified_type_subtype CT mbodyrettype (mret msig) /\
-    (* TODO: Think about how to understand this *)
-    (* (msig.(mreceiver).(sabs) = Nonabs -> 
-       msig.(mret).(sabs) = Nonabs) /\ *)
     (* Override constraint: if method exists in parent, signatures must match *)
     (* Aosen: let's prove invariant override first *)
     (forall parent_def parent mdef_parent,

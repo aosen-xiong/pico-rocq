@@ -1963,10 +1963,9 @@ Proof.
           simpl in Hi. rewrite length_app in Hi. simpl in Hi.
           lia.
         }
-        assert (Hnth_old : nth_error sΓ i = Some sqt).
+        assert (Hnth_old : static_getType sΓ i = Some sqt).
         {
-          have Happ := nth_error_app1 sΓ [T] Hi_old.
-          rewrite Happ in Hnth.
+          rewrite (static_getType_last2 sΓ T i Hi_old) in Hnth.
           exact Hnth.
         }
         rewrite (get_this_var_mapping_update_vars_app_null rΓ) in HreceiverAddr.
@@ -2142,6 +2141,7 @@ Proof.
             assert (Hsqt_eq : sqt = Tx).
           {
             unfold static_getType in H8.
+            unfold static_getType in Hnth.
             rewrite H8 in Hnth.
             injection Hnth as Hsqt_eq.
             symmetry. exact Hsqt_eq.
@@ -4229,7 +4229,6 @@ qthisr (cqualifier consig); rctype := c |}; fields_map := vals |}]) = dom h + 1)
             + (* Case: x = S x' *)
               simpl.
               unfold r_muttype.
-              unfold static_getType in H4.
               rewrite H4 in Hnth.
               inversion Hnth.
               subst sqt.
@@ -5042,7 +5041,7 @@ Proof.
               simpl in Hi.
               simpl in Hnth.
               assert (Hi_mparams : i' < dom (mparams (msignature mdef))).
-              { apply nth_error_Some. rewrite Hnth. discriminate. }
+              { apply static_getType_dom in Hnth. exact Hnth. }
               rewrite H8 in Hi_mparams.  (* msig mdef = msig mdef0 *)
               rewrite <- H25 in Hi_mparams.
               exact Hi_mparams.
@@ -5291,12 +5290,7 @@ Proof.
             rewrite Hlen in H13.
             exact H13.
           + (* Show wf_r_typable for retval *)
-            assert (Hnth_x : nth_error sΓ' x = Some Tx).
-            {
-              unfold static_getType in H13.
-              exact H13.
-            }
-            rewrite Hnth_x in Hnth.
+            rewrite H13 in Hnth.
             injection Hnth as Hsqt_eq.
             subst sqt.
             (* Use the fact that retval is well-typed from method return *)
@@ -5850,14 +5844,11 @@ Proof.
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in H25.
-              simpl in Hi.
-              simpl in Hnth.
               rewrite Hmsigeq in Hnth.
               rewrite H25.
-              apply nth_error_Some.
-              intros Hnone.
-              rewrite Hnth in Hnone.
-              discriminate.
+              apply static_getType_dom in Hnth.
+              simpl in Hnth.
+              lia.
             }
             assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
             {
@@ -5937,7 +5928,6 @@ Proof.
             split.
 
             (* base subtype *)
-            rewrite nth_error_cons_succ in Hnth.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in H25; eauto.
             apply qualified_type_subtype_base_subtype in H25.
@@ -6121,12 +6111,7 @@ Proof.
             rewrite Hlen in H13.
             exact H13.
           + (* Show wf_r_typable for retval *)
-            assert (Hnth_x : nth_error sΓ' x = Some Tx).
-            {
-              unfold static_getType in H13.
-              exact H13.
-            }
-            rewrite Hnth_x in Hnth.
+            rewrite H13 in Hnth.
             injection Hnth as Hsqt_eq.
             subst sqt.
             (* Use the fact that retval is well-typed from method return *)
@@ -6818,8 +6803,7 @@ Proof.
               apply Forall2_length in H26.
               simpl in Hi.
               simpl in Hnth.
-              assert (Hi_mparams : i' < dom (mparams (msignature mdef))).
-              { apply nth_error_Some. rewrite Hnth. discriminate. }
+              assert (Hi_mparams : i' < dom (mparams (msignature mdef))) by (eapply static_getType_dom in Hnth; eauto).
               rewrite H8 in Hi_mparams.  (* msig mdef = msig mdef0 *)
               rewrite <- H26 in Hi_mparams.
               exact Hi_mparams.
@@ -7068,12 +7052,7 @@ Proof.
             rewrite Hlen in H13.
             exact H13.
           + (* Show wf_r_typable for retval *)
-            assert (Hnth_x : nth_error sΓ' x = Some Tx).
-            {
-              unfold static_getType in H13.
-              exact H13.
-            }
-            rewrite Hnth_x in Hnth.
+            rewrite H13 in Hnth.
             injection Hnth as Hsqt_eq.
             subst sqt.
             (* Use the fact that retval is well-typed from method return *)
@@ -7627,14 +7606,11 @@ Proof.
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in H26.
-              simpl in Hi.
-              simpl in Hnth.
               rewrite Hmsigeq in Hnth.
               rewrite H26.
-              apply nth_error_Some.
-              intros Hnone.
-              rewrite Hnth in Hnone.
-              discriminate.
+              apply static_getType_dom in Hnth.
+              simpl in Hnth.
+              lia.
             }
             assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
             {
@@ -7714,7 +7690,6 @@ Proof.
             split.
 
             (* base subtype *)
-            rewrite nth_error_cons_succ in Hnth.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in H26; eauto.
             apply qualified_type_subtype_base_subtype in H26.
@@ -7898,12 +7873,7 @@ Proof.
             rewrite Hlen in H13.
             exact H13.
           + (* Show wf_r_typable for retval *)
-            assert (Hnth_x : nth_error sΓ' x = Some Tx).
-            {
-              unfold static_getType in H13.
-              exact H13.
-            }
-            rewrite Hnth_x in Hnth.
+            rewrite H13 in Hnth.
             injection Hnth as Hsqt_eq.
             subst sqt.
             (* Use the fact that retval is well-typed from method return *)

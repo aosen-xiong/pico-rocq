@@ -27,9 +27,8 @@ Definition env_respects_protected_set
     (* ...the variable must be ReadOnly, or Lost. *)
     is_safe_mode T.
 
-(* Lemma mut_var_cannot_point_to_P :
-  forall sΓ rΓ x T Tthis l P
-         (HlookupThis: get_this_qualified_type sΓ = Some Tthis)
+Lemma mut_var_cannot_point_to_P :
+  forall sΓ rΓ x T l P
          (Hlookup : static_getType sΓ x = Some T)
          (Hval : runtime_getVal rΓ x = Some (Iot l))
          (Henv_safe : env_respects_protected_set P sΓ rΓ)
@@ -39,23 +38,17 @@ Proof.
   intros.
   (* Unfold the invariant *)
   unfold env_respects_protected_set in Henv_safe.
-  specialize (Henv_safe x l Tthis T  HlookupThis Hlookup Hval Hin_P).
+  specialize (Henv_safe x l  T  Hlookup Hval Hin_P).
   (* Henv_safe says T is Rd/Imm/Lost. Thus it is not Mut. *)
   unfold is_safe_mode in Henv_safe.
   unfold vpa_mutabilty_tt in Henv_safe.
   destruct Henv_safe as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]];
-  destruct (sqtype Tthis) eqn: Hthis_qtype;
   destruct (sqtype T) eqn: Hqtype;
   simpl in *.
   all: try inversion Hrd; subst; auto.
-  1-4: left; intro Heq.
-  rewrite Hrd in Heq; discriminate.
-  rewrite Hlost in Heq; discriminate.
-  rewrite Himm in Heq; discriminate.
-  rewrite HRDM in Heq; discriminate.
-  right; intro Heq.
-  rewrite Hnonabs in Heq; discriminate.
-Qed. *)
+  1-4, 5, 6, 7: left; intro Heq;
+  try discriminate.
+Qed.
 
 Lemma extract_receiver_from_wf_config :
   forall CT sΓ rΓ h
@@ -129,13 +122,12 @@ Proof.
   apply rch_heap; auto.
 Qed.
 
-(* Lemma confinement_from_all_readonly_env :
+Lemma confinement_from_all_readonly_env :
   forall CT sΓ rΓ h
     (Hwf : wf_r_config CT sΓ rΓ h)
-    (Hall_readonly : forall y T Tthis,
+    (Hall_readonly : forall y T,
       static_getType sΓ y = Some T ->
-      get_this_qualified_type sΓ = Some Tthis ->
-      is_safe_mode Tthis T),
+      is_safe_mode T),
     env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ.
 Proof.
   intros.
@@ -143,7 +135,7 @@ Proof.
   unfold env_respects_protected_set.
   intros z l T Hlookup_s Hlookup_r Hin_P.
   exact (Hall_readonly z T Hlookup_s).
-Qed. *)
+Qed.
 
 Lemma subtype_safe_implies_safe :
   forall CT T_sub T_super
@@ -284,10 +276,6 @@ Proof.
         2: right; left; reflexivity.
         2: right; right; left; reflexivity.
         2: left; reflexivity.
-        (* rewrite Hthis_qtype; simpl. *)
-        (* 2, 6, 10, 14, 18, 22: right; left; reflexivity.
-        2, 5, 8, 11, 14, 17: right; right; left; reflexivity.
-        2, 4, 6, 8, 10, 12: left; reflexivity. *)
         all:
         unfold ProtectedField in H13;
         unfold sf_mutability_rel in H13;
@@ -314,8 +302,6 @@ Proof.
         exists fDef;
         split; auto.
       *
-        (* destruct (sqtype Tthis) eqn: Hthis_qtype; destruct (sqtype T) eqn: Tttype; simpl in Himm;
-        try inversion Himm; subst; auto. *)
         rewrite Himm.
         all: unfold vpa_mutabilty_stype_fld;
         unfold is_safe_mode.
@@ -1239,14 +1225,11 @@ Proof.
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in H21.
-              simpl in Hi.
-              simpl in Hnth.
               rewrite Hmsigeq in Hnth.
               rewrite H21.
-              apply nth_error_Some.
-              intros Hnone.
-              rewrite Hnth in Hnone.
-              discriminate.
+              apply static_getType_dom in Hnth.
+              simpl in Hnth.
+              lia.
             }
             assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
             {
@@ -1326,7 +1309,6 @@ Proof.
             split.
 
             (* base subtype *)
-            rewrite nth_error_cons_succ in Hnth.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in H21; eauto.
             apply qualified_type_subtype_base_subtype in H21.
@@ -1729,14 +1711,11 @@ Proof.
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in H21.
-              simpl in Hi.
-              simpl in Hnth.
               rewrite Hmsigeq in Hnth.
               rewrite H21.
-              apply nth_error_Some.
-              intros Hnone.
-              rewrite Hnth in Hnone.
-              discriminate.
+              apply static_getType_dom in Hnth.
+              simpl in Hnth.
+              lia.
             }
             assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
             {
@@ -1816,7 +1795,6 @@ Proof.
             split.
 
             (* base subtype *)
-            rewrite nth_error_cons_succ in Hnth.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in H21; eauto.
             apply qualified_type_subtype_base_subtype in H21.
@@ -2256,14 +2234,11 @@ Proof.
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in H22.
-              simpl in Hi.
-              simpl in Hnth.
               rewrite Hmsigeq in Hnth.
               rewrite H22.
-              apply nth_error_Some.
-              intros Hnone.
-              rewrite Hnth in Hnone.
-              discriminate.
+              apply static_getType_dom in Hnth.
+              simpl in Hnth.
+              lia.
             }
             assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
             {
@@ -2343,7 +2318,6 @@ Proof.
             split.
 
             (* base subtype *)
-            rewrite nth_error_cons_succ in Hnth.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in H22; eauto.
             apply qualified_type_subtype_base_subtype in H22.
@@ -2746,14 +2720,11 @@ Proof.
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in H22.
-              simpl in Hi.
-              simpl in Hnth.
               rewrite Hmsigeq in Hnth.
               rewrite H22.
-              apply nth_error_Some.
-              intros Hnone.
-              rewrite Hnth in Hnone.
-              discriminate.
+              apply static_getType_dom in Hnth.
+              simpl in Hnth.
+              lia.
             }
             assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
             {
@@ -2833,7 +2804,6 @@ Proof.
             split.
 
             (* base subtype *)
-            rewrite nth_error_cons_succ in Hnth.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in H22; eauto.
             apply qualified_type_subtype_base_subtype in H22.

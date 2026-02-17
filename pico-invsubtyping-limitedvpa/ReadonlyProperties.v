@@ -12,8 +12,8 @@ Theorem readonly_pico_field_write :
     (Hstatic_type : static_getType sΓ readonlyx = Some qt)
     (Hqt_ro : sqtype qt = RO)
     (Hwf : wf_r_config CT sΓ rΓ h)
-    (Htyping : stmt_typing CT retain_nonabs sΓ stmt sΓ')
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) true CT rΓ h stmt OK true (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Htyping : stmt_typing CT retain_nonabs_method sΓ stmt sΓ')
+    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (Hget_readonly : runtime_getVal rΓ readonlyx = Some (Iot l))
     (Hobj_before : runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals))
     (Hobj_after : runtime_getObj h' l = Some (mkObj (mkruntime_type anyrq C) vals'))
@@ -215,8 +215,8 @@ Theorem readonly_method_call_preserves_arguments :
     (Hstatic_type : static_getType sΓ y = Some Ty)
     (Hmethod_lookup : FindMethodWithName CT (sctype Ty) mindex mdef)
     (Hwf : wf_r_config CT sΓ rΓ h)
-    (Htyping : stmt_typing CT retain_nonabs sΓ stmt sΓ')
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) true CT rΓ h stmt OK true (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Htyping : stmt_typing CT retain_nonabs_method sΓ stmt sΓ')
+    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (Hget_y : runtime_getVal rΓ y = Some (Iot ly))
     (Hget_zs : runtime_lookup_list rΓ zs = Some vals)
     (HinP: Ensembles.In Loc (protected_locations_from_vals CT h (Iot ly :: vals)) loc_arg)
@@ -228,7 +228,7 @@ Theorem readonly_method_call_preserves_arguments :
 Proof.
   intros.
   inversion Heval; subst; try discriminate.
-  inversion H15; subst.
+  inversion H14; subst.
   have Heqy: ly = ly0.
   {
     rewrite H0 in Hget_y.
@@ -258,7 +258,7 @@ Proof.
     unfold wf_senv in H10.
     destruct H10 as [H10 Hwftypeuse].
     eapply find_overriding_method_deterministic; eauto.
-    eapply Forall_nth_error in Hwftypeuse; eauto.
+    eapply Forall_nth_error with (n:=y) in Hwftypeuse; eauto.
     unfold wf_stypeuse in Hwftypeuse.
     destruct (bound CT (sctype Ty)) eqn: Hbound.
     unfold bound in Hbound.
@@ -486,10 +486,10 @@ Proof.
         {
           apply qualified_type_subtype_q_subtype in H23.
           specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
-          apply get_this_qualified_type_nth_error in H14.
+          apply get_this_qualified_type_nth_error in H15.
           unfold wf_senv in Hsenv.
           destruct Hsenv as [Hsenvdom _].
-          specialize (Hcorrcopy 0 Hsenvdom Tthis H14).
+          specialize (Hcorrcopy 0 Hsenvdom Tthis H15).
           rewrite <- Hvars in HOutterReceiverAddr.
           apply get_this_var_mapping_runtime_getVal in HOutterReceiverAddr.
           rewrite HOutterReceiverAddr in Hcorrcopy.
@@ -564,18 +564,14 @@ Proof.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
           - (* Parameter i' exists *)
             destruct v as [|loc]; [trivial|].
-            (* Use H23 to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in H24.
-              simpl in Hi.
-              simpl in Hnth.
               rewrite Hmsigeq in Hnth.
               rewrite H24.
-              apply nth_error_Some.
-              intros Hnone.
-              rewrite Hnth in Hnone.
-              discriminate.
+              apply static_getType_dom in Hnth.
+              simpl in Hnth.
+              lia.
             }
             assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
             {
@@ -655,7 +651,6 @@ Proof.
             split.
 
             (* base subtype *)
-            rewrite nth_error_cons_succ in Hnth.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in H24; eauto.
             apply qualified_type_subtype_base_subtype in H24.
@@ -670,8 +665,8 @@ Proof.
             specialize (Hcorrcopy_2 lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
             unfold wf_senv in Hsenv.
             destruct Hsenv as [Hsenvdom _].
-            apply get_this_qualified_type_nth_error in H14.
-            specialize (Hcorrcopy_2 0 Hsenvdom Tthis H14).
+            apply get_this_qualified_type_nth_error in H15.
+            specialize (Hcorrcopy_2 0 Hsenvdom Tthis H15).
             rewrite <- Hvars in Hget_iot.
             apply get_this_var_mapping_runtime_getVal in Hget_iot.
             rewrite Hget_iot in Hcorrcopy_2.
@@ -741,7 +736,6 @@ Proof.
     }
     rewrite getmbody in H7.
     (* rewrite getmbody in Heval. *)
-    eapply eval_stmt_did_not_touch_abs_start_with_true with (P:=(reachable_locations_from_initial_env CT h rΓmethodinit)) (rΓ':=rΓ'')(h':=h'); eauto.
     assert (Hy_dom : y < dom sΓ).
     {
       apply static_getType_dom in H12.
@@ -788,56 +782,13 @@ Proof.
       eapply method_signature_consistent_subtype; eauto.
     }
     rewrite <- Hmsigeq in H17.
-    rewrite H17 in Hmethodbody_typing.
-    exact Hmethodbody_typing.
-    subst .
+    (* rewrite H17 in Hmethodbody_typing. *)
+    (* exact Hmethodbody_typing. *)
+    (* subst . *)
     eapply deep_readonly_preservation with (stmt := (mbody_stmt mbody)) (sΓ' := sΓmethodend) (rΓ' := rΓ''); eauto.
     assert (HenvImpliesEnvRespect: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓmethodinit) sΓmethodinit rΓmethodinit).
     {
       eapply confinement_from_all_readonly_env; eauto.
-      assert (Hy_dom : y < dom sΓ).
-      {
-        apply static_getType_dom in H12.
-        exact H12.
-      }
-      assert (HOutterReceiverAddr: exists lOutterReceiver, get_this_var_mapping (vars rΓ) = Some lOutterReceiver).
-      {
-        eapply get_this_exists_from_wf_r_config; eauto.
-      }
-      destruct HOutterReceiverAddr as [lOutterReceiver HOutterReceiverAddr].
-      assert (HOutterReceiverMutability: exists qcontext, r_muttype h lOutterReceiver = Some qcontext).
-      {
-        eapply receiver_mutability_exists_wf_renv; eauto.
-      }
-      destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
-      have Hcorr := Htypable.
-      have Hcorrcopy := Hcorr.
-      specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty H12).
-      unfold wf_r_typable in Hcorr.
-      unfold r_basetype in H1.
-      unfold r_type.
-      destruct (runtime_getObj h ly) as [obj|] eqn:Hobjy; [|discriminate].
-      injection H1 as Hcy_eq.
-      subst cy.
-      destruct obj as [rt_obj fields_obj].
-      destruct rt_obj as [rq_obj rc_obj].
-
-      unfold wf_renv in Hrenv.
-      destruct Hrenv as [_ [Hreceiver _]].
-      destruct Hreceiver as [iot [Hget_iot _]].
-      unfold get_this_var_mapping.
-      unfold gget in Hget_iot.
-      destruct (vars rΓ) as [|v0 vs] eqn:Hvars; [discriminate|].
-
-      unfold r_type in Hcorr.
-      rewrite H0 in Hcorr.
-      rewrite Hobjy in Hcorr.
-      simpl in Hcorr.
-      destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-      assert (Hmsigeq: msignature mdef = msignature mdef1).
-      {
-        eapply method_signature_consistent_subtype; eauto.
-      }
       intros y0 T Hlookup_s.
       unfold static_getType in Hlookup_s.
       simpl in Hlookup_s.
@@ -859,50 +810,8 @@ Proof.
         eapply Forall_nth_error in Hall_params; eauto.
     }
     exact HenvImpliesEnvRespect.
-    assert (Hy_dom : y < dom sΓ).
-    {
-      apply static_getType_dom in H12.
-      exact H12.
-    }
-    assert (HOutterReceiverAddr: exists lOutterReceiver, get_this_var_mapping (vars rΓ) = Some lOutterReceiver).
-    {
-      eapply get_this_exists_from_wf_r_config; eauto.
-    }
-    destruct HOutterReceiverAddr as [lOutterReceiver HOutterReceiverAddr].
-    assert (HOutterReceiverMutability: exists qcontext, r_muttype h lOutterReceiver = Some qcontext).
-    {
-      eapply receiver_mutability_exists_wf_renv; eauto.
-    }
-    destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
-    have Hcorr := Htypable.
-    have Hcorrcopy := Hcorr.
-    specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty H12).
-    unfold wf_r_typable in Hcorr.
-    unfold r_basetype in H1.
-    unfold r_type.
-    destruct (runtime_getObj h ly) as [obj|] eqn:Hobjy; [|discriminate].
-    injection H1 as Hcy_eq.
-    subst cy.
-    destruct obj as [rt_obj fields_obj].
-    destruct rt_obj as [rq_obj rc_obj].
-
-    unfold wf_renv in Hrenv.
-    destruct Hrenv as [_ [Hreceiver _]].
-    destruct Hreceiver as [iot [Hget_iot _]].
-    unfold get_this_var_mapping.
-    unfold gget in Hget_iot.
-    destruct (vars rΓ) as [|v0 vs] eqn:Hvars; [discriminate|].
-
-    unfold r_type in Hcorr.
-    rewrite H0 in Hcorr.
-    rewrite Hobjy in Hcorr.
-    simpl in Hcorr.
-    destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-    assert (Hmsigeq: msignature mdef = msignature mdef1).
-    {
-      eapply method_signature_consistent_subtype; eauto.
-    }
-    rewrite getmbody. rewrite <- Hmsigeq in H17.
+    rewrite getmbody. 
+    (* rewrite <- Hmsigeq in H17. *)
     rewrite H17 in Hmethodbody_typing.
     exact Hmethodbody_typing.
     rewrite getmbody. auto.
@@ -1137,10 +1046,10 @@ Proof.
         {
           apply qualified_type_subtype_q_subtype in H23.
           specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
-          apply get_this_qualified_type_nth_error in H14.
+          apply get_this_qualified_type_nth_error in H15.
           unfold wf_senv in Hsenv.
           destruct Hsenv as [Hsenvdom _].
-          specialize (Hcorrcopy 0 Hsenvdom Tthis H14).
+          specialize (Hcorrcopy 0 Hsenvdom Tthis H15).
           rewrite <- Hvars in HOutterReceiverAddr.
           apply get_this_var_mapping_runtime_getVal in HOutterReceiverAddr.
           rewrite HOutterReceiverAddr in Hcorrcopy.
@@ -1220,14 +1129,11 @@ Proof.
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in H24.
-              simpl in Hi.
-              simpl in Hnth.
               rewrite Hmsigeq in Hnth.
               rewrite H24.
-              apply nth_error_Some.
-              intros Hnone.
-              rewrite Hnth in Hnone.
-              discriminate.
+              apply static_getType_dom in Hnth.
+              simpl in Hnth.
+              lia.
             }
             assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
             {
@@ -1307,7 +1213,6 @@ Proof.
             split.
 
             (* base subtype *)
-            rewrite nth_error_cons_succ in Hnth.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in H24; eauto.
             apply qualified_type_subtype_base_subtype in H24.
@@ -1322,8 +1227,8 @@ Proof.
             specialize (Hcorrcopy_2 lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
             unfold wf_senv in Hsenv.
             destruct Hsenv as [Hsenvdom _].
-            apply get_this_qualified_type_nth_error in H14.
-            specialize (Hcorrcopy_2 0 Hsenvdom Tthis H14).
+            apply get_this_qualified_type_nth_error in H15.
+            specialize (Hcorrcopy_2 0 Hsenvdom Tthis H15).
             rewrite <- Hvars in Hget_iot.
             apply get_this_var_mapping_runtime_getVal in Hget_iot.
             rewrite Hget_iot in Hcorrcopy_2.
@@ -1392,8 +1297,7 @@ Proof.
             lia.
     }
     rewrite getmbody in H7.
-    have HtrueVal:  = true.
-    eapply eval_stmt_did_not_touch_abs_start_with_true with (P:=(reachable_locations_from_initial_env CT h rΓmethodinit)) (rΓ':=rΓ'')(h':=h'); eauto.
+
     assert (Hy_dom : y < dom sΓ).
     {
       apply static_getType_dom in H12.
@@ -1441,55 +1345,12 @@ Proof.
     }
     rewrite <- Hmsigeq in H17.
     rewrite H17 in Hmethodbody_typing.
-    exact Hmethodbody_typing.
-    subst .
+    (* exact Hmethodbody_typing. *)
+    (* subst . *)
     eapply deep_readonly_preservation with (stmt := (mbody_stmt mbody)) (sΓ' := sΓmethodend)(rΓ':=rΓ''); eauto.
     assert (HenvImpliesEnvRespect: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓmethodinit) sΓmethodinit rΓmethodinit).
     {
       eapply confinement_from_all_readonly_env; eauto.
-      assert (Hy_dom : y < dom sΓ).
-      {
-        apply static_getType_dom in H12.
-        exact H12.
-      }
-      assert (HOutterReceiverAddr: exists lOutterReceiver, get_this_var_mapping (vars rΓ) = Some lOutterReceiver).
-      {
-        eapply get_this_exists_from_wf_r_config; eauto.
-      }
-      destruct HOutterReceiverAddr as [lOutterReceiver HOutterReceiverAddr].
-      assert (HOutterReceiverMutability: exists qcontext, r_muttype h lOutterReceiver = Some qcontext).
-      {
-        eapply receiver_mutability_exists_wf_renv; eauto.
-      }
-      destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
-      have Hcorr := Htypable.
-      have Hcorrcopy := Hcorr.
-      specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty H12).
-      unfold wf_r_typable in Hcorr.
-      unfold r_basetype in H1.
-      unfold r_type.
-      destruct (runtime_getObj h ly) as [obj|] eqn:Hobjy; [|discriminate].
-      injection H1 as Hcy_eq.
-      subst cy.
-      destruct obj as [rt_obj fields_obj].
-      destruct rt_obj as [rq_obj rc_obj].
-
-      unfold wf_renv in Hrenv.
-      destruct Hrenv as [_ [Hreceiver _]].
-      destruct Hreceiver as [iot [Hget_iot _]].
-      unfold get_this_var_mapping.
-      unfold gget in Hget_iot.
-      destruct (vars rΓ) as [|v0 vs] eqn:Hvars; [discriminate|].
-
-      unfold r_type in Hcorr.
-      rewrite H0 in Hcorr.
-      rewrite Hobjy in Hcorr.
-      simpl in Hcorr.
-      destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-      assert (Hmsigeq: msignature mdef = msignature mdef1).
-      {
-        eapply method_signature_consistent_subtype; eauto.
-      }
       intros y0 T Hlookup_s.
       unfold static_getType in Hlookup_s.
       simpl in Hlookup_s.
@@ -1511,7 +1372,7 @@ Proof.
         eapply Forall_nth_error in Hall_params; eauto.
     }
     exact HenvImpliesEnvRespect.
-    assert (Hy_dom : y < dom sΓ).
+    (* assert (Hy_dom : y < dom sΓ).
     {
       apply static_getType_dom in H12.
       exact H12.
@@ -1553,9 +1414,8 @@ Proof.
     assert (Hmsigeq: msignature mdef = msignature mdef1).
     {
       eapply method_signature_consistent_subtype; eauto.
-    }
-    rewrite getmbody. rewrite <- Hmsigeq in H17.
-    rewrite H17 in Hmethodbody_typing.
+    } *)
+    rewrite getmbody.
     exact Hmethodbody_typing.
     rewrite getmbody; auto.
     have Hsubset := protected_locations_subset_reachable_from_method_frame CT h ly vals.

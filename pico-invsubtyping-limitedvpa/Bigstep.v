@@ -203,8 +203,7 @@ Definition wf_r_config (CT: class_table) (sΓ: s_env) (rΓ: r_env) (h: heap) : P
   (r_muttype h ι) = Some qcontext ->
   forall i, i < List.length sΓ ->
   forall sqt,
-    (* TODO: unify the method used to static_get_type *)
-    nth_error sΓ i = Some sqt ->
+    static_getType sΓ i = Some sqt ->
     match runtime_getVal rΓ i with
     | Some (Iot loc) => wf_r_typable CT rΓ h loc sqt qcontext
     | Some Null_a => True
@@ -262,19 +261,11 @@ Inductive eval_expr : eval_result -> (Loc -> Prop) -> class_table -> r_env -> he
       eval_expr OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (EVar x) v OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
 
   (* evaluate field access expression *)  
-  | EBS_Field_touch_abs : forall CT rΓ h x f v o v1 ,
+  | EBS_Field: forall CT rΓ h x f v o v1 ,
       runtime_getVal rΓ x = Some (Iot v) ->
       runtime_getObj h v = Some o ->
       getVal o.(fields_map) f = Some v1 ->
-      (* non_mut_field_ref CT (rctype (rt_type o)) f -> *)
       eval_expr OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (EField x f) v1 OK  (reachable_locations_from_initial_env CT h rΓ) rΓ h
-
-  (* | EBS_Field_touch_non_abs : forall CT rΓ h x f v o v1 ,
-    runtime_getVal rΓ x = Some (Iot v) ->
-    runtime_getObj h v = Some o ->
-    getVal o.(fields_map) f = Some v1 ->
-    ~ non_mut_field_ref CT (rctype (rt_type o)) f ->
-    eval_expr OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (EField x f) v1 OK false (reachable_locations_from_initial_env CT h rΓ) rΓ h     *)
 
   (* evaluate field access expression yields NPE *)
   | EBS_Field_NPE : forall CT rΓ h x f v ,
@@ -312,23 +303,13 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop) -> class_table -> r_env -> he
     h'
 
   (* evaluate field write statement *)
-  | SBS_FldWrite_touch_abs: forall CT rΓ h x f y loc_x o vf val_y h' ,
+  | SBS_FldWrite: forall CT rΓ h x f y loc_x o vf val_y h' ,
       runtime_getVal rΓ x = Some (Iot loc_x) ->
       runtime_getObj h loc_x = Some o ->
       getVal o.(fields_map) f = Some vf ->
       runtime_getVal rΓ y = Some val_y ->
       h' = update_field h loc_x f val_y ->
-      (* non_mut_field_ref CT (rctype (rt_type o)) f -> *)
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SFldWrite x f y) OK  (reachable_locations_from_initial_env CT h rΓ) rΓ h'
-
-  (* | SBS_FldWrite_touch_non_abs: forall CT rΓ h x f y loc_x o vf val_y h' ,
-    runtime_getVal rΓ x = Some (Iot loc_x) ->
-    runtime_getObj h loc_x = Some o ->
-    getVal o.(fields_map) f = Some vf ->
-    runtime_getVal rΓ y = Some val_y ->
-    h' = update_field h loc_x f val_y ->
-    ~ non_mut_field_ref CT (rctype (rt_type o)) f ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SFldWrite x f y) OK false (reachable_locations_from_initial_env CT h rΓ) rΓ h' *)
 
   (* evaluate field write statement NPE *)
   | SBS_FldWrite_NPE: forall CT rΓ h x f y rΓ' h' ,
@@ -384,6 +365,7 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop) -> class_table -> r_env -> he
     rΓ' = mkr_env (Iot ly :: vals) ->
     eval_stmt OK (reachable_locations_from_initial_env CT h rΓ')  CT rΓ' h mstmt NPE  (reachable_locations_from_initial_env CT h rΓ') rΓ'' h' ->
     eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h (SCall x m y zs) NPE  (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'
+
   (* evaluate sequence of statements *)
   | SBS_Seq: forall CT rΓ h s1 s2 rΓ' h' rΓ'' h'',
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)  CT rΓ h s1 OK  (reachable_locations_from_initial_env CT h rΓ) rΓ' h' ->
@@ -880,7 +862,7 @@ Lemma expr_eval_preservation : forall   P CT mt sΓ rΓ h e v rΓ' h' T ι qcont
   | Iot loc => wf_r_typable CT rΓ h loc T qcontext
   end.
 Proof.
-  intros   P CT mt sΓ rΓ h e v rΓ' h' T ι qcontext Hreceiveraddr Hreceiverrmut Hwf Htype Heval.
+  intros P CT mt sΓ rΓ h e v rΓ' h' T ι qcontext Hreceiveraddr Hreceiverrmut Hwf Htype Heval.
   have Hevalcopy := Heval.
   remember OK as ok.
   induction Heval; inversion Htype; subst; try discriminate.

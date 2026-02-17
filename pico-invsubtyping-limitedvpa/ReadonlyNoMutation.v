@@ -11,8 +11,8 @@ Theorem deep_readonly_preservation :
   forall CT sΓ rΓ h stmt rΓ' h' sΓ' l C anyrq vals vals' f
     (Hconfined : env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ)
     (Hwf : wf_r_config CT sΓ rΓ h)
-    (Htyping : stmt_typing CT retain_nonabs sΓ stmt sΓ')
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) true CT rΓ h stmt OK true (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Htyping : stmt_typing CT retain_nonabs_method sΓ stmt sΓ')
+    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (Hlocalset : Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) l)
     (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals))
     (Hobj' : runtime_getObj h' l = Some (mkObj (mkruntime_type anyrq C) vals'))
@@ -21,7 +21,6 @@ Theorem deep_readonly_preservation :
 Proof.
   intros.
   remember OK as ok.
-  remember true as .
   generalize dependent sΓ.
   generalize dependent sΓ'.
   generalize dependent vals. 
@@ -492,14 +491,11 @@ Proof.
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in H21.
-              simpl in Hi.
-              simpl in Hnth.
               rewrite Hmsigeq in Hnth.
               rewrite H21.
-              apply nth_error_Some.
-              intros Hnone.
-              rewrite Hnth in Hnone.
-              discriminate.
+              apply static_getType_dom in Hnth.
+              simpl in Hnth.
+              lia.
             }
             assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
             {
@@ -579,7 +575,6 @@ Proof.
             split.
 
             (* base subtype *)
-            rewrite nth_error_cons_succ in Hnth.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in H21; eauto.
             apply qualified_type_subtype_base_subtype in H21.
@@ -673,7 +668,7 @@ Proof.
       subst vals'.
       reflexivity.
     }
-    specialize (IHHeval eq_refl Hlocalset' Hassignability vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
+    specialize (IHHeval Hlocalset' Hassignability vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
     assert (HenvInvariant: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓmethodinit)
     sΓmethodinit rΓmethodinit).
     {
@@ -705,7 +700,7 @@ Proof.
       }
       unfold is_safe_mode in Hty_safe.
       unfold vpa_mutabilty_tt.
-      have Habs_subtype: Ty.(sabs) = (vpa_mutabilty_tt Ty (mreceiver (msignature mdef0))).(sabs) by (eapply qualified_type_subtype_abs_eq; eauto).
+      have Habs_subtype: abs_subtype Ty.(sabs) (vpa_mutabilty_tt Ty (mreceiver (msignature mdef0))).(sabs) by (eapply qualified_type_subtype_abs_subtype; eauto).
       apply qualified_type_subtype_q_subtype in H20.
       assert (Hy_dom : y < dom sΓ).
       {
@@ -769,15 +764,13 @@ Proof.
         try rewrite HMethodReceiverDeclaredType in H20;
         simpl in H20.
         all: inversion H20; try easy.
-        all: left; reflexivity.
+        all: try solve [solve_safe_mode].
       + (* Case: sqtype Ty = Imm *)
         rewrite Himm in H20.
         destruct (sqtype (mreceiver (msignature mdef0))) eqn: HMethodReceiverDeclaredType;
         try rewrite HMethodReceiverDeclaredType in H20;
         simpl in H20.
         all: inversion H20; try easy.
-        right; right; left; reflexivity.
-        right; right; right; left; reflexivity.
         left; reflexivity.
       + (* Case: sqtype Ty = RDM *)  
         rewrite HRDM in H20.
@@ -790,10 +783,7 @@ Proof.
       + (* Case: sabs Ty = Nonabs*)
         unfold vpa_mutabilty_tt in Habs_subtype.
         destruct (sqtype (mreceiver (msignature mdef0))) eqn: HMethodReceiverDeclaredType.
-        2: right; right; left; reflexivity.
-        2: right; right; right; left; reflexivity.
-        2: left; reflexivity.
-        2: right; left; reflexivity.
+        all: try solve [solve_safe_mode].
         all: destruct (sabs (mreceiver (msignature mdef0))) eqn:HMethodReceiverIsAbs;
         try rewrite HMethodReceiverDeclaredType in H20;
         simpl in H20.
@@ -801,8 +791,8 @@ Proof.
         all: inversion H20; try easy.
         all: destruct (sabs Ty) eqn:HTyAbs; simpl in Habs_subtype; try discriminate.
         all: subst.
-        (* 3,4,7,8: right; right; right; right; reflexivity. *)
-        all: right; right; right; right; reflexivity.
+        all: try solve [solve_safe_mode].
+        all: try inversion Habs_subtype; try easy.
       -
         assert (Hy_dom : y < dom sΓ).
         {
@@ -1311,14 +1301,11 @@ Proof.
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in H21.
-              simpl in Hi.
-              simpl in Hnth.
               rewrite Hmsigeq in Hnth.
               rewrite H21.
-              apply nth_error_Some.
-              intros Hnone.
-              rewrite Hnth in Hnone.
-              discriminate.
+              apply static_getType_dom in Hnth.
+              simpl in Hnth.
+              lia.
             }
             assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
             {
@@ -1398,7 +1385,6 @@ Proof.
             split.
 
             (* base subtype *)
-            rewrite nth_error_cons_succ in Hnth.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in H21; eauto.
             apply qualified_type_subtype_base_subtype in H21.
@@ -1492,7 +1478,7 @@ Proof.
       subst vals'.
       reflexivity.
     }
-    specialize (IHHeval eq_refl Hlocalset' Hassignability vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
+    specialize (IHHeval Hlocalset' Hassignability vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
     assert (HenvInvariant: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓmethodinit)
     sΓmethodinit rΓmethodinit).
     {
@@ -1524,7 +1510,7 @@ Proof.
       }
       unfold is_safe_mode in Hty_safe.
       unfold vpa_mutabilty_tt.
-      have Habs_subtype: Ty.(sabs) = (vpa_mutabilty_tt Ty (mreceiver (msignature mdef0))).(sabs) by (eapply qualified_type_subtype_abs_eq; eauto).
+      have Habs_subtype: abs_subtype Ty.(sabs) (vpa_mutabilty_tt Ty (mreceiver (msignature mdef0))).(sabs) by (eapply qualified_type_subtype_abs_subtype; eauto).
       apply qualified_type_subtype_q_subtype in H20.
       assert (Hy_dom : y < dom sΓ).
       {
@@ -1588,15 +1574,13 @@ Proof.
         try rewrite HMethodReceiverDeclaredType in H20;
         simpl in H20.
         all: inversion H20; try easy.
-        all: left; reflexivity.
+        all: try solve [solve_safe_mode].
       + (* Case: sqtype Ty = Imm *)
         rewrite Himm in H20.
         destruct (sqtype (mreceiver (msignature mdef0))) eqn: HMethodReceiverDeclaredType;
         try rewrite HMethodReceiverDeclaredType in H20;
         simpl in H20.
         all: inversion H20; try easy.
-        right; right; left; reflexivity.
-        right; right; right; left; reflexivity.
         left; reflexivity.
       + (* Case: sqtype Ty = RDM *)  
         rewrite HRDM in H20.
@@ -1609,10 +1593,7 @@ Proof.
       + (* Case: sabs Ty = Nonabs*)
         unfold vpa_mutabilty_tt in Habs_subtype.
         destruct (sqtype (mreceiver (msignature mdef0))) eqn: HMethodReceiverDeclaredType.
-        2: right; right; left; reflexivity.
-        2: right; right; right; left; reflexivity.
-        2: left; reflexivity.
-        2: right; left; reflexivity.
+        all: try solve [solve_safe_mode].
         all: destruct (sabs (mreceiver (msignature mdef0))) eqn:HMethodReceiverIsAbs;
         try rewrite HMethodReceiverDeclaredType in H20;
         simpl in H20.
@@ -1620,8 +1601,8 @@ Proof.
         all: inversion H20; try easy.
         all: destruct (sabs Ty) eqn:HTyAbs; simpl in Habs_subtype; try discriminate.
         all: subst.
-        (* 3,4,7,8: right; right; right; right; reflexivity. *)
-        all: right; right; right; right; reflexivity.
+        all: try solve [solve_safe_mode].
+        all: try inversion Habs_subtype; try easy.
       -
         assert (Hy_dom : y < dom sΓ).
         {
@@ -1825,29 +1806,18 @@ Proof.
       eapply preservation_pico; eauto.
     }
 
-    have HtrueVal': ' = true.
-    eapply eval_stmt_did_not_touch_abs_start_with_true; eauto.
-
-    rewrite HtrueVal' in Heval1.
-
-    have HtrueVal:  = true.
-    eapply eval_stmt_did_not_touch_abs_start_with_true with (stmt:=s1) (sΓ:=sΓ) (sΓ':=sΓ'); eauto.
-
-    subst '.
-    subst .
-
     assert (Hconfined_intermediate: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ' rΓ').
     {
-      eapply stmt_preserves_confinement; eauto.
+      eapply confinement_and_RDM_lineage; eauto.
     }
 
-    specialize (eval_stmt_preserves_heap_domain_simple true true CT rΓ h s1 rΓ' h' Heval1) as Hh'.
+    specialize (eval_stmt_preserves_heap_domain_simple  CT rΓ h s1 rΓ' h' Heval1) as Hh'.
     assert (Hldomh': l < dom h') by (apply runtime_getObj_dom in Hobj; lia).
     specialize (runtime_getObj_Some h' l Hldomh') as [T [values' Hh'some]].
-    specialize (runtime_preserves_r_type_heap true true CT rΓ h l ({| rqtype := anyrq; rctype := C |})
+    specialize (runtime_preserves_r_type_heap CT rΓ h l ({| rqtype := anyrq; rctype := C |})
     h' vals s1 rΓ' Hobj Heval1) as [vals1 Hrtype].
     rewrite Hrtype in Hh'some; inversion Hh'some; subst.
-    specialize (IHHeval1 eq_refl eq_refl Hlocalset Hassignability values' Hrtype vals Hobj sΓ' sΓ Hconfined Hwf H5).
-    specialize (IHHeval2 eq_refl eq_refl Hlocalset Hassignability vals' Hobj' values' Hrtype sΓ'' sΓ' Hconfined_intermediate Hwf' H7).
+    specialize (IHHeval1 eq_refl  Hlocalset Hassignability values' Hrtype vals Hobj sΓ' sΓ Hconfined Hwf H5).
+    specialize (IHHeval2 eq_refl Hlocalset Hassignability vals' Hobj' values' Hrtype sΓ'' sΓ' Hconfined_intermediate Hwf' H7).
     rewrite IHHeval2 in IHHeval1; auto.
 Qed.
