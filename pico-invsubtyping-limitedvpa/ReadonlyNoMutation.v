@@ -6,7 +6,6 @@ From Stdlib Require String.
 Import ListNotations.
 From RecordUpdate Require Import RecordUpdate.
 
-
 Theorem deep_readonly_preservation :
   forall CT sΓ rΓ h stmt rΓ' h' sΓ' l C anyrq vals vals' f
     (Hconfined : env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ)
@@ -39,25 +38,15 @@ Proof.
     inversion Hobj'; subst.
     reflexivity.
   - (* FldWrite *)
-    + (* Protected objects unchanged *)
     {
-    (* intros l C anyrq vals vals' Hin Hobj Hobj' f0 Hprotected.   *)
     destruct (Nat.eq_dec loc_x l) as [Halias | Hno_alias].
     -
       subst loc_x.
       destruct (Nat.eq_dec f f0) as [Heq_f | Hneq_f].
       + (* Same field case: contradiction *)
         subst f0.
-        (* Now: x points to l, and l ∈ P *)
-        (* Strategy: Show x must be Safe, but field write requires x to be Mut → contradiction *)
-        
-        (* Extract x's static type from typing *)
         inversion Htyping; subst.
-        (* After inversion: static_getType sΓ x = Some Tx, and sqtype Tx should allow write *)
-        
         unfold env_respects_protected_set in Hconfined.
-        
-        (* Apply the lemma: if x points to l ∈ P, then x is Safe *)
         have Hx_safe := mut_var_cannot_point_to_P sΓ' rΓ x Tx l (reachable_locations_from_initial_env CT h rΓ) H7 H Hconfined Hlocalset.
         
         (* Case on assignability *)
@@ -65,7 +54,6 @@ Proof.
         unfold wf_r_config in Hwf.
         destruct Hwf as [Hclasstable [_[Hrenv [_ [_ Htypable]]]]].
         unfold wf_renv in Hrenv.
-        (* try destruct (extract_receiver_from_wf_config CT sΓ rΓ h Hwf) as [iot [qcontext [Hget_iot[Hiot_dom Hqcontext]]]]. *)
         destruct Hrenv as [_ [Hreceiver _]].
         destruct Hreceiver as [iot [Hget_iot Hiot_dom]].
         assert (HOutterReceiverMutability: exists qcontext, r_muttype h iot = Some qcontext).
@@ -161,7 +149,6 @@ Proof.
       reflexivity.
     }
   - (* New *)
-    (* intros l C anyrq vals0 vals' Hin Hobj Hobj' f Hprotected. *)
     unfold protected_locset in Hlocalset.
 
     (* Extract l < dom h from reachable_abs *)
@@ -261,15 +248,6 @@ Proof.
             eapply find_class_dom; eauto.
         }
         exact Hcydom.
-        (* assert (parent < dom CT). {
-          assert (cy < dom CT). {
-            eapply find_class_dom; eauto.
-          }
-          assert (parent < cy). {
-            eapply parent_implies_strict_ordering with (C:= cy) (D:=parent); eauto.
-          }
-          lia.
-        } *)
         eapply method_sig_wf_parameters_by_find; eauto.
         assert (Hcydom: cy < dom CT). {
             eapply find_class_dom; eauto.

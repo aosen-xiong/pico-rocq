@@ -159,12 +159,9 @@ Proof.
     intros. exact H1.
   - (* qtype_trans case *)
     eapply abs_subtype_trans; eauto.
-    (* rewrite <- IHqualified_type_subtype1 in IHqualified_type_subtype2. *)
-    (* exact IHqualified_type_subtype2. *)
   - (* qtype_refl case *)
     intros.
     apply abs_refl.
-    (* reflexivity. *)
 Qed.
 
 Lemma base_subtype_domain : forall CT C D,

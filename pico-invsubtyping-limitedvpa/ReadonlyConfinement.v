@@ -43,18 +43,6 @@ Proof.
   apply rch_heap; auto.
 Qed.
 
-Ltac solve_safe_mode :=
-  match goal with
-  (* If the goal is a disjunction, try the left side. If that fails, try the right side. *)
-  | |- ?A \/ ?B => (left; solve_safe_mode) || (right; solve_safe_mode)
-  
-  (* Base Case 1: The branch is a trivial equality (e.g., RO = RO) *)
-  | |- ?X = ?X => reflexivity
-  
-  (* Base Case 2: The branch exactly matches a hypothesis in the current context *)
-  | |- _ => assumption
-  end.
-
 Lemma abs_subtype_Protected_Normal_false : abs_subtype Protected Normal -> False.
 Proof.
   intro H; inversion H; subst; auto.

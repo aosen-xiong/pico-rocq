@@ -27,6 +27,18 @@ Definition env_respects_protected_set
     (* ...the variable must be ReadOnly, or Lost. *)
     is_safe_mode T.
 
+Ltac solve_safe_mode :=
+  match goal with
+  (* If the goal is a disjunction, try the left side. If that fails, try the right side. *)
+  | |- ?A \/ ?B => (left; solve_safe_mode) || (right; solve_safe_mode)
+  
+  (* Base Case 1: The branch is a trivial equality (e.g., RO = RO) *)
+  | |- ?X = ?X => reflexivity
+  
+  (* Base Case 2: The branch exactly matches a hypothesis in the current context *)
+  | |- _ => assumption
+  end.    
+
 Lemma mut_var_cannot_point_to_P :
   forall sΓ rΓ x T l P
          (Hlookup : static_getType sΓ x = Some T)
@@ -273,10 +285,7 @@ Proof.
         destruct (mutability (ftype fDef)) eqn: Hmut;
         unfold vpa_mutabilty_tt;
         simpl.
-        2: right; left; reflexivity.
-        2: right; right; left; reflexivity.
-        2: left; reflexivity.
-        all:
+        all: try solve [solve_safe_mode].
         unfold ProtectedField in H13;
         unfold sf_mutability_rel in H13;
         unfold sf_def_rel in H7;
@@ -286,14 +295,11 @@ Proof.
         split; auto.
       *
         rewrite Hlost.
-        all: unfold vpa_mutabilty_stype_fld;
+        unfold vpa_mutabilty_stype_fld;
         unfold is_safe_mode.
-        all: destruct (mutability (ftype fDef)) eqn: Hmut.
-        all: unfold vpa_mutabilty_tt; simpl.
-        2: right; left; reflexivity.
-        2: right; left; reflexivity.
-        2: left; reflexivity.
-        all:
+        destruct (mutability (ftype fDef)) eqn: Hmut;
+        unfold vpa_mutabilty_tt; simpl.
+        all: try solve [solve_safe_mode].
         unfold ProtectedField in H13;
         unfold sf_mutability_rel in H13;
         unfold sf_def_rel in H7;
@@ -303,14 +309,11 @@ Proof.
         split; auto.
       *
         rewrite Himm.
-        all: unfold vpa_mutabilty_stype_fld;
+        unfold vpa_mutabilty_stype_fld;
         unfold is_safe_mode.
-        all: destruct (mutability (ftype fDef)) eqn: Hmut.
-        all: unfold vpa_mutabilty_tt; simpl.
-        2: right; left; reflexivity.
-        2: right; right; left; reflexivity.
-        2: left; reflexivity.
-        all:
+        destruct (mutability (ftype fDef)) eqn: Hmut;
+        unfold vpa_mutabilty_tt; simpl.
+        all: try solve [solve_safe_mode].
         unfold ProtectedField in H13;
         unfold sf_mutability_rel in H13;
         unfold sf_def_rel in H7;
@@ -320,13 +323,11 @@ Proof.
         split; auto.
       *
         rewrite HRDM.
-        all: unfold vpa_mutabilty_stype_fld;
+        unfold vpa_mutabilty_stype_fld;
         unfold is_safe_mode.
-        all: destruct (mutability (ftype fDef)) eqn: Hmut.
-        all: unfold vpa_mutabilty_tt; simpl.
-        2: right; left; reflexivity.
-        2: right; right; right; left; reflexivity.
-        2: left; reflexivity.
+        destruct (mutability (ftype fDef)) eqn: Hmut;
+        unfold vpa_mutabilty_tt; simpl.
+        all: try solve [solve_safe_mode].
         unfold ProtectedField in H13;
         unfold sf_mutability_rel in H13;
         unfold sf_def_rel in H7;
@@ -382,26 +383,18 @@ Proof.
   unfold reachable_locations_from_initial_env in *.
   destruct Hin_method as [x_method [l_root [Hruntime_method Hreach]]].
   simpl in Hruntime_method.
-  
-  (* Now we case-split on x_method *)
   destruct x_method as [|x_method'].
   - (* Case: x_method = 0 (the receiver) *)
-    (* At index 0, the method env has Iot ly *)
     simpl in Hruntime_method.
     inversion Hruntime_method; subst l_root.
-    (* Now we need to show l is in the original environment's protected set *)
     exists y, ly.
     split.
     + exact H.
     + exact Hreach.
   - (* Case: x_method = S x_method' (a parameter) *)
-    (* At index S x_method', the method env has vals[x_method'] *)
     simpl in Hruntime_method.
-    (* By lemma runtime_lookup_list_nth_zs, there exists z : Loc such that *)
-    (* zs[x_method'] = z and runtime_getVal rΓ z = Some l_root *)
     destruct (runtime_lookup_list_nth_zs rΓ zs vals x_method' (Iot l_root) Hlookup_list Hruntime_method)
       as [z [Hnth_zs Hruntime_z]].
-    (* Now we can witness z in the original environment *)
     exists z, l_root.
     split.
     + exact Hruntime_z.
@@ -492,9 +485,6 @@ Proof.
   intros CT h rΓ l Hin.
   unfold reachable_locations_from_initial_env in *.
   destruct Hin as [x [l_root [Hruntime Hreach]]].
-  (* Hruntime : runtime_getVal (rΓ <| vars := ... |>) x = Some (Iot l_root) *)
-  (* Since new binding is Null_a (not Iot anything), x must be old *)
-  (* So runtime_getVal rΓ x = Some (Iot l_root) *)
   exists x, l_root.
   split.
   - (* runtime_getVal on original env *)
@@ -540,14 +530,8 @@ Proof.
           rewrite length_app in H_bound_extended. (* len (v0 ++ [Null]) = len v0 + len [Null] *)
       simpl in H_bound_extended.              (* len v0 + 1 *)
       simpl in Hneq.                          (* S x' <> S (len v0) -> x' <> len v0 *)
-
-      (* 3. Solve with arithmetic *)
-      (* We have: x' < len v0 + 1   AND   x' <> len v0 *)
-      (* Therefore: x' < len v0 *)
       lia.
       }
-
-      (* have Hx'_bound : x' < List.length v0 by lia. *)
       rewrite List.nth_error_app1 in Hruntime; eauto.
   - exact Hreach.
 Qed.
@@ -612,26 +596,10 @@ Proof.
     apply runtime_getObj_dom in Hobj_l0; auto.
 Qed.
 
-(* Lemma protected_loc_has_safe_receiver :
-  forall CT sΓ rΓ h lthis Tthis P
-         (HP_def : P = reachable_locations_from_initial_env CT h rΓ)
-         (Henv_respects : env_respects_protected_set P sΓ rΓ)
-         (HTthis: static_getType sΓ 0 = Some Tthis)
-         (Hlthis: runtime_getVal rΓ 0 = Some (Iot lthis))
-         (Hin_P : Ensembles.In Loc P lthis),
-    is_safe_mode Tthis.
-Proof.
-  intros.
-  subst P.
-  unfold env_respects_protected_set in Henv_respects.
-  exact (Henv_respects 0 lthis Tthis Tthis HTthis HTthis Hlthis Hin_P).
-Qed. *)
-
 Lemma protected_loc_has_safe_type :
   forall CT sΓ rΓ h z l_z T_z P
          (HP_def : P = reachable_locations_from_initial_env CT h rΓ)
          (Henv_respects : env_respects_protected_set P sΓ rΓ)
-         (* (HTthis: static_getType sΓ 0 = Some Tthis) *)
          (Hlookup_s : static_getType sΓ z = Some T_z)
          (Hlookup_r : runtime_getVal rΓ z = Some (Iot l_z))
          (Hin_P : Ensembles.In Loc P l_z),
@@ -643,47 +611,6 @@ Proof.
   exact (Henv_respects z l_z T_z Hlookup_s Hlookup_r Hin_P).
 Qed.
 
-(* Lemma eval_expr_did_not_touch_abs_start_with_true:
-  forall P CT mt sΓ rΓ h e v sΓ' rΓ' h' 
-    (Hwf : wf_r_config CT sΓ rΓ h)
-    (Htyping : expr_has_type CT mt sΓ e sΓ')
-    (Heval : eval_expr OK P  CT rΓ h e v OK true P rΓ' h'),
-     = true.
-Proof.
-  intros.
-  remember OK as ok.
-  remember true as .
-  generalize dependent sΓ.
-  generalize dependent sΓ'.
-  induction Heval; intros; subst; try discriminate; try reflexivity.
-Qed.
-
-Lemma eval_stmt_did_not_touch_abs_start_with_true:
-  forall P CT sΓ rΓ h stmt sΓ' rΓ' h' 
-    (Hwf : wf_r_config CT sΓ rΓ h)
-    (Htyping : stmt_typing CT retain_nonabs sΓ stmt sΓ')
-    (Heval : eval_stmt OK P  CT rΓ h stmt OK true P rΓ' h'),
-     = true.
-Proof.
-  intros.
-  remember OK as ok.
-  remember true as .
-  generalize dependent sΓ.
-  generalize dependent sΓ'.
-  induction Heval; intros; subst; try discriminate; try reflexivity.
-  - (* varass *)
-    inversion H0; subst; try reflexivity.
-  -
-    inversion Htyping; subst.
-    rename sΓ' into sΓ''.
-    rename sΓ'0 into sΓ'.
-    pose proof (preservation_pico _ _ _ _ _ _ _ _ _ _ _ Hwf H5 Heval1) as Hwf'.
-    specialize (IHHeval2 eq_refl eq_refl sΓ'' sΓ' Hwf' H7).
-    specialize (IHHeval1 eq_refl IHHeval2 sΓ' sΓ Hwf H5).
-    rewrite IHHeval2 in IHHeval1.
-    exact IHHeval1.
-Qed. *)
-
 Lemma reachable_return_implies_reachable_args :
   forall CT mt sΓ rΓ h stmt sΓ' rΓ' h' ret_var l_z
     (Hwf : wf_r_config CT sΓ rΓ h)
@@ -691,7 +618,6 @@ Lemma reachable_return_implies_reachable_args :
     (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (HgetVal: runtime_getVal rΓ' ret_var = Some (Iot l_z))
     (Hdom: l_z < dom h),
-    (* CONCLUSION: l_z was reachable from the start *)
   Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) l_z.
 Proof.
   intros.
@@ -995,15 +921,6 @@ Proof.
             eapply find_class_dom; eauto.
         }
         exact Hcydom.
-        (* assert (parent < dom CT). {
-          assert (cy < dom CT). {
-            eapply find_class_dom; eauto.
-          }
-          assert (parent < cy). {
-            eapply parent_implies_strict_ordering with (C:= cy) (D:=parent); eauto.
-          }
-          lia.
-        } *)
         eapply method_sig_wf_parameters_by_find; eauto.
         assert (Hcydom: cy < dom CT). {
             eapply find_class_dom; eauto.
@@ -2706,7 +2623,6 @@ Proof.
           try inversion H21; try trivial.
           all: try inversion H21; try easy.
         }
-        (* clear_dups. amazing.... *)
 
   (* -------------------------------------------------- *)
   (* Other index - > 1 *)
