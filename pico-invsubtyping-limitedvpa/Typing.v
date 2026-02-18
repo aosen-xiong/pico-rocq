@@ -694,7 +694,13 @@ Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> 
       FindMethodWithName CT (sctype Ty) m mdef ->
       x <> 0 -> (* x is not the receiver variable *)
       qualified_type_subtype CT (vpa_mutabilty_tt Ty (mret (msignature mdef))) Tx -> (* assignment subtype checking*)
-      qualified_type_subtype CT Ty (vpa_mutabilty_tt Ty (mreceiver (msignature mdef))) -> (* receiver subtype checking *) 
+      qualified_type_subtype CT Ty (vpa_mutabilty_tt Ty (mreceiver (msignature mdef))) 
+      \/ (
+        (mreceiver (msignature mdef)).(sqtype) = RDM /\
+        Ty.(sqtype) = RO /\
+        base_subtype CT (sctype Ty) (mreceiver (msignature mdef)).(sctype) /\
+        abs_subtype (sabs Ty) (mreceiver (msignature mdef)).(sabs)
+        ) -> (* receiver subtype checking *) 
       Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutabilty_tt Ty T)) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
       stmt_typing CT normal_method sΓ (SCall x m y args) sΓ
   
@@ -708,7 +714,13 @@ Inductive stmt_typing : class_table -> method_type -> s_env -> stmt -> s_env -> 
       mdef.(msignature).(mtype) = retain_nonabs_method ->
       x <> 0 -> (* x is not the receiver variable *)
       qualified_type_subtype CT (vpa_mutabilty_tt Ty (mret (msignature mdef))) Tx -> (* assignment subtype checking*)
-      qualified_type_subtype CT Ty (vpa_mutabilty_tt Ty (mreceiver (msignature mdef))) -> (* receiver subtype checking *) 
+      qualified_type_subtype CT Ty (vpa_mutabilty_tt Ty (mreceiver (msignature mdef))) 
+      \/ (
+        (mreceiver (msignature mdef)).(sqtype) = RDM /\
+        Ty.(sqtype) = RO /\
+        base_subtype CT (sctype Ty) (mreceiver (msignature mdef)).(sctype) /\
+        abs_subtype (sabs Ty) (mreceiver (msignature mdef)).(sabs)
+        )-> (* receiver subtype checking *) 
       Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutabilty_tt Ty T)) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
       stmt_typing CT retain_nonabs_method sΓ (SCall x m y args) sΓ 
 

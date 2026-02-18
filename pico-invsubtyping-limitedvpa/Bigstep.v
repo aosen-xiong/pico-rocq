@@ -1321,7 +1321,7 @@ Proof.
         eapply field_inheritance_subtyping; eauto.
     }  
     subst fdef.
-      split.
+    split.
     -- (* Base subtyping *)
       simpl.
       destruct Hsubtype as [Hbasesubtyp _].
@@ -1468,7 +1468,6 @@ Proof.
   intros CT C Hwf_ct Hwf_class Hdom.
   unfold wf_class_table in Hwf_ct.
   destruct Hwf_ct as [Hforall Hcname_consistent].
-  (* Use the bidirectional consistency directly *)
   apply Hcname_consistent.
   reflexivity.
 Qed.

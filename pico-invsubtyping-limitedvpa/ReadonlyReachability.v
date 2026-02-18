@@ -20,11 +20,7 @@ Definition env_respects_protected_set
   forall x l T,
     static_getType sΓ x = Some T ->
     runtime_getVal rΓ x = Some (Iot l) ->
-
-    (* If the location is in the Protected Set... *)
     Ensembles.In Loc P l ->
-
-    (* ...the variable must be ReadOnly, or Lost. *)
     is_safe_mode T.
 
 Ltac solve_safe_mode :=
@@ -277,8 +273,6 @@ Proof.
       unfold vpa_mutabilty_tt in Hconfined.
       destruct Hconfined as [Hrd | [Hlost| [Himm| [HRDM | Hnonabs]]]].
       *
-        (* destruct (sqtype Tthis) eqn: Hthis_qtype; destruct (sqtype T) eqn: Tttype; simpl in Hrd;
-        try inversion Hrd; subst; auto. *)
         rewrite Hrd.
         unfold vpa_mutabilty_stype_fld;
         unfold is_safe_mode;
@@ -625,7 +619,6 @@ Proof.
   generalize dependent sΓ.
   generalize dependent sΓ'.
   generalize dependent mt.
-  (* generalize dependent l_z. *)
   generalize dependent ret_var.
   induction Heval; intros; subst; try discriminate.
   - (* skip *)
@@ -635,7 +628,6 @@ Proof.
   - (* local *)
   destruct (Nat.eq_dec ret_var (dom rΓ.(vars))) as [Heq | Hneq].
   + (* Case: ret_var = dom rΓ.(vars) - this is the NEW variable *)
-    (* But the new variable is bound to Null_a, not Iot l_z *)
     rewrite Heq in HgetVal.
     unfold runtime_getVal in HgetVal.
     simpl in HgetVal.
@@ -645,7 +637,6 @@ Proof.
       simpl in HgetVal.
       discriminate. (* Null_a <> Iot l_z *)
   + (* Case: ret_var < dom rΓ.(vars) - old variable, unchanged *)
-    (* Show ret_var had the same value in original rΓ *)
     assert (ret_var < dom rΓ.(vars) + 1).
     {
       apply runtime_getVal_dom in HgetVal.
@@ -661,15 +652,12 @@ Proof.
       rewrite nth_error_app1 in HgetVal; auto.
       lia.
     }
-    (* Now apply the induction hypothesis with the original environment *)
     exists ret_var, l_z.
     split; [exact Hret_var_old | ].
     apply rch_heap; auto.
   - (* varass *)
     inversion Htyping; subst.
     rename sΓ' into sΓ.
-    (* eapply eval_expr_did_not_touch_abs_start_with_true; eauto. *)
-    (* subst . *)
     have Hv2_cases := expr_eval_result_in_protected_set CT mt sΓ rΓ h e Te v2 
     (reachable_locations_from_initial_env CT h rΓ) Hwf eq_refl H4 H0.
     destruct Hv2_cases as [Hv2_protected | Hv2_null].
@@ -1049,15 +1037,16 @@ Proof.
 
         (* Base type subtyping *)
         rewrite Hmsigeq.
+        destruct H20 as [H20 | HspecialCase].
         apply qualified_type_subtype_base_subtype in H20.
-        (* rewrite (vpa_mutabilty_tt_sctype Tthis Ty) in H23. *)
         rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef0))) in H20.
+        eapply base_trans; eauto.
+        destruct HspecialCase as [HReceiverMutability[HCallerMutability [HReceiverbasesubtype Habssubtype]]].
         eapply base_trans; eauto.
 
         (* Qualifier typbility *)
-        1: 
+        1:
         {
-          apply qualified_type_subtype_q_subtype in H20.
           specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
           apply get_this_qualified_type_nth_error in H12.
           unfold wf_senv in Hsenv.
@@ -1112,9 +1101,11 @@ Proof.
           unfold vpa_mutabilty_rs.
           unfold vpa_mutabilty_rs in HyQualifierTypablility.
           unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+          destruct H20 as [H20 | HspecialCase].
+          --
+          apply qualified_type_subtype_q_subtype in H20.
           unfold vpa_mutabilty_tt in H20.
           rewrite <- Hmsigeq in H20.
-
           destruct qinner eqn:HInnerReceiverMutability;
           destruct (sqtype (mreceiver (msignature mdef))) eqn:HMethodReceiverDeclaredType;
           try trivial.
@@ -1127,8 +1118,18 @@ Proof.
           try rewrite HMethodReceiverDeclaredType in H20;
           try inversion H20; try trivial.
           all: try inversion H20; try easy.
+          --
+          rewrite Hmsigeq.
+          destruct HspecialCase as [HReceiverMutability[HCallerMutability [HReceiverbasesubtype Habssubtype]]].
+          destruct qinner eqn:HInnerReceiverMutability;
+          destruct (sqtype (mreceiver (msignature mdef0))) eqn:HMethodReceiverDeclaredType;
+          try trivial.
+          all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
+          destruct (sqtype Ty) eqn:HTyStaticMutability;
+          try discriminate HReceiverMutability;
+          try discriminate HCallerMutability;
+          try trivial.
         }
-        (* clear_dups. amazing.... *)
 
   (* -------------------------------------------------- *)
   (* Other index - > 1 *)
@@ -1535,15 +1536,16 @@ Proof.
 
         (* Base type subtyping *)
         rewrite Hmsigeq.
+        destruct H20 as [H20 | HspecialCase].
         apply qualified_type_subtype_base_subtype in H20.
-        (* rewrite (vpa_mutabilty_tt_sctype Tthis Ty) in H23. *)
         rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef0))) in H20.
+        eapply base_trans; eauto.
+        destruct HspecialCase as [HReceiverMutability[HCallerMutability [HReceiverbasesubtype Habssubtype]]].
         eapply base_trans; eauto.
 
         (* Qualifier typbility *)
         1: 
         {
-          apply qualified_type_subtype_q_subtype in H20.
           specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
           apply get_this_qualified_type_nth_error in H12.
           unfold wf_senv in Hsenv.
@@ -1598,9 +1600,11 @@ Proof.
           unfold vpa_mutabilty_rs.
           unfold vpa_mutabilty_rs in HyQualifierTypablility.
           unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+          destruct H20 as [H20 | HspecialCase].
+          --
+          apply qualified_type_subtype_q_subtype in H20.
           unfold vpa_mutabilty_tt in H20.
           rewrite <- Hmsigeq in H20.
-
           destruct qinner eqn:HInnerReceiverMutability;
           destruct (sqtype (mreceiver (msignature mdef))) eqn:HMethodReceiverDeclaredType;
           try trivial.
@@ -1613,8 +1617,18 @@ Proof.
           try rewrite HMethodReceiverDeclaredType in H20;
           try inversion H20; try trivial.
           all: try inversion H20; try easy.
+          --
+          rewrite Hmsigeq.
+          destruct HspecialCase as [HReceiverMutability[HCallerMutability [HReceiverbasesubtype Habssubtype]]].
+          destruct qinner eqn:HInnerReceiverMutability;
+          destruct (sqtype (mreceiver (msignature mdef0))) eqn:HMethodReceiverDeclaredType;
+          try trivial.
+          all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
+          destruct (sqtype Ty) eqn:HTyStaticMutability;
+          try discriminate HReceiverMutability;
+          try discriminate HCallerMutability;
+          try trivial.
         }
-        (* clear_dups. amazing.... *)
 
   (* -------------------------------------------------- *)
   (* Other index - > 1 *)
@@ -2058,15 +2072,16 @@ Proof.
 
         (* Base type subtyping *)
         rewrite Hmsigeq.
+        destruct H21 as [H21 | HspecialCase].
         apply qualified_type_subtype_base_subtype in H21.
-        (* rewrite (vpa_mutabilty_tt_sctype Tthis Ty) in H23. *)
         rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef0))) in H21.
+        eapply base_trans; eauto.
+        destruct HspecialCase as [HReceiverMutability[HCallerMutability [HReceiverbasesubtype Habssubtype]]].
         eapply base_trans; eauto.
 
         (* Qualifier typbility *)
         1: 
         {
-          apply qualified_type_subtype_q_subtype in H21.
           specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
           apply get_this_qualified_type_nth_error in H12.
           unfold wf_senv in Hsenv.
@@ -2121,9 +2136,11 @@ Proof.
           unfold vpa_mutabilty_rs.
           unfold vpa_mutabilty_rs in HyQualifierTypablility.
           unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+          destruct H21 as [H21 | HspecialCase].
+          --
+          apply qualified_type_subtype_q_subtype in H21.
           unfold vpa_mutabilty_tt in H21.
           rewrite <- Hmsigeq in H21.
-
           destruct qinner eqn:HInnerReceiverMutability;
           destruct (sqtype (mreceiver (msignature mdef))) eqn:HMethodReceiverDeclaredType;
           try trivial.
@@ -2136,8 +2153,18 @@ Proof.
           try rewrite HMethodReceiverDeclaredType in H21;
           try inversion H21; try trivial.
           all: try inversion H21; try easy.
+          --
+          destruct HspecialCase as [HReceiverMutability[HCallerMutability [HReceiverbasesubtype Habssubtype]]].
+          rewrite Hmsigeq.
+          destruct qinner eqn:HInnerReceiverMutability;
+          destruct (sqtype (mreceiver (msignature mdef0))) eqn:HMethodReceiverDeclaredType;
+          try trivial.
+          all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
+          destruct (sqtype Ty) eqn:HTyStaticMutability;
+          try discriminate HReceiverMutability;
+          try discriminate HCallerMutability;
+          try trivial.
         }
-        (* clear_dups. amazing.... *)
 
   (* -------------------------------------------------- *)
   (* Other index - > 1 *)
@@ -2544,15 +2571,16 @@ Proof.
 
         (* Base type subtyping *)
         rewrite Hmsigeq.
+        destruct H21 as [H21 | HspecialCase].
         apply qualified_type_subtype_base_subtype in H21.
-        (* rewrite (vpa_mutabilty_tt_sctype Tthis Ty) in H23. *)
         rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef0))) in H21.
+        eapply base_trans; eauto.
+        destruct HspecialCase as [HReceiverMutability[HCallerMutability [HReceiverbasesubtype Habssubtype]]].
         eapply base_trans; eauto.
 
         (* Qualifier typbility *)
         1: 
         {
-          apply qualified_type_subtype_q_subtype in H21.
           specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
           apply get_this_qualified_type_nth_error in H12.
           unfold wf_senv in Hsenv.
@@ -2607,6 +2635,9 @@ Proof.
           unfold vpa_mutabilty_rs.
           unfold vpa_mutabilty_rs in HyQualifierTypablility.
           unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+          destruct H21 as [H21 | HspecialCase].
+          --
+          apply qualified_type_subtype_q_subtype in H21.
           unfold vpa_mutabilty_tt in H21.
           rewrite <- Hmsigeq in H21.
 
@@ -2622,6 +2653,17 @@ Proof.
           try rewrite HMethodReceiverDeclaredType in H21;
           try inversion H21; try trivial.
           all: try inversion H21; try easy.
+          --
+          destruct HspecialCase as [HReceiverMutability[HCallerMutability [HReceiverbasesubtype Habssubtype]]].
+          rewrite Hmsigeq.
+          destruct qinner eqn:HInnerReceiverMutability;
+          destruct (sqtype (mreceiver (msignature mdef0))) eqn:HMethodReceiverDeclaredType;
+          try trivial.
+          all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
+          destruct (sqtype Ty) eqn:HTyStaticMutability;
+          try discriminate HReceiverMutability;
+          try discriminate HCallerMutability;
+          try trivial.
         }
 
   (* -------------------------------------------------- *)

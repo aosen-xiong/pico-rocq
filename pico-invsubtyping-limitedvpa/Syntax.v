@@ -11,7 +11,7 @@ Definition class_name : Type := nat.
 (** All Mutability Qualifer *)
 Inductive q : Type :=
   (* q_c *)
-  | Mut (* Abs_Mut *)
+  | Mut
   | Imm
   | RDM
   (* q_f *)

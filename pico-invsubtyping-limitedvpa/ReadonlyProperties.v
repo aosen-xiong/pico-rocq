@@ -472,14 +472,16 @@ Proof.
 
         (* Base type subtyping *)
         rewrite Hmsigeq.
+        destruct H23 as [H23 | HspecialCase].
         apply qualified_type_subtype_base_subtype in H23.
         rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef1))) in H23.
+        eapply base_trans; eauto.
+        destruct HspecialCase as [HReceiverMutability[HCallerMutability [HReceiverbasesubtype Habssubtype]]].
         eapply base_trans; eauto.
 
         (* Qualifier typbility *)
         1: 
         {
-          apply qualified_type_subtype_q_subtype in H23.
           specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
           apply get_this_qualified_type_nth_error in H15.
           unfold wf_senv in Hsenv.
@@ -534,6 +536,9 @@ Proof.
           unfold vpa_mutabilty_rs.
           unfold vpa_mutabilty_rs in HyQualifierTypablility.
           unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+          destruct H23 as [H23 | HspecialCase].
+          --
+          apply qualified_type_subtype_q_subtype in H23.
           unfold vpa_mutabilty_tt in H23.
           rewrite <- Hmsigeq in H23.
 
@@ -549,6 +554,17 @@ Proof.
           try rewrite HMethodReceiverDeclaredType in H23;
           try inversion H23; try trivial.
           all: try inversion H23; try easy.
+          --
+          destruct HspecialCase as [HReceiverMutability [HCallerMutability [HReceiverbasesubtype Habssubtype]]].
+          rewrite Hmsigeq.
+          destruct qinner eqn:HInnerReceiverMutability;
+          destruct (sqtype (mreceiver (msignature mdef1))) eqn:HMethodReceiverDeclaredType;
+          try trivial.
+          all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
+          destruct (sqtype Ty) eqn:HTyStaticMutability;
+          try discriminate HReceiverMutability;
+          try discriminate HCallerMutability;
+          try trivial.
         }
 
         (* -------------------------------------------------- *)
@@ -1031,15 +1047,16 @@ Proof.
 
         (* Base type subtyping *)
         rewrite Hmsigeq.
+        destruct H23 as [H23 | HspecialCase].
         apply qualified_type_subtype_base_subtype in H23.
-        (* rewrite (vpa_mutabilty_tt_sctype Tthis Ty) in H23. *)
         rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef1))) in H23.
+        eapply base_trans; eauto.
+        destruct HspecialCase as [HReceiverMutability[HCallerMutability [HReceiverbasesubtype Habssubtype]]].
         eapply base_trans; eauto.
 
         (* Qualifier typbility *)
         1: 
         {
-          apply qualified_type_subtype_q_subtype in H23.
           specialize (Hcorrcopy lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType).
           apply get_this_qualified_type_nth_error in H15.
           unfold wf_senv in Hsenv.
@@ -1094,9 +1111,11 @@ Proof.
           unfold vpa_mutabilty_rs.
           unfold vpa_mutabilty_rs in HyQualifierTypablility.
           unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+          destruct H23 as [H23 | HspecialCase].
+          --
+          apply qualified_type_subtype_q_subtype in H23.
           unfold vpa_mutabilty_tt in H23.
           rewrite <- Hmsigeq in H23.
-
           destruct qinner eqn:HInnerReceiverMutability;
           destruct (sqtype (mreceiver (msignature mdef))) eqn:HMethodReceiverDeclaredType;
           try trivial.
@@ -1109,6 +1128,17 @@ Proof.
           try rewrite HMethodReceiverDeclaredType in H23;
           try inversion H23; try trivial.
           all: try inversion H23; try easy.
+          --
+          destruct HspecialCase as [HReceiverMutability [HCallerMutability [HReceiverbasesubtype Habssubtype]]].
+          rewrite Hmsigeq.
+          destruct qinner eqn:HInnerReceiverMutability;
+          destruct (sqtype (mreceiver (msignature mdef1))) eqn:HMethodReceiverDeclaredType;
+          try trivial.
+          all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
+          destruct (sqtype Ty) eqn:HTyStaticMutability;
+          try discriminate HReceiverMutability;
+          try discriminate HCallerMutability;
+          try trivial.
         }
 
   (* -------------------------------------------------- *)

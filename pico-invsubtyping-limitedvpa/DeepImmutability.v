@@ -262,12 +262,8 @@ Proof.
     reflexivity.
   - (* Call *) (* Similar to other non-mutating cases *) 
   intros.
-  (* revert H13. *)
   inversion H14. 
-  (* revert H20. *)
   subst.
-  (* intro H20. *)
-  (* intro H13. *)
   destruct H2 as [mdeflookup getmbody].
   remember (msignature mdef) as msig.
   have mdeflookupcopy := mdeflookup.
@@ -496,30 +492,29 @@ Proof.
       simpl in H1.
       inversion H1.
       rewrite <- H3 in mdeflookupcopy.
-      assert (Hsigeq: msignature mdef = msignature mdef0).
+      assert (Hmsigeq: msignature mdef = msignature mdef0).
       {
         eapply method_signature_consistent_subtype; eauto.
       }
 
       split.
-      - 
-      apply qualified_type_subtype_base_subtype in H31.
-      rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef0))) in H31.
-      rewrite <- Hsigeq in H30.
-      rewrite <- Hsigeq in H31.
-      rewrite <- Hsigeq in H32.
+      -
+      rewrite <- Hmsigeq in H30.
+      rewrite <- Hmsigeq in H31.
+      rewrite <- Hmsigeq in H32.
       subst objy.
-      simpl.
+      destruct H31 as [H31 | HspecialCase].
+      apply qualified_type_subtype_base_subtype in H31.
+      rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef))) in H31.
+      eapply base_trans; eauto.
+      destruct HspecialCase as [HReceiverMutability[HCallerMutability [Hbasesubtype Habssubtype]]].
       eapply base_trans; eauto.
 
       -
-      apply qualified_type_subtype_q_subtype in H31.
-      rewrite sq_vpa_tt_eq_qq in H31.
-      rewrite <- Hsigeq in H30.
-      rewrite <- Hsigeq in H31.
-      rewrite <- Hsigeq in H32.
+      rewrite <- Hmsigeq in H30.
+      rewrite <- Hmsigeq in H31.
+      rewrite <- Hmsigeq in H32.
       rewrite <- Hobjy_eq.
-      simpl.
       assert (Hrq_eq : rq_obj = q).
       {
         unfold r_muttype in Hinnerthis.
@@ -546,23 +541,36 @@ Proof.
         reflexivity.
       }
       subst rq_obj.
+      simpl.
+      destruct H31 as [H31 | HspecialCase].
+      --
+      apply qualified_type_subtype_q_subtype in H31.
+      rewrite sq_vpa_tt_eq_qq in H31.
       clear - H31 Hqualifier.
       destruct qinner eqn:Hqinner;
       destruct ((sqtype (mreceiver (msignature mdef)))) eqn:HMethodReceiverDeclaredType;
       try solve_qualifier_typable_correct_concrete.
-
       all:
       destruct (sqtype Ty) eqn:HTyStaticMutability;
       simpl in H31;
       try solve_q_subtype_wrong.
-
       all:
       destruct qoutter eqn:Hqoutter;
       try solve_qualifier_typable_wrong_concrete.
+      --
+      destruct HspecialCase as [HReceiverMutability[HCallerMutability [Hbasesubtype Habssubtype]]].
+      clear - HReceiverMutability HCallerMutability Hqualifier.
+      destruct qinner eqn:Hqinner;
+      destruct ((sqtype (mreceiver (msignature mdef)))) eqn:HMethodReceiverDeclaredType;
+      try solve_qualifier_typable_correct_concrete.
+      all:
+      destruct (sqtype Ty) eqn:HTyStaticMutability;
+      try discriminate HReceiverMutability;
+      try discriminate HCallerMutability;
+      try solve_q_subtype_wrong.
 
 (* -------------------------------------------------- *)
       - 
-      apply qualified_type_subtype_q_subtype in H31.
       assert (Hy_dom : y < dom sΓ').
       {
         apply static_getType_dom in H21.
@@ -602,8 +610,6 @@ Proof.
       rewrite <- Hsigeq in H30.
       rewrite <- Hsigeq in H31.
       rewrite <- Hsigeq in H32.
-
-      simpl.
       unfold runtime_getVal.
       simpl.
       destruct (nth_error vals i') as [v|] eqn:Hval_i.
@@ -660,6 +666,8 @@ Proof.
             reflexivity.
           }
           subst rq_obj.
+          (* destruct H31 as [H31 | HspecialCase].  *)
+          (* apply qualified_type_subtype_q_subtype in H31. *)
           clear - H32 Htypable_param Hqualifier.
           destruct qinner eqn:Hqinner;
           destruct (sqtype sqt) eqn:HTxStaticMutability;
@@ -683,7 +691,6 @@ Proof.
         rewrite <- H22 in Hval_i.
         rewrite H32 in Hval_i.
         simpl in Hi.
-        simpl in Hnth.
         simpl in Hnth.
         lia.
     }
@@ -954,19 +961,19 @@ Proof.
       }
 
       split.
-      - 
-      apply qualified_type_subtype_base_subtype in H32.
-      rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef0))) in H32.
+      -
       rewrite <- Hsigeq in H31.
       rewrite <- Hsigeq in H32.
       rewrite <- Hsigeq in H33.
       subst objy.
-      simpl.
+      destruct H32 as [H32 | HspecialCase].
+      apply qualified_type_subtype_base_subtype in H32.
+      rewrite (vpa_mutabilty_tt_sctype Ty (mreceiver (msignature mdef))) in H32.
+      eapply base_trans; eauto.
+      destruct HspecialCase as [HReceiverMutability[HCallerMutability [Hbasesubtype Habssubtype]]].
       eapply base_trans; eauto.
 
       -
-      apply qualified_type_subtype_q_subtype in H32.
-      rewrite sq_vpa_tt_eq_qq in H32.
       rewrite <- Hsigeq in H31.
       rewrite <- Hsigeq in H32.
       rewrite <- Hsigeq in H33.
@@ -986,35 +993,43 @@ Proof.
         simpl in HgetInnerReceiverAddr.
         inversion HgetInnerReceiverAddr; subst lInnerRecevier.
         clear HgetInnerReceiverAddr.
-
-        (* Now both inner-this facts are about loc = ly *)
         rewrite Hinnerthis in HgetInnerReceiverMutability.
         inversion HgetInnerReceiverMutability; subst qinner.
         clear HgetInnerReceiverMutability.
-
-        (* From Hobjy_eq we know objy has rqtype = rq_obj *)
         subst objy.
         simpl in *.
         reflexivity.
       }
       subst rq_obj.
+      destruct H32 as [H32 | HspecialCase].
+      --
+      apply qualified_type_subtype_q_subtype in H32.
+      rewrite sq_vpa_tt_eq_qq in H32.
       clear - H32 Hqualifier.
       destruct qinner eqn:Hqinner;
       destruct ((sqtype (mreceiver (msignature mdef)))) eqn:HMethodReceiverDeclaredType;
       try solve_qualifier_typable_correct_concrete.
-
       all:
       destruct (sqtype Ty) eqn:HTyStaticMutability;
       simpl in H32;
       try solve_q_subtype_wrong.
-
       all:
       destruct qoutter eqn:Hqoutter;
       try solve_qualifier_typable_wrong_concrete.
+      --
+      destruct HspecialCase as [HReceiverMutability[HCallerMutability [Hbasesubtype Habssubtype]]].
+      clear - HReceiverMutability HCallerMutability Hqualifier.
+      destruct qinner eqn:Hqinner;
+      destruct ((sqtype (mreceiver (msignature mdef)))) eqn:HMethodReceiverDeclaredType;
+      try solve_qualifier_typable_correct_concrete.
+      all:
+      destruct (sqtype Ty) eqn:HTyStaticMutability;
+      try discriminate HReceiverMutability;
+      try discriminate HCallerMutability;
+      try solve_q_subtype_wrong.
 
 (* -------------------------------------------------- *)
       - 
-      apply qualified_type_subtype_q_subtype in H32.
       assert (Hy_dom : y < dom sΓ').
       {
         apply static_getType_dom in H21.
@@ -1304,15 +1319,11 @@ Proof.
     exists C_root, vals_root. assumption.
 
   - (* reachable_abs_step: l0 -> l1 by RDM/Imm field *)
-    (* Key: show l1 is Imm_r using a step lemma *)
     eapply imm_step_preserves_imm; eauto.
 
   - (* reachable_abs_trans: l0 -> l1 -> l2 *)
-    (* First, l1 is Imm_r by IH01 *)
     destruct (IH01 l_root C_root vals_root Himm' eq_refl) as [C1 [vals1 Himm1]].
-    (* Now l1 is immutable: runtime_getObj h l1 = Some (mkObj (mkruntime_type Imm_r C1) vals1) *)
     destruct (IH12 l1 C1 vals1 Himm1 eq_refl) as [C2 [vals2 Himm2]].
-    (* Now l2 is immutable *)
     exists C2, vals2.
     exact Himm2.
 Qed.

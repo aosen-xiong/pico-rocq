@@ -80,7 +80,6 @@ Inductive qualified_type_subtype : class_table -> qualified_type -> qualified_ty
 	 		(sctype qt1) < (dom CT) ->
       (sctype qt2) < (dom CT) ->
       abs_subtype (sabs qt1) (sabs qt2) ->
-      (* (sabs qt1) = (sabs qt2) -> *)
       q_subtype (sqtype qt1) (sqtype qt2) ->
       base_subtype CT (sctype qt1) (sctype qt2) ->
       qualified_type_subtype CT qt1 qt2
