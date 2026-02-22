@@ -10,7 +10,11 @@ Typing.v
 Reachability.v
 Bigstep.v
 Properties.v
+Preservation.v
 DeepImmutability.v
-ReadonlyReachability.v
-ReadonlyProperties.v
+ReadonlyHelper.v
+ReadonlyConfinement.v
+ReadonlyNoMutation.v
+ReadonlySafety.v
+ConcreteImmutability.v
 WFNOMutationEXP.v

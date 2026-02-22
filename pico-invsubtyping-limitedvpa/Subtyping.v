@@ -3,6 +3,35 @@ Require Import Stdlib.Classes.RelationClasses.
 Import ListNotations.
 Require Import Syntax Notations LibTactics Tactics Helpers.
 
+Inductive method_subtype : method_type -> method_type -> Prop :=
+  | method_subtyping_refl : forall mt,
+      method_subtype mt mt
+  | mt_concret_imm : forall mt,
+      method_subtype mt AbstractImm
+  | method_abs_imm : forall mt,
+      method_subtype ConcreteImm mt
+  .
+
+Lemma method_subtyping_trans : 
+  forall mt1 mt2 mt3
+    (H12 : method_subtype mt1 mt2)
+    (H23 : method_subtype mt2 mt3),
+    method_subtype mt1 mt3.
+Proof.
+  intros mt1 mt2 mt3 H12 H23.
+  inversion H12; subst.
+  - (* H12: method_subtyping_refl mt2 *)
+    exact H23.
+  - (* H12: mt_concret_imm: method_subtyping mt2 ConcreteImm *)
+    inversion H23; subst.
+    + (* H23: method_subtyping_refl ConcreteImm *)
+      exact (mt_concret_imm mt1).
+    + (* H23: mt_concret_imm: method_subtyping ConcreteImm ConcreteImm *)
+      exact (mt_concret_imm mt1).
+  - (* H12: method_abs_imm: method_subtyping AbstractImm mt2 *)
+    apply method_abs_imm.
+Qed.
+
 (** Qualifier Ordering *)
 Inductive q_subtype : q -> q -> Prop :=
   | q_refl : forall q1,

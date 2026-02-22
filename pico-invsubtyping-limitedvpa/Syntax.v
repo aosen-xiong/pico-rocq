@@ -96,7 +96,13 @@ Record method_body := {
   mreturn: var; (* Return variable *)
 }.
 
+Inductive method_type : Type :=
+  | AbstractImm
+  | SafeRO
+  | ConcreteImm.
+
 Record method_sig := {
+  mtype: method_type;
   mret : qualified_type; (* Return type *)
   mname : method_name; (* Method name *)
   mreceiver: qualified_type; (*T this*)

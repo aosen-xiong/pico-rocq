@@ -1,28 +1,70 @@
 Require Import Syntax.
 
-(* Viewpoint adaptation of mutability qualifiers *)
-Definition vpa_mutabilty_qq (q1: q)(q2 : q) : q :=
+(* Abstract Immutability VPA *)
+Definition vpa_mutabilty_qq_abs_imm (q1: q)(q2 : q) : q :=
   match q1, q2 with
-    | RO, RO => RO
-    | _, RO => RO
-    | RO, _ => Lost
-    | Lost, _ => Lost
-    | RDM, RDM => RDM
-    | RDM, _ => Lost
+    | RO, RDM => Lost
     | q1, RDM => q1
     | _, q2 => q2
   end.
 
-(* A wrapper around vpa_mutability by taking two full types *)
-Definition vpa_mutabilty_tt (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
+Definition vpa_mutabilty_tt_abs_imm (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   match (sqtype t1), (sqtype t2) with
-    | _, RO => Build_qualified_type RO (sctype t2)
-    | RO, _ => Build_qualified_type Lost (sctype t2)
-    | Lost, _ => Build_qualified_type Lost (sctype t2)
-    | RDM, RDM => Build_qualified_type RDM (sctype t2)
-    | RDM, _ => Build_qualified_type Lost (sctype t2)
+    | RO, RDM => Build_qualified_type Lost (sctype t2)
     | q1, RDM => Build_qualified_type q1 (sctype t2)
     | _, _ => t2
+  end.
+
+Definition vpa_mutabilty_stype_fld_abs_imm (q1: q)(q2 : q_f) : q :=
+  match q1, q2 with
+    | RO, RDM_f => Lost
+    | q1, RDM_f => q1
+    | _, Imm_f => Imm
+    | _, Mut_f => Mut
+    | _, RO_f => RO
+    end.
+
+(* Safe Readonly VPA *)
+
+Definition vpa_mutabilty_qq_safe_ro (q1: q)(q2 : q) : q :=
+  match q1, q2 with
+    | RO, RDM => Lost
+    | q1, RDM => q1
+    | _, Mut => Lost
+    | _, q2 => q2
+  end.
+
+Definition vpa_mutabilty_tt_safe_ro (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
+  match (sqtype t1), (sqtype t2) with
+    | RO, RDM => Build_qualified_type Lost (sctype t2)
+    | q1, RDM => Build_qualified_type q1 (sctype t2)
+    | _, Mut => Build_qualified_type Lost (sctype t2)
+    | _, _ => t2
+  end.
+
+Definition vpa_mutabilty_stype_fld_safe_ro (q1: q)(q2 : q_f) : q :=
+  match q1, q2 with
+    | RO, RDM_f => Lost
+    | q1, RDM_f => q1
+    | _, Imm_f => Imm
+    | _, Mut_f => Lost
+    | _, RO_f => RO
+    end.
+
+(* Viewpoint adaptation of assignability qualifiers *)
+Definition vpa_assignability (q1: q) (a1: a) : a :=
+  match q1, a1 with
+    | Mut, RDA => Assignable
+    | _, Assignable => Assignable
+    | _, _ => Final
+  end.  
+
+(* Concrete Immutability *)
+Definition vpa_assignability_concret_imm (q1: q) (a1: a) : a :=
+  match q1, a1 with
+    | Mut, RDA => Assignable
+    | Mut, Assignable => Assignable
+    | _, _ => Final
   end.
 
 (* Check whether a type respect its bound *)
@@ -45,21 +87,7 @@ Definition vpa_mutabilty_fld_bound (q1: q_f)(q2 : q_c) : q_f :=
     | _, Mut_c => Mut_f
     end.
 
-(* Adapting field type from a type use *)
-Definition vpa_mutabilty_stype_fld (q1: q)(q2 : q_f) : q :=
-  match q1, q2 with
-    | _, RO_f => RO
-    (* AOSEN RO: Change for readonly property *)
-    | RO, _ => Lost
-    | Lost, _ => Lost
-    | Imm, RDM_f => Imm
-    | Mut, RDM_f => Mut
-    | RDM, RDM_f => RDM
-    | RDM, _ => Lost
-    | Bot, RDM_f => Bot
-    | _, Imm_f => Imm
-    | _, Mut_f => Mut
-    end.
+
 
 (* Adapting field type from constructor *)
 Definition vpa_mutabilty_constructor_fld (q1: q_c)(q2 : q_f) : q :=
@@ -103,11 +131,3 @@ Definition vpa_mutabilty_object_creation (q1: q_r)(q2 : q_c) : q_r :=
 
 
 (* ################################################################# *)
-
-(* Viewpoint adaptation of assignability qualifiers *)
-Definition vpa_assignability (q1: q) (a1: a) : a :=
-  match q1, a1 with
-    | Mut, RDA => Assignable
-    | _, Assignable => Assignable
-    | _, _ => Final
-  end.

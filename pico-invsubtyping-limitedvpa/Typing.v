@@ -531,26 +531,33 @@ Proof.
 Qed.
 
 (* EXPRESSION TYPING RULES *)
-Inductive expr_has_type : class_table -> s_env -> expr -> qualified_type -> Prop :=
+Inductive expr_has_type : class_table -> s_env -> method_type -> expr -> qualified_type -> Prop :=
 
   (* Null typing *)
-  | ET_Null : forall CT Γ q class_name,
+  | ET_Null : forall CT Γ mt q class_name,
       wf_senv CT Γ ->
       class_name < dom CT ->
-      expr_has_type CT Γ ENull (Build_qualified_type q class_name)
+      expr_has_type CT Γ mt ENull (Build_qualified_type q class_name)
 
   (* Variable typing *)
-  | ET_Var : forall CT Γ x T,
+  | ET_Var : forall CT Γ mt x T,
       wf_senv CT Γ ->
       static_getType Γ x = Some T ->
-      expr_has_type CT Γ (EVar x) T
+      expr_has_type CT Γ mt (EVar x) T
       
   (* Field access typing *)    
-  | ET_Field : forall CT Γ x T fDef f,
+  | ET_Field_abs_imm : forall CT Γ x T fDef f,
       wf_senv CT Γ ->
       static_getType Γ x = Some T ->
       sf_def_rel CT (sctype T) f fDef ->
-      expr_has_type CT Γ (EField x f) (Build_qualified_type (vpa_mutabilty_stype_fld (sqtype T) ((mutability (ftype fDef)))) (f_base_type (ftype fDef)))
+      expr_has_type CT Γ AbstractImm (EField x f) (Build_qualified_type (vpa_mutabilty_stype_fld_abs_imm (sqtype T) ((mutability (ftype fDef)))) (f_base_type (ftype fDef)))
+
+  | ET_Field_safe_ro : forall CT Γ mt x T fDef f,
+      wf_senv CT Γ ->
+      static_getType Γ x = Some T ->
+      sf_def_rel CT (sctype T) f fDef ->
+      mt <> AbstractImm ->
+      expr_has_type CT Γ mt (EField x f) (Build_qualified_type (vpa_mutabilty_stype_fld_safe_ro (sqtype T) ((mutability (ftype fDef)))) (f_base_type (ftype fDef)))    
 .
 
 Definition qc2q (qi : q_c) : q :=
@@ -567,34 +574,34 @@ Definition get_this_qualified_type (sΓ : s_env) : option qualified_type :=
       Some T_this
   end.
 
-Inductive stmt_typing : class_table -> s_env -> stmt -> s_env -> Prop :=
+Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> Prop :=
   (* Skip statement *)
-  | ST_Skip : forall CT sΓ,
+  | ST_Skip : forall CT sΓ mt,
       wf_senv CT sΓ ->
-      stmt_typing CT sΓ SSkip sΓ
+      stmt_typing CT sΓ mt SSkip sΓ
 
   (* Local variable declaration *)
-  | ST_Local : forall CT sΓ T x sΓ',
+  | ST_Local : forall CT sΓ mt T x sΓ',
       wf_senv CT sΓ ->
       wf_stypeuse CT (sqtype T) (sctype T) ->
       static_getType sΓ x = None ->
       sΓ' = (sΓ ++ [T]) ->
       static_getType sΓ' x = Some T ->
       (* The local variable is added to the static environment *)
-      stmt_typing CT sΓ (SLocal T x) sΓ'
+      stmt_typing CT sΓ mt (SLocal T x) sΓ'
 
   (* Variable assignment *)
-  | ST_VarAss : forall CT sΓ x e Te Tthis Tx,
+  | ST_VarAss : forall CT sΓ mt x e Te Tthis Tx,
       wf_senv CT sΓ ->
-      expr_has_type CT sΓ e Te ->
+      expr_has_type CT sΓ mt e Te ->
       get_this_qualified_type sΓ = Some Tthis ->
       x <> 0 -> (* x is not the receiver variable *)
       static_getType sΓ x = Some Tx -> (* rename the varaibles to be more clear*)
       qualified_type_subtype CT Te Tx ->
-      stmt_typing CT sΓ (SVarAss x e) sΓ
+      stmt_typing CT sΓ mt (SVarAss x e) sΓ
 
   (* Field write *)
-  | ST_FldWrite : forall CT sΓ x f y Tx Ty Tthis fieldT a,
+  | ST_FldWrite_abs_imm : forall CT sΓ x f y Tx Ty Tthis fieldT a,
       wf_senv CT sΓ ->
       static_getType sΓ x = Some Tx ->
       static_getType sΓ y = Some Ty ->
@@ -602,12 +609,34 @@ Inductive stmt_typing : class_table -> s_env -> stmt -> s_env -> Prop :=
       sf_def_rel CT (sctype Tx) f fieldT ->
       sf_assignability_rel CT (sctype Tx) f a ->
       (* TODO: define a helper method to get the adapated type *)
-      qualified_type_subtype CT Ty (Build_qualified_type (vpa_mutabilty_stype_fld (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
+      qualified_type_subtype CT Ty (Build_qualified_type (vpa_mutabilty_stype_fld_abs_imm (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
       vpa_assignability (sqtype Tx) a = Assignable ->
-      stmt_typing CT sΓ (SFldWrite x f y) sΓ
+      stmt_typing CT sΓ AbstractImm (SFldWrite x f y) sΓ
+
+  | ST_FldWrite_safe_ro : forall CT sΓ x f y Tx Ty Tthis fieldT a,
+      wf_senv CT sΓ ->
+      static_getType sΓ x = Some Tx ->
+      static_getType sΓ y = Some Ty ->
+      get_this_qualified_type sΓ = Some Tthis ->
+      sf_def_rel CT (sctype Tx) f fieldT ->
+      sf_assignability_rel CT (sctype Tx) f a ->
+      qualified_type_subtype CT Ty (Build_qualified_type (vpa_mutabilty_stype_fld_safe_ro (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
+      vpa_assignability (sqtype Tx) a = Assignable ->
+      stmt_typing CT sΓ SafeRO (SFldWrite x f y) sΓ
+  
+  | ST_FldWrite_concrete_imm : forall CT sΓ x f y Tx Ty Tthis fieldT a,
+      wf_senv CT sΓ ->
+      static_getType sΓ x = Some Tx ->
+      static_getType sΓ y = Some Ty ->
+      get_this_qualified_type sΓ = Some Tthis ->
+      sf_def_rel CT (sctype Tx) f fieldT ->
+      sf_assignability_rel CT (sctype Tx) f a ->
+      qualified_type_subtype CT Ty (Build_qualified_type (vpa_mutabilty_stype_fld_safe_ro (sqtype Tx) ((mutability (ftype fieldT)))) (f_base_type (ftype fieldT))) ->
+      vpa_assignability_concret_imm (sqtype Tx) a = Assignable ->
+      stmt_typing CT sΓ ConcreteImm (SFldWrite x f y) sΓ
 
   (* Object creation *)
-  | S_New : forall CT sΓ x Tx (qc:q_c) C args argtypes Tthis consig,
+  | S_New : forall CT sΓ mt x Tx (qc:q_c) C args argtypes Tthis consig,
       wf_senv CT sΓ ->
       static_getType sΓ x = Some Tx ->
       static_getType_list sΓ args = Some argtypes ->
@@ -618,7 +647,7 @@ Inductive stmt_typing : class_table -> s_env -> stmt -> s_env -> Prop :=
       qc = (cqualifier consig)->
       Forall2 (fun arg T => qualified_type_subtype CT arg T) argtypes consig.(cparams) ->
       qualified_type_subtype CT (Build_qualified_type (qc2q qc) C) Tx ->
-      stmt_typing CT sΓ (SNew x qc C args) sΓ
+      stmt_typing CT sΓ mt (SNew x qc C args) sΓ
 
   (* Method call *)
   | ST_Call : forall CT sΓ x m y args argtypes Tthis Tx Ty mdef,
@@ -629,44 +658,82 @@ Inductive stmt_typing : class_table -> s_env -> stmt -> s_env -> Prop :=
       get_this_qualified_type sΓ = Some Tthis ->
       FindMethodWithName CT (sctype Ty) m mdef ->
       x <> 0 -> (* x is not the receiver variable *)
-      qualified_type_subtype CT (vpa_mutabilty_tt Ty (mret (msignature mdef))) Tx -> (* assignment subtype checking*)
-      qualified_type_subtype CT Ty (vpa_mutabilty_tt Ty (mreceiver (msignature mdef)))
+      qualified_type_subtype CT (vpa_mutabilty_tt_abs_imm Ty (mret (msignature mdef))) Tx -> (* assignment subtype checking*)
+      qualified_type_subtype CT Ty (vpa_mutabilty_tt_abs_imm Ty (mreceiver (msignature mdef)))
       \/ 
       ((sqtype Ty) = RO /\ mdef.(msignature).(mreceiver).(sqtype) = RDM
       /\ base_subtype CT (sctype Ty) mdef.(msignature).(mreceiver).(sctype))
-       -> (* receiver subtype checking *) 
-      Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutabilty_tt Ty T)) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
-      stmt_typing CT sΓ (SCall x m y args) sΓ
+       -> (* receiver subtype checking *)
+      Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutabilty_tt_abs_imm Ty T)) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
+      stmt_typing CT sΓ AbstractImm (SCall x m y args) sΓ
+   
+  | ST_Call_safe_ro : forall CT sΓ mt x m y args argtypes Tthis Tx Ty mdef,
+      wf_senv CT sΓ ->
+      static_getType sΓ x = Some Tx ->
+      static_getType sΓ y = Some Ty ->
+      static_getType_list sΓ args = Some argtypes ->
+      get_this_qualified_type sΓ = Some Tthis ->
+      FindMethodWithName CT (sctype Ty) m mdef ->
+      x <> 0 -> (* x is not the receiver variable *)
+      mdef.(msignature).(mtype) <> AbstractImm ->
+      qualified_type_subtype CT (vpa_mutabilty_tt_safe_ro Ty (mret (msignature mdef))) Tx -> (* assignment subtype checking*)
+      qualified_type_subtype CT Ty (vpa_mutabilty_tt_safe_ro Ty (mreceiver (msignature mdef)))
+      \/ 
+      ((sqtype Ty) = RO /\ mdef.(msignature).(mreceiver).(sqtype) = RDM
+      /\ base_subtype CT (sctype Ty) mdef.(msignature).(mreceiver).(sctype))
+       -> (* receiver subtype checking *)
+      Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutabilty_tt_safe_ro Ty T)) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
+      mt <> AbstractImm ->
+      method_subtype mdef.(msignature).(mtype) mt -> 
+      stmt_typing CT sΓ mt (SCall x m y args) sΓ
+  
+  (*  | ST_Call_concrete_imm : forall CT sΓ x m y args argtypes Tthis Tx Ty mdef,
+      wf_senv CT sΓ ->
+      static_getType sΓ x = Some Tx ->
+      static_getType sΓ y = Some Ty ->
+      static_getType_list sΓ args = Some argtypes ->
+      get_this_qualified_type sΓ = Some Tthis ->
+      FindMethodWithName CT (sctype Ty) m mdef ->
+      x <> 0 -> (* x is not the receiver variable *)
+      mdef.(msignature).(mtype) = ConcreteImm ->
+      qualified_type_subtype CT (vpa_mutabilty_tt_safe_ro Ty (mret (msignature mdef))) Tx -> (* assignment subtype checking*)
+      qualified_type_subtype CT Ty (vpa_mutabilty_tt_safe_ro Ty (mreceiver (msignature mdef)))
+      \/ 
+      ((sqtype Ty) = RO /\ mdef.(msignature).(mreceiver).(sqtype) = RDM
+      /\ base_subtype CT (sctype Ty) mdef.(msignature).(mreceiver).(sctype))
+       -> (* receiver subtype checking *)
+      Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutabilty_tt_safe_ro Ty T)) argtypes (mparams (msignature mdef)) -> (* argument subtype checking *)
+      stmt_typing CT sΓ ConcreteImm (SCall x m y args) sΓ *)
 
   (* Sequence of statements *)
-  | ST_Seq : forall CT sΓ s1 sΓ' s2 sΓ'',
+  | ST_Seq : forall CT sΓ mt s1 sΓ' s2 sΓ'',
       wf_senv CT sΓ ->
-      stmt_typing CT sΓ s1 sΓ' ->
-      stmt_typing CT sΓ' s2 sΓ'' ->
-      stmt_typing CT sΓ (SSeq s1 s2) sΓ''
+      stmt_typing CT sΓ mt s1 sΓ' ->
+      stmt_typing CT sΓ' mt s2 sΓ'' ->
+      stmt_typing CT sΓ mt (SSeq s1 s2) sΓ''
 .
 
-Lemma stmt_typing_wf_env : forall CT sΓ stmt sΓ',
-  stmt_typing CT sΓ stmt sΓ' ->
+Lemma stmt_typing_wf_env : forall CT sΓ mt stmt sΓ',
+  stmt_typing CT sΓ mt stmt sΓ' ->
   wf_senv CT sΓ.
 Proof.
-  intros CT sΓ stmt sΓ' Htyping.
+  intros CT sΓ mt stmt sΓ' Htyping.
   induction Htyping; auto.
 Qed.
 
-Lemma new_stmt_args_length : forall CT sΓ x qc C args argtypes consig,
-  stmt_typing CT sΓ (SNew x qc C args) sΓ ->
+Lemma new_stmt_args_length : forall CT sΓ mt x qc C args argtypes consig,
+  stmt_typing CT sΓ mt (SNew x qc C args) sΓ ->
   static_getType_list sΓ args = Some argtypes ->
   constructor_sig_lookup CT C = Some consig ->
   length consig.(cparams) = length args.
 Proof.
-  intros CT sΓ x qc C args argtypes consig Htyping Hstatic Hconsig.
+  intros CT sΓ mt x qc C args argtypes consig Htyping Hstatic Hconsig.
   inversion Htyping; subst.
   assert (consig = consig0) by congruence.
   assert (argtypes = argtypes0) by congruence.
   subst.
-  apply Forall2_length in H13.
-  rewrite <- H13.
+  apply Forall2_length in H14.
+  rewrite <- H14.
   eapply static_getType_list_preserves_length; eauto.
 Qed.
 
@@ -699,12 +766,13 @@ Definition wf_constructor (CT : class_table) (c : class_name) (ctor : constructo
     (cparams ctor) field_defs.
 
 Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : Prop :=
+  let mtype := mdef.(msignature).(mtype) in
   let msig := msignature mdef in
   let methodbody := mbody mdef in
   let mbodystmt := mbody_stmt methodbody in
   let sΓ := msig.(mreceiver) :: msig.(mparams) in
-  exists sΓ' mbodyrettype, 
-    stmt_typing CT sΓ mbodystmt sΓ' /\
+  exists sΓ' mbodyrettype,
+    stmt_typing CT sΓ mtype mbodystmt sΓ' /\
     let mbodyretvar := mreturn methodbody in
     mbodyretvar < dom sΓ' /\
     nth_error sΓ' mbodyretvar = Some mbodyrettype /\
@@ -911,12 +979,12 @@ Proof.
     destruct (f - 0); simpl in Hown_field; discriminate.
 Qed.
 
-Lemma expr_has_type_class_in_table : forall CT sΓ e T,
+Lemma expr_has_type_class_in_table : forall CT mt sΓ e T,
   wf_class_table CT ->
-  expr_has_type CT sΓ e T ->
+  expr_has_type CT mt sΓ e T ->
   sctype T < dom CT.
 Proof.
-  intros CT sΓ e T HWFCT Htype.
+  intros CT mt sΓ e T HWFCT Htype.
   induction Htype.
   - (* ET_Null case *)
     exact H0.
@@ -938,6 +1006,21 @@ Proof.
       apply bound_some_dom in Hbound.
       exact Hbound.
     + unfold bound in Hbound. destruct Hwf_field as [qbound [Hfalse Hfieldwfm]]. easy.
+  - (* ET_Field case *)
+    assert (Hwf_field : wf_field CT fDef).
+    {
+      eapply sf_def_rel_wf_field; eauto.
+    }
+    unfold wf_field, wf_stypeuse in Hwf_field.
+    destruct (bound CT (f_base_type (ftype fDef))) as [qc|] eqn:Hbound.
+    +
+     destruct Hwf_field as [qbound Hwf_field].
+     
+      (* rewrite vpa_type_to_type_sctype. *)
+      simpl.
+      apply bound_some_dom in Hbound.
+      exact Hbound.
+    + unfold bound in Hbound. destruct Hwf_field as [qbound [Hfalse Hfieldwfm]]. easy.  
 Qed.
 
 (* Well-formedness of program  Aosen: I put it at the end because the main statement need to be well-typed*)
