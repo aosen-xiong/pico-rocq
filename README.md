@@ -1,10 +1,22 @@
-# PICO Rocq formalization:
+## Known Workable Versions with coq
 
-This repository contains Coq/Rocq formal proofs for the [PICO](https://github.com/opprop/immutability) project by extending Featherweight Java with subtyping, mutable state, statements, and viewpoint adaptation.
+- Rocq 9.1.0
+- Ocaml 5.2.1
 
-Each subdirectory is for different stages for proof mechanization, where checkmark means it is finished proving.
-* pico-nosubtyping-limitedvpa ✅
-* pico-nosubtyping-fullvpa
-* pico-full
+## Dependency required
 
-For building each version of formalization, see README.md in each subdirectory.
+- coq-record-update 0.3.4 https://github.com/tchajed/coq-record-update
+
+## How to Build the Project
+
+1. Generate the Makefile:
+   ```sh
+   coq_makefile -f _CoqProject -o Makefile
+   ```
+2. Build the project:
+   ```sh
+   make
+   ```
+## TODO
+1. adapted substitution/framing preserve wf_r_config lemma
+2. 

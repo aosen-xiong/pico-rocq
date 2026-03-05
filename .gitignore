@@ -7,3 +7,5 @@
 .d
 Makefile
 Makefile.conf
+copilot-instructions.md
+rocq-ai-style.instructions.md
