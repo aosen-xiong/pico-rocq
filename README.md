@@ -15,11 +15,14 @@
    make -j"$(sysctl -n hw.ncpu)"
    ```
 
-## Build with dune (recommended)
+## Build with dune (recommended command)
 
 ```sh
-dune build -j"$(sysctl -n hw.ncpu)"
+dune build @default -j"$(sysctl -n hw.ncpu)"
 ```
+
+This repository currently uses dune as a frontend wrapper over the existing
+`_CoqProject` + `coq_makefile` build, so `dune build` and CI stay reliable.
 
 ## Reproducible setup with opam
 
@@ -35,8 +38,8 @@ eval "$(opam env)"
 opam pin add . -n
 opam install . --deps-only
 
-# Build (dune)
-dune build -j"$(sysctl -n hw.ncpu)"
+# Build (dune wrapper)
+dune build @default -j"$(sysctl -n hw.ncpu)"
 ```
 
 ## Notes
