@@ -30,5 +30,13 @@ jobs:
       - name: Install dependencies
         run: opam install . --deps-only -y
 
-      - name: Build with dune
-        run: opam exec -- dune build -j"$(nproc)"
+      - name: Show Coq toolchain versions
+        run: |
+          opam exec -- coqc --version
+          opam list | grep -E '^(coq|coq-core|coq-stdlib|rocq-runtime|rocq-stdlib)\b' || true
+
+      - name: Generate Makefile
+        run: opam exec -- coq_makefile -f _CoqProject -o Makefile
+
+      - name: Build with make
+        run: opam exec -- make -j"$(nproc)"
