@@ -1,0 +1,25 @@
+(coq.theory
+ (name PicoCoq)
+ (package pico-coq)
+ (flags
+  (-noglob -Q . ""))
+ (modules
+  LibTactics
+  Tactics
+  Syntax
+  Notations
+  Helpers
+  ViewpointAdaptation
+  Subtyping
+  Typing
+  Reachability
+  Bigstep
+  Properties
+  Preservation
+  DeepImmutability
+  ReadonlyHelper
+  ReadonlyConfinement
+  ReadonlyNoMutation
+  ReadonlySafety
+  ConcreteImmutability
+  WFNOMutationEXP))

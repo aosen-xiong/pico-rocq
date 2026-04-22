@@ -7,5 +7,9 @@
 .d
 Makefile
 Makefile.conf
+CoqMakefile
+.CoqMakefile.d
+.Makefile.d
+_build/
 copilot-instructions.md
 rocq-ai-style.instructions.md
