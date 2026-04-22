@@ -1,10 +1,48 @@
-# PICO Rocq formalization:
+## Toolchain
 
-This repository contains Coq/Rocq formal proofs for the [PICO](https://github.com/opprop/immutability) project by extending Featherweight Java with subtyping, mutable state, statements, and viewpoint adaptation.
+- Rocq/Coq: `9.1.0`
+- OCaml: `5.2.1`
+- `coq-record-update`: `0.3.4`
 
-Each subdirectory is for different stages for proof mechanization, where checkmark means it is finished proving.
-* pico-nosubtyping-limitedvpa ✅
-* pico-nosubtyping-fullvpa
-* pico-full
+## Build (current Make-based workflow)
 
-For building each version of formalization, see README.md in each subdirectory.
+1. Generate the Makefile:
+   ```sh
+   coq_makefile -f _CoqProject -o Makefile
+   ```
+2. Build:
+   ```sh
+   make -j"$(sysctl -n hw.ncpu)"
+   ```
+
+## Build with dune (recommended command)
+
+```sh
+dune build @default -j"$(sysctl -n hw.ncpu)"
+```
+
+This repository currently uses dune as a frontend wrapper over the existing
+`_CoqProject` + `coq_makefile` build, so `dune build` and CI stay reliable.
+
+## Reproducible setup with opam
+
+This repository includes `pico-coq.opam` so dependencies can be installed in an
+isolated switch.
+
+```sh
+# From the repo root
+opam switch create . 5.2.1
+eval "$(opam env)"
+
+# Pin this package and install only its dependencies
+opam pin add . -n
+opam install . --deps-only
+
+# Build (dune wrapper)
+dune build @default -j"$(sysctl -n hw.ncpu)"
+```
+
+## Notes
+
+- `dune` and `_CoqProject` builds are both available during transition.
+- The opam package build uses `dune build`.

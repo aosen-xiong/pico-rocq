@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up OCaml + opam
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5.2.1
+          opam-local-packages: |
+            *.opam
+
+      - name: Pin local package
+        run: opam pin add . -n
+
+      - name: Pin coq-record-update from GitHub
+        run: opam pin add -n coq-record-update https://github.com/tchajed/coq-record-update.git
+
+      - name: Install dependencies
+        run: opam install . --deps-only -y
+
+      - name: Show Coq toolchain versions
+        run: |
+          opam exec -- coqc --version
+          opam list | grep -E '^(coq|coq-core|coq-stdlib|rocq-runtime|rocq-stdlib)\b' || true
+
+      - name: Build with dune (wrapper over coq_makefile)
+        run: opam exec -- dune build @default -j"$(nproc)"
