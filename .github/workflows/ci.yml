@@ -24,6 +24,9 @@ jobs:
       - name: Pin local package
         run: opam pin add . -n
 
+      - name: Pin coq-record-update from GitHub
+        run: opam pin add -n coq-record-update https://github.com/tchajed/coq-record-update.git
+
       - name: Install dependencies
         run: opam install . --deps-only -y
 
