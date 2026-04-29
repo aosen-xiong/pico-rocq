@@ -21,7 +21,7 @@ def check_no_axioms_admits(root_dir: Path) -> bool:
     
     # Files to exclude
     excluded_files = {'LibTactics.v'}
-    excluded_dirs = {'.git', '_build', '.dune'}
+    excluded_dirs = {'.git', '_build', '.dune', '_opam', '.opam-switch'}
     
     violations = []
     
