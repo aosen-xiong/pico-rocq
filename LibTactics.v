@@ -315,7 +315,7 @@ Ltac ltac_database_get D T :=
 
 Definition rm (A:Type) (X:A) := X.
 
-(** [rm_term E] removes one hypothesis that s the same
+(** [rm_term E] removes one hypothesis that is the same
     type as [E]. *)
 
 Ltac rm_term E :=

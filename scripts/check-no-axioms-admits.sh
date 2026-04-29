@@ -9,7 +9,7 @@ if ! command -v grep >/dev/null 2>&1; then
   exit 2
 fi
 
-pattern='(^|[^A-Za-z_])(Axiom|Admitted|admit)([^A-Za-z_]|$)'
+pattern="(^|[^A-Za-z0-9_'])(Axiom|Admitted|admit)([^A-Za-z0-9_']|$)"
 
 matches=$(grep -RInE \
   --include='*.v' \
