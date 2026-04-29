@@ -30,6 +30,14 @@ jobs:
       - name: Install dependencies
         run: opam install . --deps-only -y
 
+      - name: Check for forbidden axioms and admits
+        run: |
+          if [ -f Makefile ] && grep -Eq '^[[:space:]]*check-no-axioms-admits:' Makefile; then
+            opam exec -- make check-no-axioms-admits
+          else
+            echo "Skipping forbidden-axioms/admits check: no Makefile target 'check-no-axioms-admits' is present in this checkout."
+          fi
+
       - name: Show Coq toolchain versions
         run: |
           opam exec -- coqc --version

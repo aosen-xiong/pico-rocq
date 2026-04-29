@@ -5,552 +5,81 @@ From Stdlib Require String.
 Import ListNotations.
 From RecordUpdate Require Import RecordUpdate.
 
-Lemma q_subtype_RO_Imm_false : RO ⊑ Imm -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_RO_Mut_false : RO ⊑ Mut -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_RO_Lost_false : RO ⊑ Lost -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_RO_RDM_false : RO ⊑ RDM -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_RO_Bot_false : RO ⊑ Bot -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-Hint Resolve q_subtype_RO_Imm_false
-             q_subtype_RO_Mut_false
-             q_subtype_RO_Lost_false
-             q_subtype_RO_RDM_false
-             q_subtype_RO_Bot_false
-  : qsub_wrong.
-
-
-Lemma q_subtype_Imm_Mut_false : Imm ⊑ Mut -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_Imm_RDM_false : Imm ⊑ RDM -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_Imm_Lost_false : Imm ⊑ Lost -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_Imm_Bot_false : Imm ⊑ Bot -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Hint Resolve q_subtype_Imm_Mut_false
-             q_subtype_Imm_RDM_false
-             q_subtype_Imm_Lost_false
-             q_subtype_Imm_Bot_false
-  : qsub_wrong.
-
-Lemma q_subtype_Mut_Imm_false : Mut ⊑ Imm -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_Mut_RDM_false : Mut ⊑ RDM -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_Mut_Lost_false : Mut ⊑ Lost -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_Mut_Bot_false : Mut ⊑ Bot -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Hint Resolve q_subtype_Mut_Imm_false
-             q_subtype_Mut_RDM_false
-             q_subtype_Mut_Lost_false
-             q_subtype_Mut_Bot_false
-  : qsub_wrong.
-
-Lemma q_subtype_RDM_Imm_false : RDM ⊑ Imm -> False.  
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.  
-
-Lemma q_subtype_RDM_Mut_false : RDM ⊑ Mut -> False.
-Proof.
-  intro H; inversion H; subst; auto.    
-Qed.
-
-Lemma q_subtype_RDM_Lost_false : RDM ⊑ Lost -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_RDM_Bot_false : RDM ⊑ Bot -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Hint Resolve q_subtype_RDM_Imm_false
-             q_subtype_RDM_Mut_false
-             q_subtype_RDM_Lost_false
-             q_subtype_RDM_Bot_false
-  : qsub_wrong.
-
-Lemma q_subtype_Lost_Imm_false : Lost ⊑ Imm -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_Lost_Mut_false : Lost ⊑ Mut -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_Lost_RDM_false : Lost ⊑ RDM -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_Lost_Bot_false : Lost ⊑ Bot -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Lemma q_subtype_Lost_Lost_false : Lost ⊑ Lost -> False.
-Proof.
-  intro H; inversion H; subst; auto.
-Qed.
-
-Hint Resolve q_subtype_Lost_Imm_false
-             q_subtype_Lost_Mut_false
-             q_subtype_Lost_RDM_false
-             q_subtype_Lost_Bot_false
-             q_subtype_Lost_Lost_false
-  : qsub_wrong.
-
 Ltac solve_q_subtype_wrong :=
   lazymatch goal with
-  | [ H : q_subtype RO Imm |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype RO Mut |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype RO RDM |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype RO Lost |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype RO Bot  |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Imm Mut  |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Imm RDM |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Imm Lost |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Imm Bot  |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Mut Imm  |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Mut RDM |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Mut Lost |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Mut Bot  |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype RDM Imm  |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype RDM Mut  |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype RDM Lost |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype RDM Bot  |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Lost Lost |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Lost Imm |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Lost Mut |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Lost RDM |- _ ] => exfalso; eauto with qsub_wrong
-  | [ H : q_subtype Lost Bot  |- _ ] => exfalso; eauto with qsub_wrong
+  | [ H : q_subtype RO Imm |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype RO Mut |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype RO RDM |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype RO Lost |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype RO Bot  |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Imm Mut  |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Imm RDM |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Imm Lost |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Imm Bot  |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Mut Imm  |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Mut RDM |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Mut Lost |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Mut Bot  |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype RDM Imm  |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype RDM Mut  |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype RDM Lost |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype RDM Bot  |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Lost Lost |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Lost Imm |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Lost Mut |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Lost RDM |- _ ] => exfalso; inversion H; subst; congruence
+  | [ H : q_subtype Lost Bot  |- _ ] => exfalso; inversion H; subst; congruence
   | _ => idtac
   end.
 
-Lemma q_subtype_Bot_RO_true : Bot ⊑ RO.
-Proof.
-  constructor.
-Qed.
-
-Lemma q_subtype_Bot_Imm_true : Bot ⊑ Imm.
-Proof.
-  constructor.
-Qed.
-
-Lemma q_subtype_Bot_Mut_true : Bot ⊑ Mut.
-Proof.
-  constructor.
-Qed.
-
-Lemma q_subtype_Bot_RDM_true : Bot ⊑ RDM.
-Proof.
-  constructor.
-Qed.
-
-Lemma q_subtype_Bot_Lost_true : Bot ⊑ Lost.
-Proof.
-  constructor.
-Qed.
-
-Lemma q_subtype_Bot_Bot_true : Bot ⊑ Bot.
-Proof.
-  constructor.
-  easy.
-Qed.
-
-Hint Resolve q_subtype_Bot_RO_true
-             q_subtype_Bot_Imm_true
-             q_subtype_Bot_Mut_true
-             q_subtype_Bot_RDM_true
-             q_subtype_Bot_Lost_true
-             q_subtype_Bot_Bot_true
-  : qsub_correct.
-
-Lemma q_subtype_Imm_Imm_true : Imm ⊑ Imm.
-Proof.
-  constructor.
-  easy.
-Qed.
-
-Lemma q_subtype_Imm_RO_true : Imm ⊑ RO.
-Proof.
-  constructor.
-Qed.
-
-Lemma q_subtype_Mut_Mut_true : Mut ⊑ Mut.
-Proof.
-  constructor.
-  easy.
-Qed.
-
-Lemma q_subtype_Mut_RO_true : Mut ⊑ RO.
-Proof.
-  constructor.
-Qed.
-
-Lemma q_subtype_RDM_RDM_true : RDM ⊑ RDM.
-Proof.
-  constructor.
-  easy.
-Qed.
-
-Lemma q_subtype_RDM_RO_true : RDM ⊑ RO.
-Proof.
-  constructor.  
-Qed.
-
-Lemma q_subtype_Lost_RO_true : Lost ⊑ RO.
-Proof.
-  constructor.  
-Qed.
-
-Lemma q_subtype_RO_RO_true : RO ⊑ RO.
-Proof.
-  constructor.
-  easy.
-Qed.
-
-Hint Resolve q_subtype_Imm_Imm_true
-             q_subtype_Imm_RO_true
-             q_subtype_Mut_Mut_true
-             q_subtype_Mut_RO_true
-             q_subtype_RDM_RDM_true
-             q_subtype_RDM_RO_true
-             q_subtype_Lost_RO_true
-             q_subtype_RO_RO_true
-  : qsub_correct.
-
-Lemma qualifier_typable_context_Imm_r_Mut_Mut_r_false : 
-  qualifier_typable_context Imm_r (Mut) Mut_r -> False.
-Proof.
-  intro H; unfold qualifier_typable_context in H.
-  simpl in H.
-  inversion H; subst; auto.
-Qed.
-
-Lemma qualifier_typable_context_Imm_r_RDM_Mut_r_false : 
-  qualifier_typable_context Imm_r (RDM) Mut_r -> False.
-Proof.
-  intro H; unfold qualifier_typable_context in H.
-  simpl in H.
-  inversion H; subst; auto.
-Qed.
-
-Lemma qualifier_typable_context_Imm_r_Bot_Mut_r_false : 
-  qualifier_typable_context Imm_r (Bot) Mut_r -> False.
-Proof.
-  intro H; unfold qualifier_typable_context in H.
-  simpl in H.
-  inversion H; subst; auto.
-Qed.
-
-Lemma qualifier_typable_context_Imm_r_Mut_Imm_r_false : 
-  qualifier_typable_context Imm_r (Mut) Imm_r -> False.
-Proof.
-  intro H; unfold qualifier_typable_context in H.
-  simpl in H.
-  inversion H; subst; auto.
-Qed.
-
-Lemma qualifier_typable_context_Imm_r_Bot_Imm_r_false : 
-  qualifier_typable_context Imm_r (Bot) Imm_r -> False.
-Proof.
-  intro H; unfold qualifier_typable_context in H.
-  simpl in H.
-  inversion H; subst; auto.
-Qed.
-
-Hint Resolve qualifier_typable_context_Imm_r_Mut_Mut_r_false
-             qualifier_typable_context_Imm_r_RDM_Mut_r_false
-             qualifier_typable_context_Imm_r_Bot_Mut_r_false
-             qualifier_typable_context_Imm_r_Mut_Imm_r_false
-             qualifier_typable_context_Imm_r_Bot_Imm_r_false
-  : qtypable_wrong.
-
-Lemma qualifier_typable_context_Mut_r_Imm_Mut_r_false : 
-  qualifier_typable_context Mut_r (Imm) Mut_r -> False.
-Proof.
-  intro H; unfold qualifier_typable_context in H.
-  simpl in H.
-  inversion H; subst; auto.
-Qed.
-
-Lemma qualifier_typable_context_Mut_r_Bot_Mut_r_false : 
-  qualifier_typable_context Mut_r (Bot) Mut_r -> False.
-Proof.
-  intro H; unfold qualifier_typable_context in H.
-  simpl in H.
-  inversion H; subst; auto.
-Qed.
-
-Lemma qualifier_typable_context_Mut_r_Imm_Imm_r_false : 
-  qualifier_typable_context Mut_r (Imm) Imm_r -> False.
-Proof.
-  intro H; unfold qualifier_typable_context in H.
-  simpl in H.
-  inversion H; subst; auto.
-Qed.
-
-Lemma qualifier_typable_context_Mut_r_RDM_Imm_r_false : 
-  qualifier_typable_context Mut_r (RDM) Imm_r -> False.
-Proof.
-  intro H; unfold qualifier_typable_context in H.
-  simpl in H.
-  inversion H; subst; auto.
-Qed.
-
-Lemma qualifier_typable_context_Mut_r_Bot_Imm_r_false : 
-  qualifier_typable_context Mut_r (Bot) Imm_r -> False.
-Proof.
-  intro H; unfold qualifier_typable_context in H.
-  simpl in H.
-  inversion H; subst; auto.
-Qed.
-
-Hint Resolve qualifier_typable_context_Mut_r_Imm_Mut_r_false
-             qualifier_typable_context_Mut_r_Bot_Mut_r_false
-             qualifier_typable_context_Mut_r_Imm_Imm_r_false
-             qualifier_typable_context_Mut_r_RDM_Imm_r_false
-             qualifier_typable_context_Mut_r_Bot_Imm_r_false
-  : qtypable_wrong.
+Local Ltac qtypable_contradiction H :=
+  exfalso; unfold qualifier_typable_context, vpa_mutabilty_rs in H; cbn in H; contradiction H.
 
 Ltac solve_qualifier_typable_wrong_concrete :=
   lazymatch goal with
-  | [ H : qualifier_typable_context Imm_r Mut Mut_r |- _ ] =>
-      exfalso; eauto with qtypable_wrong
-  | [ H : qualifier_typable_context Imm_r RDM Mut_r |- _ ] =>
-      exfalso; eauto with qtypable_wrong
-  | [ H : qualifier_typable_context Imm_r Bot Mut_r |- _ ] =>
-      exfalso; eauto with qtypable_wrong
-  | [ H : qualifier_typable_context Imm_r Mut Imm_r |- _ ] =>
-      exfalso; eauto with qtypable_wrong
-  | [ H : qualifier_typable_context Imm_r Bot Imm_r |- _ ] =>
-      exfalso; eauto with qtypable_wrong
-  | [ H : qualifier_typable_context Mut_r Imm Mut_r |- _ ] =>
-      exfalso; eauto with qtypable_wrong
-  | [ H : qualifier_typable_context Mut_r Bot Mut_r |- _ ] =>
-      exfalso; eauto with qtypable_wrong
-  | [ H : qualifier_typable_context Mut_r Imm Imm_r |- _ ] =>
-      exfalso; eauto with qtypable_wrong
-  | [ H : qualifier_typable_context Mut_r RDM Imm_r |- _ ] =>
-      exfalso; eauto with qtypable_wrong
-  | [ H : qualifier_typable_context Mut_r Bot Imm_r |- _ ] =>
-      exfalso; eauto with qtypable_wrong
-    | [ H : qualifier_typable_context Imm_r Imm Mut_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Imm_r RO  Mut_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Imm_r Lost Mut_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Imm_r RO  Imm_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Imm_r Imm Imm_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Imm_r Lost Imm_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Imm_r RDM Imm_r |- _ ] =>
-      clear H
-
-  | [ H : qualifier_typable_context Mut_r Mut Mut_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Mut_r RO  Mut_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Mut_r Lost Mut_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Mut_r RDM Mut_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Mut_r RO  Imm_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Mut_r Mut Imm_r |- _ ] =>
-      clear H
-  | [ H : qualifier_typable_context Mut_r Lost Imm_r |- _ ] =>
-      clear H
-
-  | _ => idtac    
+  | [ H : qualifier_typable_context Imm_r Mut Mut_r |- _ ] => qtypable_contradiction H
+  | [ H : qualifier_typable_context Imm_r RDM Mut_r |- _ ] => qtypable_contradiction H
+  | [ H : qualifier_typable_context Imm_r Bot Mut_r |- _ ] => qtypable_contradiction H
+  | [ H : qualifier_typable_context Imm_r Mut Imm_r |- _ ] => qtypable_contradiction H
+  | [ H : qualifier_typable_context Imm_r Bot Imm_r |- _ ] => qtypable_contradiction H
+  | [ H : qualifier_typable_context Mut_r Imm Mut_r |- _ ] => qtypable_contradiction H
+  | [ H : qualifier_typable_context Mut_r Bot Mut_r |- _ ] => qtypable_contradiction H
+  | [ H : qualifier_typable_context Mut_r Imm Imm_r |- _ ] => qtypable_contradiction H
+  | [ H : qualifier_typable_context Mut_r RDM Imm_r |- _ ] => qtypable_contradiction H
+  | [ H : qualifier_typable_context Mut_r Bot Imm_r |- _ ] => qtypable_contradiction H
+  | [ H : qualifier_typable_context Imm_r Imm Mut_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Imm_r RO  Mut_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Imm_r Lost Mut_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Imm_r RO  Imm_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Imm_r Imm Imm_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Imm_r Lost Imm_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Imm_r RDM Imm_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Mut_r Mut Mut_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Mut_r RO  Mut_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Mut_r Lost Mut_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Mut_r RDM Mut_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Mut_r RO  Imm_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Mut_r Mut Imm_r |- _ ] => clear H
+  | [ H : qualifier_typable_context Mut_r Lost Imm_r |- _ ] => clear H
+  | _ => idtac
   end.
-
-Lemma qualifier_typable_context_Imm_r_Imm_Mut_r_true : 
-  qualifier_typable_context Imm_r (Imm) Mut_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Imm_r_RO_Mut_r_true : 
-  qualifier_typable_context Imm_r (RO) Mut_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Imm_r_Lost_Mut_r_true : 
-  qualifier_typable_context Imm_r (Lost) Mut_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Imm_r_RO_Imm_r_true : 
-  qualifier_typable_context Imm_r (RO) Imm_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Imm_r_Imm_Imm_r_true : 
-  qualifier_typable_context Imm_r (Imm) Imm_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Imm_r_Lost_Imm_r_true : 
-  qualifier_typable_context Imm_r (Lost) Imm_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Imm_r_RDM_Imm_r_true : 
-  qualifier_typable_context Imm_r (RDM) Imm_r.
-Proof.
-  easy.
-Qed.
-
-Hint Resolve qualifier_typable_context_Imm_r_Imm_Mut_r_true
-             qualifier_typable_context_Imm_r_RO_Mut_r_true
-             qualifier_typable_context_Imm_r_Lost_Mut_r_true
-             qualifier_typable_context_Imm_r_RO_Imm_r_true
-             qualifier_typable_context_Imm_r_Imm_Imm_r_true
-             qualifier_typable_context_Imm_r_Lost_Imm_r_true
-             qualifier_typable_context_Imm_r_RDM_Imm_r_true
-  : qtypable_correct.
-
-Lemma qualifier_typable_context_Mut_r_Mut_Mut_r_true : 
-  qualifier_typable_context Mut_r (Mut) Mut_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Mut_r_RO_Mut_r_true : 
-  qualifier_typable_context Mut_r (RO) Mut_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Mut_r_Lost_Mut_r_true : 
-  qualifier_typable_context Mut_r (Lost) Mut_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Mut_r_RDM_Mut_r_true : 
-  qualifier_typable_context Mut_r (RDM) Mut_r.
-Proof.
-  easy.
-Qed.
-
-
-Lemma qualifier_typable_context_Mut_r_RO_Imm_r_true : 
-  qualifier_typable_context Mut_r (RO) Imm_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Mut_r_Mut_Imm_r_true : 
-  qualifier_typable_context Mut_r (Mut) Imm_r.
-Proof.
-  easy.
-Qed.
-
-Lemma qualifier_typable_context_Mut_r_Lost_Imm_r_true : 
-  qualifier_typable_context Mut_r (Lost) Imm_r.
-Proof.
-  easy.
-Qed.
-
-Hint Resolve qualifier_typable_context_Mut_r_Mut_Mut_r_true
-             qualifier_typable_context_Mut_r_RO_Mut_r_true
-             qualifier_typable_context_Mut_r_Lost_Mut_r_true
-             qualifier_typable_context_Mut_r_RDM_Mut_r_true
-             qualifier_typable_context_Mut_r_RO_Imm_r_true
-             qualifier_typable_context_Mut_r_Mut_Imm_r_true
-             qualifier_typable_context_Mut_r_Lost_Imm_r_true
-  : qtypable_correct.
 
 Ltac solve_qualifier_typable_correct_concrete :=
   lazymatch goal with
-  (* --- goal is a "correct" concrete qualifier_typable_context --- *)
-  | |- qualifier_typable_context Imm_r Imm Mut_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Imm_r RO Mut_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Imm_r Lost Mut_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Imm_r RO Imm_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Imm_r Imm Imm_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Imm_r Lost Imm_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Imm_r RDM Imm_r =>
-      eauto with qtypable_correct
-
-  | |- qualifier_typable_context Mut_r Mut Mut_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Mut_r RO Mut_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Mut_r Lost Mut_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Mut_r RDM Mut_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Mut_r RO Imm_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Mut_r Mut Imm_r =>
-      eauto with qtypable_correct
-  | |- qualifier_typable_context Mut_r Lost Imm_r =>
-      eauto with qtypable_correct
+  | |- qualifier_typable_context Imm_r Imm Mut_r  => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Imm_r RO Mut_r   => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Imm_r Lost Mut_r => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Imm_r RO Imm_r   => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Imm_r Imm Imm_r  => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Imm_r Lost Imm_r => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Imm_r RDM Imm_r  => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Mut_r Mut Mut_r  => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Mut_r RO Mut_r   => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Mut_r Lost Mut_r => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Mut_r RDM Mut_r  => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Mut_r RO Imm_r   => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Mut_r Mut Imm_r  => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
+  | |- qualifier_typable_context Mut_r Lost Imm_r => unfold qualifier_typable_context, vpa_mutabilty_rs; cbn; exact I
   end.
 
 Lemma collect_methods_exists : forall CT C,
