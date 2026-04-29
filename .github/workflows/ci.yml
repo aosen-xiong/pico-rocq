@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: opam install . --deps-only -y
 
+      - name: Check for forbidden axioms and admits
+        run: opam exec -- make check-no-axioms-admits
+
       - name: Show Coq toolchain versions
         run: |
           opam exec -- coqc --version
