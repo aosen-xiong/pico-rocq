@@ -1,10 +1,10 @@
 (rule
  (alias default)
  (deps
-  _CoqProject
+  _RocqProject
   (glob_files *.v))
  (action
   (progn
    (run sh -c "rm -f ./*.vo ./*.vos ./*.vok ./*.glob ./Makefile ./Makefile.conf ./.Makefile.d ./.CoqMakefile.d ./CoqMakefile")
-   (run coq_makefile -f _CoqProject -o Makefile)
+   (run coq_makefile -f _RocqProject -o Makefile)
    (run make))))

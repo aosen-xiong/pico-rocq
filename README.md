@@ -8,7 +8,7 @@
 
 1. Generate the Makefile:
    ```sh
-   coq_makefile -f _CoqProject -o Makefile
+   coq_makefile -f _RocqProject -o Makefile
    ```
 2. Build:
    ```sh
@@ -22,7 +22,7 @@ dune build @default -j"$(sysctl -n hw.ncpu)"
 ```
 
 This repository currently uses dune as a frontend wrapper over the existing
-`_CoqProject` + `coq_makefile` build, so `dune build` and CI stay reliable.
+`_RocqProject` + `coq_makefile` build, so `dune build` and CI stay reliable.
 
 ## Reproducible setup with opam
 
@@ -44,5 +44,5 @@ dune build @default -j"$(sysctl -n hw.ncpu)"
 
 ## Notes
 
-- `dune` and `_CoqProject` builds are both available during transition.
+- `dune` and `_RocqProject` builds are both available during transition.
 - The opam package build uses `dune build`.
