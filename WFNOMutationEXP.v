@@ -26,8 +26,9 @@ Proof.
   unfold wf_r_config in Hwf.
   destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
   specialize (Hcorr iot qcontext Hget_iot Hqcontext).
-  have Hxdom: x < dom sΓ by (apply static_getType_dom in H3; auto).
-  specialize (Hcorr x Hxdom Tx H3).
+  have Htype_x : static_getType sΓ x = Some Tx by exact Hget_x.
+  have Hxdom: x < dom sΓ by (apply static_getType_dom in Htype_x; auto).
+  specialize (Hcorr x Hxdom Tx Htype_x).
   rewrite Hgetval_x in Hcorr.
   unfold wf_r_typable in Hcorr.
   unfold r_type in Hcorr.
@@ -42,10 +43,10 @@ Proof.
     eapply sf_assignability_deterministic_rel; eauto.
   }
   subst a0.
+  rename Hassignable into Hvpa_assignable.
   unfold runtime_vpa_assignability in Hvpa_final.
-  unfold vpa_assignability in H12.
-  destruct a eqn: Heq_a; destruct (rqtype (rt_type o)) eqn: Heq_rq;
-  destruct (sqtype Tx) eqn: Heq_sq; try discriminate.
+  unfold vpa_assignability in Hvpa_assignable.
+  destruct a eqn: Heq_a; destruct (rqtype (rt_type o)) eqn: Heq_rq; destruct (sqtype Tx) eqn: Heq_sq; try discriminate.
   destruct qcontext eqn: Heq_qc; try easy.
   -
   rename sΓ' into sΓ.
@@ -53,8 +54,9 @@ Proof.
   unfold wf_r_config in Hwf.
   destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
   specialize (Hcorr iot qcontext Hget_iot Hqcontext).
-  have Hxdom: x < dom sΓ by (apply static_getType_dom in H3; auto).
-  specialize (Hcorr x Hxdom Tx H3).
+  have Htype_x : static_getType sΓ x = Some Tx by exact Hget_x.
+  have Hxdom: x < dom sΓ by (apply static_getType_dom in Htype_x; auto).
+  specialize (Hcorr x Hxdom Tx Htype_x).
   rewrite Hgetval_x in Hcorr.
   unfold wf_r_typable in Hcorr.
   unfold r_type in Hcorr.
@@ -69,10 +71,10 @@ Proof.
     eapply sf_assignability_deterministic_rel; eauto.
   }
   subst a0.
+  rename Hassignable into Hvpa_assignable.
   unfold runtime_vpa_assignability in Hvpa_final.
-  unfold vpa_assignability in H12.
-  destruct a eqn: Heq_a; destruct (rqtype (rt_type o)) eqn: Heq_rq;
-  destruct (sqtype Tx) eqn: Heq_sq; try discriminate.
+  unfold vpa_assignability in Hvpa_assignable.
+  destruct a eqn: Heq_a; destruct (rqtype (rt_type o)) eqn: Heq_rq; destruct (sqtype Tx) eqn: Heq_sq; try discriminate.
   destruct qcontext eqn: Heq_qc; try easy.
   -
   rename sΓ' into sΓ.
@@ -80,8 +82,9 @@ Proof.
   unfold wf_r_config in Hwf.
   destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
   specialize (Hcorr iot qcontext Hget_iot Hqcontext).
-  have Hxdom: x < dom sΓ by (apply static_getType_dom in H3; auto).
-  specialize (Hcorr x Hxdom Tx H3).
+  have Htype_x : static_getType sΓ x = Some Tx by exact Hget_x.
+  have Hxdom: x < dom sΓ by (apply static_getType_dom in Htype_x; auto).
+  specialize (Hcorr x Hxdom Tx Htype_x).
   rewrite Hgetval_x in Hcorr.
   unfold wf_r_typable in Hcorr.
   unfold r_type in Hcorr.
@@ -96,9 +99,9 @@ Proof.
     eapply sf_assignability_deterministic_rel; eauto.
   }
   subst a0.
+  rename Hassignable into Hvpa_assignable.
   unfold runtime_vpa_assignability in Hvpa_final.
-  unfold vpa_assignability in H12.
-  destruct a eqn: Heq_a; destruct (rqtype (rt_type o)) eqn: Heq_rq;
-  destruct (sqtype Tx) eqn: Heq_sq; try discriminate.
+  unfold vpa_assignability in Hvpa_assignable.
+  destruct a eqn: Heq_a; destruct (rqtype (rt_type o)) eqn: Heq_rq; destruct (sqtype Tx) eqn: Heq_sq; try discriminate.
   destruct qcontext eqn: Heq_qc; try easy.
 Qed.
