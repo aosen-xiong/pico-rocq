@@ -287,11 +287,13 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       h'
 
   (* evaluate field write statement *)
-  | SBS_FldWrite : forall CT rΓ h x f y loc_x o vf val_y h'
+  | SBS_FldWrite : forall CT rΓ h x f y loc_x o a vf val_y h'
       (Hval_x  : runtime_getVal rΓ x = Some (Iot loc_x))
       (Hobj    : runtime_getObj h loc_x = Some o)
       (Hfield  : getVal o.(fields_map) f = Some vf)
+      (Hassign : sf_assignability_rel CT (rctype (rt_type o)) f a)
       (Hval_y  : runtime_getVal rΓ y = Some val_y)
+      (Hruntime_assignable : runtime_vpa_assignability (rqtype (rt_type o)) a = Assignable)
       (Hupdate : h' = update_field h loc_x f val_y),
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SFldWrite x f y) OK (reachable_locations_from_initial_env CT h rΓ) rΓ h'
 

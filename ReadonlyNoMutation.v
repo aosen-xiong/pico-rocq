@@ -57,6 +57,9 @@ Proof.
       destruct (Nat.eq_dec f f0) as [Heq_f | Hneq_f].
       + (* Same field case: contradiction *)
         subst f0.
+        have Hobj_protected := Hobj.
+        rewrite Hobj0 in Hobj.
+        inversion Hobj; subst o.
         inversion Htyping; subst.
         --
         exfalso; apply Hmtype; reflexivity.
@@ -85,23 +88,23 @@ Proof.
         rewrite Hval_x in Htypable.
         unfold wf_r_typable in Htypable.
         unfold r_type in Htypable.
-        rewrite Hobj in Htypable.
+        rewrite Hobj_protected in Htypable.
         destruct Htypable as [base qualifier].
         simpl in base.
         destruct Hassignable as [Ha_assign | [Hx_mut Ha_rda]].
         ++ (* Case: a = Assignable *)
           destruct Hassignability as [HFinal | HRDA].
           * (* Case: sf_assignability_rel CT C f Final *)
-          assert (Heq : Final = a).
+          assert (Heq : Final = a0).
           {
-            eapply sf_assignability_consistent_subtype with (f := f) (C := C) (D := sctype Tx); eauto.
+            eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact HFinal | exact Hassign_rel].
           }
           rewrite <- Heq in Ha_assign.
           discriminate Ha_assign.
           *
-          assert (Heq : RDA = a).
+          assert (Heq : RDA = a0).
           {
-            eapply sf_assignability_consistent_subtype with (f := f) (C := C) (D := sctype Tx); eauto.
+            eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact HRDA | exact Hassign_rel].
           }
           rewrite <- Heq in Ha_assign.
           discriminate Ha_assign.
@@ -134,27 +137,27 @@ Proof.
         rewrite Hval_x in Htypable.
         unfold wf_r_typable in Htypable.
         unfold r_type in Htypable.
-        rewrite Hobj in Htypable.
+        rewrite Hobj_protected in Htypable.
         destruct Htypable as [base qualifier].
         simpl in base.
         destruct Hassignable as [Ha_assign | [Hx_mut Ha_rda]].
         ++ (* Case: a = Assignable *)
           destruct Hassignability as [HFinal | HRDA].
           * (* Case: sf_assignability_rel CT C f Final *)
-          assert (Heq : Final = a).
+          assert (Heq : Final = a0).
           {
-            eapply sf_assignability_consistent_subtype with (f := f) (C := C) (D := sctype Tx); eauto.
+            eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact HFinal | exact Hassign_rel].
           }
-          rewrite <- Heq in Ha_assign.
           destruct Ha_assign as [Ha_assign Ha_ssigned].
+          rewrite <- Heq in Ha_ssigned.
           discriminate Ha_ssigned.
           *
-          assert (Heq : RDA = a).
+          assert (Heq : RDA = a0).
           {
-            eapply sf_assignability_consistent_subtype with (f := f) (C := C) (D := sctype Tx); eauto.
+            eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact HRDA | exact Hassign_rel].
           }
-          rewrite <- Heq in Ha_assign.
           destruct Ha_assign as [Ha_assign Ha_ssigned].
+          rewrite <- Heq in Ha_ssigned.
           discriminate Ha_ssigned.
         ++ (* Case: sqtype Tx = Mut ∧ a = RDA *)
           exfalso.
