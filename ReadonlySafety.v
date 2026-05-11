@@ -33,7 +33,7 @@ Proof.
     exfalso; apply Hmtype; reflexivity.
   -
     unfold wf_r_config in Hwf.
-    destruct Hwf as [_[_[Hrenv [_ [_ Htypable]]]]].
+    destruct Hwf as [Hclasstable [_ [Hrenv [_ [_ Htypable]]]]].
     assert (Hreadonly_dom : readonlyx < dom sΓ').
     {
       apply static_getType_dom in Hstatic_type.
@@ -70,21 +70,15 @@ Proof.
       subst Tx.
       (* rewrite Hstatic_type in H16. *)
       unfold vpa_assignability in Hassignable.
-      destruct a eqn: Haeqn; try easy.
+      destruct a0 eqn: Haeqn; try easy.
       assert (Hneq: anyf <> f).
       {
         intro Heq.
         subst anyf.
-        unfold sf_assignability_rel in Hassign_rel, Hfinal.
-        destruct Hassign_rel as [fdef_assign [Hlookup_assign Hassign_assign]].
-        destruct Hfinal as [fdef_final [Hlookup_final Hassign_final]].
-        assert (fdef_final = fdef_assign).
+        assert (Heq_assign : Final = Assignable).
         {
-          eapply field_lookup_deterministic_rel; eauto.
-          eapply field_inheritance_subtyping; eauto.
+          eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact Hfinal | exact Hassign_rel].
         }
-        subst fdef_final.
-        rewrite Hassign_final in Hassign_assign.
         discriminate.
       }
       injection Hobj_before as Hvals_eq.
@@ -112,21 +106,15 @@ Proof.
       inversion Hget_x.
       subst Tx.
       unfold vpa_assignability in Hassignable.
-      destruct a eqn: Haeqn; try easy.
+      destruct a0 eqn: Haeqn; try easy.
       assert (Hneq: anyf <> f).
       {
         intro Heq.
         subst anyf.
-        unfold sf_assignability_rel in Hassign_rel, Hrda.
-        destruct Hassign_rel as [fdef_assign [Hlookup_assign Hassign_assign]].
-        destruct Hrda as [fdef_final [Hlookup_final Hassign_final]].
-        assert (fdef_final = fdef_assign).
+        assert (Heq_assign : RDA = Assignable).
         {
-          eapply field_lookup_deterministic_rel; eauto.
-          eapply field_inheritance_subtyping; eauto.
+          eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact Hrda | exact Hassign_rel].
         }
-        subst fdef_final.
-        rewrite Hassign_final in Hassign_assign.
         discriminate.
       }
       injection Hobj_before as Hvals_eq.
@@ -150,7 +138,7 @@ Proof.
       rewrite Hqt_ro in Hassignable; easy.
   -
     unfold wf_r_config in Hwf.
-    destruct Hwf as [_[_[Hrenv [_ [_ Htypable]]]]].
+    destruct Hwf as [Hclasstable [_ [Hrenv [_ [_ Htypable]]]]].
     assert (Hreadonly_dom : readonlyx < dom sΓ').
     {
       apply static_getType_dom in Hstatic_type.
@@ -187,21 +175,15 @@ Proof.
       subst Tx.
       (* rewrite Hstatic_type in H16. *)
       unfold vpa_assignability in Hassignable.
-      destruct a eqn: Haeqn; try easy.
+      destruct a0 eqn: Haeqn; try easy.
       assert (Hneq: anyf <> f).
       {
         intro Heq.
         subst anyf.
-        unfold sf_assignability_rel in Hassign_rel, Hfinal.
-        destruct Hassign_rel as [fdef_assign [Hlookup_assign Hassign_assign]].
-        destruct Hfinal as [fdef_final [Hlookup_final Hassign_final]].
-        assert (fdef_final = fdef_assign).
+        assert (Heq_assign : Final = Assignable).
         {
-          eapply field_lookup_deterministic_rel; eauto.
-          eapply field_inheritance_subtyping; eauto.
+          eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact Hfinal | exact Hassign_rel].
         }
-        subst fdef_final.
-        rewrite Hassign_final in Hassign_assign.
         discriminate.
       }
       injection Hobj_before as Hvals_eq.
@@ -229,21 +211,15 @@ Proof.
       inversion Hget_x.
       subst Tx.
       unfold vpa_assignability in Hassignable.
-      destruct a eqn: Haeqn; try easy.
+      destruct a0 eqn: Haeqn; try easy.
       assert (Hneq: anyf <> f).
       {
         intro Heq.
         subst anyf.
-        unfold sf_assignability_rel in Hassign_rel, Hrda.
-        destruct Hassign_rel as [fdef_assign [Hlookup_assign Hassign_assign]].
-        destruct Hrda as [fdef_final [Hlookup_final Hassign_final]].
-        assert (fdef_final = fdef_assign).
+        assert (Heq_assign : RDA = Assignable).
         {
-          eapply field_lookup_deterministic_rel; eauto.
-          eapply field_inheritance_subtyping; eauto.
+          eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact Hrda | exact Hassign_rel].
         }
-        subst fdef_final.
-        rewrite Hassign_final in Hassign_assign.
         discriminate.
       }
       injection Hobj_before as Hvals_eq.
