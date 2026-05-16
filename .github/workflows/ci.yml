@@ -8,6 +8,7 @@ on:
 
 jobs:
   build:
+    name: Build & axiom check
     runs-on: ubuntu-latest
 
     steps:
@@ -40,6 +41,30 @@ jobs:
 
       - name: Build with dune (wrapper over coq_makefile)
         run: opam exec -- dune build @default -j"$(nproc)"
+
+  docs:
+    name: Alectryon docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up OCaml + opam
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5.2.1
+          opam-local-packages: |
+            *.opam
+
+      - name: Pin local package
+        run: opam pin add . -n
+
+      - name: Pin coq-record-update from GitHub
+        run: opam pin add -n coq-record-update https://github.com/tchajed/coq-record-update.git
+
+      - name: Install dependencies
+        run: opam install . --deps-only -y
 
       - name: Install Alectryon
         run: pipx install alectryon
