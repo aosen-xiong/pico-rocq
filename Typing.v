@@ -483,6 +483,34 @@ Proof.
     exact IHFindMethodWithName.
 Qed.
 
+Lemma find_method_with_name_deterministic : forall CT C m mdef1 mdef2
+  (H1 : FindMethodWithName CT C m mdef1)
+  (H2 : FindMethodWithName CT C m mdef2),
+  mdef1 = mdef2.
+Proof.
+  intros CT C m mdef1 mdef2 H1.
+  generalize dependent mdef2.
+  induction H1; intros mdef2 H2.
+  - (* H1 = FOM_Here *)
+    inversion H2; subst.
+    + (* H2 = FOM_Here: gget_method is functional *)
+      rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
+      rewrite Hget_method0 in Hget_method; injection Hget_method as ?; subst.
+      reflexivity.
+    + (* H2 = FOM_Super: contradicts gget_method = Some vs None *)
+      rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
+      rewrite Hget_method in Hnot_here; discriminate.
+  - (* H1 = FOM_Super *)
+    inversion H2; subst.
+    + (* H2 = FOM_Here: contradicts None vs Some *)
+      rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
+      rewrite Hget_method in Hnot_here; discriminate.
+    + (* H2 = FOM_Super: both recurse on the same parent *)
+      rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
+      rewrite Hsuper0 in Hsuper; injection Hsuper as ?; subst parent0.
+      apply IHFindMethodWithName; auto.
+Qed.
+
 (* EXPRESSION TYPING RULES *)
 Inductive expr_has_type : class_table -> s_env -> method_type -> expr -> qualified_type -> Prop :=
 
