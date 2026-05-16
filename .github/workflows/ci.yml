@@ -40,3 +40,28 @@ jobs:
 
       - name: Build with dune (wrapper over coq_makefile)
         run: opam exec -- dune build @default -j"$(nproc)"
+
+      - name: Install Alectryon
+        run: pipx install alectryon
+
+      - name: Generate Alectryon docs
+        run: opam exec -- make alectryon-doc
+
+      - name: Verify rendered docs
+        run: |
+          set -e
+          test -f alectryon/index.html
+          awk '/[.]v$/ { print }' _RocqProject | while IFS= read -r f; do
+            out="$(printf '%s\n' "$f" | sed 's#/#.#g; s#\.v$#.html#')"
+            if [ ! -f "alectryon/$out" ]; then
+              echo "Missing rendered file: alectryon/$out"
+              exit 1
+            fi
+          done
+
+      - name: Upload Alectryon docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: alectryon-docs
+          path: alectryon/
+          if-no-files-found: error

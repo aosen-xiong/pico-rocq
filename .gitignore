@@ -5,11 +5,12 @@
 *.vok
 *.vos
 .d
-Makefile
-Makefile.conf
 CoqMakefile
+CoqMakefile.conf
 .CoqMakefile.d
 .Makefile.d
 _build/
+alectryon/
+doc/
 copilot-instructions.md
 rocq-ai-style.instructions.md
