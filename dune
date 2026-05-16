@@ -5,6 +5,6 @@
   (glob_files *.v))
  (action
   (progn
-   (run sh -c "rm -f ./*.vo ./*.vos ./*.vok ./*.glob ./Makefile ./Makefile.conf ./.Makefile.d ./.CoqMakefile.d ./CoqMakefile")
-   (run coq_makefile -f _RocqProject -o Makefile)
-   (run make))))
+   (run sh -c "rm -f ./*.vo ./*.vos ./*.vok ./*.glob ./CoqMakefile ./CoqMakefile.conf ./.CoqMakefile.d ./.Makefile.d")
+   (run coq_makefile -f _RocqProject -o CoqMakefile)
+   (run make -f CoqMakefile))))

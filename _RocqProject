@@ -1,4 +1,6 @@
 -Q . ""
+-arg -exclude-dir
+-arg _opam
 LibTactics.v
 Tactics.v
 Syntax.v

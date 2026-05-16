@@ -1,0 +1,110 @@
+/* Project Alectryon theme: reference manual */
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: #f7f8fa;
+  color: #1d2430;
+  font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.alectryon-root.alectryon-centered {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 32px 40px 72px;
+}
+
+.alectryon-banner {
+  border: 1px solid #d7dde6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #516072;
+  padding: 10px 14px;
+  margin-bottom: 28px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.doc {
+  max-width: 860px;
+  margin: 24px 0 12px;
+  color: #283241;
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.doc .paragraph {
+  height: 0.7rem;
+}
+
+.alectryon-io,
+.alectryon-block {
+  border: 1px solid #d9e0ea;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172033;
+  padding: 14px 16px;
+  margin: 14px 0 22px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.alectryon-input {
+  border-radius: 3px;
+}
+
+.alectryon-io .alectryon-sentence.alectryon-target .alectryon-input {
+  background: #eef6ff;
+  box-shadow: inset 3px 0 0 #2f6fed;
+}
+
+.alectryon-goal,
+.alectryon-message,
+.alectryon-output {
+  border-left: 3px solid #7c8da6;
+  background: #f4f7fb;
+  border-radius: 0 4px 4px 0;
+  padding: 10px 12px;
+  margin: 8px 0 8px 14px;
+}
+
+.alectryon-bubble:before,
+.alectryon-toggle-label:before,
+.alectryon-io label.alectryon-input:after,
+.alectryon-io .alectryon-goal > label:before {
+  border-color: #7c8da6;
+  background: #f7fafc;
+}
+
+.project-proof-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: -14px 0 24px;
+}
+
+.project-proof-toggle {
+  border: 1px solid #c7d0dc;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1d2430;
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 11px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.project-proof-toggle:hover {
+  background: #f2f6fb;
+}
+
+body.proofs-hidden .alectryon-proof-sentence {
+  display: none;
+}
+
+.project-proof-note {
+  color: #607086;
+  font-size: 13px;
+}
