@@ -44,6 +44,7 @@
     var button = document.createElement("button");
     button.className = "project-proof-toggle";
     button.type = "button";
+    button.textContent = "Hide proofs";
 
     var note = document.createElement("span");
     note.className = "project-proof-note";
@@ -51,7 +52,6 @@
 
     function refresh() {
       var hidden = document.body.classList.contains("proofs-hidden");
-      button.textContent = hidden ? "Show proofs" : "Hide proofs";
       button.setAttribute("aria-pressed", hidden ? "true" : "false");
     }
 

@@ -101,7 +101,7 @@ alectryon-doc: coq
 	set -e; cd "$(PROJECT_DIR)" && awk '/[.]v$$/ { print }' _RocqProject | \
 	  while IFS= read -r f; do \
 	    out="$$(printf '%s\n' "$$f" | sed 's#[/]#.#g; s#[.]v$$#.html#')"; \
-	    "$(ALECTRYON)" --frontend coqdoc --coq-driver "$(ALECTRYON_COQ_DRIVER)" --backend webpage -Q . "$(PROJECT_NAMESPACE)" "$$f" -o "$(ALECTRYON_DIR)/$$out"; \
+	    "$(ALECTRYON)" --frontend coqdoc --coq-driver "$(ALECTRYON_COQ_DRIVER)" --backend webpage --rocq-arg=-exclude-dir --rocq-arg=_opam -Q . "$(PROJECT_NAMESPACE)" "$$f" -o "$(ALECTRYON_DIR)/$$out"; \
 	    perl -0pi -e 's#<script src="alectryon.js"></script>#<link href="project-alectryon.css" rel="stylesheet"><script src="alectryon.js"></script><script src="project-proof-toggle.js"></script>#' "$(ALECTRYON_DIR)/$$out"; \
 	  done
 
