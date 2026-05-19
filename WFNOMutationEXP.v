@@ -7,18 +7,18 @@ Require Import Properties DeepImmutability Reachability Preservation.
 Require Import ReadonlyHelper.
 
 Theorem well_typed_no_mutation_exp :
-  forall CT sΓ mt rΓ h x f y sΓ' loc_x o a vf val_y
+  forall CT sΓ mt rΓ h x f y sΓ'
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt (SFldWrite x f y) sΓ')
-    (Hgetval_x : runtime_getVal rΓ x = Some (Iot loc_x))
-    (Hgetobj : runtime_getObj h loc_x = Some o)
-    (Hgetval_f : getVal o.(fields_map) f = Some vf)
-    (Hassign : sf_assignability_rel CT (rctype (rt_type o)) f a)
-    (Hgetval_y : runtime_getVal rΓ y = Some val_y)
-    (Hvpa_final : runtime_vpa_assignability (rqtype (rt_type o)) a = Final),
+    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SFldWrite x f y) MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ h),
     False.
 Proof.
   intros.
+  inversion Heval; subst.
+  rename Hval_x into Hgetval_x.
+  rename Hobj into Hgetobj.
+  rename Hassign into Hassign.
+  rename Hfinal into Hvpa_final.
   inversion Htyping; subst.
   -
   rename sΓ' into sΓ.

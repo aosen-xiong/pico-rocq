@@ -9,7 +9,7 @@ ALECTRYON_PROOF_TOGGLE ?= $(PROJECT_DIR)alectryon-proof-toggle.js
 ALECTRYON ?= $(shell command -v alectryon 2>/dev/null || command -v "$(HOME)/Library/Python/3.9/bin/alectryon" 2>/dev/null || printf alectryon)
 ALECTRYON_COQ_DRIVER ?= coqc_time
 
-.PHONY: all coq doc doc-clean alectryon-doc alectryon-clean clean
+.PHONY: all coq check doc doc-clean alectryon-doc alectryon-clean clean
 
 all: coq
 
@@ -18,6 +18,9 @@ $(COQMAKEFILE): $(PROJECT_FILE)
 
 coq: $(COQMAKEFILE)
 	$(MAKE) -C "$(PROJECT_DIR)" -f CoqMakefile
+
+check: coq
+	python3 "$(PROJECT_DIR)scripts/check-no-axioms-admits.py" "$(PROJECT_DIR)"
 
 doc:
 	mkdir -p "$(DOC_DIR)"

@@ -1,6 +1,6 @@
 (* ------------------------------------------------------------------------ *)
 (* Adapted from Celsius project : https://github.com/clementblaudeau/celsius *)
-Require Export String List Psatz Coq.Program.Tactics Arith.
+From Stdlib Require Export String List Psatz Program.Tactics Arith.
 Import ListNotations.
 
 Global Hint Extern 50 => lia: lia.
