@@ -94,7 +94,7 @@ alectryon-doc: coq
 	  '    <li><a href="ReadonlyNoMutation.html">ReadonlyNoMutation</a></li>' \
 	  '    <li><a href="ReadonlySafety.html">ReadonlySafety</a></li>' \
 	  '  </ul>' \
-	  '  <h2>Experimental</h2>' \
+	  '  <h2>Mutation safety</h2>' \
 	  '  <ul>' \
 	  '    <li><a href="WFNOMutationEXP.html">WFNOMutationEXP</a></li>' \
 	  '  </ul>' \

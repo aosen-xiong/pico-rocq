@@ -1559,9 +1559,9 @@ Proof.
           eapply Forall2_nth_error in Hforall2; eauto.
           simpl in Hforall2.
           destruct (runtime_getObj h' loc) as [obj|] eqn:Hloc_obj.
-          --- (* Case: runtime_getObj h loc = Some obj *)
+          --- (* Case: runtime_getObj h' loc = Some obj *)
             trivial.
-          --- (* Case: runtime_getObj h loc = None *)
+          --- (* Case: runtime_getObj h' loc = None *)
             contradiction Hforall2.
     * assert(Htarget_exists : exists v, nth_error (vars rΓ) x = Some v).
       {
@@ -3284,8 +3284,7 @@ Proof.
           rewrite Hbound in Hctor_bound.
           inversion Hctor_bound; subst.
           unfold vpa_mutabilty_object_creation.
-          destruct (cqualifier consig) eqn: Hnewobjctqualifier; destruct (cqualifier consig) eqn: Hcbound;
-          destruct qthisr eqn: Hqthis;
+          destruct (cqualifier consig) eqn: Hcbound; destruct qthisr eqn: Hqthis;
           simpl in *; try easy.
         ** exfalso.
         unfold bound in Hbound.
