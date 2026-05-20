@@ -5,7 +5,7 @@ Require Export Syntax.
 From Stdlib Require Import List.
 Import ListNotations.
 Require Export Notations LibTactics Tactics.
-Require Export ssreflect ssrbool Coq.Sets.Finite_sets_facts.
+Require Export ssreflect ssrbool Stdlib.Sets.Finite_sets_facts.
 From RecordUpdate Require Import RecordUpdate.
 
 (* ------------------------------------------------------------------------ *)
