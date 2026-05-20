@@ -17,16 +17,11 @@
   function markProofSentences() {
     var inProof = false;
     document.querySelectorAll(".alectryon-io").forEach(function (block) {
-      block.childNodes.forEach(function (node) {
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-          return;
-        }
+      Array.prototype.forEach.call(block.children, function (node) {
+        var isSentence = node.classList.contains("alectryon-sentence");
+        var text = isSentence ? sentenceText(node) : "";
 
-        var text = node.classList.contains("alectryon-sentence")
-          ? sentenceText(node)
-          : node.textContent.trim();
-
-        if (node.classList.contains("alectryon-sentence") && isProofStart(text)) {
+        if (isSentence && isProofStart(text)) {
           inProof = true;
         }
 
@@ -34,7 +29,7 @@
           node.classList.add("alectryon-proof-sentence");
         }
 
-        if (node.classList.contains("alectryon-sentence") && inProof && isProofEnd(text)) {
+        if (isSentence && inProof && isProofEnd(text)) {
           inProof = false;
         }
       });
