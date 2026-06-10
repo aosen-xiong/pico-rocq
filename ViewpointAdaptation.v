@@ -1,21 +1,21 @@
 Require Import Syntax.
 
 (* Abstract Immutability VPA *)
-Definition vpa_mutabilty_qq_abs_imm (q1: q)(q2 : q) : q :=
+Definition vpa_mutability_qq_abs_imm (q1: q)(q2 : q) : q :=
   match q1, q2 with
     | RO, RDM => Lost
     | q1, RDM => q1
     | _, q2 => q2
   end.
 
-Definition vpa_mutabilty_tt_abs_imm (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
+Definition vpa_mutability_tt_abs_imm (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   match (sqtype t1), (sqtype t2) with
     | RO, RDM => Build_qualified_type Lost (sctype t2)
     | q1, RDM => Build_qualified_type q1 (sctype t2)
     | _, _ => t2
   end.
 
-Definition vpa_mutabilty_stype_fld_abs_imm (q1: q)(q2 : q_f) : q :=
+Definition vpa_mutability_stype_fld_abs_imm (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
     | RO, RDM_f => Lost
     | q1, RDM_f => q1
@@ -26,7 +26,7 @@ Definition vpa_mutabilty_stype_fld_abs_imm (q1: q)(q2 : q_f) : q :=
 
 (* Safe Readonly VPA *)
 
-Definition vpa_mutabilty_qq_safe_ro (q1: q)(q2 : q) : q :=
+Definition vpa_mutability_qq_safe_ro (q1: q)(q2 : q) : q :=
   match q1, q2 with
     | RO, RDM => Lost
     | q1, RDM => q1
@@ -34,7 +34,7 @@ Definition vpa_mutabilty_qq_safe_ro (q1: q)(q2 : q) : q :=
     | _, q2 => q2
   end.
 
-Definition vpa_mutabilty_tt_safe_ro (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
+Definition vpa_mutability_tt_safe_ro (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   match (sqtype t1), (sqtype t2) with
     | RO, RDM => Build_qualified_type Lost (sctype t2)
     | q1, RDM => Build_qualified_type q1 (sctype t2)
@@ -42,7 +42,7 @@ Definition vpa_mutabilty_tt_safe_ro (t1: qualified_type)(t2 : qualified_type) : 
     | _, _ => t2
   end.
 
-Definition vpa_mutabilty_stype_fld_safe_ro (q1: q)(q2 : q_f) : q :=
+Definition vpa_mutability_stype_fld_safe_ro (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
     | RO, RDM_f => Lost
     | q1, RDM_f => q1
@@ -68,7 +68,7 @@ Definition vpa_assignability_concret_imm (q1: q) (a1: a) : a :=
   end.
 
 (* Check whether a type respect its bound *)
-Definition vpa_mutabilty_bound (q1: q)(q2 : q_c) : q :=
+Definition vpa_mutability_bound (q1: q)(q2 : q_c) : q :=
   match q1, q2 with
     | RO, RDM_c => Lost
     | q1, RDM_c => q1
@@ -77,7 +77,7 @@ Definition vpa_mutabilty_bound (q1: q)(q2 : q_c) : q :=
     end.
 
 (* Check whether a field declaration respect its bound *)
-Definition vpa_mutabilty_fld_bound (q1: q_f)(q2 : q_c) : q_f :=
+Definition vpa_mutability_fld_bound (q1: q_f)(q2 : q_c) : q_f :=
   match q1, q2 with
     | Imm_f, RDM_c => Imm_f
     | Mut_f, RDM_c => Mut_f
@@ -90,7 +90,7 @@ Definition vpa_mutabilty_fld_bound (q1: q_f)(q2 : q_c) : q_f :=
 
 
 (* Adapting field type from constructor *)
-Definition vpa_mutabilty_constructor_fld (q1: q_c)(q2 : q_f) : q :=
+Definition vpa_mutability_constructor_fld (q1: q_c)(q2 : q_f) : q :=
   match q1, q2 with
     | Imm_c, RDM_f => Imm
     | Mut_c, RDM_f => Mut
@@ -101,7 +101,7 @@ Definition vpa_mutabilty_constructor_fld (q1: q_c)(q2 : q_f) : q :=
     end.
 
 (* Adapting field type from a runtime type *)
-Definition vpa_mutabilty_rec_fld (q1: q_r)(q2 : q_f) : q :=
+Definition vpa_mutability_rec_fld (q1: q_r)(q2 : q_f) : q :=
   match q1, q2 with
     | Imm_r, RDM_f => Imm
     | Mut_r, RDM_f => Mut
@@ -113,7 +113,7 @@ Definition vpa_mutabilty_rec_fld (q1: q_r)(q2 : q_f) : q :=
 (* Used to exam runtime typability based on its context, 
 for example, m(Imm C this, RDM C c), 
 the value of c is a Imm obj at runtime but is typable because Imm |> RDM = Imm *)
-Definition vpa_mutabilty_rs (q1: q_r)(q2 : q) : q :=
+Definition vpa_mutability_rs (q1: q_r)(q2 : q) : q :=
   match q1, q2 with
     | Imm_r, RDM => Imm
     | Mut_r, RDM => Mut
@@ -121,7 +121,7 @@ Definition vpa_mutabilty_rs (q1: q_r)(q2 : q) : q :=
   end.
 
 (*  Adapted object creation for operational semantics *)
-Definition vpa_mutabilty_object_creation (q1: q_r)(q2 : q_c) : q_r :=
+Definition vpa_mutability_object_creation (q1: q_r)(q2 : q_c) : q_r :=
   match q1, q2 with
     | Imm_r, RDM_c => Imm_r
     | Mut_r, RDM_c => Mut_r

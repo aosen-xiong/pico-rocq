@@ -445,8 +445,8 @@ Proof.
         rewrite Hmsigeq.
         destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         apply qualified_type_subtype_base_subtype in Hrcv_sub.
-        (* rewrite (vpa_mutabilty_tt_sctype Tthis Ty) in Hmethod_case. *)
-        rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
+        (* rewrite (vpa_mutability_tt_sctype Tthis Ty) in Hmethod_case. *)
+        rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
         eapply base_trans; eauto.
         destruct Hrcv_sub as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
         eapply base_trans; eauto.
@@ -508,10 +508,10 @@ Proof.
             unfold qualifier_typable_context.
             unfold qualifier_typable_context in HyQualifierTypablility.
             unfold qualifier_typable_context in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_rs.
-            unfold vpa_mutabilty_rs in HyQualifierTypablility.
-            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_tt_safe_ro in Hrcv_sub.
+            unfold vpa_mutability_rs.
+            unfold vpa_mutability_rs in HyQualifierTypablility.
+            unfold vpa_mutability_rs in Houtter_qualifier_typable.
+            unfold vpa_mutability_tt_safe_ro in Hrcv_sub.
             rewrite <- Hmsigeq in Hrcv_sub.
 
             destruct qinner eqn:HInnerReceiverMutability;
@@ -580,9 +580,9 @@ Proof.
             unfold qualifier_typable_context.
             unfold qualifier_typable_context in HyQualifierTypablility.
             unfold qualifier_typable_context in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_rs.
-            unfold vpa_mutabilty_rs in HyQualifierTypablility.
-            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+            unfold vpa_mutability_rs.
+            unfold vpa_mutability_rs in HyQualifierTypablility.
+            unfold vpa_mutability_rs in Houtter_qualifier_typable.
             rewrite <- Hmsigeq in HReceiverDeclearedQualifier.
             rewrite HReceiverDeclearedQualifier.
 
@@ -694,7 +694,7 @@ Proof.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in Harg_sub; eauto.
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
             eapply base_trans; eauto.
 
             (* Qualifier Typability *)
@@ -814,7 +814,7 @@ Proof.
         exact Hconfined.
       }
       unfold is_safe_mode in Hty_safe.
-      unfold vpa_mutabilty_tt_safe_ro.
+      unfold vpa_mutability_tt_safe_ro.
       assert (Hy_dom : y < dom sΓ).
       {
         apply static_getType_dom in Hget_y.
@@ -864,7 +864,7 @@ Proof.
       destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
       apply qualified_type_subtype_q_subtype in Hrcv_sub.
       rewrite Hmsigeq.
-      unfold vpa_mutabilty_tt_safe_ro in Hrcv_sub.
+      unfold vpa_mutability_tt_safe_ro in Hrcv_sub.
       destruct Hty_safe as [HRd | [HLost | [HRDM| HImm] ]].
       + (* Case: sqtype Ty = Rd *)
         rewrite HRd in Hrcv_sub.
@@ -1318,8 +1318,8 @@ Proof.
         rewrite Hmsigeq.
         destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         apply qualified_type_subtype_base_subtype in Hrcv_sub.
-        (* rewrite (vpa_mutabilty_tt_sctype Tthis Ty) in Hmethod_case. *)
-        rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
+        (* rewrite (vpa_mutability_tt_sctype Tthis Ty) in Hmethod_case. *)
+        rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
         eapply base_trans; eauto.
         destruct Hrcv_sub as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
         eapply base_trans; eauto.
@@ -1381,10 +1381,10 @@ Proof.
             unfold qualifier_typable_context.
             unfold qualifier_typable_context in HyQualifierTypablility.
             unfold qualifier_typable_context in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_rs.
-            unfold vpa_mutabilty_rs in HyQualifierTypablility.
-            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_tt_safe_ro in Hrcv_sub.
+            unfold vpa_mutability_rs.
+            unfold vpa_mutability_rs in HyQualifierTypablility.
+            unfold vpa_mutability_rs in Houtter_qualifier_typable.
+            unfold vpa_mutability_tt_safe_ro in Hrcv_sub.
             rewrite <- Hmsigeq in Hrcv_sub.
 
             destruct qinner eqn:HInnerReceiverMutability;
@@ -1453,9 +1453,9 @@ Proof.
             unfold qualifier_typable_context.
             unfold qualifier_typable_context in HyQualifierTypablility.
             unfold qualifier_typable_context in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_rs.
-            unfold vpa_mutabilty_rs in HyQualifierTypablility.
-            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+            unfold vpa_mutability_rs.
+            unfold vpa_mutability_rs in HyQualifierTypablility.
+            unfold vpa_mutability_rs in Houtter_qualifier_typable.
             rewrite <- Hmsigeq in HReceiverDeclearedQualifier.
             rewrite HReceiverDeclearedQualifier.
             destruct qinner eqn:HInnerReceiverMutability;
@@ -1566,7 +1566,7 @@ Proof.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in Harg_sub; eauto.
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
             eapply base_trans; eauto.
 
             (* Qualifier Typability *)
@@ -1686,7 +1686,7 @@ Proof.
         exact Hconfined.
       }
       unfold is_safe_mode in Hty_safe.
-      unfold vpa_mutabilty_tt_safe_ro.
+      unfold vpa_mutability_tt_safe_ro.
       assert (Hy_dom : y < dom sΓ).
       {
         apply static_getType_dom in Hget_y.
@@ -1736,7 +1736,7 @@ Proof.
       destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
       apply qualified_type_subtype_q_subtype in Hrcv_sub.
       rewrite Hmsigeq.
-      unfold vpa_mutabilty_tt_safe_ro in Hrcv_sub.
+      unfold vpa_mutability_tt_safe_ro in Hrcv_sub.
       destruct Hty_safe as [HRd | [HLost | [HRDM| HImm] ]].
       + (* Case: sqtype Ty = Rd *)
         rewrite HRd in Hrcv_sub.
