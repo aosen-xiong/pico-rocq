@@ -3284,7 +3284,10 @@ Proof.
           rewrite Hbound in Hctor_bound.
           inversion Hctor_bound; subst.
           unfold vpa_mutabilty_object_creation.
-          destruct (cqualifier consig) eqn: Hcbound; destruct qthisr eqn: Hqthis;
+          unfold vpa_mutabilty_bound in Hqc.
+          destruct q_c eqn:Hnewq;
+          destruct (cqualifier consig) eqn: Hcbound;
+          destruct qthisr eqn: Hqthis;
           simpl in *; try easy.
         ** exfalso.
         unfold bound in Hbound.
@@ -3325,10 +3328,11 @@ Proof.
       apply Forall2_length in Harg_sub.
       apply runtime_lookup_list_preserves_length in Hlookupvals.
       apply static_getType_list_preserves_length in Hget_args.
-      rewrite Hlookupvals.
-      rewrite <- Hget_args.
-      rewrite Harg_sub.
-      eapply constructor_sig_lookup_implies_def in Hconsig; eauto.
+	      rewrite Hlookupvals.
+	      rewrite <- Hget_args.
+	      rewrite Harg_sub.
+	      rewrite length_map.
+	      eapply constructor_sig_lookup_implies_def in Hconsig; eauto.
       destruct Hconsig as [cdef Hcedflookup].
       destruct Hcedflookup as [Hcedflookup Hcdefcsig].
       eapply constructor_params_field_count; eauto.
@@ -3357,9 +3361,10 @@ Proof.
         - (* Show lengths are equal *)
         apply Forall2_length in Hlookupvals.
         rewrite Hlookupvals.
-        apply Forall2_length in Harg_sub.
-        rewrite Harg_sub.
-        assert (field_defs_exists = field_defs). {
+	        apply Forall2_length in Harg_sub.
+	        rewrite Harg_sub.
+	        rewrite length_map.
+	        assert (field_defs_exists = field_defs). {
           eapply collect_fields_deterministic_rel; eauto.
         }
         subst field_defs_exists.
@@ -3415,17 +3420,28 @@ Proof.
           rewrite <- Hdom_eq in Hi_fdef.
           lia.
           }
-          eapply Forall2_nth_error with (i:=i) (b:=fdef) (a:=paramtype) in Hfieldtypematch.
-          apply qualified_type_subtype_base_subtype in Hfieldtypematch.
-          simpl in Hfieldtypematch.
-          eapply Forall2_nth_error with (i:=i) (b:=paramtype) (a:=argtype) in Harg_sub.
-          apply qualified_type_subtype_base_subtype in Harg_sub.
-          eapply base_trans; eauto.
-          eapply base_trans; eauto.
-          exact Hargtype.
-          exact Hparamtype.
-          exact Hparamtype.
-          exact Hfdef.
+	          eapply Forall2_nth_error with (i:=i) (b:=fdef) (a:=paramtype) in Hfieldtypematch.
+	          apply qualified_type_subtype_base_subtype in Hfieldtypematch.
+	          simpl in Hfieldtypematch.
+	          assert (Hadapted_paramtype :
+	            nth_error (map (vpa_mutability_constructor_param q_c) (cparams consig)) i =
+	            Some (vpa_mutability_constructor_param q_c paramtype)).
+	          {
+	            rewrite nth_error_map.
+	            rewrite Hparamtype.
+	            reflexivity.
+	          }
+	          eapply Forall2_nth_error with
+	            (i:=i) (b:=vpa_mutability_constructor_param q_c paramtype) (a:=argtype) in Harg_sub.
+	          apply qualified_type_subtype_base_subtype in Harg_sub.
+	          unfold vpa_mutability_constructor_param in Harg_sub.
+	          simpl in Harg_sub.
+	          eapply base_trans; eauto.
+	          eapply base_trans; eauto.
+	          exact Hargtype.
+	          exact Hadapted_paramtype.
+	          exact Hparamtype.
+	          exact Hfdef.
         + 
           destruct Hlookupvals as [Hrctype Hqctype].
           destruct (nth_error (cparams consig) i) as [paramtype|] eqn: Hparamtype.
@@ -3440,19 +3456,30 @@ Proof.
             rewrite <- Hdom_eq in Hi_fdef.
             lia.
           }
-          eapply Forall2_nth_error with (i:=i) (b:=fdef) (a:=paramtype) in Hfieldtypematch.
-          apply qualified_type_subtype_q_subtype in Hfieldtypematch.
-          eapply Forall2_nth_error with (i:=i) (b:=paramtype) (a:=argtype) in Harg_sub.
-          apply qualified_type_subtype_q_subtype in Harg_sub.
-          apply qualified_type_subtype_q_subtype in Hresult_sub.
-          
-          2: exact Hargtype.
-          2: exact Hparamtype.
-          2: exact Hparamtype.
-          2: exact Hfdef.
-          simpl in Hfieldtypematch.
-          move Hqctype at bottom.
-          move Hfieldtypematch at bottom.
+	          eapply Forall2_nth_error with (i:=i) (b:=fdef) (a:=paramtype) in Hfieldtypematch.
+	          apply qualified_type_subtype_q_subtype in Hfieldtypematch.
+	          assert (Hadapted_paramtype :
+	            nth_error (map (vpa_mutability_constructor_param q_c) (cparams consig)) i =
+	            Some (vpa_mutability_constructor_param q_c paramtype)).
+	          {
+	            rewrite nth_error_map.
+	            rewrite Hparamtype.
+	            reflexivity.
+	          }
+	          eapply Forall2_nth_error with
+	            (i:=i) (b:=vpa_mutability_constructor_param q_c paramtype) (a:=argtype) in Harg_sub.
+	          apply qualified_type_subtype_q_subtype in Harg_sub.
+	          apply qualified_type_subtype_q_subtype in Hresult_sub.
+
+	          2: exact Hargtype.
+	          2: exact Hadapted_paramtype.
+	          2: exact Hparamtype.
+	          2: exact Hfdef.
+	          simpl in Hfieldtypematch.
+	          unfold vpa_mutability_constructor_param in Harg_sub.
+	          simpl in Harg_sub.
+	          move Hqctype at bottom.
+	          move Hfieldtypematch at bottom.
           unfold wf_senv in Hsenv;
           destruct Hsenv as [Hsenvdom _];
           destruct (r_type h ι) as [rqt_receiver|] eqn: Hrtype_receiver.
@@ -3488,19 +3515,23 @@ Proof.
             inversion HgetthisRuntimeType; reflexivity.
           }
           subst qthisr.
-          clear - Hfieldtypematch Hqctype Harg_sub.
-          destruct (rqtype rqt) eqn: Hrqtq;
-          destruct qcontext eqn: Hqthis;
-          destruct (cqualifier consig) eqn: Hconstructoreturnq;
-          destruct (mutability (ftype fdef)) eqn: Hfieldq; 
-          try easy.
+	          unfold vpa_mutabilty_bound in Hqc.
+	          clear - Hfieldtypematch Hqctype Harg_sub Hqc.
+	          destruct (rqtype rqt) eqn: Hrqtq;
+	          destruct qcontext eqn: Hqthis;
+	          destruct q_c eqn: Hnewq;
+	          destruct (cqualifier consig) eqn: Hconstructoreturnq;
+	          destruct (mutability (ftype fdef)) eqn: Hfieldq;
+	          try easy.
           all: destruct (sqtype paramtype) eqn: Hparamq;
           try solve_q_subtype_wrong.
           all: 
-          destruct (sqtype argtype) eqn: Hargq;
-          try solve_q_subtype_wrong;
-          destruct qcontext eqn: Hqcontext;
-          try solve_qualifier_typable_wrong_concrete.
+	          destruct (sqtype argtype) eqn: Hargq;
+	          try solve_q_subtype_wrong;
+	          destruct qcontext eqn: Hqcontext;
+	          try solve_qualifier_typable_wrong_concrete;
+	          try solve_qualifier_typable_correct_concrete;
+	          try easy.
         }
       }
     * (* ι < dom h (existing object) *)
@@ -3597,8 +3628,8 @@ Proof.
       assert (dom h + 1 = S (dom h)) by lia.
       unfold runtime_getObj.
       simpl.
-      assert (Hlen_extended: dom (h ++ [{| rt_type := {| rqtype := vpa_mutabilty_object_creation
-qthisr (cqualifier consig); rctype := c |}; fields_map := vals |}]) = dom h + 1).
+	      assert (Hlen_extended: dom (h ++ [{| rt_type := {| rqtype := vpa_mutabilty_object_creation
+qthisr q_c; rctype := c |}; fields_map := vals |}]) = dom h + 1).
       -- rewrite length_app. simpl. lia.
       -- rewrite nth_error_app2.
       ** lia.
@@ -3724,15 +3755,21 @@ qthisr (cqualifier consig); rctype := c |}; fields_map := vals |}]) = dom h + 1)
               subst qthisr.
               unfold qualifier_typable_context in *.
               unfold vpa_mutabilty_object_creation in *.
-              unfold vpa_mutabilty_rs in *;
-              unfold qc2q in *;
-              unfold vpa_mutabilty_tt_abs_imm in *.
-              destruct (cqualifier consig) eqn: Hcbound;
-              destruct qcontext eqn: Hqcontext;
-              destruct (rqtype (rt_type o)) eqn: Hrqtq;
-              destruct (sqtype Tx) eqn: Htxq; try easy.
-              all: destruct (sqtype Tthis) eqn: Hqthisr; try rewrite Htxq in H14; simpl in H14; try inversion H14; try easy.
-          }
+	              unfold vpa_mutabilty_rs in *;
+	              unfold qc2q in *;
+	              unfold vpa_mutabilty_tt_abs_imm in *.
+	              unfold vpa_mutabilty_bound in Hqc.
+	              destruct q_c eqn:Hnewq;
+	              destruct (cqualifier consig) eqn: Hcbound;
+	              destruct qcontext eqn: Hqcontext;
+	              destruct (rqtype (rt_type o)) eqn: Hrqtq;
+	              destruct (sqtype Tx) eqn: Htxq; try easy.
+	              all: destruct (sqtype Tthis) eqn: Hqthisr;
+	                try rewrite Htxq in Hresult_sub;
+	                simpl in Hresult_sub;
+	                try inversion Hresult_sub;
+	                try easy.
+	          }
       - (* Case: i ≠ x (existing variable) *)
         simpl.
         unfold runtime_getVal.
@@ -3761,8 +3798,8 @@ qthisr (cqualifier consig); rctype := c |}; fields_map := vals |}]) = dom h + 1)
         rewrite Hval.
         unfold wf_r_typable in Hcorr_orig |- *.
         destruct (r_type h loc) as [rqt|] eqn:Hrtype; [|contradiction].
-          assert (Hrtype_ext : r_type (h ++ [{| rt_type := {| rqtype := vpa_mutabilty_object_creation qthisr
-(cqualifier consig); rctype := c |}; fields_map := vals |}]) loc = Some rqt).
+	          assert (Hrtype_ext : r_type (h ++ [{| rt_type := {| rqtype := vpa_mutabilty_object_creation qthisr
+q_c; rctype := c |}; fields_map := vals |}]) loc = Some rqt).
           {
             unfold r_type in Hrtype |- *.
             rewrite heap_extension_preserves_objects; auto.

@@ -9,6 +9,7 @@ Helpers.v
 ViewpointAdaptation.v
 Subtyping.v
 Typing.v
+ObjectCreationExamples.v
 Reachability.v
 Bigstep.v
 Properties.v

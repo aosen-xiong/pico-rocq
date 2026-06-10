@@ -555,6 +555,11 @@ Definition qc2q (qi : q_c) : q :=
     | Mut_c => Mut
     end.
 
+Definition vpa_mutability_constructor_param (qc : q_c) (T : qualified_type) : qualified_type :=
+  Build_qualified_type
+    (vpa_mutabilty_qq_abs_imm (qc2q qc) (sqtype T))
+    (sctype T).
+
 Definition get_this_qualified_type (sΓ : s_env) : option qualified_type :=
   match sΓ with
   | [] => None
@@ -640,8 +645,9 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hthis       : get_this_qualified_type sΓ = Some Tthis)
       (Hconsig     : constructor_sig_lookup CT C = Some consig)
       (Hnot_rcv    : x <> 0)
-      (Hqc         : qc = cqualifier consig)
-      (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg T) argtypes consig.(cparams))
+      (Hqc         : vpa_mutabilty_bound (qc2q qc) (cqualifier consig) = qc2q qc)
+      (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg T)
+                       argtypes (map (vpa_mutability_constructor_param qc) consig.(cparams)))
       (Hresult_sub : qualified_type_subtype CT (Build_qualified_type (qc2q qc) C) Tx),
       stmt_typing CT sΓ mt (SNew x qc C args) sΓ
 
@@ -710,6 +716,7 @@ Proof.
   assert (argtypes = argtypes0) by congruence.
   subst.
   apply Forall2_length in Harg_sub.
+  rewrite map_length in Harg_sub.
   rewrite <- Harg_sub.
   eapply static_getType_list_preserves_length; eauto.
 Qed.
