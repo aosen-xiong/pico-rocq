@@ -43,7 +43,7 @@ Proof.
     (Tthis := ex_type RDM)
     (consig := ex_ctor_sig).
   - unfold wf_senv, ex_senv, ex_type, wf_stypeuse, bound, find_class, gget,
-      vpa_mutabilty_bound.
+      vpa_mutability_bound.
     simpl.
     repeat split; try lia; repeat constructor; discriminate.
   - reflexivity.
@@ -65,7 +65,7 @@ Proof.
     (Tthis := ex_type RDM)
     (consig := ex_ctor_sig).
   - unfold wf_senv, ex_senv, ex_type, wf_stypeuse, bound, find_class, gget,
-      vpa_mutabilty_bound.
+      vpa_mutability_bound.
     simpl.
     repeat split; try lia; repeat constructor; discriminate.
   - reflexivity.
@@ -87,7 +87,7 @@ Proof.
     (Tthis := ex_type RDM)
     (consig := ex_ctor_sig).
   - unfold wf_senv, ex_senv, ex_type, wf_stypeuse, bound, find_class, gget,
-      vpa_mutabilty_bound.
+      vpa_mutability_bound.
     simpl.
     repeat split; try lia; repeat constructor; discriminate.
   - reflexivity.

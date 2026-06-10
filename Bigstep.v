@@ -72,7 +72,7 @@ Proof.
   destruct (runtime_getObj h ι); [apply update_length | reflexivity].
 Qed.
 
-Definition vpa_mutabilty_runtime_bound_agree (q1: q_r)(q2 : q_c) : bool :=
+Definition vpa_mutability_runtime_bound_agree (q1: q_r)(q2 : q_c) : bool :=
   match (q1, q2) with
     | (Imm_r, RDM_c) => true
     | (Mut_r, RDM_c) => true
@@ -86,20 +86,20 @@ Definition vpa_mutabilty_runtime_bound_agree (q1: q_r)(q2 : q_c) : bool :=
 Definition wf_rtypeuse (CT: class_table) (q: q_r) (c: class_name) : Prop :=
   match (bound CT c) with
   | None => False
-  | Some q' => c < dom CT /\ vpa_mutabilty_runtime_bound_agree q q'
+  | Some q' => c < dom CT /\ vpa_mutability_runtime_bound_agree q q'
   end.
 
 Definition qualifier_typable_context (qr: q_r) (qs: q) (qcontext: q_r): Prop :=
   match qr with
   | Imm_r =>
-    match vpa_mutabilty_rs qcontext qs with
+    match vpa_mutability_rs qcontext qs with
     | Imm => True
     | RO => True
     | Lost => True
     | _ => False
     end
   | Mut_r =>
-    match vpa_mutabilty_rs qcontext qs with	
+    match vpa_mutability_rs qcontext qs with
     | Mut => True
     | RO => True
     | Lost => True
@@ -143,7 +143,7 @@ Definition wf_obj (CT: class_table) (h: heap) (ι: Loc) : Prop :=
             (* Field value exists and has correct type *)
             exists rqt, r_type h loc = Some rqt /\
             base_subtype CT (rctype rqt) (f_base_type (ftype fdef)) /\
-            qualifier_typable_heap (rqtype rqt) (vpa_mutabilty_rec_fld (rqtype (rt_type o)) (mutability (ftype fdef)))
+            qualifier_typable_heap (rqtype rqt) (vpa_mutability_rec_fld (rqtype (rt_type o)) (mutability (ftype fdef)))
           | None => False
           end
         end) (fields_map o) field_defs
@@ -349,7 +349,7 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Hthis    : runtime_getVal rΓ 0 = Some (Iot l1))
       (Hargs    : runtime_lookup_list rΓ ys = Some vals)
       (Hmut     : r_muttype h l1 = Some qthisr)
-      (Hadapt   : vpa_mutabilty_object_creation qthisr q_c = qadapted)
+      (Hadapt   : vpa_mutability_object_creation qthisr q_c = qadapted)
       (Hobj     : o = mkObj (mkruntime_type qadapted c) (vals))
       (Hheap    : h' = h++[o])
       (Henv     : rΓ' = rΓ <| vars := update x (Iot (dom h)) rΓ.(vars) |>),
@@ -682,45 +682,45 @@ Proof.
   inversion Hr; subst. reflexivity.
 Qed.
 
-Lemma vpa_mutabilty_tt_sctype_abs_imm : forall Tthis T,
-  sctype (vpa_mutabilty_tt_abs_imm Tthis T) = sctype T.
+Lemma vpa_mutability_tt_sctype_abs_imm : forall Tthis T,
+  sctype (vpa_mutability_tt_abs_imm Tthis T) = sctype T.
 Proof.
   intros Tthis T.
-  unfold vpa_mutabilty_tt_abs_imm.
+  unfold vpa_mutability_tt_abs_imm.
   destruct T as [q c]. simpl.
   destruct (sqtype Tthis); destruct q; simpl; reflexivity.
 Qed.
 
 Lemma vpa_preserve_basetype_subtype_abs_imm : forall CT Tthis T1 T2
-  (Hsub : base_subtype CT (sctype (vpa_mutabilty_tt_abs_imm Tthis T1)) (sctype (vpa_mutabilty_tt_abs_imm Tthis T2))),
+  (Hsub : base_subtype CT (sctype (vpa_mutability_tt_abs_imm Tthis T1)) (sctype (vpa_mutability_tt_abs_imm Tthis T2))),
   base_subtype CT (sctype T1) (sctype T2).
 Proof.
   intros CT Tthis T1 T2 Hsub.
-  rewrite !vpa_mutabilty_tt_sctype_abs_imm in Hsub.
+  rewrite !vpa_mutability_tt_sctype_abs_imm in Hsub.
   exact Hsub.
 Qed.
 
-Lemma vpa_mutabilty_tt_sctype_safe_ro : forall Tthis T,
-  sctype (vpa_mutabilty_tt_safe_ro Tthis T) = sctype T.
+Lemma vpa_mutability_tt_sctype_safe_ro : forall Tthis T,
+  sctype (vpa_mutability_tt_safe_ro Tthis T) = sctype T.
 Proof.
   intros Tthis T.
-  unfold vpa_mutabilty_tt_safe_ro.
+  unfold vpa_mutability_tt_safe_ro.
   destruct T as [q c]. simpl.
   destruct (sqtype Tthis); destruct q; simpl; reflexivity.
 Qed.
 
 Lemma vpa_preserve_basetype_subtype_safe_ro : forall CT Tthis T1 T2
-  (Hsub : base_subtype CT (sctype (vpa_mutabilty_tt_safe_ro Tthis T1)) (sctype (vpa_mutabilty_tt_safe_ro Tthis T2))),
+  (Hsub : base_subtype CT (sctype (vpa_mutability_tt_safe_ro Tthis T1)) (sctype (vpa_mutability_tt_safe_ro Tthis T2))),
   base_subtype CT (sctype T1) (sctype T2).
 Proof.
   intros CT Tthis T1 T2 Hsub.
   (* apply qualified_type_subtype_base_subtype in Hsub. *)
-  rewrite !vpa_mutabilty_tt_sctype_safe_ro in Hsub.
+  rewrite !vpa_mutability_tt_sctype_safe_ro in Hsub.
   exact Hsub.
 Qed.
 
 (* Aosen: Both direction can not be proved... don't even try later *)
-(* q_subtype (sqtype (vpa_mutabilty_tt Tthis T1)) (sqtype (vpa_mutabilty_tt Tthis T2)) <->
+(* q_subtype (sqtype (vpa_mutability_tt Tthis T1)) (sqtype (vpa_mutability_tt Tthis T2)) <->
 q_subtype (sqtype T1) (sqtype T2). *)
 
 Lemma wf_r_typable_adapted_subtype_abs_imm : forall CT sΓ rΓ h Tthis locthis loc T1 T2 qcontext
@@ -731,7 +731,7 @@ Lemma wf_r_typable_adapted_subtype_abs_imm : forall CT sΓ rΓ h Tthis locthis l
   (* wf_r_typable CT rΓ h locthis Tthis qcontext -> *)
   (Hthistypablity   : qualifier_typable_context qcontext (sqtype Tthis) qcontext)
   (Hwf              : wf_r_typable CT rΓ h loc T1 qcontext)
-  (Hsub             : qualified_type_subtype CT (vpa_mutabilty_tt_abs_imm Tthis T1) (vpa_mutabilty_tt_abs_imm Tthis T2)),
+  (Hsub             : qualified_type_subtype CT (vpa_mutability_tt_abs_imm Tthis T1) (vpa_mutability_tt_abs_imm Tthis T2)),
   wf_r_typable CT rΓ h loc T2 qcontext.
 Proof.
   intros CT sΓ rΓ h Tthis locthis loc T1 T2 qcontext HwfConfig HThisType HThisVal HthisMutability Hthistypablity Hwf Hsub.
@@ -769,7 +769,7 @@ Proof.
     inversion HThisRuntimeType; subst.
     inversion HthisMutability; reflexivity.
   }
-  unfold qualifier_typable_context in *; unfold vpa_mutabilty_rs in *; unfold vpa_mutabilty_tt_abs_imm in *.
+  unfold qualifier_typable_context in *; unfold vpa_mutability_rs in *; unfold vpa_mutability_tt_abs_imm in *.
   destruct (rqtype rt) eqn: qt; destruct qcontext eqn: qrthis; destruct (sqtype Tthis) eqn: qsthis; destruct (sqtype T1) eqn: qt1; destruct (sqtype T2) eqn: qt2; simpl in *; try easy.
   all: try rewrite qt1 in Hsub; try rewrite qt2 in Hsub; try constructor; try easy.
   all: inversion Hsub; easy.
@@ -783,7 +783,7 @@ Lemma wf_r_typable_adapted_subtype_safe_ro : forall CT sΓ rΓ h Tthis locthis l
   (* wf_r_typable CT rΓ h locthis Tthis qcontext -> *)
   (Hthistypablity   : qualifier_typable_context qcontext (sqtype Tthis) qcontext)
   (Hwf              : wf_r_typable CT rΓ h loc T1 qcontext)
-  (Hsub             : qualified_type_subtype CT (vpa_mutabilty_tt_safe_ro Tthis T1) (vpa_mutabilty_tt_safe_ro Tthis T2)),
+  (Hsub             : qualified_type_subtype CT (vpa_mutability_tt_safe_ro Tthis T1) (vpa_mutability_tt_safe_ro Tthis T2)),
   wf_r_typable CT rΓ h loc T2 qcontext.
 Proof.
   intros CT sΓ rΓ h Tthis locthis loc T1 T2 qcontext HwfConfig HThisType HThisVal HthisMutability Hthistypablity Hwf Hsub.
@@ -821,7 +821,7 @@ Proof.
     inversion HThisRuntimeType; subst.
     inversion HthisMutability; reflexivity.
   }
-  unfold qualifier_typable_context in *; unfold vpa_mutabilty_rs in *; unfold vpa_mutabilty_tt_safe_ro in *.
+  unfold qualifier_typable_context in *; unfold vpa_mutability_rs in *; unfold vpa_mutability_tt_safe_ro in *.
   destruct (rqtype rt) eqn: qt; destruct qcontext eqn: qrthis; destruct (sqtype Tthis) eqn: qsthis; destruct (sqtype T1) eqn: qt1; destruct (sqtype T2) eqn: qt2; simpl in *; try easy.
   all: try rewrite qt1 in Hsub; try rewrite qt2 in Hsub; try constructor; try easy.
   all: inversion Hsub; easy.
@@ -1334,7 +1334,7 @@ Proof.
     inversion Hreceiveraddr; subst ι'.
     rewrite Hmut in Hreceiverrmut.
     inversion Hreceiverrmut; subst q.
-    unfold vpa_mutabilty_rs; unfold vpa_mutabilty_stype_fld_abs_imm in *; unfold vpa_mutabilty_rec_fld in Hqualifiertypable;
+    unfold vpa_mutability_rs; unfold vpa_mutability_stype_fld_abs_imm in *; unfold vpa_mutability_rec_fld in Hqualifiertypable;
     destruct (rqtype rqt) eqn: Hrqttype;
     destruct (sqtype T0) eqn: HsqtypeT0;
     destruct (mutability (ftype fDef)) eqn: Hfieldqualifier;
@@ -1391,7 +1391,7 @@ Proof.
     all: try simpl in Hoqualifier.
     all: try rewrite HreceiverRuntimeQualifier in Hoqualifier.
     all: try unfold qualifier_typable in Hoqualifier.
-    all: try unfold vpa_mutabilty_rs; try unfold vpa_mutabilty_stype_fld in *; try unfold vpa_mutabilty_rec_fld in Hqualifiertypable; try easy.
+    all: try unfold vpa_mutability_rs; try unfold vpa_mutability_stype_fld in *; try unfold vpa_mutability_rec_fld in Hqualifiertypable; try easy.
   *  exfalso. exact Hforall2.
   -
   destruct v1 as [|loc]; [trivial|].
@@ -1590,7 +1590,7 @@ Proof.
     inversion Hreceiveraddr; subst ι'.
     rewrite Hmut in Hreceiverrmut.
     inversion Hreceiverrmut; subst q.
-    unfold vpa_mutabilty_rs; unfold vpa_mutabilty_stype_fld_abs_imm in *; unfold vpa_mutabilty_rec_fld in Hqualifiertypable;
+    unfold vpa_mutability_rs; unfold vpa_mutability_stype_fld_abs_imm in *; unfold vpa_mutability_rec_fld in Hqualifiertypable;
     destruct (rqtype rqt) eqn: Hrqttype;
     destruct (sqtype T0) eqn: HsqtypeT0;
     destruct (mutability (ftype fDef)) eqn: Hfieldqualifier;
@@ -1647,7 +1647,7 @@ Proof.
     all: try simpl in Hoqualifier.
     all: try rewrite HreceiverRuntimeQualifier in Hoqualifier.
     all: try unfold qualifier_typable in Hoqualifier.
-    all: try unfold vpa_mutabilty_rs; try unfold vpa_mutabilty_stype_fld in *; try unfold vpa_mutabilty_rec_fld in Hqualifiertypable; try easy.
+    all: try unfold vpa_mutability_rs; try unfold vpa_mutability_stype_fld in *; try unfold vpa_mutability_rec_fld in Hqualifiertypable; try easy.
   *  exfalso. exact Hforall2.
 Qed.
 

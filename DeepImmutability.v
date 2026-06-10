@@ -391,7 +391,7 @@ Proof.
       destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         +
           apply qualified_type_subtype_base_subtype in Hrcv_sub.
-          rewrite (vpa_mutabilty_tt_sctype_abs_imm Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
+          rewrite (vpa_mutability_tt_sctype_abs_imm Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
           rewrite <- Hsigeq in Hret_sub.
           rewrite <- Hsigeq in Hrcv_sub.
           rewrite <- Hsigeq in Harg_sub.
@@ -574,7 +574,7 @@ Proof.
           split.
           *
           apply qualified_type_subtype_base_subtype in Harg_sub.
-          rewrite (vpa_mutabilty_tt_sctype_abs_imm Ty sqt) in Harg_sub.
+          rewrite (vpa_mutability_tt_sctype_abs_imm Ty sqt) in Harg_sub.
           eapply base_trans; eauto.
           *
           apply qualified_type_subtype_q_subtype in Harg_sub.
@@ -700,7 +700,7 @@ Proof.
             split.
             *
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutabilty_tt_sctype_abs_imm Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sctype_abs_imm Ty sqt) in Harg_sub.
             eapply base_trans; eauto.
             *
             apply qualified_type_subtype_q_subtype in Harg_sub.
@@ -1023,7 +1023,7 @@ Proof.
       destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         +
           apply qualified_type_subtype_base_subtype in Hrcv_sub.
-          rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
+          rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
           rewrite <- Hsigeq in Hret_sub.
           rewrite <- Hsigeq in Hrcv_sub.
           rewrite <- Hsigeq in Harg_sub.
@@ -1206,7 +1206,7 @@ Proof.
           split.
           *
           apply qualified_type_subtype_base_subtype in Harg_sub.
-          rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+          rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
           eapply base_trans; eauto.
           *
           apply qualified_type_subtype_q_subtype in Harg_sub.
@@ -1332,7 +1332,7 @@ Proof.
             split.
             *
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
             eapply base_trans; eauto.
             *
             apply qualified_type_subtype_q_subtype in Harg_sub.

@@ -4,25 +4,25 @@ From Stdlib Require String.
 Import ListNotations.
 From RecordUpdate Require Import RecordUpdate.
 
-(* Lemma vpa_mutabilty_stype_fld_ro_not_mut_abs_imm :
+(* Lemma vpa_mutability_stype_fld_ro_not_mut_abs_imm :
   forall q_recv q_field q_res
          (Hrd : q_recv = RO)
-         (Hvpa : vpa_mutabilty_stype_fld_abs_imm q_recv q_field = q_res),
+         (Hvpa : vpa_mutability_stype_fld_abs_imm q_recv q_field = q_res),
     q_res <> Mut.
 Proof.
   intros. subst.
-  unfold vpa_mutabilty_stype_fld_abs_imm.
+  unfold vpa_mutability_stype_fld_abs_imm.
   destruct q_field; subst; try easy.
 Qed. *)
 
-Lemma vpa_mutabilty_stype_fld_ro_not_mut_safe_ro :
+Lemma vpa_mutability_stype_fld_ro_not_mut_safe_ro :
   forall q_recv q_field q_res
          (Hrd : q_recv = RO)
-         (Hvpa : vpa_mutabilty_stype_fld_safe_ro q_recv q_field = q_res),
+         (Hvpa : vpa_mutability_stype_fld_safe_ro q_recv q_field = q_res),
     q_res <> Mut.
 Proof.
   intros. subst.
-  unfold vpa_mutabilty_stype_fld_safe_ro.
+  unfold vpa_mutability_stype_fld_safe_ro.
   destruct q_field; subst; try easy.
 Qed.
 
@@ -120,14 +120,14 @@ Qed.
 
 Lemma adapated_subtype_safe_implies_safe :
   forall CT T_sub T_Receiver T_super
-         (Hsub : qualified_type_subtype CT T_sub (vpa_mutabilty_tt_safe_ro T_Receiver T_super))
+         (Hsub : qualified_type_subtype CT T_sub (vpa_mutability_tt_safe_ro T_Receiver T_super))
          (Hsafe_sub : is_safe_mode (sqtype T_sub)),
     is_safe_mode (sqtype T_super).
 Proof.
   intros.
   unfold is_safe_mode in *.
   apply qualified_type_subtype_q_subtype in Hsub.
-  unfold vpa_mutabilty_tt_safe_ro in Hsub.
+  unfold vpa_mutability_tt_safe_ro in Hsub.
   destruct (sqtype T_Receiver) eqn: Hreceiver;
   destruct (sqtype T_super) eqn: HSuper;
   destruct Hsafe_sub as [Hrd | [Hlost| [HRDM | HImm]]];
@@ -146,7 +146,7 @@ Qed.
 
 Lemma subtype_safe_implies_safe_adapted :
   forall CT T_sub T_Receiver T_super
-         (Hsub : qualified_type_subtype CT (vpa_mutabilty_tt_safe_ro T_Receiver T_sub) T_super)
+         (Hsub : qualified_type_subtype CT (vpa_mutability_tt_safe_ro T_Receiver T_sub) T_super)
          (Hsafe_sub : is_safe_mode (sqtype T_sub))
          (Hsafe_receiver: is_safe_mode (sqtype T_Receiver)),
     is_safe_mode (sqtype T_super).
@@ -154,7 +154,7 @@ Proof.
   intros.
   unfold is_safe_mode in *.
   apply qualified_type_subtype_q_subtype in Hsub.
-  unfold vpa_mutabilty_tt_safe_ro in Hsub.
+  unfold vpa_mutability_tt_safe_ro in Hsub.
   destruct Hsafe_receiver as [Hrd_recv | [Hlost_recv| [HRDM_recv | HImm_recv]]];
   destruct (sqtype T_Receiver) eqn: Hreceiver;
   destruct (sqtype T_super) eqn: HSuper;
@@ -282,25 +282,25 @@ Proof.
       destruct Hconfined as [Hrd | [Hlost| [HRDM| HImm]]].
       *
       rewrite Hrd.
-      unfold vpa_mutabilty_stype_fld_safe_ro.
+      unfold vpa_mutability_stype_fld_safe_ro.
       unfold is_safe_mode.
       destruct (mutability (ftype fDef));
       try solve solve_safe_mode.
       *
       rewrite Hlost.
-      unfold vpa_mutabilty_stype_fld_safe_ro.
+      unfold vpa_mutability_stype_fld_safe_ro.
       unfold is_safe_mode.
       destruct (mutability (ftype fDef));
       try solve solve_safe_mode.
       *
       rewrite HRDM.
-      unfold vpa_mutabilty_stype_fld_safe_ro.
+      unfold vpa_mutability_stype_fld_safe_ro.
       unfold is_safe_mode.
       destruct (mutability (ftype fDef));
       try solve solve_safe_mode.
       *
       rewrite HImm.
-      unfold vpa_mutabilty_stype_fld_safe_ro.
+      unfold vpa_mutability_stype_fld_safe_ro.
       unfold is_safe_mode.
       destruct (mutability (ftype fDef));
       try solve solve_safe_mode.
@@ -1045,7 +1045,7 @@ Proof.
         rewrite Hmsigeq.
         destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         apply qualified_type_subtype_base_subtype in Hrcv_sub.
-        rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
+        rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
         eapply base_trans; eauto.
         destruct Hrcv_sub as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
         eapply base_trans; eauto.
@@ -1107,10 +1107,10 @@ Proof.
             unfold qualifier_typable_context.
             unfold qualifier_typable_context in HyQualifierTypablility.
             unfold qualifier_typable_context in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_rs.
-            unfold vpa_mutabilty_rs in HyQualifierTypablility.
-            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_tt_safe_ro in Hrcv_sub.
+            unfold vpa_mutability_rs.
+            unfold vpa_mutability_rs in HyQualifierTypablility.
+            unfold vpa_mutability_rs in Houtter_qualifier_typable.
+            unfold vpa_mutability_tt_safe_ro in Hrcv_sub.
             rewrite <- Hmsigeq in Hrcv_sub.
 
             destruct qinner eqn:HInnerReceiverMutability;
@@ -1179,9 +1179,9 @@ Proof.
             unfold qualifier_typable_context.
             unfold qualifier_typable_context in HyQualifierTypablility.
             unfold qualifier_typable_context in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_rs.
-            unfold vpa_mutabilty_rs in HyQualifierTypablility.
-            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+            unfold vpa_mutability_rs.
+            unfold vpa_mutability_rs in HyQualifierTypablility.
+            unfold vpa_mutability_rs in Houtter_qualifier_typable.
             rewrite <- Hmsigeq in HReceiverDeclearedQualifier.
 
             destruct qinner eqn:HInnerReceiverMutability;
@@ -1298,7 +1298,7 @@ Proof.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in Harg_sub; eauto.
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
             eapply base_trans; eauto.
 
             (* Qualifier Typability *)
@@ -1666,7 +1666,7 @@ Proof.
         rewrite Hmsigeq.
         destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         apply qualified_type_subtype_base_subtype in Hrcv_sub.
-        rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
+        rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
         eapply base_trans; eauto.
         destruct Hrcv_sub as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
         eapply base_trans; eauto.
@@ -1728,10 +1728,10 @@ Proof.
             unfold qualifier_typable_context.
             unfold qualifier_typable_context in HyQualifierTypablility.
             unfold qualifier_typable_context in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_rs.
-            unfold vpa_mutabilty_rs in HyQualifierTypablility.
-            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_tt_safe_ro in Hrcv_sub.
+            unfold vpa_mutability_rs.
+            unfold vpa_mutability_rs in HyQualifierTypablility.
+            unfold vpa_mutability_rs in Houtter_qualifier_typable.
+            unfold vpa_mutability_tt_safe_ro in Hrcv_sub.
             rewrite <- Hmsigeq in Hrcv_sub.
 
             destruct qinner eqn:HInnerReceiverMutability;
@@ -1800,9 +1800,9 @@ Proof.
             unfold qualifier_typable_context.
             unfold qualifier_typable_context in HyQualifierTypablility.
             unfold qualifier_typable_context in Houtter_qualifier_typable.
-            unfold vpa_mutabilty_rs.
-            unfold vpa_mutabilty_rs in HyQualifierTypablility.
-            unfold vpa_mutabilty_rs in Houtter_qualifier_typable.
+            unfold vpa_mutability_rs.
+            unfold vpa_mutability_rs in HyQualifierTypablility.
+            unfold vpa_mutability_rs in Houtter_qualifier_typable.
             rewrite <- Hmsigeq in HReceiverDeclearedQualifier.
 
             destruct qinner eqn:HInnerReceiverMutability;
@@ -1918,7 +1918,7 @@ Proof.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in Harg_sub; eauto.
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutabilty_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
             eapply base_trans; eauto.
 
             (* Qualifier Typability *)
