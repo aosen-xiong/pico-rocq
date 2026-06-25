@@ -343,10 +343,9 @@ Proof.
 Qed.
 
 Theorem readonly_method_call_preserves_arguments :
-  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs anyC vals ly 
+  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly 
          loc_arg C anyrq vals_arg vals_arg' f
     (Hstmt : stmt = (SCall x mindex y zs))
-    (HTy : Ty = Build_qualified_type RO anyC)
     (Hstatic_type : static_getType sΓ y = Some Ty)
     (Hmethod_lookup : FindMethodWithName CT (sctype Ty) mindex mdef)
     (Hwf : wf_r_config CT sΓ rΓ h)
@@ -380,16 +379,11 @@ Theorem readonly_method_call_preserves_arguments :
   inversion Htyping; subst.
   exfalso; apply Hmtype; reflexivity.
   rename sΓ' into sΓ.
-  have HTy: Ty = {| sqtype := RO; sctype := anyC |}.
-  {
-    rewrite Hget_y0 in Hstatic_type.
-    inversion Hstatic_type.
-    reflexivity.
-  }
+  rewrite Hget_y0 in Hstatic_type.
+  inversion Hstatic_type; subst Ty0.
 
   have Hmdefeq: mdef1 = mdef.
   {
-    rewrite <- HTy in Hmethod_lookup.
     unfold wf_r_config in Hwf.
     destruct Hwf as [HClassTable _].
     unfold wf_senv in Hwf0.
@@ -398,14 +392,15 @@ Theorem readonly_method_call_preserves_arguments :
     eapply Forall_nth_error in Hwftypeuse; eauto.
     unfold wf_stypeuse in Hwftypeuse.
     destruct (bound CT (sctype Ty)) eqn: Hbound.
-    unfold bound in Hbound.
-    destruct (find_class CT (sctype Ty)) eqn:Hfindclass; [|discriminate].
-    apply find_class_dom in Hfindclass; auto.
-    easy.
+    - unfold bound in Hbound.
+      destruct (find_class CT (sctype Ty)) eqn:Hfindclass; [|discriminate].
+      apply find_class_dom in Hfindclass; auto.
+    - contradiction.
   }
   subst mdef1.
   rename mdef into mdef1.
   rename mdef0 into mdef.
+  rename Ty into Ty_call.
 
   have Hwfcopy := Hwf.
   unfold wf_r_config in Hwf.
@@ -428,7 +423,7 @@ Theorem readonly_method_call_preserves_arguments :
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
     remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
-    remember {| sqtype := RO; sctype := anyC |} as Ty. 
+    remember (mreceiver (msignature mdef)) as Ty. 
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {
       (* Method inner config wellformed.*)
@@ -482,6 +477,7 @@ Theorem readonly_method_call_preserves_arguments :
         constructor.
 
         (* Receiver type is well-formed *)
+        subst Ty.
         eapply method_sig_wf_receiver_by_find; eauto.
         assert (Hcydom: cy < dom CT). {
             eapply find_class_dom; eauto.
@@ -517,7 +513,7 @@ Theorem readonly_method_call_preserves_arguments :
         destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
         have Hcorr := Htypable.
         have Hcorrcopy := Hcorr.
-        specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty Hget_y0).
+        specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty_call Hget_y0).
         unfold wf_r_typable in Hcorr.
         unfold r_basetype in Hbase.
         unfold r_type.
@@ -541,7 +537,7 @@ Theorem readonly_method_call_preserves_arguments :
         destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
         assert (Hmsigeq : msignature mdef = msignature mdef1).
         {
-          eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty) (m := mindex); eauto.
+          eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
         }
         rewrite Hmsigeq.
         rewrite Hargs.
@@ -570,7 +566,7 @@ Theorem readonly_method_call_preserves_arguments :
         destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
         have Hcorr := Htypable.
         have Hcorrcopy := Hcorr.
-        specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty Hget_y0).
+        specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty_call Hget_y0).
         unfold wf_r_typable in Hcorr.
         unfold r_basetype in Hbase.
         unfold r_type.
@@ -596,8 +592,9 @@ Theorem readonly_method_call_preserves_arguments :
         
         assert (Hmsigeq: msignature mdef = msignature mdef1).
         {
-          eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty) (m := mindex); eauto.
+          eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
         }
+        subst Ty.
         destruct i as [|i'].
 
         (* Reciever index - 0 *)
@@ -616,7 +613,7 @@ Theorem readonly_method_call_preserves_arguments :
         rewrite Hmsigeq.
         destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         apply qualified_type_subtype_base_subtype in Hrcv_sub.
-        rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef1))) in Hrcv_sub.
+        rewrite (vpa_mutability_tt_sctype_safe_ro Ty_call (mreceiver (msignature mdef1))) in Hrcv_sub.
         eapply base_trans; eauto.
         destruct Hrcv_sub as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
         eapply base_trans; eauto.
@@ -688,7 +685,7 @@ Theorem readonly_method_call_preserves_arguments :
             destruct (sqtype (mreceiver (msignature mdef))) eqn:HMethodReceiverDeclaredType;
             try trivial.
             all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
-            destruct (sqtype Ty) eqn:HTyStaticMutability;
+            destruct (sqtype Ty_call) eqn:HTyStaticMutability;
             try trivial.
             all: destruct (sqtype Tthis) eqn:HTthisStaticMutability;
             try rewrite HTyStaticMutability in Hrcv_sub;
@@ -862,7 +859,7 @@ Theorem readonly_method_call_preserves_arguments :
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in Harg_sub; eauto.
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sctype_safe_ro Ty_call sqt) in Harg_sub.
             eapply base_trans; eauto.
 
             (* Qualifier Typability *)
@@ -912,14 +909,14 @@ Theorem readonly_method_call_preserves_arguments :
               easy.
             }
             subst rq_obj.
-            clear - Harg_sub Harg_qualifiertypability HyQualifierTypablility HOutterReceiverQualifierTypablility Ty.
+            clear - Harg_sub Harg_qualifiertypability HyQualifierTypablility HOutterReceiverQualifierTypablility Ty_call.
 
             destruct (rqtype (rt_type argobj)) eqn:Hargobjmutability; move Hargobjmutability at bottom;
             destruct (sqtype sqt) eqn:HParameterStaticDeclearedMutability; move HParameterStaticDeclearedMutability at bottom;
             destruct qinner eqn:HInnerReceiverMutability; move HInnerReceiverMutability at bottom;
             try solve_qualifier_typable_correct_concrete.
 
-            all: destruct (sqtype Ty) eqn:HTyStaticMutability;
+            all: destruct (sqtype Ty_call) eqn:HTyStaticMutability;
             destruct (sqtype argtype) eqn:HArgTypeStaticMutability;
             simpl in Harg_sub;
             try solve_q_subtype_wrong.
@@ -964,7 +961,7 @@ Theorem readonly_method_call_preserves_arguments :
       destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
       have Hcorr := Htypable.
       have Hcorrcopy := Hcorr.
-      specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty Hget_y0).
+      specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty_call Hget_y0).
       unfold wf_r_typable in Hcorr.
       unfold r_basetype in Hbase.
       unfold r_type.
@@ -988,8 +985,9 @@ Theorem readonly_method_call_preserves_arguments :
       destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
       assert (Hmsigeq: msignature mdef = msignature mdef1).
       {
-        eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty) (m := mindex); eauto.
+        eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
       }
+      subst Ty.
       intros y0 T Hlookup_s.
       unfold static_getType in Hlookup_s.
       simpl in Hlookup_s.
@@ -1029,7 +1027,7 @@ Theorem readonly_method_call_preserves_arguments :
     destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
     have Hcorr := Htypable.
     have Hcorrcopy := Hcorr.
-    specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty Hget_y0).
+    specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty_call Hget_y0).
     unfold wf_r_typable in Hcorr.
     unfold r_basetype in Hbase.
     unfold r_type.
@@ -1053,7 +1051,7 @@ Theorem readonly_method_call_preserves_arguments :
     destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
     assert (Hmsigeq:msignature mdef = msignature mdef1).
     {
-      eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty) (m := mindex); eauto.
+      eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
     }
     rewrite Hmsigeq; exact Hmt_not_abs.
     have Hsubset := reachable_locations_subset_reachable_from_method_frame CT h ly vals.
@@ -1075,7 +1073,7 @@ Theorem readonly_method_call_preserves_arguments :
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
     remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
-    remember {| sqtype := RO; sctype := anyC |} as Ty. 
+    remember (mreceiver (msignature mdef)) as Ty. 
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {
       (* Method inner config wellformed.*)
@@ -1129,6 +1127,7 @@ Theorem readonly_method_call_preserves_arguments :
         constructor.
 
         (* Receiver type is well-formed *)
+        subst Ty.
         eapply method_sig_wf_receiver_by_find; eauto.
         (* assert (Hcydom: cy < dom CT). {
             eapply find_class_dom; eauto.
@@ -1180,7 +1179,7 @@ Theorem readonly_method_call_preserves_arguments :
         destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
         have Hcorr := Htypable.
         have Hcorrcopy := Hcorr.
-        specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty Hget_y0).
+        specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty_call Hget_y0).
         unfold wf_r_typable in Hcorr.
         unfold r_basetype in Hbase.
         unfold r_type.
@@ -1204,7 +1203,7 @@ Theorem readonly_method_call_preserves_arguments :
         destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
         assert (Hmsigeq : msignature mdef = msignature mdef1).
         {
-          eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty) (m := mindex); eauto.
+          eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
         }
         rewrite Hmsigeq.
         rewrite Hargs.
@@ -1233,7 +1232,7 @@ Theorem readonly_method_call_preserves_arguments :
         destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
         have Hcorr := Htypable.
         have Hcorrcopy := Hcorr.
-        specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty Hget_y0).
+        specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty_call Hget_y0).
         unfold wf_r_typable in Hcorr.
         unfold r_basetype in Hbase.
         unfold r_type.
@@ -1261,6 +1260,7 @@ Theorem readonly_method_call_preserves_arguments :
         {
           eapply method_signature_consistent_subtype; eauto.
         }
+        subst Ty.
         destruct i as [|i'].
 
         (* Reciever index - 0 *)
@@ -1280,7 +1280,7 @@ Theorem readonly_method_call_preserves_arguments :
         destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         apply qualified_type_subtype_base_subtype in Hrcv_sub.
         (* rewrite (vpa_mutability_tt_sctype Tthis Ty) in Hrcv_sub. *)
-        rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef1))) in Hrcv_sub.
+        rewrite (vpa_mutability_tt_sctype_safe_ro Ty_call (mreceiver (msignature mdef1))) in Hrcv_sub.
         eapply base_trans; eauto.
         destruct Hrcv_sub as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
         eapply base_trans; eauto.
@@ -1352,7 +1352,7 @@ Theorem readonly_method_call_preserves_arguments :
             destruct (sqtype (mreceiver (msignature mdef))) eqn:HMethodReceiverDeclaredType;
             try trivial.
             all: destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
-            destruct (sqtype Ty) eqn:HTyStaticMutability;
+            destruct (sqtype Ty_call) eqn:HTyStaticMutability;
             try trivial.
             all: destruct (sqtype Tthis) eqn:HTthisStaticMutability;
             try rewrite HTyStaticMutability in Hrcv_sub;
@@ -1527,7 +1527,7 @@ Theorem readonly_method_call_preserves_arguments :
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in Harg_sub; eauto.
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sctype_safe_ro Ty_call sqt) in Harg_sub.
             eapply base_trans; eauto.
 
             (* Qualifier Typability *)
@@ -1584,7 +1584,7 @@ Theorem readonly_method_call_preserves_arguments :
             destruct qinner eqn:HInnerReceiverMutability; move HInnerReceiverMutability at bottom;
             try solve_qualifier_typable_correct_concrete.
 
-            all: destruct (sqtype Ty) eqn:HTyStaticMutability;
+            all: destruct (sqtype Ty_call) eqn:HTyStaticMutability;
             destruct (sqtype argtype) eqn:HArgTypeStaticMutability;
             simpl in Harg_sub;
             try solve_q_subtype_wrong.
@@ -1628,7 +1628,7 @@ Theorem readonly_method_call_preserves_arguments :
       destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
       have Hcorr := Htypable.
       have Hcorrcopy := Hcorr.
-      specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty Hget_y0).
+      specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty_call Hget_y0).
       unfold wf_r_typable in Hcorr.
       unfold r_basetype in Hbase.
       unfold r_type.
@@ -1652,8 +1652,9 @@ Theorem readonly_method_call_preserves_arguments :
       destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
       assert (Hmsigeq: msignature mdef = msignature mdef1).
       {
-        eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty) (m := mindex); eauto.
+        eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
       }
+      subst Ty.
       intros y0 T Hlookup_s.
       unfold static_getType in Hlookup_s.
       simpl in Hlookup_s.
@@ -1693,7 +1694,7 @@ Theorem readonly_method_call_preserves_arguments :
     destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
     have Hcorr := Htypable.
     have Hcorrcopy := Hcorr.
-    specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty Hget_y0).
+    specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty_call Hget_y0).
     unfold wf_r_typable in Hcorr.
     unfold r_basetype in Hbase.
     unfold r_type.
@@ -1717,7 +1718,7 @@ Theorem readonly_method_call_preserves_arguments :
     destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
     assert (Hmsigeq:msignature mdef = msignature mdef1).
     {
-      eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty) (m := mindex); eauto.
+      eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
     }
     rewrite Hmsigeq; exact Hmt_not_abs.
     have Hsubset := reachable_locations_subset_reachable_from_method_frame CT h ly vals.

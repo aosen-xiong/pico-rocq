@@ -18,7 +18,7 @@ Inductive q : Type :=
   | RO
   (* q_h *)
   | Lost
-  | Bot.  
+  | Bot.
 
 (** User-facing Mutability Qualifier  *)
 Inductive q_f : Type :=

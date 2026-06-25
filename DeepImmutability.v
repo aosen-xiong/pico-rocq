@@ -1429,14 +1429,14 @@ Qed.
 
 Lemma imm_step_preserves_imm :
   forall CT sΓ rΓ h l0 C vals l1 k
-         (Hwf   : wf_r_config CT sΓ rΓ h)
-         (HgetObj  : runtime_getObj h l0 = Some (mkObj (mkruntime_type Imm_r C) vals))
-         (Hl1dom  : l1 < dom h)
-         (Hnth  : nth_error vals k = Some (Iot l1))
-         (HFieldmut  : sf_mutability_rel CT C k RDM_f \/ sf_mutability_rel CT C k Imm_f),
-         exists C' vals',
-            runtime_getObj h l1 =
-              Some (mkObj (mkruntime_type Imm_r C') vals').
+    (Hwf   : wf_r_config CT sΓ rΓ h)
+    (HgetObj  : runtime_getObj h l0 = Some (mkObj (mkruntime_type Imm_r C) vals))
+    (Hl1dom  : l1 < dom h)
+    (Hnth  : nth_error vals k = Some (Iot l1))
+    (HFieldmut  : sf_mutability_rel CT C k RDM_f \/ sf_mutability_rel CT C k Imm_f),
+    exists C' vals',
+      runtime_getObj h l1 =
+        Some (mkObj (mkruntime_type Imm_r C') vals').
 Proof.
   intros.
   unfold wf_r_config in Hwf.
@@ -1529,12 +1529,12 @@ Qed.
 
 Lemma reachable_abs_from_imm_points_to_imm :
   forall CT sΓ rΓ h l0 C0 vals0 l1
-         (Hwf   : wf_r_config CT sΓ rΓ h)
-         (Himm  : runtime_getObj h l0 = Some (mkObj (mkruntime_type Imm_r C0) vals0))
-         (Hrch  : reachable_abs CT h l0 l1),
-          exists C' vals',
-            runtime_getObj h l1 =
-              Some (mkObj (mkruntime_type Imm_r C') vals').
+    (Hwf   : wf_r_config CT sΓ rΓ h)
+    (Himm  : runtime_getObj h l0 = Some (mkObj (mkruntime_type Imm_r C0) vals0))
+    (Hrch  : reachable_abs CT h l0 l1),
+    exists C' vals',
+      runtime_getObj h l1 =
+        Some (mkObj (mkruntime_type Imm_r C') vals').
 Proof.
   intros.
   remember l0 as l_root eqn:Heq.
@@ -1578,16 +1578,16 @@ Qed.
 
 Theorem deep_immutability_pico :
   forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' root C0 vals0 l C qr vals vals' f
-         (Hdom : root < dom h)
-         (Himm_root : runtime_getObj h root = Some (mkObj (mkruntime_type Imm_r C0) vals0))
-         (Hreach : reachable_abs CT h root l)
-         (Hwf : wf_r_config CT sΓ rΓ h)
-         (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-         (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
-         (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals))
-         (Hobj' : runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals'))
-         (Hprotected : sf_assignability_rel CT C f Final \/ 
-                       sf_assignability_rel CT C f RDA),
+    (Hdom : root < dom h)
+    (Himm_root : runtime_getObj h root = Some (mkObj (mkruntime_type Imm_r C0) vals0))
+    (Hreach : reachable_abs CT h root l)
+    (Hwf : wf_r_config CT sΓ rΓ h)
+    (Htyping : stmt_typing CT sΓ mt stmt sΓ')
+    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals))
+    (Hobj' : runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals'))
+    (Hprotected : sf_assignability_rel CT C f Final \/ 
+                  sf_assignability_rel CT C f RDA),
     nth_error vals f = nth_error vals' f.
 Proof.
   intros.
