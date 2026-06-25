@@ -57,7 +57,7 @@ Definition vpa_assignability (q1: q) (a1: a) : a :=
     | Mut, RDA => Assignable
     | _, Assignable => Assignable
     | _, _ => Final
-  end.  
+  end.
 
 (* Concrete Immutability *)
 Definition vpa_assignability_concret_imm (q1: q) (a1: a) : a :=
