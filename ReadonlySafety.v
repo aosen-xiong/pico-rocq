@@ -64,7 +64,7 @@ Proof.
 
     (* Use the fact that Final/RDA fields are protected from modification *)
     destruct Hassign as [Hfinal | Hrda].
-    --  
+    --
       rewrite Hstatic_type in Hget_x.
       inversion Hget_x.
       subst Tx.
@@ -169,7 +169,7 @@ Proof.
 
     (* Use the fact that Final/RDA fields are protected from modification *)
     destruct Hassign as [Hfinal | Hrda].
-    --  
+    --
       rewrite Hstatic_type in Hget_x.
       inversion Hget_x.
       subst Tx.
@@ -249,14 +249,14 @@ Definition all_params_safe (msig : method_sig) : Prop :=
 
 Definition reachable_locations_from_vals
   (CT : class_table) (h : heap) (vals : list value) : Ensembles.Ensemble Loc :=
-  fun l_target => 
+  fun l_target =>
     exists l_root,
       In (Iot l_root) vals /\
       reachable h l_root l_target.
 
 Definition protected_locations_from_vals
   (CT : class_table) (h : heap) (vals : list value) : Ensembles.Ensemble Loc :=
-  fun l_target => 
+  fun l_target =>
     exists l_root,
       In (Iot l_root) vals /\
       reachable_abs CT h l_root l_target.
@@ -343,7 +343,7 @@ Proof.
 Qed.
 
 Theorem readonly_method_call_preserves_arguments :
-  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly 
+  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
          loc_arg C anyrq vals_arg vals_arg' f
     (Hstmt : stmt = (SCall x mindex y zs))
     (Hstatic_type : static_getType sΓ y = Some Ty)
@@ -423,7 +423,7 @@ Theorem readonly_method_call_preserves_arguments :
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
     remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
-    remember (mreceiver (msignature mdef)) as Ty. 
+    remember (mreceiver (msignature mdef)) as Ty.
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {
       (* Method inner config wellformed.*)
@@ -589,7 +589,7 @@ Theorem readonly_method_call_preserves_arguments :
         rewrite Hobjy in Hcorr.
         simpl in Hcorr.
         destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-        
+
         assert (Hmsigeq: msignature mdef = msignature mdef1).
         {
           eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
@@ -619,7 +619,7 @@ Theorem readonly_method_call_preserves_arguments :
         eapply base_trans; eauto.
 
         (* Qualifier typbility *)
-        1: 
+        1:
         {
           destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
           1:{
@@ -647,7 +647,7 @@ Theorem readonly_method_call_preserves_arguments :
             }
             subst OutterReceiverMutability.
 
-            assert (ly = ι). 
+            assert (ly = ι).
             {
               rewrite HeqrΓmethodinit in HreceiverAddr.
               unfold get_this_var_mapping in HreceiverAddr.
@@ -719,7 +719,7 @@ Theorem readonly_method_call_preserves_arguments :
             }
             subst OutterReceiverMutability.
 
-            assert (ly = ι). 
+            assert (ly = ι).
             {
               rewrite HeqrΓmethodinit in HreceiverAddr.
               unfold get_this_var_mapping in HreceiverAddr.
@@ -921,7 +921,7 @@ Theorem readonly_method_call_preserves_arguments :
             simpl in Harg_sub;
             try solve_q_subtype_wrong.
 
-            all: 
+            all:
             destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
             try solve_qualifier_typable_wrong_concrete.
 
@@ -1073,7 +1073,7 @@ Theorem readonly_method_call_preserves_arguments :
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
     remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
-    remember (mreceiver (msignature mdef)) as Ty. 
+    remember (mreceiver (msignature mdef)) as Ty.
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {
       (* Method inner config wellformed.*)
@@ -1142,7 +1142,7 @@ Theorem readonly_method_call_preserves_arguments :
           }
           lia.
         }
-        exact Hparentdom. 
+        exact Hparentdom.
         eapply method_sig_wf_parameters_by_find; eauto.
         assert (Hparentdom: parent < dom CT). {
           assert (cy < dom CT). {
@@ -1153,7 +1153,7 @@ Theorem readonly_method_call_preserves_arguments :
           }
           lia.
         }
-        exact Hparentdom. 
+        exact Hparentdom.
         apply static_getType_list_preserves_length in Hget_args.
         apply runtime_lookup_list_preserves_length in Hargs.
         rewrite HeqsΓmethodinit.
@@ -1255,7 +1255,7 @@ Theorem readonly_method_call_preserves_arguments :
         rewrite Hobjy in Hcorr.
         simpl in Hcorr.
         destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-        
+
         assert (Hmsigeq: msignature mdef = msignature mdef1).
         {
           eapply method_signature_consistent_subtype; eauto.
@@ -1286,7 +1286,7 @@ Theorem readonly_method_call_preserves_arguments :
         eapply base_trans; eauto.
 
         (* Qualifier typbility *)
-        1: 
+        1:
         {
           destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
           1:{
@@ -1314,7 +1314,7 @@ Theorem readonly_method_call_preserves_arguments :
             }
             subst OutterReceiverMutability.
 
-            assert (ly = ι). 
+            assert (ly = ι).
             {
               rewrite HeqrΓmethodinit in HreceiverAddr.
               unfold get_this_var_mapping in HreceiverAddr.
@@ -1386,7 +1386,7 @@ Theorem readonly_method_call_preserves_arguments :
             }
             subst OutterReceiverMutability.
 
-            assert (ly = ι). 
+            assert (ly = ι).
             {
               rewrite HeqrΓmethodinit in HreceiverAddr.
               unfold get_this_var_mapping in HreceiverAddr.
@@ -1589,7 +1589,7 @@ Theorem readonly_method_call_preserves_arguments :
             simpl in Harg_sub;
             try solve_q_subtype_wrong.
 
-            all: 
+            all:
             destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
             try solve_qualifier_typable_wrong_concrete.
 

@@ -36,7 +36,7 @@ Proof.
   generalize dependent mt.
   generalize dependent vals. generalize dependent vals'.
   induction Heval; try discriminate.
-  - (* Skip *) 
+  - (* Skip *)
    intros.
    match goal with
    | Htyping : stmt_typing _ _ _ SSkip _ |- _ => inversion Htyping; subst
@@ -48,7 +48,7 @@ Proof.
    end.
    rewrite H_eq.
    reflexivity.
-  - (* Local *) 
+  - (* Local *)
   intros.
   match goal with
   | Htyping : stmt_typing _ _ _ (SLocal _ _) _ |- _ => inversion Htyping; subst
@@ -60,7 +60,7 @@ Proof.
   end.
   rewrite H_eq.
   reflexivity.
-  - (* VarAss *) 
+  - (* VarAss *)
   intros.
   match goal with
   | Htyping : stmt_typing _ _ _ (SVarAss _ _) _ |- _ => inversion Htyping; subst
@@ -72,7 +72,7 @@ Proof.
   end.
   rewrite H_eq.
   reflexivity.
-  - (* FldWrite *) 
+  - (* FldWrite *)
   {
     intros.
     destruct (Nat.eq_dec l loc_x) as [Heq_l | Hneq_l].
@@ -96,16 +96,16 @@ Proof.
         * assert (Heq : RDA = a) by (eapply sf_assignability_deterministic_rel; eauto).
           rewrite <- Heq in Hruntime_assignable.
           discriminate.
-        + 
+        +
         assert (Hvals_eq : vals' = [f0 ↦ val_y] (vals)).
-        { 
+        {
           (* Use the definition of update_field and the fact that h' contains the updated object *)
           unfold update_field in Hupdate.
           rewrite Hobj_start in Hupdate.
           rewrite Hupdate in Hobj_end.
           unfold runtime_getObj in Hobj_end.
           (* Apply update_same to get the updated object *)
-          assert (Hget_same : nth_error (update loc_x {| rt_type := {| rqtype := Imm_r; rctype := C |}; fields_map := [f0 ↦ val_y] (vals) |} h) loc_x = 
+          assert (Hget_same : nth_error (update loc_x {| rt_type := {| rqtype := Imm_r; rctype := C |}; fields_map := [f0 ↦ val_y] (vals) |} h) loc_x =
                               Some {| rt_type := {| rqtype := Imm_r; rctype := C |}; fields_map := [f0 ↦ val_y] (vals) |}).
           {
             apply update_same.
@@ -146,10 +146,10 @@ Proof.
   rewrite Hobj_start in Hobj_end.
   injection Hobj_end; intros; subst.
   reflexivity.
-  - (* Call *) (* Similar to other non-mutating cases *) 
+  - (* Call *) (* Similar to other non-mutating cases *)
   intros.
   inversion Htyping.
-  -- 
+  --
   revert Hget_y.
   subst.
   intro Hget_y.
@@ -169,7 +169,7 @@ Proof.
     discriminate Hinnerthis.
     discriminate Hbase.
   }
-  assert (Hwf_method_frame : wf_r_config CT sΓmethodinit 
+  assert (Hwf_method_frame : wf_r_config CT sΓmethodinit
                                     rΓmethodinit h ).
   {
     have Hwf_copy := Hwf.
@@ -328,7 +328,7 @@ Proof.
     reflexivity.
 
     (* Typable! *)
-    intros lInnerRecevier qinner HgetInnerReceiverAddr HgetInnerReceiverMutability i Hi sqt Hnth. 
+    intros lInnerRecevier qinner HgetInnerReceiverAddr HgetInnerReceiverMutability i Hi sqt Hnth.
       rewrite HeqsΓmethodinit in Hnth, Hi.
       rewrite HeqrΓmethodinit.
       simpl in *.
@@ -387,7 +387,7 @@ Proof.
       }
 
       split.
-      - 
+      -
       destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         +
           apply qualified_type_subtype_base_subtype in Hrcv_sub.
@@ -405,7 +405,7 @@ Proof.
           rewrite <- Hsigeq in Harg_sub.
           subst objy.
           simpl.
-          eapply base_trans; eauto. 
+          eapply base_trans; eauto.
       -
       destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
       +
@@ -801,7 +801,7 @@ Proof.
     discriminate Hinnerthis.
     discriminate Hbase.
   }
-  assert (Hwf_method_frame : wf_r_config CT sΓmethodinit 
+  assert (Hwf_method_frame : wf_r_config CT sΓmethodinit
                                     rΓmethodinit h ).
   {
     have Hwf_copy := Hwf.
@@ -960,7 +960,7 @@ Proof.
     reflexivity.
 
     (* Typable! *)
-    intros lInnerRecevier qinner HgetInnerReceiverAddr HgetInnerReceiverMutability i Hi sqt Hnth. 
+    intros lInnerRecevier qinner HgetInnerReceiverAddr HgetInnerReceiverMutability i Hi sqt Hnth.
       rewrite HeqsΓmethodinit in Hnth, Hi.
       rewrite HeqrΓmethodinit.
       simpl in *.
@@ -1019,7 +1019,7 @@ Proof.
       }
 
       split.
-      - 
+      -
       destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         +
           apply qualified_type_subtype_base_subtype in Hrcv_sub.
@@ -1037,7 +1037,7 @@ Proof.
           rewrite <- Hsigeq in Harg_sub.
           subst objy.
           simpl.
-          eapply base_trans; eauto. 
+          eapply base_trans; eauto.
       -
       destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
       +
@@ -1414,16 +1414,16 @@ Proof.
     exact Hwf_rtypeuse.
     contradiction.
   -  (* Seq *) (* Apply IH transitively *)
-  intros. inversion Htyping; subst. 
+  intros. inversion Htyping; subst.
   specialize (eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1) as Hh'.
-  assert (Hloc_h' : l < dom h') by lia. 
+  assert (Hloc_h' : l < dom h') by lia.
   specialize (runtime_getObj_Some h' l Hloc_h') as [C' [values' Hh'some]].
   specialize (runtime_preserves_r_type_heap CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
-  h' vals s1 rΓ' Hobj_start Heval1) as [vals1 Hrtype]. 
+  h' vals s1 rΓ' Hobj_start Heval1) as [vals1 Hrtype].
   rewrite Hrtype in Hh'some; inversion Hh'some; subst.
-  specialize (IHHeval1 Hloc Heqok Hfield_imm values' Hrtype vals Hobj_start mt sΓ'0 sΓ Hwf Htype1). 
+  specialize (IHHeval1 Hloc Heqok Hfield_imm values' Hrtype vals Hobj_start mt sΓ'0 sΓ Hwf Htype1).
   specialize (preservation_pico CT sΓ mt rΓ h s1 rΓ' h' sΓ'0 Hwf Htype1 Heval1) as Hwf'.
-  specialize (IHHeval2 Hloc_h' Heqok Hfield_imm vals' Hobj_end values' Hrtype mt sΓ' sΓ'0 Hwf' Htype2). 
+  specialize (IHHeval2 Hloc_h' Heqok Hfield_imm vals' Hobj_end values' Hrtype mt sΓ' sΓ'0 Hwf' Htype2).
   rewrite IHHeval2 in IHHeval1; auto.
 Qed.
 
@@ -1586,7 +1586,7 @@ Theorem deep_immutability_pico :
     (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals))
     (Hobj' : runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals'))
-    (Hprotected : sf_assignability_rel CT C f Final \/ 
+    (Hprotected : sf_assignability_rel CT C f Final \/
                   sf_assignability_rel CT C f RDA),
     nth_error vals f = nth_error vals' f.
 Proof.
