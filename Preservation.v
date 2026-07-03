@@ -3,7 +3,6 @@ Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdapta
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
-From RecordUpdate Require Import RecordUpdate.
 
 (* ------------------------------------------------------------- *)
 (* Soundness properties for PICO *)
@@ -55,7 +54,7 @@ Proof.
         discriminate Hinnerthis.
         discriminate Hbase.
       }
-      remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+      remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
       
       assert (Hmsigeq: msignature mdef = msignature mdef0).
       {
@@ -1035,7 +1034,7 @@ Proof.
       rewrite <- getmbody in Htyping_method.
       remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
       remember {| vars := Iot ly :: vals |} as rΓmethodinit.
-      remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+      remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
       assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
       { 
         (* Method inner config wellformed.*)
@@ -1997,7 +1996,7 @@ Proof.
         discriminate Hinnerthis.
         discriminate Hbase.
       }
-      remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+      remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
       
       assert (Hmsigeq: msignature mdef = msignature mdef0).
       {
@@ -2977,7 +2976,7 @@ Proof.
       rewrite <- getmbody in Htyping_method.
       remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
       remember {| vars := Iot ly :: vals |} as rΓmethodinit.
-      remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+      remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
       assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
       { 
         (* Method inner config wellformed.*)

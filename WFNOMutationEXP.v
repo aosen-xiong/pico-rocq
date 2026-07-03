@@ -1,7 +1,6 @@
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
-From RecordUpdate Require Import RecordUpdate.
 Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation.
 Require Import Properties DeepImmutability Reachability Preservation.
 Require Import ReadonlyHelper.

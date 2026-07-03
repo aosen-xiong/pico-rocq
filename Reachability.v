@@ -5,7 +5,6 @@ Require Import Stdlib.Sets.Ensembles.
 Require Import Stdlib.Classes.RelationClasses.
 Require Import Stdlib.Logic.Classical_Prop.
 Import ListNotations.
-From RecordUpdate Require Import RecordUpdate.
 Require Import Syntax Typing Subtyping ViewpointAdaptation Helpers.
 
 Inductive reachable (h : heap) : Loc -> Loc -> Prop :=

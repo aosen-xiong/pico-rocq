@@ -1,7 +1,5 @@
 From Stdlib Require List.
 Require Import Stdlib.Sets.Ensembles.
-From RecordUpdate Require Import RecordSet.
-From RecordUpdate Require Import RecordUpdate.
 
 (* ------------------SYNTAX------------------*)
 Definition var : Type := nat.
@@ -169,6 +167,9 @@ Record r_env := mkr_env {
   vars: var_mapping; (* Variable mapping *)
 }.
 
+Definition set_vars (_ : r_env) (vars' : var_mapping) : r_env :=
+  mkr_env vars'.
+
 (** Field Mapping *)
 Definition fields_mapping := list value. 
 
@@ -177,6 +178,9 @@ Record Obj := mkObj {
   rt_type: runtime_type; (* Runtime type *)
   fields_map: fields_mapping; (* Field mapping *)
 }.
+
+Definition set_fields_map (o : Obj) (fields' : fields_mapping) : Obj :=
+  mkObj (rt_type o) fields'.
 
 (** Heap *)
 Definition heap          := list Obj.

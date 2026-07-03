@@ -3,7 +3,6 @@ Require Import Properties DeepImmutability Reachability Preservation ReadonlyHel
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
-From RecordUpdate Require Import RecordUpdate.
 
 Lemma deep_concrete_immutability_preservation:
   forall CT sΓ rΓ h stmt rΓ' h' sΓ' l C anyrq vals vals' f
@@ -118,7 +117,7 @@ Proof.
       unfold update_field in Hobj'.
       have Heq : runtime_getObj
         (match runtime_getObj h loc_x with
-        | Some o => [loc_x ↦ o <| fields_map := update f0 val_y (fields_map o) |>] h
+        | Some o => [loc_x ↦ (set_fields_map o (update f0 val_y (fields_map o)))] h
         | None => h
         end) l = runtime_getObj h l.
       {
@@ -166,7 +165,7 @@ Proof.
     destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
-    remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+    remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {
       (* Method inner config wellformed.*)
@@ -1009,7 +1008,7 @@ Proof.
     destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
-    remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+    remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {
       (* Method inner config wellformed.*)
@@ -1958,7 +1957,7 @@ Proof.
     destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
-    remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+    remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
     remember (mreceiver (msignature mdef)) as Ty.
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {
@@ -2609,7 +2608,7 @@ Proof.
     destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
-    remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+    remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
     remember (mreceiver (msignature mdef)) as Ty.
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {

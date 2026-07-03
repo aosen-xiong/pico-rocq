@@ -48,7 +48,6 @@ Top-level theorem entry points:
 
 - Rocq/Coq: `9.1.0`
 - OCaml: `5.2.1`
-- `coq-record-update`: `0.3.4`
 
 ## Artifact verification
 

@@ -3,7 +3,6 @@ Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdapta
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
-From RecordUpdate Require Import RecordUpdate.
 
 Ltac solve_q_subtype_wrong :=
   lazymatch goal with
@@ -1006,7 +1005,7 @@ Qed.
 
 Lemma get_this_var_mapping_update_vars_nonzero : forall rΓ x v
   (Hx : x <> 0),
-  get_this_var_mapping (vars (rΓ <| vars := update x v (vars rΓ) |>))
+  get_this_var_mapping (vars (set_vars rΓ (update x v (vars rΓ))))
   = get_this_var_mapping (vars rΓ).
 Proof.
   intros rΓ x v Hx.
@@ -1030,7 +1029,7 @@ Proof.
   - (* Skip *)
     assumption.
   - (* Local: vars rΓ' = vars rΓ ++ [Null_a] *)
-    (* record-update on rΓ: vars-projection just adds at the tail *)
+    (* Updating rΓ's vars projection just adds at the tail. *)
     simpl.
     unfold get_this_var_mapping in *.
     destruct (vars rΓ) as [|v0 vs]; [discriminate|].
@@ -1592,7 +1591,7 @@ Proof.
           trivial.
         -- (* Case: v2 = Iot loc *)
           (* Use subtyping to convert from T to sqt *)
-          assert (Hsubtype_preserved : wf_r_typable CT (rΓ <| vars := update x (Iot loc) (vars rΓ) |>) h' loc sqt qcontext).
+          assert (Hsubtype_preserved : wf_r_typable CT (set_vars rΓ (update x (Iot loc) (vars rΓ))) h' loc sqt qcontext).
           {
             assert (Hsqt_eq : sqt = Tx).
           {
@@ -1667,7 +1666,7 @@ Proof.
 Qed.
 
 Lemma rqtype_update_field_invariant : forall o f v,
-  rqtype (rt_type (o <| fields_map := update f v (fields_map o) |>))
+  rqtype (rt_type (set_fields_map o (update f v (fields_map o))))
   = rqtype (rt_type o).
 Proof.
   intros [rt fm] f v; simpl; reflexivity.
@@ -1930,7 +1929,7 @@ Proof.
             apply qualified_type_subtype_q_subtype in Hsub. 
             destruct (nth_error h loc_y) as [obj_y|] eqn:Hnth_y.
             - (* loc_y exists in original heap *)
-              assert (Hnth_updated : nth_error (update loc_x (o_x <| fields_map := update f (Iot loc_y) (fields_map o_x) |>) h) loc_y = Some obj_y).
+              assert (Hnth_updated : nth_error (update loc_x (set_fields_map o_x (update f (Iot loc_y) (fields_map o_x))) h) loc_y = Some obj_y).
               {
                 rewrite nth_error_update_neq; [symmetry; exact Hneq_loc2_lx | exact Hnth_y].
               }
@@ -2012,7 +2011,7 @@ Proof.
 
                 all: try easy.
             - (* loc_y doesn't exist - contradiction *)
-              assert (Hnth_updated : nth_error (update loc_x (o_x <| fields_map := update f (Iot loc_y) (fields_map o_x) |>) h) loc_y = None).
+              assert (Hnth_updated : nth_error (update loc_x (set_fields_map o_x (update f (Iot loc_y) (fields_map o_x))) h) loc_y = None).
               {
                 rewrite nth_error_update_neq; [symmetry; exact Hneq_loc2_lx | exact Hnth_y].
               }
@@ -2428,7 +2427,7 @@ Proof.
             apply qualified_type_subtype_q_subtype in Hsub.
             destruct (nth_error h loc_y) as [obj_y|] eqn:Hnth_y.
             - (* loc_y exists in original heap *)
-              assert (Hnth_updated : nth_error (update loc_x (o_x <| fields_map := update f (Iot loc_y) (fields_map o_x) |>) h) loc_y = Some obj_y).
+              assert (Hnth_updated : nth_error (update loc_x (set_fields_map o_x (update f (Iot loc_y) (fields_map o_x))) h) loc_y = Some obj_y).
               {
                 rewrite nth_error_update_neq; [symmetry; exact Hneq_loc2_lx | exact Hnth_y].
               }
@@ -2510,7 +2509,7 @@ Proof.
 
                 all: try easy.
             - (* loc_y doesn't exist - contradiction *)
-              assert (Hnth_updated : nth_error (update loc_x (o_x <| fields_map := update f (Iot loc_y) (fields_map o_x) |>) h) loc_y = None).
+              assert (Hnth_updated : nth_error (update loc_x (set_fields_map o_x (update f (Iot loc_y) (fields_map o_x))) h) loc_y = None).
               {
                 rewrite nth_error_update_neq; [symmetry; exact Hneq_loc2_lx | exact Hnth_y].
               }
@@ -2926,7 +2925,7 @@ Proof.
             apply qualified_type_subtype_q_subtype in Hsub. 
             destruct (nth_error h loc_y) as [obj_y|] eqn:Hnth_y.
             - (* loc_y exists in original heap *)
-              assert (Hnth_updated : nth_error (update loc_x (o_x <| fields_map := update f (Iot loc_y) (fields_map o_x) |>) h) loc_y = Some obj_y).
+              assert (Hnth_updated : nth_error (update loc_x (set_fields_map o_x (update f (Iot loc_y) (fields_map o_x))) h) loc_y = Some obj_y).
               {
                 rewrite nth_error_update_neq; [symmetry; exact Hneq_loc2_lx | exact Hnth_y].
               }
@@ -3008,7 +3007,7 @@ Proof.
 
                 all: try easy.
             - (* loc_y doesn't exist - contradiction *)
-              assert (Hnth_updated : nth_error (update loc_x (o_x <| fields_map := update f (Iot loc_y) (fields_map o_x) |>) h) loc_y = None).
+              assert (Hnth_updated : nth_error (update loc_x (set_fields_map o_x (update f (Iot loc_y) (fields_map o_x))) h) loc_y = None).
               {
                 rewrite nth_error_update_neq; [symmetry; exact Hneq_loc2_lx | exact Hnth_y].
               }

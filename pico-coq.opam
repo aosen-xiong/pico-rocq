@@ -7,7 +7,6 @@ license: "MIT"
 depends: [
   "ocaml" {>= "5.2.1"}
   "coq" {= "9.1.0"}
-  "coq-record-update" {= "dev" | >= "0.3.4"}
   "dune" {>= "3.11"}
 ]
 build: [

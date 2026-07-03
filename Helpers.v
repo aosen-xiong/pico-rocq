@@ -6,7 +6,6 @@ From Stdlib Require Import List.
 Import ListNotations.
 Require Export Notations LibTactics Tactics.
 Require Export ssreflect ssrbool Stdlib.Sets.Finite_sets_facts.
-From RecordUpdate Require Import RecordUpdate.
 
 (* ------------------------------------------------------------------------ *)
 (** ** Helper functions *)
@@ -401,7 +400,7 @@ Qed.
 
 Lemma runtime_getVal_last :
   forall (rΓ : r_env) (v : value),
-    runtime_getVal (rΓ <| vars := vars rΓ ++ [v] |>) (dom rΓ.(vars)) = Some v.
+    runtime_getVal (set_vars rΓ (vars rΓ ++ [v])) (dom rΓ.(vars)) = Some v.
 Proof.
   intros rΓ v.
   unfold runtime_getVal. simpl.
@@ -414,7 +413,7 @@ Global Hint Resolve runtime_getVal_last: core.
 Lemma runtime_getVal_last2 :
   forall (rΓ : r_env) (x : Loc) (v : value)
     (Hdom : x < dom rΓ.(vars)),
-    runtime_getVal (rΓ <| vars := vars rΓ ++ [v] |>) x = runtime_getVal rΓ x.
+    runtime_getVal (set_vars rΓ (vars rΓ ++ [v])) x = runtime_getVal rΓ x.
 Proof.
   intros rΓ x v Hdom.
   unfold runtime_getVal. simpl.

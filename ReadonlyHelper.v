@@ -2,7 +2,6 @@ Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdapta
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
-From RecordUpdate Require Import RecordUpdate.
 
 (* Lemma vpa_mutability_stype_fld_ro_not_mut_abs_imm :
   forall q_recv q_field q_res
@@ -452,13 +451,13 @@ Qed.
 Lemma protected_locset_shrinks_with_null_binding :
   forall CT h rΓ,
     Ensembles.Included Loc 
-      (reachable_locations_from_initial_env CT h (rΓ <| vars := vars rΓ ++ [Null_a] |>))
+      (reachable_locations_from_initial_env CT h (set_vars rΓ (vars rΓ ++ [Null_a])))
       (reachable_locations_from_initial_env CT h rΓ).
 Proof.
   intros CT h rΓ l Hin.
   unfold reachable_locations_from_initial_env in *.
   destruct Hin as [x [l_root [Hruntime Hreach]]].
-  (* Hruntime : runtime_getVal (rΓ <| vars := ... |>) x = Some (Iot l_root) *)
+  (* Hruntime : runtime_getVal (set_vars rΓ (...)) x = Some (Iot l_root) *)
   (* Since new binding is Null_a (not Iot anything), x must be old *)
   (* So runtime_getVal rΓ x = Some (Iot l_root) *)
   exists x, l_root.
@@ -662,7 +661,7 @@ Proof.
       destruct (Nat.eq_dec ret_var x) as [Heq_ret | Hne_ret].
       * (* ret_var = x: the updated variable *)
         subst ret_var.
-	        assert (Hupdate_env : update_r_env_value rΓ x v2 = rΓ <| vars := update x v2 (vars rΓ) |>).
+	        assert (Hupdate_env : update_r_env_value rΓ x v2 = (set_vars rΓ (update x v2 (vars rΓ)))).
 	        unfold update_r_env_value; simpl.
 	        destruct rΓ.
 	        easy.
@@ -672,7 +671,7 @@ Proof.
           eapply runtime_getVal_update_same.
           apply runtime_getVal_dom in HgetVal.
 	          rewrite Hupdate_env in HgetVal.
-          have Hupdate_len : dom (vars (rΓ <| vars := update x v2 (vars rΓ) |>)) = dom (vars rΓ).
+          have Hupdate_len : dom (vars (set_vars rΓ (update x v2 (vars rΓ)))) = dom (vars rΓ).
           {
             simpl.
             rewrite update_length.
@@ -684,7 +683,7 @@ Proof.
 	        inversion HgetVal; subst.
 	        specialize (Hv2_protected l_z eq_refl); auto.
       * (* ret_var ≠ x: unchanged variable *)
-	        assert (Hupdate_env : update_r_env_value rΓ x v2 = rΓ <| vars := update x v2 (vars rΓ) |>).
+	        assert (Hupdate_env : update_r_env_value rΓ x v2 = (set_vars rΓ (update x v2 (vars rΓ)))).
         unfold update_r_env_value; simpl.
         destruct rΓ.
         easy.
@@ -703,7 +702,7 @@ Proof.
       destruct (Nat.eq_dec ret_var x) as [Heq_ret | Hne_ret].
       * (* ret_var = x: the updated variable *)
         subst ret_var.
-	        assert (Hupdate_env : update_r_env_value rΓ x Null_a = rΓ <| vars := update x Null_a (vars rΓ) |>).
+	        assert (Hupdate_env : update_r_env_value rΓ x Null_a = (set_vars rΓ (update x Null_a (vars rΓ)))).
         unfold update_r_env_value; simpl.
         destruct rΓ.
         easy.
@@ -713,7 +712,7 @@ Proof.
           eapply runtime_getVal_update_same.
           apply runtime_getVal_dom in HgetVal.
 	          rewrite Hupdate_env in HgetVal.
-          have Hupdate_len : dom (vars (rΓ <| vars := update x Null_a (vars rΓ) |>)) = dom (vars rΓ).
+          have Hupdate_len : dom (vars (set_vars rΓ (update x Null_a (vars rΓ)))) = dom (vars rΓ).
           {
             simpl.
             rewrite update_length.
@@ -724,7 +723,7 @@ Proof.
 	        rewrite Hget_update_same in HgetVal.
         discriminate. (* Null_a <> Iot l_z *)
       * (* ret_var ≠ x: unchanged variable *)
-	        assert (Hupdate_env : update_r_env_value rΓ x Null_a = rΓ <| vars := update x Null_a (vars rΓ) |>).
+	        assert (Hupdate_env : update_r_env_value rΓ x Null_a = (set_vars rΓ (update x Null_a (vars rΓ)))).
         unfold update_r_env_value; simpl.
         destruct rΓ.
         easy.
@@ -748,7 +747,7 @@ Proof.
     +
       subst.
       (* TODO: all use update_r_env_value or the diamond syntax *)
-	      assert (Hupdate_env : update_r_env_value rΓ x (Iot dom h) = rΓ <| vars := update x (Iot dom h) (vars rΓ) |>).
+	      assert (Hupdate_env : update_r_env_value rΓ x (Iot dom h) = (set_vars rΓ (update x (Iot dom h) (vars rΓ)))).
       unfold update_r_env_value; simpl.
       destruct rΓ.
       easy.
@@ -758,7 +757,7 @@ Proof.
         eapply runtime_getVal_update_same.
         apply runtime_getVal_dom in HgetVal.
 	        rewrite Hupdate_env in HgetVal.
-        have Hupdate_len : dom (vars (rΓ <| vars := update x (Iot dom h) (vars rΓ) |>)) = dom (vars rΓ).
+        have Hupdate_len : dom (vars (set_vars rΓ (update x (Iot dom h) (vars rΓ)))) = dom (vars rΓ).
         {
           simpl.
           rewrite update_length.
@@ -770,7 +769,7 @@ Proof.
       inversion HgetVal; subst l_z.
       lia.
    +  
-	      assert (Hupdate_env : update_r_env_value rΓ x (Iot dom h) = rΓ <| vars := update x (Iot dom h) (vars rΓ) |>).
+	      assert (Hupdate_env : update_r_env_value rΓ x (Iot dom h) = (set_vars rΓ (update x (Iot dom h) (vars rΓ)))).
       unfold update_r_env_value; simpl.
       destruct rΓ.
       easy.
@@ -787,8 +786,8 @@ Proof.
     inversion Htyping; subst.
     exfalso; apply Hmtype; reflexivity.
     rename sΓ' into sΓ.
-    remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
-    assert (HformatExchange: update_r_env_value rΓ x retval = rΓ <| vars := update x retval (vars rΓ) |>).
+    remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
+    assert (HformatExchange: update_r_env_value rΓ x retval = (set_vars rΓ (update x retval (vars rΓ)))).
     unfold update_r_env_value; simpl.
     destruct rΓ.
     easy.

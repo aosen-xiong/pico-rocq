@@ -1,7 +1,6 @@
 From Stdlib Require Import Lia.
 From Stdlib Require Import List.
 From Stdlib Require String.
-From RecordUpdate Require Import RecordUpdate.
 Require Import Stdlib.Sets.Ensembles.
 Require Import Stdlib.Logic.Classical_Prop.
 Require Import Stdlib.Classes.RelationClasses.
@@ -28,7 +27,7 @@ Proof.
 Qed.
 
 Lemma get_this_var_mapping_update_vars_app_null : forall rΓ,
-  get_this_var_mapping (vars (rΓ <| vars := vars rΓ ++ [Null_a] |>))
+  get_this_var_mapping (vars (set_vars rΓ (vars rΓ ++ [Null_a])))
   = get_this_var_mapping (vars rΓ).
 Proof.
   intro rΓ. simpl. apply get_this_var_mapping_app_null_last.
@@ -60,7 +59,7 @@ Definition update_field (h: heap) (ι: Loc) (f: var) (v: value) : heap :=
   | None => h
   | Some o =>
       let new_fields := update f v o.(fields_map) in
-      let new_obj := o <| fields_map := new_fields |>
+      let new_obj := (set_fields_map o (new_fields))
       in update ι new_obj h
   end.
 
@@ -301,7 +300,7 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
   | SBS_Local : forall CT rΓ h T x
       (Hnone : runtime_getVal rΓ x = None),
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SLocal T x) OK (reachable_locations_from_initial_env CT h rΓ)
-      (rΓ <|vars := rΓ.(vars)++[Null_a] |> )
+      (set_vars rΓ (rΓ.(vars)++[Null_a]) )
       h
 
   (* evaluate variable assignment statement *)
@@ -309,7 +308,7 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Hval   : runtime_getVal rΓ x = Some v1)
       (Heval  : eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h e v2 OK (reachable_locations_from_initial_env CT h rΓ) rΓ h),
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SVarAss x e) OK (reachable_locations_from_initial_env CT h rΓ)
-      (rΓ <|vars := update x v2 rΓ.(vars)|>)
+      (set_vars rΓ (update x v2 rΓ.(vars)))
       h
 
   | SBS_Assign_NPE : forall CT rΓ h x e v1 v2
@@ -352,7 +351,7 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Hadapt   : vpa_mutability_object_creation qthisr q_c = qadapted)
       (Hobj     : o = mkObj (mkruntime_type qadapted c) (vals))
       (Hheap    : h' = h++[o])
-      (Henv     : rΓ' = rΓ <| vars := update x (Iot (dom h)) rΓ.(vars) |>),
+      (Henv     : rΓ' = (set_vars rΓ (update x (Iot (dom h)) rΓ.(vars)))),
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SNew x q_c c ys) OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
 
   (* evaluate method call statement *)
@@ -366,7 +365,7 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Hframe      : rΓ' = mkr_env (Iot ly :: vals))
       (Heval_body  : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ') CT rΓ' h mstmt OK (reachable_locations_from_initial_env CT h rΓ') rΓ'' h')
       (Hretval     : runtime_getVal rΓ'' mret = Some retval)
-      (Henv        : rΓ''' = rΓ <| vars := update x retval rΓ.(vars) |>),
+      (Henv        : rΓ''' = (set_vars rΓ (update x retval rΓ.(vars)))),
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SCall x m y zs) OK (reachable_locations_from_initial_env CT h rΓ) rΓ''' h'
 
   (* evaluate method call statement NPE *)

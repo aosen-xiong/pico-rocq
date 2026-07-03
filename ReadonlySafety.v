@@ -3,7 +3,6 @@ Require Import Properties DeepImmutability Reachability Preservation ReadonlyHel
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
-From RecordUpdate Require Import RecordUpdate.
 
 Theorem readonly_pico_field_write :
   forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals vals' f qt readonlyx anyf rhs anyrq
@@ -422,7 +421,7 @@ Theorem readonly_method_call_preserves_arguments :
     destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
-    remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+    remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
     remember (mreceiver (msignature mdef)) as Ty.
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {
@@ -1072,7 +1071,7 @@ Theorem readonly_method_call_preserves_arguments :
     destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
-    remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+    remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
     remember (mreceiver (msignature mdef)) as Ty.
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {

@@ -2,7 +2,6 @@ Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdapta
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
-From RecordUpdate Require Import RecordUpdate.
 
 Lemma stmt_preserves_confinement :
   forall CT sΓ mt rΓ h stmt sΓ' rΓ' h'
@@ -161,7 +160,7 @@ Proof.
       inversion Htyping; subst sΓ'; subst.
       unfold env_respects_protected_set in *.
       intros y l_y Ty Hlookup_s Hlookup_r Hin_P.
-	      assert (Hupdate_env : rΓ <| vars := update x (Iot dom h) (vars rΓ) |> = update_r_env_value rΓ x (Iot (dom h))).
+	      assert (Hupdate_env : (set_vars rΓ (update x (Iot dom h) (vars rΓ))) = update_r_env_value rΓ x (Iot (dom h))).
       {
         destruct rΓ.
         reflexivity.
@@ -207,7 +206,7 @@ Proof.
     destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
-    remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+    remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {
       (* Method inner config wellformed.*)
@@ -1091,7 +1090,7 @@ Proof.
           }
           exact Hsafe_tx.
         -- (* CASE: z <> x (Old Variables) *)
-          assert (Hupdate_env : rΓ <| vars := update x retval (vars rΓ) |> = update_r_env_value rΓ x retval).
+          assert (Hupdate_env : (set_vars rΓ (update x retval (vars rΓ))) = update_r_env_value rΓ x retval).
           {
             destruct rΓ.
             reflexivity.
@@ -1166,7 +1165,7 @@ Proof.
           }
           exact Hsafe_tx.
         -- (* CASE: z <> x (Old Variables) *)
-          assert (Hupdate_env : rΓ <| vars := update x retval (vars rΓ) |> = update_r_env_value rΓ x retval).
+          assert (Hupdate_env : (set_vars rΓ (update x retval (vars rΓ))) = update_r_env_value rΓ x retval).
           {
             destruct rΓ.
             reflexivity.
@@ -1241,7 +1240,7 @@ Proof.
         }
         exact Hsafe_tx.
       -- (* CASE: z <> x (Old Variables) *)
-        assert (Hupdate_env : rΓ <| vars := update x retval (vars rΓ) |> = update_r_env_value rΓ x retval).
+        assert (Hupdate_env : (set_vars rΓ (update x retval (vars rΓ))) = update_r_env_value rΓ x retval).
         {
           destruct rΓ.
           reflexivity.
@@ -1316,7 +1315,7 @@ Proof.
         }
         exact Hsafe_tx.
       -- (* CASE: z <> x (Old Variables) *)
-        assert (Hupdate_env : rΓ <| vars := update x retval (vars rΓ) |> = update_r_env_value rΓ x retval).
+        assert (Hupdate_env : (set_vars rΓ (update x retval (vars rΓ))) = update_r_env_value rΓ x retval).
         {
           destruct rΓ.
           reflexivity.
@@ -1341,7 +1340,7 @@ Proof.
     destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
-    remember (rΓ <| vars := update x retval (vars rΓ) |>) as rΓ'''.
+    remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
     assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
     {
       (* Method inner config wellformed.*)
@@ -2246,7 +2245,7 @@ Proof.
         exact Hsafe_tx.
         --- (* CASE: z <> x (Old Variables) *)
         rewrite <- Hvars in Hlookup_r.
-        assert (Hupdate_env : rΓ <| vars := update x retval (vars rΓ) |> = update_r_env_value rΓ x retval).
+        assert (Hupdate_env : (set_vars rΓ (update x retval (vars rΓ))) = update_r_env_value rΓ x retval).
         {
           destruct rΓ.
           reflexivity.
@@ -2329,7 +2328,7 @@ Proof.
         exact Hsafe_tx.
         --- (* CASE: z <> x (Old Variables) *)
         rewrite <- Hvars in Hlookup_r.
-        assert (Hupdate_env : rΓ <| vars := update x retval (vars rΓ) |> = update_r_env_value rΓ x retval).
+        assert (Hupdate_env : (set_vars rΓ (update x retval (vars rΓ))) = update_r_env_value rΓ x retval).
         {
           destruct rΓ.
           reflexivity.
@@ -2407,7 +2406,7 @@ Proof.
         exact Hsafe_tx.
         --- (* CASE: z <> x (Old Variables) *)
         rewrite <- Hvars in Hlookup_r.
-        assert (Hupdate_env : rΓ <| vars := update x retval (vars rΓ) |> = update_r_env_value rΓ x retval).
+        assert (Hupdate_env : (set_vars rΓ (update x retval (vars rΓ))) = update_r_env_value rΓ x retval).
         {
           destruct rΓ.
           reflexivity.
