@@ -88,7 +88,7 @@ Record constructor_sig := {
 
 Record constructor_def := {
   csignature : constructor_sig; (* Constructor signature *)
-  (* cbody : constructor_body; Constructor body AOSEN: I get rid of constructor body by directly enforcing the assignment in the wellformdness rule *)
+  (* cbody : constructor_body; Constructor body removed by directly enforcing assignment in the well-formedness rule. *)
 }.
 
 Record method_body := {

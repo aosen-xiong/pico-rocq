@@ -403,7 +403,7 @@ Qed.
 Definition wf_stypeuse (CT : class_table) (q_use: q) (c: class_name) : Prop :=
   match bound CT c with
   | Some q_bound =>
-                   (* AOSEN: Current rule disallow direct lost variable in the environment including the receiver
+                   (* Current rule disallows direct lost variables in the environment, including the receiver,
                    which should not be important? *)
                   q_subtype (vpa_mutability_bound q_use q_bound) q_use /\
                    c < dom CT
@@ -762,7 +762,7 @@ Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : P
     nth_error sΓ' mbodyretvar = Some mbodyrettype /\
     qualified_type_subtype CT mbodyrettype (mret msig) /\
     (* Override constraint: if method exists in parent, signatures must match *)
-    (* Aosen: let's prove invariant override first *)
+    (* Prove invariant override first. *)
     (forall parent_def parent mdef_parent,
       find_class CT C = Some parent_def ->
       super (signature parent_def) = Some parent ->
@@ -1010,7 +1010,7 @@ Proof.
     + unfold bound in Hbound. destruct Hwf_field as [qbound [Hfalse Hfieldwfm]]. easy.  
 Qed.
 
-(* Well-formedness of program  Aosen: I put it at the end because the main statement need to be well-typed*)
+(* Well-formedness of program. Put it at the end because the main statement needs to be well-typed. *)
 (* Definition WFProgram (p: program_def) : Prop :=
   Forall (fun decl => WFClass p.(classes) decl) p.(classes) . *)
 Lemma find_app : forall A (f : A -> bool) l1 l2 x

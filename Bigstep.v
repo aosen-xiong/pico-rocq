@@ -719,7 +719,7 @@ Proof.
   exact Hsub.
 Qed.
 
-(* Aosen: Both direction can not be proved... don't even try later *)
+(* Both directions cannot be proved here. *)
 (* q_subtype (sqtype (vpa_mutability_tt Tthis T1)) (sqtype (vpa_mutability_tt Tthis T2)) <->
 q_subtype (sqtype T1) (sqtype T2). *)
 
@@ -1114,7 +1114,7 @@ Proof.
 Qed.
 
 (* Expression Evaluation Preservation *)
-(* AOSEN TODO: This could be refactored and remove the first two premises *)
+(* TODO: This could be refactored to remove the first two premises. *)
 Lemma expr_eval_preservation : forall P CT sΓ mt rΓ h e v rΓ' h' T ι qcontext
   (Hreceiveraddr : get_this_var_mapping (vars rΓ) = Some ι)
   (Hreceiverrmut : (r_muttype h ι) = Some qcontext)
