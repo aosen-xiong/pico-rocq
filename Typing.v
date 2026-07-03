@@ -403,8 +403,9 @@ Qed.
 Definition wf_stypeuse (CT : class_table) (q_use: q) (c: class_name) : Prop :=
   match bound CT c with
   | Some q_bound =>
-                   (* Current rule disallows direct lost variables in the environment, including the receiver,
-                   which should not be important? *)
+                  (* Lost is an internal helper qualifier. Since Lost is not
+                     reflexive in q_subtype, this condition prevents direct
+                     Lost type uses in well-formed static environments. *)
                   q_subtype (vpa_mutability_bound q_use q_bound) q_use /\
                    c < dom CT
   | None => False (* or False, depending on your semantics *)
@@ -761,8 +762,10 @@ Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : P
     mbodyretvar < dom sΓ' /\
     nth_error sΓ' mbodyretvar = Some mbodyrettype /\
     qualified_type_subtype CT mbodyrettype (mret msig) /\
-    (* Override constraint: if method exists in parent, signatures must match *)
-    (* Prove invariant override first. *)
+    (* Rocq scope note: the paper presents viewpoint-adapted variant
+       overriding, but this mechanization intentionally uses invariant
+       overriding. If a parent method exists, the child signature must match
+       exactly. *)
     (forall parent_def parent mdef_parent,
       find_class CT C = Some parent_def ->
       super (signature parent_def) = Some parent ->

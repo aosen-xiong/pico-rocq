@@ -29,8 +29,20 @@ Top-level theorem entry points:
 | Theorem 3 | Transitive abstract immutability | Object is reachable from an immutable root; statement is well-typed and evaluates successfully | Reachable abstract-state objects remain protected | `deep_immutability_pico` in [DeepImmutability.v](DeepImmutability.v) |
 | Theorem 4 | Safe readonly method call | Method call through readonly receiver; arguments are protected/readable; method body evaluates successfully | Readonly-reachable arguments remain protected across the call | `readonly_method_call_preserves_arguments` in [ReadonlySafety.v](ReadonlySafety.v) |
 | Theorem 4 support | Readonly field-write safety | Receiver expression has static type `RO`; field-write statement evaluates successfully; method scope is not `AbstractImm` | Protected field of the readonly-referenced object is unchanged | `readonly_pico_field_write` in [ReadonlySafety.v](ReadonlySafety.v) |
-| Theorem 5 | Concrete immutability | Method call occurs in `ConcreteImm` scope; receiver has static `RO` type; all parameters are safe | Entire reachable argument/object graph remains unchanged for protected fields | `ConcreteImmutability` in [ConcreteImmutability.v](ConcreteImmutability.v) |
+| Theorem 5 | Concrete immutability | Method call occurs in `ConcreteImm` scope; receiver and all parameters are safe | Entire reachable receiver/argument object graph remains unchanged for all fields | `ConcreteImmutability` in [ConcreteImmutability.v](ConcreteImmutability.v) |
 | Proof integrity | No axioms/admitted proof gaps in submitted sources | Artifact sources exclude forbidden `Axiom`, `Admitted`, and `admit`, except bundled `LibTactics.v` support library | Mechanical checker passes | [scripts/check-no-axioms-admits.py](scripts/check-no-axioms-admits.py) via `make check` |
+
+## Paper/Formalization Notes
+
+- The paper's full method-overriding rule uses viewpoint-adapted variance. The
+  Rocq development intentionally mechanizes invariant overriding: if a subclass
+  method overrides a parent method, the signatures must be syntactically equal.
+- The paper treats `Lost` as a helper qualifier rather than a programmer-written
+  type qualifier. Rocq represents it in the common qualifier datatype, but
+  `wf_stypeuse` and non-reflexive `Lost` subtyping prevent direct `Lost` type
+  uses in well-formed static environments.
+- The method-call immutability theorems package receiver and parameter
+  non-mutable premises through `all_params_safe`.
 
 ## Toolchain
 
