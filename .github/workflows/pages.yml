@@ -1,0 +1,61 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy proof site
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up OCaml + opam
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5.2.1
+          opam-local-packages: |
+            *.opam
+
+      - name: Pin local package
+        run: opam pin add . -n
+
+      - name: Install dependencies
+        run: opam install . --deps-only -y
+
+      - name: Install Alectryon
+        run: pipx install alectryon==2.0.0
+
+      - name: Build site
+        run: |
+          opam exec -- make site
+          touch site/.nojekyll
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
