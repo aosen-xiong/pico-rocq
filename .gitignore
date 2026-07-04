@@ -11,6 +11,7 @@ CoqMakefile.conf
 .Makefile.d
 _build/
 alectryon/
+site/proofs/
 doc/
 copilot-instructions.md
 rocq-ai-style.instructions.md

@@ -8,8 +8,9 @@ ALECTRYON_STYLE ?= $(PROJECT_DIR)alectryon-style.css
 ALECTRYON_PROOF_TOGGLE ?= $(PROJECT_DIR)alectryon-proof-toggle.js
 ALECTRYON ?= $(shell command -v alectryon 2>/dev/null || command -v "$(HOME)/Library/Python/3.9/bin/alectryon" 2>/dev/null || printf alectryon)
 ALECTRYON_COQ_DRIVER ?= coqc_time
+SITE_DIR ?= $(PROJECT_DIR)site
 
-.PHONY: all coq check doc doc-clean alectryon-doc alectryon-clean clean
+.PHONY: all coq check doc doc-clean alectryon-doc alectryon-clean site site-clean clean
 
 all: coq
 
@@ -110,6 +111,12 @@ alectryon-doc: coq
 
 alectryon-clean:
 	rm -rf "$(ALECTRYON_DIR)"
+
+site:
+	$(MAKE) ALECTRYON_DIR="$(SITE_DIR)/proofs" alectryon-doc
+
+site-clean:
+	rm -rf "$(SITE_DIR)/proofs"
 
 clean:
 	-if [ -f "$(COQMAKEFILE)" ]; then $(MAKE) -C "$(PROJECT_DIR)" -f CoqMakefile clean; fi

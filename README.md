@@ -87,6 +87,19 @@ make alectryon-doc
 The generated index is `alectryon/index.html`. The rendered documentation is a
 generated artifact and is intentionally ignored by git.
 
+## Local project page preview
+
+The repository includes a static landing page prototype in `site/`. To render
+the proof documentation under that page and preview the future GitHub Pages
+layout, run:
+
+```sh
+make site
+open site/index.html
+```
+
+The generated proof pages live under `site/proofs/` and are ignored by git.
+
 ## Build (current Make-based workflow)
 
 1. Generate the Makefile:

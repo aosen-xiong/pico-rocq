@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pico Rocq Mechanization</title>
+  <meta name="description" content="Rocq mechanization for PICO: transitive, abstract, and class polymorphic immutability.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="page">
+    <header class="header">
+      <p class="kicker">Rocq proof artifact</p>
+      <h1>Pico Rocq Mechanization</h1>
+      <p class="summary">
+        A mechanized formalization of the Pico core calculus for transitive,
+        abstract, and class polymorphic immutability.
+      </p>
+      <nav class="links" aria-label="Project links">
+        <a href="proofs/index.html">Proof documentation</a>
+        <a href="#claims">Claim map</a>
+        <a href="#build">Build instructions</a>
+      </nav>
+    </header>
+
+    <section class="notice" aria-label="Artifact status">
+      <div>
+        <strong>Verification command</strong>
+        <code>make check</code>
+      </div>
+      <div>
+        <strong>Proof gaps</strong>
+        <span>No forbidden <code>Axiom</code>, <code>Admitted</code>, or <code>admit</code> usage</span>
+      </div>
+      <div>
+        <strong>Rendered docs</strong>
+        <span>Alectryon pages are generated under <code>site/proofs/</code></span>
+      </div>
+    </section>
+
+    <section id="claims" class="section">
+      <h2>Paper-to-Proof Map</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Paper item</th>
+              <th>Rocq entry point</th>
+              <th>File</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Syntax, runtime values, heaps</td>
+              <td><code>q</code>, <code>stmt</code>, <code>method_sig</code>, <code>Obj</code></td>
+              <td><a href="proofs/Syntax.html">Syntax.v</a></td>
+            </tr>
+            <tr>
+              <td>Viewpoint adaptation</td>
+              <td><code>vpa_mutability_tt_abs_imm</code>, <code>vpa_assignability</code></td>
+              <td><a href="proofs/ViewpointAdaptation.html">ViewpointAdaptation.v</a></td>
+            </tr>
+            <tr>
+              <td>Static typing</td>
+              <td><code>stmt_typing</code>, <code>wf_method</code>, <code>wf_class_table</code></td>
+              <td><a href="proofs/Typing.html">Typing.v</a></td>
+            </tr>
+            <tr>
+              <td>Operational semantics</td>
+              <td><code>eval_expr</code>, <code>eval_stmt</code></td>
+              <td><a href="proofs/Bigstep.html">Bigstep.v</a></td>
+            </tr>
+            <tr>
+              <td>Theorem 1: preservation</td>
+              <td><code>preservation_pico</code></td>
+              <td><a href="proofs/Preservation.html">Preservation.v</a></td>
+            </tr>
+            <tr>
+              <td>Theorems 2 and 3: abstract immutability</td>
+              <td><code>shallow_immutability_pico</code>, <code>deep_immutability_pico</code></td>
+              <td><a href="proofs/DeepImmutability.html">DeepImmutability.v</a></td>
+            </tr>
+            <tr>
+              <td>Theorem 4: safe readonly</td>
+              <td><code>readonly_method_call_preserves_arguments</code></td>
+              <td><a href="proofs/ReadonlySafety.html">ReadonlySafety.v</a></td>
+            </tr>
+            <tr>
+              <td>Theorem 5: concrete immutability</td>
+              <td><code>ConcreteImmutability</code></td>
+              <td><a href="proofs/ConcreteImmutability.html">ConcreteImmutability.v</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section two-column">
+      <div>
+        <h2>Proof Organization</h2>
+        <ul class="file-list">
+          <li><a href="proofs/Subtyping.html">Subtyping.v</a> defines qualifier, base, method, and qualified-type subtyping.</li>
+          <li><a href="proofs/Reachability.html">Reachability.v</a> defines ordinary and abstract-state reachability.</li>
+          <li><a href="proofs/Properties.html">Properties.v</a> contains preservation support lemmas.</li>
+          <li><a href="proofs/WFNOMutationEXP.html">WFNOMutationEXP.v</a> proves mutation-exception safety.</li>
+        </ul>
+      </div>
+      <div id="build">
+        <h2>Local Workflow</h2>
+        <pre><code>make check
+make site
+open site/index.html</code></pre>
+        <p class="muted">
+          The generated proof pages under <code>site/proofs/</code> are ignored by git.
+          The landing page itself is plain static HTML and CSS.
+        </p>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>Pico Rocq Mechanization</span>
+      <span>Rocq/Coq 9.1.0</span>
+    </footer>
+  </main>
+</body>
+</html>
