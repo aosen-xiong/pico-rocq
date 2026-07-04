@@ -27,18 +27,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up OCaml + opam
-        uses: ocaml/setup-ocaml@v3
-        with:
-          ocaml-compiler: 5.2.1
-          opam-local-packages: |
-            *.opam
-
-      - name: Pin local package
-        run: opam pin add . -n
-
-      - name: Install dependencies
-        run: opam install . --deps-only -y
+      - name: Set up Rocq
+        uses: ./.github/actions/setup-rocq
 
       - name: Install Alectryon
         run: pipx install alectryon==2.0.0

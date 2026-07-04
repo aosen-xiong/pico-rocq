@@ -1,0 +1,26 @@
+name: Set up Rocq
+description: Set up OCaml/opam and install this repository's Rocq dependencies.
+
+inputs:
+  ocaml-compiler:
+    description: OCaml compiler version for the opam switch.
+    required: false
+    default: 5.2.1
+
+runs:
+  using: composite
+  steps:
+    - name: Set up OCaml + opam
+      uses: ocaml/setup-ocaml@v3
+      with:
+        ocaml-compiler: ${{ inputs.ocaml-compiler }}
+        opam-local-packages: |
+          *.opam
+
+    - name: Pin local package
+      shell: bash
+      run: opam pin add . -n
+
+    - name: Install dependencies
+      shell: bash
+      run: opam install . --deps-only -y
