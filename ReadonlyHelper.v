@@ -547,6 +547,8 @@ Proof.
     destruct (runtime_getObj h l) eqn :Hobj; try easy.
     apply runtime_getObj_dom in Hobj; auto.
 	    unfold runtime_getVal in Hval; auto.
+  - (* EInt case *)
+    left. intros l Heq. discriminate.
   - (* EField case *)
     left. intros l Heq; subst.
     unfold reachable_locations_from_initial_env.
@@ -1201,7 +1203,7 @@ Proof.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
           - (* Parameter i' exists *)
-            destruct v as [|loc]; [trivial|].
+            destruct v as [|loc|n]; [trivial| | trivial].
             (* Use H23 to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -1232,6 +1234,7 @@ Proof.
                       | Some _ => True
                       | None => False
                       end
+                  | Int _ => True
                   end) vals).
               {
                 eapply runtime_lookup_list_preserves_wf_values; eauto.
@@ -1821,7 +1824,7 @@ Proof.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
           - (* Parameter i' exists *)
-            destruct v as [|loc]; [trivial|].
+            destruct v as [|loc|n]; [trivial| | trivial].
             (* Use H23 to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -1852,6 +1855,7 @@ Proof.
                       | Some _ => True
                       | None => False
                       end
+                  | Int _ => True
                   end) vals).
               {
                 eapply runtime_lookup_list_preserves_wf_values; eauto.

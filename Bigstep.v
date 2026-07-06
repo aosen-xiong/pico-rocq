@@ -17,6 +17,7 @@ Definition get_this_var_mapping (vm : var_mapping) : option Loc :=
     match ι with
     | Null_a => None
     | Iot loc => Some loc
+    | Int _ => None
     end
   end.
 
@@ -145,6 +146,7 @@ Definition wf_obj (CT: class_table) (h: heap) (ι: Loc) : Prop :=
             qualifier_typable_heap (rqtype rqt) (vpa_mutability_rec_fld (rqtype (rt_type o)) (mutability (ftype fdef)))
           | None => False
           end
+        | Int _ => True
         end) (fields_map o) field_defs
   end.
 
@@ -161,6 +163,7 @@ Definition wf_renv (CT: class_table) (rΓ: r_env) (h: heap) : Prop :=
         | None => False
         | Some _ => True
         end
+    | Int _ => True
     end) rΓ.(vars).
 
 (* Wellformed Runtime Heap: a heap is well-formed if all objects in it are well-formed *)
@@ -207,6 +210,7 @@ Definition wf_r_config (CT: class_table) (sΓ: s_env) (rΓ: r_env) (h: heap) : P
     match runtime_getVal rΓ i with
     | Some (Iot loc) => wf_r_typable CT rΓ h loc sqt qcontext
     | Some Null_a => True
+    | Some (Int _) => True
     | None => False
     end.
 
@@ -243,6 +247,10 @@ Inductive eval_expr : eval_result -> (Loc -> Prop) -> class_table -> r_env -> he
       (Hval : runtime_getVal rΓ x = Some v),
       eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (EVar x) v OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
 
+  (* evaluate integer literal expression *)
+  | EBS_Int : forall CT rΓ h n,
+      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (EInt n) (Int n) OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
+
   (* evaluate field access expression *)
   | EBS_Field : forall CT rΓ h x f v o v1
       (Hval   : runtime_getVal rΓ x = Some (Iot v))
@@ -276,6 +284,8 @@ Proof.
     repeat split; reflexivity.
   - (* EBS_Val vs EBS_Val *)
     rewrite Hval0 in Hval; injection Hval as ?; subst.
+    repeat split; reflexivity.
+  - (* EBS_Int vs EBS_Int *)
     repeat split; reflexivity.
   - (* EBS_Field vs EBS_Field *)
     rewrite Hval0 in Hval; injection Hval as ?; subst.
@@ -665,10 +675,11 @@ Proof.
   unfold runtime_getVal.
   destruct (vars rΓ) as [|v vs] eqn:Hvars.
   - discriminate H.
-  - destruct v as [|l].
+  - destruct v as [|l|n].
     + discriminate H.
     + injection H as Heq. subst l.
       reflexivity.
+    + discriminate H.
 Qed.
 
 Lemma r_muttype_of_r_type : forall h loc rqt
@@ -883,10 +894,11 @@ Lemma runtime_lookup_list_preserves_typing : forall CT sΓ rΓ h args vals argty
   (Hwf            : wf_r_config CT sΓ rΓ h)
   (Hstatic        : static_getType_list sΓ args = Some argtypes)
   (Hruntime       : runtime_lookup_list rΓ args = Some vals),
-  Forall2 (fun v T => match v with
-    | Null_a => True
-    | Iot loc => wf_r_typable CT rΓ h loc T qcontext
-    end) vals argtypes.
+    Forall2 (fun v T => match v with
+      | Null_a => True
+      | Iot loc => wf_r_typable CT rΓ h loc T qcontext
+      | Int _ => True
+      end) vals argtypes.
 Proof.
   intros CT sΓ rΓ h args vals argtypes ι qcontext Hreceiveraddr Hreceiverrmut Hwf Hstatic Hruntime.
   unfold wf_r_config in Hwf.
@@ -911,7 +923,7 @@ Proof.
       assert (Ha_bound : a < List.length sΓ) by (apply static_getType_dom in HstaticT; exact HstaticT).
       specialize (Hcorr ι qcontext Hreceiveraddr Hreceiverrmut a Ha_bound T HstaticT).
       rewrite HruntimeV in Hcorr.
-      destruct v as [|loc]; [trivial | exact Hcorr].
+      destruct v as [|loc|n]; [trivial | exact Hcorr | trivial].
     + (* Apply IH to the tail *)
       apply IH.
       * unfold static_getType_list. reflexivity.
@@ -1120,10 +1132,11 @@ Lemma expr_eval_preservation : forall P CT sΓ mt rΓ h e v rΓ' h' T ι qcontex
   (Hwf           : wf_r_config CT sΓ rΓ h)
   (Htype         : expr_has_type CT sΓ mt e T)
   (Heval         : eval_expr OK P CT rΓ h e v OK P rΓ' h'),
-  match v with
-  | Null_a => True
-  | Iot loc => wf_r_typable CT rΓ h loc T qcontext
-  end.
+    match v with
+    | Null_a => True
+    | Iot loc => wf_r_typable CT rΓ h loc T qcontext
+    | Int _ => True
+    end.
 Proof.
   intros P CT sΓ mt rΓ h e v rΓ' h' T ι qcontext Hreceiveraddr Hreceiverrmut Hwf Htype Heval.
   have Hevalcopy := Heval.
@@ -1136,9 +1149,11 @@ Proof.
     assert (Hx_bound : x < List.length sΓ) by (apply static_getType_dom in Hget; exact Hget).
     specialize (Hcorr ι qcontext Hreceiveraddr Hreceiverrmut x Hx_bound T Hget).
     rewrite Hval in Hcorr.
-    destruct v as [|loc]; [trivial | exact Hcorr].
+    destruct v as [|loc|n]; [trivial | exact Hcorr | trivial].
+  - (* EBS_Int *)
+    trivial.
   - (* EBS_Field *)
-  destruct v1 as [|loc]; [trivial|].
+  destruct v1 as [|loc|n]; [trivial| | trivial].
   (* Need to show: wf_r_typable CT rΓ h loc (vpa_type_to_type T0 ...) *)
   unfold wf_r_config in Hwf.
   destruct Hwf as [Hwfclass [Hwf_heap [Hwf_renv [Hwf_senv [_ Hcorr]]]]].
@@ -1218,7 +1233,7 @@ Proof.
         injection Hv0 as Hv0_eq.
         subst v0.
         (* So v1 = v0, and from Hthis we know v1 = Null_a *)
-        destruct v1 as [|loc'].
+        destruct v1 as [|loc'|n].
         + (* v1 = Null_a, consistent with Hthis *)
           (* But this contradicts well-formedness - need stronger condition *)
           (* For now, this might be an allowed case *)
@@ -1231,6 +1246,11 @@ Proof.
         + (* v1 = Iot loc', should make get_this_var_mapping return Some loc' *)
           simpl in Hthis.
           discriminate Hthis.
+        + (* v1 = Int n, not a valid receiver *)
+          destruct Hwf_this_addr as [iot Hiot].
+          simpl in Hiot.
+          destruct Hiot as [Hiot Hthisdom].
+          discriminate Hiot.
       - (* vars[0] doesn't exist, contradicts length > 0 *)
         apply nth_error_None in Hv0.
         simpl in H0_bound.
@@ -1253,7 +1273,7 @@ Proof.
           - (* Empty list case *)
             discriminate Hthis.
           - (* Non-empty list case *)
-            destruct vtest as [|loctest] eqn:Hv.
+            destruct vtest as [|loctest|n] eqn:Hv.
             + (* Null_a case *)
               discriminate Hthis.
             + (* Iot loc case *)
@@ -1262,6 +1282,8 @@ Proof.
               simpl in Hiot.
               injection Hiot as Heq2.
               exact Heq2.
+            + (* Int case *)
+              discriminate Hthis.
         }
         rewrite Hconnect. exact Hthisdom.
       }
@@ -1276,13 +1298,14 @@ Proof.
         unfold get_this_var_mapping in Hthis.
         destruct (vars rΓ) as [|vtest rest] eqn:Hvars.
         - discriminate Hthis.
-        - destruct vtest as [|loctest] eqn:Hv.
+        - destruct vtest as [|loctest|n] eqn:Hv.
           + discriminate Hthis.
           + injection Hthis as Heq.
             subst ι'.
             simpl in Hiot.
             injection Hiot as Heq2.
             exact Heq2.
+          + discriminate Hthis.
       }
       rewrite Hconnect in Hmut.
       unfold r_muttype in Hmut.
@@ -1393,7 +1416,7 @@ Proof.
     all: try unfold vpa_mutability_rs; try unfold vpa_mutability_stype_fld in *; try unfold vpa_mutability_rec_fld in Hqualifiertypable; try easy.
   *  exfalso. exact Hforall2.
   -
-  destruct v1 as [|loc]; [trivial|].
+    destruct v1 as [|loc|n]; [trivial| | trivial].
   (* Need to show: wf_r_typable CT rΓ h loc (vpa_type_to_type T0 ...) *)
   unfold wf_r_config in Hwf.
   destruct Hwf as [Hwfclass [Hwf_heap [Hwf_renv [Hwf_senv [_ Hcorr]]]]].
@@ -1473,7 +1496,7 @@ Proof.
         injection Hv0 as Hv0_eq.
         subst v0.
         (* So v1 = v0, and from Hthis we know v1 = Null_a *)
-        destruct v1 as [|loc'].
+        destruct v1 as [|loc'|n].
         + (* v1 = Null_a, consistent with Hthis *)
           (* But this contradicts well-formedness - need stronger condition *)
           (* For now, this might be an allowed case *)
@@ -1486,6 +1509,11 @@ Proof.
         + (* v1 = Iot loc', should make get_this_var_mapping return Some loc' *)
           simpl in Hthis.
           discriminate Hthis.
+        + (* v1 = Int n, not a valid receiver *)
+          destruct Hwf_this_addr as [iot Hiot].
+          simpl in Hiot.
+          destruct Hiot as [Hiot Hthisdom].
+          discriminate Hiot.
       - (* vars[0] doesn't exist, contradicts length > 0 *)
         apply nth_error_None in Hv0.
         simpl in H0_bound.
@@ -1508,7 +1536,7 @@ Proof.
           - (* Empty list case *)
             discriminate Hthis.
           - (* Non-empty list case *)
-            destruct vtest as [|loctest] eqn:Hv.
+            destruct vtest as [|loctest|n] eqn:Hv.
             + (* Null_a case *)
               discriminate Hthis.
             + (* Iot loc case *)
@@ -1517,6 +1545,8 @@ Proof.
               simpl in Hiot.
               injection Hiot as Heq2.
               exact Heq2.
+            + (* Int case *)
+              discriminate Hthis.
         }
         rewrite Hconnect. exact Hthisdom.
       }
@@ -1531,13 +1561,14 @@ Proof.
         unfold get_this_var_mapping in Hthis.
         destruct (vars rΓ) as [|vtest rest] eqn:Hvars.
         - discriminate Hthis.
-        - destruct vtest as [|loctest] eqn:Hv.
+        - destruct vtest as [|loctest|n] eqn:Hv.
           + discriminate Hthis.
           + injection Hthis as Heq.
             subst ι'.
             simpl in Hiot.
             injection Hiot as Heq2.
             exact Heq2.
+          + discriminate Hthis.
       }
       rewrite Hconnect in Hmut.
       unfold r_muttype in Hmut.
@@ -1653,10 +1684,11 @@ Qed.
 Lemma runtime_lookup_list_preserves_wf_values : forall CT rΓ h zs vals0
   (Hwf_renv : wf_renv CT rΓ h)
   (Hlookup  : runtime_lookup_list rΓ zs = Some vals0),
-  Forall (fun v => match v with
-    | Null_a => True
-    | Iot loc => match runtime_getObj h loc with Some _ => True | None => False end
-    end) vals0.
+    Forall (fun v => match v with
+      | Null_a => True
+      | Iot loc => match runtime_getObj h loc with Some _ => True | None => False end
+      | Int _ => True
+      end) vals0.
 Proof.
   intros CT rΓ h zs vals0 Hwf_renv Hlookup.
   unfold runtime_lookup_list in Hlookup.
@@ -1678,7 +1710,7 @@ Proof.
     subst vals0.
     constructor.
     + (* Show v is well-formed *)
-      destruct v as [|loc].
+      destruct v as [|loc|n].
       * (* Case: Null_a *)
         trivial.
       * (* Case: Iot loc *)
@@ -1690,6 +1722,8 @@ Proof.
         assert (Hloc_wf := Forall_nth_error _ _ _ _ Hallvals Hv).
         simpl in Hloc_wf.
         exact Hloc_wf.
+      * (* Case: Int n *)
+        trivial.
     + (* Show vs is well-formed *)
       apply IH.
       reflexivity.
@@ -1699,10 +1733,11 @@ Lemma method_frame_vals_wf : forall CT rΓ h ly vals0 zs cy
   (Hwf_renv : wf_renv CT rΓ h)
   (Hly_base : r_basetype h ly = Some cy)
   (Hlookup  : runtime_lookup_list rΓ zs = Some vals0),
-  Forall (fun value => match value with
-    | Null_a => True
-    | Iot loc => match runtime_getObj h loc with Some _ => True | None => False end
-    end) (Iot ly :: vals0).
+    Forall (fun value => match value with
+      | Null_a => True
+      | Iot loc => match runtime_getObj h loc with Some _ => True | None => False end
+      | Int _ => True
+      end) (Iot ly :: vals0).
 Proof.
   intros CT rΓ h ly vals0 zs cy Hwf_renv Hly_base Hlookup.
   constructor.

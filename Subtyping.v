@@ -40,18 +40,18 @@ Inductive q_subtype : q -> q -> Prop :=
   | q_rd : forall q1,
       q_subtype q1 RO
   | q_bot : forall q1,
-      q_subtype Bot q1
-where "q1 ⊑ q2" := (q_subtype q1 q2).
+      q_subtype Bot q1.
 Global Hint Constructors q_subtype: typ.
 
-Example lost_subtype_refl: Lost ⊑ Lost -> False.
+Example lost_subtype_refl: q_subtype Lost Lost -> False.
 Proof.
   intros H.
   inversion H; subst; try congruence.
 Qed.
 
 (* Subtyping for qualified types *)
-Lemma q_subtype_trans: forall μ1 μ2 μ3, μ1 ⊑ μ2 -> μ2 ⊑ μ3 -> μ1 ⊑ μ3.
+Lemma q_subtype_trans: forall μ1 μ2 μ3,
+  q_subtype μ1 μ2 -> q_subtype μ2 μ3 -> q_subtype μ1 μ3.
 Proof.
   intros.
   inversion H; steps;

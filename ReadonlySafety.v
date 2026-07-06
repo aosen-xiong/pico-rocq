@@ -763,7 +763,7 @@ Theorem readonly_method_call_preserves_arguments :
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
           - (* Parameter i' exists *)
-            destruct v as [|loc]; [trivial|].
+            destruct v as [|loc|n]; [trivial| | trivial].
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in Harg_sub.
@@ -793,6 +793,7 @@ Theorem readonly_method_call_preserves_arguments :
                       | Some _ => True
                       | None => False
                       end
+                  | Int _ => True
                   end) vals).
               {
                 eapply runtime_lookup_list_preserves_wf_values; eauto.
@@ -1430,7 +1431,7 @@ Theorem readonly_method_call_preserves_arguments :
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
           - (* Parameter i' exists *)
-            destruct v as [|loc]; [trivial|].
+            destruct v as [|loc|n]; [trivial| | trivial].
             (* Use Hrcv_sub to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -1461,6 +1462,7 @@ Theorem readonly_method_call_preserves_arguments :
                       | Some _ => True
                       | None => False
                       end
+                  | Int _ => True
                   end) vals).
               {
                 eapply runtime_lookup_list_preserves_wf_values; eauto.

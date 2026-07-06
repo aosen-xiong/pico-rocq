@@ -527,6 +527,12 @@ Inductive expr_has_type : class_table -> s_env -> method_type -> expr -> qualifi
       (Hget : static_getType Γ x = Some T),
       expr_has_type CT Γ mt (EVar x) T
 
+  (* Integer literal typing *)
+  | ET_Int : forall CT Γ mt n
+      (Hwf : wf_senv CT Γ)
+      (Hdom : int_class_name < dom CT),
+      expr_has_type CT Γ mt (EInt n) int_type
+
   (* Field access typing — AbstractImm scope *)
   | ET_Field_abs_imm : forall CT Γ x T fDef f
       (Hwf      : wf_senv CT Γ)
@@ -981,6 +987,8 @@ Proof.
   - (* ET_Var case *)
     (* Use the fact that variables in well-formed environments have bounded types *)
     eapply senv_var_domain; eauto.
+  - (* ET_Int case *)
+    exact Hdom.
   - (* ET_Field case *)
     assert (Hwf_field : wf_field CT fDef).
     {

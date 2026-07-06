@@ -597,7 +597,7 @@ Proof.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
           - (* Parameter i' exists *)
-            destruct v as [|loc]; [trivial|].
+            destruct v as [|loc|n]; [trivial| | trivial].
             (* Use Hmethod_case to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -628,6 +628,7 @@ Proof.
                       | Some _ => True
                       | None => False
                       end
+                  | Int _ => True
                   end) vals).
               {
                 eapply runtime_lookup_list_preserves_wf_values; eauto.
@@ -1469,7 +1470,7 @@ Proof.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
           - (* Parameter i' exists *)
-            destruct v as [|loc]; [trivial|].
+            destruct v as [|loc|n]; [trivial| | trivial].
             (* Use Hmethod_case to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -1500,6 +1501,7 @@ Proof.
                       | Some _ => True
                       | None => False
                       end
+                  | Int _ => True
                   end) vals).
               {
                 eapply runtime_lookup_list_preserves_wf_values; eauto.

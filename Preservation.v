@@ -461,7 +461,7 @@ Proof.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
         --- (* Parameter i' exists *)
-          destruct v as [|loc]; [trivial|].
+          destruct v as [|loc|n]; [trivial| | trivial].
           (* Use Hret_sub to get the subtyping relationship *)
           assert (Hi'_bound : i' < List.length argtypes).
           {
@@ -494,6 +494,7 @@ Proof.
                     | Some _ => True
                     | None => False
                     end
+                | Int _ => True
                 end) vals).
             {
               unfold wf_r_config in Hwfcopy.
@@ -673,8 +674,7 @@ Proof.
         destruct x as [|x'].
         easy.
         simpl.
-        destruct v0 as [|loc]; [trivial|].
-        exact Hget_iot.
+          destruct v0 as [|loc|n]; [trivial| exact Hget_iot | trivial].
         (* rewrite <- getmbody in Htyping_method. *)
         have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         lia.
@@ -685,23 +685,27 @@ Proof.
         eapply Forall_update; eauto.
         eapply Forall_impl; [|exact Hrenvval].
         intros v Hv.
-        destruct v as [|loc]; [trivial|].
-        destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
+          destruct v as [|loc|n].
+          trivial.
+          destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
         have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.
         trivial.
-        exfalso. apply runtime_getObj_not_dom in Hobj'. lia.
-        unfold runtime_getVal in Hretval.
-        destruct retval as [|loc]; [trivial|].
-        unfold wf_renv in Hrenvinit.
+          exfalso. apply runtime_getObj_not_dom in Hobj'. lia.
+          trivial.
+          unfold runtime_getVal in Hretval.
+          destruct retval as [|loc|n].
+          trivial.
+          unfold wf_renv in Hrenvinit.
         destruct Hrenvinit as [_ [_ Hrenv_wf]].
         eapply Forall_nth_error in Hrenv_wf; eauto.
         simpl in Hrenv_wf.
         destruct (runtime_getObj h' loc) as [obj|] eqn:Hobjloc; [trivial|].
-        contradiction.
+          contradiction.
+          trivial.
         apply static_getType_dom in Hget_x.
         rewrite Hlen in Hget_x.
         exact Hget_x.
@@ -745,8 +749,10 @@ Proof.
             subst sqt.
             (* Use the fact that retval is well-typed from method return *)
             unfold runtime_getVal in Hretval.
-            destruct retval as [|loc]; [trivial|].
-            assert (Hret_dom : mreturn (Syntax.mbody mdef) < dom (vars rΓ'')).
+              destruct retval as [|loc_ret|nret].
+              * simpl. exact I.
+              *
+              assert (Hret_dom : mreturn (Syntax.mbody mdef) < dom (vars rΓ'')).
             {
               apply nth_error_Some.
               rewrite <- getmbody.
@@ -781,14 +787,20 @@ Proof.
             have Hcorrinit_copy := Hcorrinit.
             specialize (Hcorrinit ly q HreceiverAddrInit HInnerReceiverEndFrame (mreturn (Syntax.mbody mdef)) Hret_dom mrettype Hnth_mbodyret).
             destruct (runtime_getVal rΓ'' (mreturn (Syntax.mbody mdef))) eqn: Hmet_val; [|easy].
-            destruct v.
-            2:{
+                  destruct v as [|loc|n].
+                {
+                  unfold runtime_getVal in Hmet_val.
+                  rewrite getmbody in Hretval.
+                  rewrite Hmet_val in Hretval.
+                  discriminate Hretval.
+                }
+              {
               assert (Hy_dom : y < dom sΓ').
               {
                 apply static_getType_dom in Hget_y.
                 exact Hget_y.
               }
-              assert (Houtter_receiver_exists : exists lOutterReceiver, get_this_var_mapping (vars rΓ) = Some lOutterReceiver).
+                assert (Houtter_receiver_exists : exists lOutterReceiver, get_this_var_mapping (vars rΓ) = Some lOutterReceiver).
               {
                 eapply get_this_exists_from_wf_r_config; eauto.
               }
@@ -826,7 +838,7 @@ Proof.
               unfold wf_r_typable in Hcorrinit.
               unfold r_type in Hcorrinit.
               unfold runtime_getObj in Hcorrinit.
-              destruct (nth_error h' l) eqn: Hobjh'; [|easy].
+                destruct (nth_error h' loc_ret) eqn: Hobjh'; [|easy].
               destruct Hcorrinit as [Hrorettypebase Hrorettypequalifier].
               split.
 
@@ -969,11 +981,12 @@ Proof.
                 try solve_qualifier_typable_wrong_concrete.
               }
             }
-            unfold runtime_getVal in Hmet_val.
-            rewrite getmbody in Hretval.
-            rewrite Hretval in Hmet_val.
-            easy.
-        - (* Case: i ≠ x (unchanged variable) *)
+              unfold runtime_getVal in Hmet_val.
+              rewrite getmbody in Hretval.
+              rewrite Hretval in Hmet_val.
+              easy.
+              * simpl. exact I.
+          - (* Case: i ≠ x (unchanged variable) *)
           rewrite HeqrΓ'''.
           simpl.
           unfold runtime_getVal.
@@ -987,7 +1000,7 @@ Proof.
           specialize (Hcorr outterreceiveriot qrout Hget_outter_iot HoutreceiverMutabilityType i Hi sqt Hnth).
           unfold runtime_getVal in Hcorr.
           destruct (nth_error (vars rΓ) i) as [v|] eqn:Hgetval; [|exact Hcorr].
-          destruct v as [|loc]; [trivial|].
+          destruct v as [|loc|n]; [trivial| | trivial].
           (* Need to show wf_r_typable is preserved when changing runtime environment and heap *)
           unfold wf_r_typable in Hcorr |- *.
           destruct (r_type h loc) as [rqt|] eqn:Hrtype; [|contradiction].
@@ -1404,7 +1417,7 @@ Proof.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
           - (* Parameter i' exists *)
-            destruct v as [|loc]; [trivial|].
+            destruct v as [|loc|n]; [trivial| | trivial].
             (* Use Hret_sub to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -1435,6 +1448,7 @@ Proof.
                       | Some _ => True
                       | None => False
                       end
+                  | Int _ => True
                   end) vals).
               {
                 eapply runtime_lookup_list_preserves_wf_values; eauto.
@@ -1621,9 +1635,8 @@ Proof.
         destruct x as [|x'].
         easy.
         simpl.
-        destruct v0 as [|loc]; [trivial|].
-        unfold get_this_var_mapping in Hget_iot.
-        exact Hget_iot.
+          unfold get_this_var_mapping in Hget_iot.
+          destruct v0 as [|loc|n]; [trivial| exact Hget_iot | trivial].
 
         (* length constraint *)
         have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
@@ -1635,23 +1648,27 @@ Proof.
         eapply Forall_update; eauto.
         eapply Forall_impl; [|exact Hrenvval].
         intros v Hv.
-        destruct v as [|loc]; [trivial|].
-        destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
+          destruct v as [|loc|n].
+          trivial.
+          destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
         have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.
         trivial.
-        exfalso. apply runtime_getObj_not_dom in Hobj'. lia.
-        unfold runtime_getVal in Hretval.
-        destruct retval as [|loc]; [trivial|].
-        unfold wf_renv in Hrenvinit.
+          exfalso. apply runtime_getObj_not_dom in Hobj'. lia.
+          trivial.
+          unfold runtime_getVal in Hretval.
+          destruct retval as [|loc|n].
+          trivial.
+          unfold wf_renv in Hrenvinit.
         destruct Hrenvinit as [_ [_ Hrenv_wf]].
         eapply Forall_nth_error in Hrenv_wf; eauto.
         simpl in Hrenv_wf.
         destruct (runtime_getObj h' loc) as [obj|] eqn:Hobjloc; [trivial|].
-        contradiction.
+          contradiction.
+          trivial.
         apply static_getType_dom in Hget_x.
         rewrite Hlen in Hget_x.
         exact Hget_x.
@@ -1690,7 +1707,9 @@ Proof.
             subst sqt.
             (* Use the fact that retval is well-typed from method return *)
             unfold runtime_getVal in Hretval.
-            destruct retval as [|loc]; [trivial|].
+              destruct retval as [|loc_ret|nret].
+              * simpl. exact I.
+              *
             assert (Hret_dom : mreturn (Syntax.mbody mdef) < dom (vars rΓ'')).
             {
               apply nth_error_Some.
@@ -1745,7 +1764,7 @@ Proof.
             specialize (Hcorrinit (mreturn (Syntax.mbody mdef)) Hret_dom mrettype Hnth_mbodyret).
             unfold wf_r_typable.
             unfold r_type.
-            destruct (runtime_getObj h' loc) as [retobj|] eqn:HReturnObject.
+              destruct (runtime_getObj h' loc_ret) as [retobj|] eqn:HReturnObject.
             2:{
               unfold runtime_getVal in Hcorrinit.
               rewrite getmbody in Hretval.
@@ -1778,8 +1797,14 @@ Proof.
             }
             rewrite Hleninit in Hmbodyretvar_dom.
             destruct (runtime_getVal rΓ'' (mreturn (Syntax.mbody mdef))) eqn: Hmet_val; [|easy].
-            destruct v.
-            2:{
+              destruct v as [|loc|n].
+              {
+                unfold runtime_getVal in Hmet_val.
+                rewrite getmbody in Hretval.
+                rewrite Hmet_val in Hretval.
+                discriminate Hretval.
+              }
+              {
               unfold runtime_getVal in Hmet_val.
               rewrite getmbody in Hretval.
               rewrite Hmet_val in Hretval.
@@ -1791,7 +1816,7 @@ Proof.
               unfold wf_r_typable in Hcorrinit.
               unfold r_type in Hcorrinit.
               unfold runtime_getObj in Hcorrinit.
-              destruct (nth_error h' l) eqn: Hobjh'; [|contradiction].
+                destruct (nth_error h' loc_ret) eqn: Hobjh'; [|contradiction].
               assert (o = retobj).
               {
                 unfold runtime_getObj in HReturnObject.
@@ -1799,7 +1824,7 @@ Proof.
                 inversion HReturnObject; subst retobj.
                 reflexivity.
               }
-              subst o.
+                subst o.
               destruct Hcorrinit as [Hrorettypebase Hrorettypequalifier].
               destruct Hsubtype_ret as [Hsubtype_ret Hmethodoveride].
             
@@ -1922,11 +1947,12 @@ Proof.
                 try solve_qualifier_typable_wrong_concrete.
               }
             }
-            unfold runtime_getVal in Hmet_val.
-            rewrite getmbody in Hretval.
-            rewrite Hretval in Hmet_val.
-            easy.
-        - (* Case: i ≠ x (unchanged variable) *)
+              unfold runtime_getVal in Hmet_val.
+              rewrite getmbody in Hretval.
+              rewrite Hretval in Hmet_val.
+              easy.
+              * simpl. exact I.
+          - (* Case: i ≠ x (unchanged variable) *)
           rewrite HeqrΓ'''.
           simpl.
           unfold runtime_getVal.
@@ -1944,7 +1970,7 @@ Proof.
           specialize (Hcorr outterreceiveinitriot qoutter Hget_outter_iot HOutterReceiverMutabilityInit i Hi sqt Hnth).
           unfold runtime_getVal in Hcorr.
           destruct (nth_error (vars rΓ) i) as [v|] eqn:Hgetval; [|exact Hcorr].
-          destruct v as [|loc]; [trivial|].
+          destruct v as [|loc|n]; [trivial| | trivial].
           (* Need to show wf_r_typable is preserved when changing runtime environment and heap *)
           unfold wf_r_typable in Hcorr |- *.
           destruct (r_type h loc) as [rqt|] eqn:Hrtype; [|contradiction].
@@ -2404,7 +2430,7 @@ Proof.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
         --- (* Parameter i' exists *)
-          destruct v as [|loc]; [trivial|].
+          destruct v as [|loc|n]; [trivial| | trivial].
           (* Use Hret_sub to get the subtyping relationship *)
           assert (Hi'_bound : i' < List.length argtypes).
           {
@@ -2437,6 +2463,7 @@ Proof.
                     | Some _ => True
                     | None => False
                     end
+                | Int _ => True
                 end) vals).
             {
               unfold wf_r_config in Hwfcopy.
@@ -2616,8 +2643,7 @@ Proof.
         destruct x as [|x'].
         easy.
         simpl.
-        destruct v0 as [|loc]; [trivial|].
-        exact Hget_iot.
+          destruct v0 as [|loc|n]; [trivial| exact Hget_iot | trivial].
         (* rewrite <- getmbody in Htyping_method. *)
         have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         lia.
@@ -2628,23 +2654,27 @@ Proof.
         eapply Forall_update; eauto.
         eapply Forall_impl; [|exact Hrenvval].
         intros v Hv.
-        destruct v as [|loc]; [trivial|].
-        destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
+          destruct v as [|loc|n].
+          trivial.
+          destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
         have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.
         trivial.
-        exfalso. apply runtime_getObj_not_dom in Hobj'. lia.
-        unfold runtime_getVal in Hretval.
-        destruct retval as [|loc]; [trivial|].
-        unfold wf_renv in Hrenvinit.
+          exfalso. apply runtime_getObj_not_dom in Hobj'. lia.
+          trivial.
+          unfold runtime_getVal in Hretval.
+          destruct retval as [|loc|n].
+          trivial.
+          unfold wf_renv in Hrenvinit.
         destruct Hrenvinit as [_ [_ Hrenv_wf]].
         eapply Forall_nth_error in Hrenv_wf; eauto.
         simpl in Hrenv_wf.
         destruct (runtime_getObj h' loc) as [obj|] eqn:Hobjloc; [trivial|].
-        contradiction.
+          contradiction.
+          trivial.
         apply static_getType_dom in Hget_x.
         rewrite Hlen in Hget_x.
         exact Hget_x.
@@ -2688,7 +2718,9 @@ Proof.
             subst sqt.
             (* Use the fact that retval is well-typed from method return *)
             unfold runtime_getVal in Hretval.
-            destruct retval as [|loc]; [trivial|].
+              destruct retval as [|loc_ret|nret].
+              * simpl. exact I.
+              *
             assert (Hret_dom : mreturn (Syntax.mbody mdef) < dom (vars rΓ'')).
             {
               apply nth_error_Some.
@@ -2723,8 +2755,14 @@ Proof.
             have Hcorrinit_copy := Hcorrinit.
             specialize (Hcorrinit ly q HreceiverAddrInit HInnerReceiverEndFrame (mreturn (Syntax.mbody mdef)) Hret_dom mrettype Hnth_mbodyret).
             destruct (runtime_getVal rΓ'' (mreturn (Syntax.mbody mdef))) eqn: Hmet_val; [|easy].
-            destruct v.
-            2:{
+              destruct v as [|loc|n].
+              {
+                unfold runtime_getVal in Hmet_val.
+                rewrite getmbody in Hretval.
+                rewrite Hmet_val in Hretval.
+                discriminate Hretval.
+              }
+              {
               assert (Hy_dom : y < dom sΓ').
               {
                 apply static_getType_dom in Hget_y.
@@ -2768,7 +2806,7 @@ Proof.
               unfold wf_r_typable in Hcorrinit.
               unfold r_type in Hcorrinit.
               unfold runtime_getObj in Hcorrinit.
-              destruct (nth_error h' l) eqn: Hobjh'; [|easy].
+                destruct (nth_error h' loc_ret) eqn: Hobjh'; [|easy].
               destruct Hcorrinit as [Hrorettypebase Hrorettypequalifier].
               split.
 
@@ -2910,12 +2948,15 @@ Proof.
                 destruct qinner eqn:HInnerReceiverRuntimeMutability; move HInnerReceiverRuntimeMutability at bottom;
                 try solve_qualifier_typable_wrong_concrete.
               }
-            }
-            unfold runtime_getVal in Hmet_val.
-            rewrite getmbody in Hretval.
-            rewrite Hretval in Hmet_val.
-            easy.
-        - (* Case: i ≠ x (unchanged variable) *)
+              }
+              {
+                unfold runtime_getVal in Hmet_val.
+                rewrite getmbody in Hretval.
+                rewrite Hmet_val in Hretval.
+                discriminate Hretval.
+              }
+              * simpl. exact I.
+          - (* Case: i ≠ x (unchanged variable) *)
           rewrite HeqrΓ'''.
           simpl.
           unfold runtime_getVal.
@@ -2929,7 +2970,7 @@ Proof.
           specialize (Hcorr outterreceiveriot qrout Hget_outter_iot HoutreceiverMutabilityType i Hi sqt Hnth).
           unfold runtime_getVal in Hcorr.
           destruct (nth_error (vars rΓ) i) as [v|] eqn:Hgetval; [|exact Hcorr].
-          destruct v as [|loc]; [trivial|].
+          destruct v as [|loc|n]; [trivial| | trivial].
           (* Need to show wf_r_typable is preserved when changing runtime environment and heap *)
           unfold wf_r_typable in Hcorr |- *.
           destruct (r_type h loc) as [rqt|] eqn:Hrtype; [|contradiction].
@@ -3346,7 +3387,7 @@ Proof.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
           - (* Parameter i' exists *)
-            destruct v as [|loc]; [trivial|].
+            destruct v as [|loc|n]; [trivial| | trivial].
             (* Use Hret_sub to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -3377,6 +3418,7 @@ Proof.
                       | Some _ => True
                       | None => False
                       end
+                  | Int _ => True
                   end) vals).
               {
                 eapply runtime_lookup_list_preserves_wf_values; eauto.
@@ -3562,9 +3604,8 @@ Proof.
         destruct x as [|x'].
         easy.
         simpl.
-        destruct v0 as [|loc]; [trivial|].
-        unfold get_this_var_mapping in Hget_iot.
-        exact Hget_iot.
+          unfold get_this_var_mapping in Hget_iot.
+          destruct v0 as [|loc|n]; [trivial| exact Hget_iot | trivial].
 
         (* length constraint *)
         have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
@@ -3576,23 +3617,27 @@ Proof.
         eapply Forall_update; eauto.
         eapply Forall_impl; [|exact Hrenvval].
         intros v Hv.
-        destruct v as [|loc]; [trivial|].
-        destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
+          destruct v as [|loc|n].
+          trivial.
+          destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
         have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.
         trivial.
-        exfalso. apply runtime_getObj_not_dom in Hobj'. lia.
-        unfold runtime_getVal in Hretval.
-        destruct retval as [|loc]; [trivial|].
+          exfalso. apply runtime_getObj_not_dom in Hobj'. lia.
+          trivial.
+          unfold runtime_getVal in Hretval.
+          destruct retval as [|loc|n].
+          trivial.
         unfold wf_renv in Hrenvinit.
         destruct Hrenvinit as [_ [_ Hrenv_wf]].
         eapply Forall_nth_error in Hrenv_wf; eauto.
         simpl in Hrenv_wf.
         destruct (runtime_getObj h' loc) as [obj|] eqn:Hobjloc; [trivial|].
-        contradiction.
+          contradiction.
+          trivial.
         apply static_getType_dom in Hget_x.
         rewrite Hlen in Hget_x.
         exact Hget_x.
@@ -3631,7 +3676,9 @@ Proof.
             subst sqt.
             (* Use the fact that retval is well-typed from method return *)
             unfold runtime_getVal in Hretval.
-            destruct retval as [|loc]; [trivial|].
+              destruct retval as [|loc_ret|nret].
+              * simpl. exact I.
+              *
             assert (Hret_dom : mreturn (Syntax.mbody mdef) < dom (vars rΓ'')).
             {
               apply nth_error_Some.
@@ -3686,7 +3733,7 @@ Proof.
             specialize (Hcorrinit (mreturn (Syntax.mbody mdef)) Hret_dom mrettype Hnth_mbodyret).
             unfold wf_r_typable.
             unfold r_type.
-            destruct (runtime_getObj h' loc) as [retobj|] eqn:HReturnObject.
+              destruct (runtime_getObj h' loc_ret) as [retobj|] eqn:HReturnObject.
             2:{
               unfold runtime_getVal in Hcorrinit.
               rewrite getmbody in Hretval.
@@ -3719,8 +3766,14 @@ Proof.
             }
             rewrite Hleninit in Hmbodyretvar_dom.
             destruct (runtime_getVal rΓ'' (mreturn (Syntax.mbody mdef))) eqn: Hmet_val; [|easy].
-            destruct v.
-            2:{
+              destruct v as [|loc|n].
+              {
+                unfold runtime_getVal in Hmet_val.
+                rewrite getmbody in Hretval.
+                rewrite Hmet_val in Hretval.
+                discriminate Hretval.
+              }
+              {
               unfold runtime_getVal in Hmet_val.
               rewrite getmbody in Hretval.
               rewrite Hmet_val in Hretval.
@@ -3732,7 +3785,7 @@ Proof.
               unfold wf_r_typable in Hcorrinit.
               unfold r_type in Hcorrinit.
               unfold runtime_getObj in Hcorrinit.
-              destruct (nth_error h' l) eqn: Hobjh'; [|contradiction].
+                destruct (nth_error h' loc_ret) eqn: Hobjh'; [|contradiction].
               assert (o = retobj).
               {
                 unfold runtime_getObj in HReturnObject.
@@ -3740,7 +3793,7 @@ Proof.
                 inversion HReturnObject; subst retobj.
                 reflexivity.
               }
-              subst o.
+                subst o.
               destruct Hcorrinit as [Hrorettypebase Hrorettypequalifier].
               destruct Hsubtype_ret as [Hsubtype_ret Hmethodoveride].
             
@@ -3863,11 +3916,12 @@ Proof.
                 try solve_qualifier_typable_wrong_concrete.
               }
             }
-            unfold runtime_getVal in Hmet_val.
-            rewrite getmbody in Hretval.
-            rewrite Hretval in Hmet_val.
-            easy.
-        - (* Case: i ≠ x (unchanged variable) *)
+              unfold runtime_getVal in Hmet_val.
+              rewrite getmbody in Hretval.
+              rewrite Hretval in Hmet_val.
+              easy.
+              * simpl. exact I.
+          - (* Case: i ≠ x (unchanged variable) *)
           rewrite HeqrΓ'''.
           simpl.
           unfold runtime_getVal.
@@ -3885,7 +3939,7 @@ Proof.
           specialize (Hcorr outterreceiveinitriot qoutter Hget_outter_iot HOutterReceiverMutabilityInit i Hi sqt Hnth).
           unfold runtime_getVal in Hcorr.
           destruct (nth_error (vars rΓ) i) as [v|] eqn:Hgetval; [|exact Hcorr].
-          destruct v as [|loc]; [trivial|].
+          destruct v as [|loc|n]; [trivial| | trivial].
           (* Need to show wf_r_typable is preserved when changing runtime environment and heap *)
           unfold wf_r_typable in Hcorr |- *.
           destruct (r_type h loc) as [rqt|] eqn:Hrtype; [|contradiction].

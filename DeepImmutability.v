@@ -548,7 +548,7 @@ Proof.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
         + (* Parameter i' exists *)
-          destruct v as [|loc]; [trivial|].
+          destruct v as [|loc|n]; [trivial| | trivial].
           assert (Hi'_bound : i' < List.length argtypes).
           {
             apply Forall2_length in Harg_sub.
@@ -674,7 +674,7 @@ Proof.
           simpl.
           destruct (nth_error vals i') as [v|] eqn:Hval_i.
           + (* Parameter i' exists *)
-            destruct v as [|loc]; [trivial|].
+            destruct v as [|loc|n]; [trivial| | trivial].
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in Harg_sub.
@@ -1180,7 +1180,7 @@ Proof.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
         + (* Parameter i' exists *)
-          destruct v as [|loc]; [trivial|].
+          destruct v as [|loc|n]; [trivial| | trivial].
           assert (Hi'_bound : i' < List.length argtypes).
           {
             apply Forall2_length in Harg_sub.
@@ -1306,7 +1306,7 @@ Proof.
           simpl.
           destruct (nth_error vals i') as [v|] eqn:Hval_i.
           + (* Parameter i' exists *)
-            destruct v as [|loc]; [trivial|].
+            destruct v as [|loc|n]; [trivial| | trivial].
             assert (Hi'_bound : i' < List.length argtypes).
             {
               apply Forall2_length in Harg_sub.

@@ -12,6 +12,16 @@ Typing.v
 ObjectCreationExamples.v
 Reachability.v
 Bigstep.v
+DerivedCache.v
+ConcurrentPico.v
+WeakPico.v
+DerivedCacheIris.v
+DerivedCacheExamples.v
+DerivedCacheIrisExamples.v
+ConcurrentPicoExamples.v
+WeakPicoExamples.v
+StringCacheIris.v
+PicoIrisCacheBridge.v
 Properties.v
 Preservation.v
 DeepImmutability.v

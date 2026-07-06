@@ -6,6 +6,8 @@ Definition var : Type := nat.
 Definition method_name : Type := nat.
 Definition class_name : Type := nat.
 
+Definition int_class_name : class_name := 0.
+
 (** All Mutability Qualifer *)
 Inductive q : Type :=
   (* q_c *)
@@ -46,11 +48,15 @@ Record qualified_type := {
   sctype: class_name; (* Class name *)
 }.
 
+Definition int_type : qualified_type :=
+  Build_qualified_type Imm int_class_name.
+
 Definition s_env := list qualified_type.
 
 Inductive expr : Type :=
   | ENull : expr
   | EVar : var -> expr
+  | EInt : nat -> expr
   | EField : var -> var -> expr.
 
 Inductive stmt: Type :=
@@ -157,7 +163,8 @@ Definition Loc : Type := nat.
 (** Runtime Value *)
 Inductive value : Type :=
   | Null_a : value
-  | Iot: Loc -> value.
+  | Iot: Loc -> value
+  | Int: nat -> value.
 
 (** Variable Mapping *)
 Definition var_mapping   := list value.

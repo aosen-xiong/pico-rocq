@@ -13,6 +13,19 @@ Top-level theorem entry points:
 - `ConcreteImmutability.v`: `ConcreteImmutability`
 - `WFNOMutationEXP.v`: `well_typed_no_mutation_exp`
 
+Derived-cache and concurrency entry points:
+
+- `DerivedCache.v`: sequential derived-cache soundness for `Final` abstract
+  fields and `Assignable` integer cache fields.
+- `ConcurrentPico.v`: sequentially consistent interleaving model for PICO
+  thread pools sharing one heap.
+- `WeakPico.v`: weak-observation model for cache writes, with explicit
+  observed final-field snapshots.
+- `StringCacheIris.v`: Iris/heap_lang comparison model for a String-like hash
+  cache under SC interleaving concurrency.
+- `PicoIrisCacheBridge.v`: bridge/summary theorems collecting the sequential
+  PICO, SC PICO, weak-observation PICO, and Iris-facing results.
+
 ## Claims and proofs
 
 | Paper reference | Paper-level claim / premise | Mechanized premise in Rocq | Proved guarantee | Rocq theorem / file |
@@ -37,6 +50,13 @@ Top-level theorem entry points:
 | Theorem 4 | Safe readonly method call | Method call through readonly receiver; arguments are protected/readable; method body evaluates successfully | Readonly-reachable arguments remain protected across the call | `readonly_method_call_preserves_arguments` in [ReadonlySafety.v](ReadonlySafety.v) |
 | Theorem 4 support | Readonly field-write safety | Receiver expression has static type `RO`; field-write statement evaluates successfully; method scope is not `AbstractImm` | Protected field of the readonly-referenced object is unchanged | `readonly_pico_field_write` in [ReadonlySafety.v](ReadonlySafety.v) |
 | Theorem 5 | Concrete immutability | Method call occurs in `ConcreteImm` scope; receiver and all parameters are safe | Entire reachable receiver/argument object graph remains unchanged for all fields | `ConcreteImmutability` in [ConcreteImmutability.v](ConcreteImmutability.v) |
+| Derived cache, sequential | Writing an `Assignable` integer cache field derived from `Final` abstract fields is semantically sound | Abstract fields are `Final`; cache field is `Assignable`; the computed integer equals the derived function over the abstract-field reads | Final-field reads are preserved and the derived-cache protocol holds after the cache update | `derived_cache_update_sequence_sound` in [DerivedCache.v](DerivedCache.v) |
+| Derived cache, SC concurrency | Thread-pool execution uses one shared heap and interleaves one thread step at a time | Every heap transition is cache-safe for the target derived cache | The shared derived-cache invariant is preserved across all interleavings | `concurrent_steps_preserve_cache_state` in [ConcurrentPico.v](ConcurrentPico.v) |
+| Derived cache, SC accepted/rejected examples | SC cache writes may update only the assignable derived cache slot, not final abstract fields | Accepted transitions are stutters or derived-cache writes; rejected transitions change final-field reads | Accepted examples preserve the cache protocol; final-field changes are rejected | `simple_sc_accepts_cache_write`, `simple_sc_rejects_final_field_change` in [ConcurrentPicoExamples.v](ConcurrentPicoExamples.v) |
+| Derived cache, weak observations | Weak executions expose the abstract-field values observed by a cache computation | A weak cache-write event is accepted only when its observed final-field snapshot is coherent with the heap at commit time | Coherent weak cache writes preserve the derived-cache protocol | `weak_accepts_preserves_protocol`, `weak_execution_preserves_cache_state_for_target` in [WeakPico.v](WeakPico.v) |
+| Derived cache, weak rejected examples | Mixed or stale observations can compute a cache value that does not match the actual final fields | Candidate weak event observes values inconsistent with the heap snapshot at commit time | The candidate event/execution is rejected | `simple_weak_rejects_incoherent_cache_write`, `pair_weak_rejects_mixed_snapshot_execution` in [WeakPicoExamples.v](WeakPicoExamples.v) |
+| Iris comparison model | A String-like derived hash cache is modeled in Iris heap_lang with atomic heap operations and fork/join | `ImmString` invariant protects immutable payload and mutable cache fields; concurrency is heap_lang SC interleaving, not Java weak memory | Two joined concurrent `hashCode` calls both return the deterministic hash and preserve the invariant | `hashCode_spawn2_join_spec` in [StringCacheIris.v](StringCacheIris.v) |
+| Bridge summary | The artifact separates sequential PICO, SC PICO concurrency, weak-observation PICO, and Iris comparison results | Each model has an explicit theorem boundary and does not silently imply a stronger memory model | Main result shapes are re-exported as compact entry points | `pico_sequential_cache_result_from_eval`, `pico_concurrent_cache_result_from_steps`, `pico_weak_cache_result_from_coherent_execution`, `iris_sc_concurrent_hash_result_from_spawn` in [PicoIrisCacheBridge.v](PicoIrisCacheBridge.v) |
 | Proof integrity | No axioms/admitted proof gaps in submitted sources | Artifact sources exclude forbidden `Axiom`, `Admitted`, and `admit`, except bundled `LibTactics.v` support library | Mechanical checker passes | [scripts/check-no-axioms-admits.py](scripts/check-no-axioms-admits.py) via `make check` |
 
 ## Paper/Formalization Notes
@@ -50,6 +70,12 @@ Top-level theorem entry points:
   uses in well-formed static environments.
 - The method-call immutability theorems package receiver and parameter
   non-mutable premises through `all_params_safe`.
+- The derived-cache concurrency development is intentionally versioned.  The
+  SC PICO model is an interleaving semantics with one shared heap.  The weak
+  PICO model is not a full Java memory model; it is an explicit-observation
+  layer that accepts cache writes only when the observed final-field snapshot
+  is coherent.  `StringCacheIris.v` is an Iris/heap_lang comparison model, not
+  a replacement for the PICO semantics.
 
 ## Toolchain
 
