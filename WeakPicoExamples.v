@@ -201,6 +201,30 @@ Proof.
     + apply WE_Nil.
 Qed.
 
+Lemma simple_weak_two_duplicate_writes_coherent_candidate :
+  weak_coherent_candidate_execution
+    simple_CT
+    simple_derived
+    simple_sc_initial_heap
+    [simple_weak_coherent_event; simple_weak_coherent_rewrite_event]
+    simple_sc_cache_written_heap.
+Proof.
+  eapply weak_execution_to_coherent_candidate_execution.
+  apply simple_weak_two_duplicate_writes_execution.
+Qed.
+
+Lemma simple_weak_two_duplicate_writes_execution_from_coherence :
+  weak_execution
+    simple_CT
+    simple_derived
+    simple_sc_initial_heap
+    [simple_weak_coherent_event; simple_weak_coherent_rewrite_event]
+    simple_sc_cache_written_heap.
+Proof.
+  eapply weak_coherent_candidate_execution_to_execution.
+  apply simple_weak_two_duplicate_writes_coherent_candidate.
+Qed.
+
 Lemma simple_initial_concurrent_cache_state :
   concurrent_derived_cache_state
     simple_CT

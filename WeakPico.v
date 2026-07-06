@@ -149,6 +149,17 @@ Inductive weak_candidate_execution :
       weak_candidate_execution h' es h'' ->
       weak_candidate_execution h (e :: es) h''.
 
+Inductive weak_coherent_candidate_execution
+    (CT : class_table) (derived : list value -> nat) :
+    heap -> list weak_cache_write -> heap -> Prop :=
+  | WCCE_Nil : forall h,
+      weak_coherent_candidate_execution CT derived h [] h
+  | WCCE_Cons : forall h h' h'' e es,
+      weak_candidate_cache_transition h h' e ->
+      weak_cache_write_coherent CT h derived e ->
+      weak_coherent_candidate_execution CT derived h' es h'' ->
+      weak_coherent_candidate_execution CT derived h (e :: es) h''.
+
 Definition weak_rejects_execution
     (CT : class_table) (derived : list value -> nat)
     (h : heap) (events : list weak_cache_write) (h' : heap) : Prop :=
@@ -164,6 +175,41 @@ Proof.
   intros h h1 h2 e H1 H2.
   unfold weak_candidate_cache_transition, weak_cache_write_commit in *.
   congruence.
+Qed.
+
+Theorem weak_execution_to_coherent_candidate_execution :
+  forall CT derived h events h',
+    weak_execution CT derived h events h' ->
+    weak_coherent_candidate_execution CT derived h events h'.
+Proof.
+  intros CT derived h events h' Hexec.
+  induction Hexec as [h0 | h0 h1 h2 e es Haccepted Htail IH].
+  - apply WCCE_Nil.
+  - destruct Haccepted as [Hcandidate Hcoherent].
+    eapply WCCE_Cons; eauto.
+Qed.
+
+Theorem weak_coherent_candidate_execution_to_execution :
+  forall CT derived h events h',
+    weak_coherent_candidate_execution CT derived h events h' ->
+    weak_execution CT derived h events h'.
+Proof.
+  intros CT derived h events h' Hcoherent_exec.
+  induction Hcoherent_exec as
+    [h0 | h0 h1 h2 e es Hcandidate Hcoherent Htail IH].
+  - apply WE_Nil.
+  - eapply WE_Cons; eauto.
+    split; assumption.
+Qed.
+
+Theorem weak_execution_iff_coherent_candidate_execution :
+  forall CT derived h events h',
+    weak_execution CT derived h events h' <->
+    weak_coherent_candidate_execution CT derived h events h'.
+Proof.
+  split.
+  - apply weak_execution_to_coherent_candidate_execution.
+  - apply weak_coherent_candidate_execution_to_execution.
 Qed.
 
 Theorem weak_rejects_execution_at_head :
