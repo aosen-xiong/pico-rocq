@@ -115,6 +115,19 @@ Proof.
   - apply simple_weak_bad_heap_not_protocol.
 Qed.
 
+Lemma simple_weak_rejects_incoherent_after_coherent_cache_write :
+  weak_rejects_cache_transition
+    simple_CT
+    simple_sc_cache_written_heap
+    simple_weak_bad_heap
+    simple_derived
+    simple_weak_incoherent_event.
+Proof.
+  eapply weak_rejects_protocol_break.
+  - reflexivity.
+  - apply simple_weak_bad_heap_not_protocol.
+Qed.
+
 Lemma simple_weak_coherent_event_targets_cache :
   weak_event_targets_cache
     simple_loc
@@ -516,5 +529,27 @@ Proof.
   eapply weak_rejects_execution_at_head.
   - reflexivity.
   - apply pair_weak_rejects_mixed_snapshot.
+  - apply WCE_Nil.
+Qed.
+
+Lemma simple_weak_rejects_good_then_incoherent_execution :
+  weak_rejects_execution
+    simple_CT
+    simple_derived
+    simple_sc_initial_heap
+    [simple_weak_coherent_event; simple_weak_incoherent_event]
+    simple_weak_bad_heap.
+Proof.
+  change [simple_weak_coherent_event; simple_weak_incoherent_event] with
+    ([simple_weak_coherent_event] ++ simple_weak_incoherent_event :: []).
+  eapply weak_rejects_execution_with_rejected_event
+    with
+      (h_bad := simple_sc_cache_written_heap)
+      (h_after := simple_weak_bad_heap).
+  - eapply WCE_Cons.
+    + reflexivity.
+    + apply WCE_Nil.
+  - reflexivity.
+  - apply simple_weak_rejects_incoherent_after_coherent_cache_write.
   - apply WCE_Nil.
 Qed.

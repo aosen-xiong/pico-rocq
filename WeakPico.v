@@ -189,6 +189,42 @@ Proof.
     split; assumption.
 Qed.
 
+Theorem weak_rejects_execution_with_rejected_event :
+  forall CT derived h h_bad h_after h_final prefix e suffix,
+    weak_candidate_execution h prefix h_bad ->
+    weak_candidate_cache_transition h_bad h_after e ->
+    weak_rejects_cache_transition CT h_bad h_after derived e ->
+    weak_candidate_execution h_after suffix h_final ->
+    weak_rejects_execution
+      CT derived h (prefix ++ e :: suffix) h_final.
+Proof.
+  intros CT derived h h_bad h_after h_final prefix e suffix Hprefix.
+  revert h_after h_final e suffix.
+  induction Hprefix as [h0 | h0 h1 h2 e0 prefix_tail Hhead Htail IH].
+  - intros h_after h_final e suffix Hbad_candidate Hbad_reject Hsuffix.
+    simpl.
+    eapply weak_rejects_execution_at_head; eauto.
+  - intros h_after h_final e suffix Hbad_candidate Hbad_reject Hsuffix.
+    simpl.
+    destruct (IH h_after h_final e suffix
+      Hbad_candidate Hbad_reject Hsuffix) as
+      [Htail_candidate Htail_reject].
+    split.
+    + eapply WCE_Cons; eauto.
+    + intro Haccepted_execution.
+      inversion Haccepted_execution as
+        [|h_start h_acc h_end e_head events_tail
+          Haccepted_head Haccepted_tail]; subst.
+      destruct Haccepted_head as [Haccepted_candidate _].
+      assert (h_acc = h1).
+      {
+        eapply weak_candidate_cache_transition_deterministic; eauto.
+      }
+      subst h_acc.
+      apply Htail_reject.
+      exact Haccepted_tail.
+Qed.
+
 Lemma weak_accepts_preserves_cache_state_for_target :
   forall CT h h' loc C abs_fields cache_f derived e,
     weak_event_targets_cache loc C abs_fields cache_f e ->
