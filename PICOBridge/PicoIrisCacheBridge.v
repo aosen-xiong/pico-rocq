@@ -5,26 +5,26 @@ From iris.heap_lang.lib Require Import spawn.
 From Stdlib Require Import ZArith.
 
 Require Import Syntax Helpers Typing Bigstep.
-Require Import DerivedCache ConcurrentPico WeakPico DerivedCacheIris StringCacheIris.
+Require Import DerivedCache PICOBridge.ConcurrentPico PICOBridge.WeakPico Iris.DerivedCacheIris Examples.StringCacheIris.
 
-(* This file is the artifact boundary between the two models.
+(** * Boundary Between PICO, WeakPICO, and Iris Examples
 
-   PICO gives a sequential semantic theorem for a final-field-derived cache
-   update and a small interleaving machine for thread pools sharing one heap.
-   This is sequentially consistent concurrency, not Java's weak memory model.
+    PICO gives a sequential semantic theorem for a final-field-derived cache
+    update and a small interleaving machine for thread pools sharing one heap.
+    This is sequentially consistent concurrency, not Java's weak memory model.
 
-   WeakPico adds a second versioned model with explicit read observations.  It
-   accepts weak cache writes only when the observed final-field snapshot is
-   coherent with the shared heap at commit time.
+    [WeakPico] adds a second versioned model with explicit read observations.
+    It accepts weak cache writes only when the observed final-field snapshot is
+    coherent with the shared heap at commit time.
 
-   Iris/heap_lang gives a separate sequentially consistent concurrency model.
-   We use it to model concurrent calls to a String-like hash cache method that
-   share an invariant around the immutable payload and mutable cache fields.
-*)
+    Iris/heap_lang gives a separate sequentially consistent concurrency model.
+    We use it to model concurrent calls to a String-like hash cache method that
+    share an invariant around the immutable payload and mutable cache fields. *)
 
 Section bridge.
   Context `{!heapGS Σ}.
 
+(** Iris proposition summarizing the PICO sequential cache-update theorem. *)
   Definition pico_sequential_cache_result
       (CT : class_table) (h' : heap) (loc : Loc) (C : class_name)
       (abs_fields : list var) (cache_f : var)
@@ -32,6 +32,7 @@ Section bridge.
     field_readsI h' loc abs_fields abs_vals ∧
     derived_int_cache_protocolI CT h' loc C abs_fields cache_f derived.
 
+(** Bridge from the PICO sequential evaluator to the Iris-facing cache result. *)
   Theorem pico_sequential_cache_result_from_eval :
     forall CT sΓ mt rΓ rΓ_mid h h' receiver tmp loc C abs_fields cache_f
            derived abs_vals old_cache_v n o,
@@ -71,6 +72,8 @@ Section bridge.
     eapply derived_cache_update_sequence_soundI; eauto.
   Qed.
 
+(** Bridge from the small concurrent PICO machine to the derived-cache
+    invariant. *)
   Theorem pico_concurrent_cache_result_from_steps :
     forall CT cfg cfg' loc C abs_fields cache_f derived,
       concurrent_steps CT cfg cfg' ->

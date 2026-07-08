@@ -1,8 +1,8 @@
 From iris.bi Require Import bi.
 From iris.proofmode Require Import proofmode.
 
-Require Import Syntax Helpers Bigstep DerivedCache DerivedCacheExamples
-  DerivedCacheIris.
+Require Import Syntax Helpers Bigstep DerivedCache Examples.DerivedCacheExamples
+  Iris.DerivedCacheIris.
 
 Section simple_derived_cache_iris_example.
   Context {PROP : bi}.

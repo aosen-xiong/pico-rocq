@@ -7,17 +7,22 @@ From iris.base_logic.lib Require Import invariants.
 
 Open Scope Z_scope.
 
-(* This file is an ordinary Iris/heap_lang wrapper for the cache idea. It is
-   intentionally sequentially consistent: heap_lang gives interleaving
-   concurrency with atomic heap operations, not Java weak-memory races. *)
+(** * Iris heap_lang String-Cache Example
 
+    This file is an ordinary Iris/heap_lang wrapper for the cache idea.  It is
+    intentionally sequentially consistent: heap_lang gives interleaving
+    concurrency with atomic heap operations, not Java weak-memory races. *)
+
+(** Deterministic hash used by the example object. *)
 Definition deterministic_hash (v c : Z) : Z :=
   v + 31 * c.
 
+(** Cache invariant for a String-like hash and hash-is-zero cache pair. *)
 Definition CacheOK (H h : Z) (hashIsZero : bool) : Prop :=
   (h = 0 \/ h = H) /\
   (H = 0 \/ hashIsZero = false).
 
+(** Heap-lang allocation of the String-like object representation. *)
 Definition mk_string_obj : val :=
   λ: "value" "coder",
     let: "hash" := ref #0 in
@@ -66,6 +71,7 @@ Definition hashCode_local_copy_zero : val :=
 
 Definition hashCode_local_copy : val := hashCode_local_copy_zero.
 
+(** Two concurrent calls to the local-copy cache method. *)
 Definition hashCode_fork2 : val :=
   λ: "o",
     Fork (hashCode_local_copy "o");;

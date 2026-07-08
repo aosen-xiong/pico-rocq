@@ -3,20 +3,22 @@ Require Import Syntax Helpers Typing Bigstep DerivedCache.
 From Stdlib Require Import List Lia.
 Import ListNotations.
 
-(* A first concurrent PICO machine.
+(** * Sequentially Consistent Concurrent PICO
 
-   This is intentionally smaller than Java's full memory model.  It is an
-   interleaving semantics with one shared heap and one runtime environment plus
-   residual statement per thread.  Heap updates are ordinary sequentially
-   consistent steps.  This gives us a real concurrent PICO artifact to connect
-   to the derived-cache invariant before adding weak-memory features.
-*)
+    This machine is intentionally smaller than Java's full memory model.  It is
+    an interleaving semantics with one shared heap and one runtime environment
+    plus residual statement per thread.  Heap updates are ordinary
+    sequentially consistent steps.  This gives us a real concurrent PICO
+    artifact to connect to the derived-cache invariant before adding
+    weak-memory features. *)
 
+(** Runtime state for one concurrent PICO thread. *)
 Record thread_state := mkThread {
   thread_env : r_env;
   thread_stmt : stmt;
 }.
 
+(** Shared-heap thread-pool configuration. *)
 Record concurrent_config := mkConcurrentConfig {
   concurrent_heap : heap;
   concurrent_threads : list thread_state;
@@ -28,6 +30,7 @@ Definition residual_seq (s1 s2 : stmt) : stmt :=
   | _ => SSeq s1 s2
   end.
 
+(** One sequentially consistent thread step. *)
 Inductive thread_step
     (CT : class_table) :
     heap -> thread_state -> heap -> thread_state -> Prop :=
@@ -64,6 +67,7 @@ Inductive thread_step
         h'
         (mkThread rΓ' (residual_seq s1' s2)).
 
+(** One pool step selects and steps a single thread. *)
 Inductive concurrent_step
     (CT : class_table) :
     concurrent_config -> concurrent_config -> Prop :=

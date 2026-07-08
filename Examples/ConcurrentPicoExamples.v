@@ -1,5 +1,5 @@
-Require Import Syntax Helpers Bigstep DerivedCache DerivedCacheExamples.
-Require Import ConcurrentPico.
+Require Import Syntax Helpers Bigstep DerivedCache Examples.DerivedCacheExamples.
+Require Import PICOBridge.ConcurrentPico.
 
 From Stdlib Require Import List.
 Import ListNotations.

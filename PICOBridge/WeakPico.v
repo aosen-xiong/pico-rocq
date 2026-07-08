@@ -1,20 +1,20 @@
-Require Import Syntax Helpers Bigstep DerivedCache ConcurrentPico.
+Require Import Syntax Helpers Bigstep DerivedCache PICOBridge.ConcurrentPico.
 
 From Stdlib Require Import List.
 Import ListNotations.
 
-(* A first weak-memory-facing PICO model.
+(** * Weak-Memory-Facing PICO Model
 
-   Unlike [ConcurrentPico], this file makes read observations explicit.  A weak
-   execution may propose a cache write computed from observed abstract-field
-   values.  We accept the write only when those observations are coherent with
-   the final-field values in the shared heap at commit time.
+    Unlike [ConcurrentPico], this file makes read observations explicit.  A weak
+    execution may propose a cache write computed from observed abstract-field
+    values.  We accept the write only when those observations are coherent with
+    the final-field values in the shared heap at commit time.
 
-   This is still not the full Java memory model.  It is the next artifact layer:
-   it separates candidate weak executions from the safety condition needed for
-   derived-cache soundness.
-*)
+    This is still not the full Java memory model.  It is the next artifact
+    layer: it separates candidate weak executions from the safety condition
+    needed for derived-cache soundness. *)
 
+(** Candidate cache write with explicit observed abstract-field values. *)
 Record weak_cache_write := mkWeakCacheWrite {
   weak_loc : Loc;
   weak_class : class_name;
@@ -25,6 +25,7 @@ Record weak_cache_write := mkWeakCacheWrite {
   weak_written_cache_n : nat;
 }.
 
+(** Coherence condition for accepting a weak cache write. *)
 Definition weak_cache_write_coherent
     (CT : class_table) (h : heap) (derived : list value -> nat)
     (e : weak_cache_write) : Prop :=
@@ -40,6 +41,7 @@ Definition weak_cache_write_coherent
     weak_written_cache_n e = derived (weak_observed_abs_vals e) /\
     weak_written_cache_n e <> 0.
 
+(** Commit relation for the concrete cache write. *)
 Definition weak_cache_write_commit
     (h h' : heap) (e : weak_cache_write) : Prop :=
   h' =
