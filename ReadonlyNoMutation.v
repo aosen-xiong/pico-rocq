@@ -18,7 +18,7 @@ Lemma deep_readonly_preservation :
     (Hconfined : env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Hmtype: mt <> AbstractImm)
+    (Hmtype: safe_readonly_method_type mt)
     (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (Hlocalset : Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) l)
     (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals))
@@ -61,7 +61,9 @@ Proof.
         inversion Hobj; subst o.
         inversion Htyping; subst.
         --
-        exfalso; apply Hmtype; reflexivity.
+        exfalso; apply (proj1 Hmtype); reflexivity.
+        --
+        exfalso; apply (proj2 Hmtype); reflexivity.
         --
         unfold env_respects_protected_set in Hconfined.
         have Hx_safe := mut_var_cannot_point_to_P sΓ' rΓ x Tx l (reachable_locations_from_initial_env CT h rΓ) Hget_x Hval_x Hconfined Hlocalset.
@@ -226,7 +228,8 @@ Proof.
     rewrite runtime_getObj_last2 in Hobj'; auto.
   - (* Call *)
     inversion Htyping; subst sΓ'; subst.
-    exfalso; apply Hmtype; reflexivity.
+    exfalso. destruct Hscope as [Hscope | [Hscope _]]; subst;
+      [apply (proj1 Hmtype) | apply (proj2 Hmtype)]; reflexivity.
     have Hwfcopy := Hwf.
     unfold wf_r_config in Hwf.
     destruct Hwf as [Hclasstable [Hheap [Hrenv [Hsenv [_ Htypable]]]]].
@@ -1066,19 +1069,15 @@ Proof.
       }
 
       rewrite Hmsigeq in Hmethodbody_typing.
-      have Hconcrete_not_abs : ConcreteImm <> AbstractImm.
-      {
-        discriminate.
-      }
-      have Hsafe_ro_not_abs : SafeRO <> AbstractImm.
-      {
-        discriminate.
-      }
+      have Hconcrete_not_abs : safe_readonly_method_type ConcreteImm by (split; discriminate).
+      have Hsafe_ro_not_abs : safe_readonly_method_type SafeRO by (split; discriminate).
       destruct (mtype (msignature mdef0)).
       exfalso; exact (Hmt_not_abs eq_refl).
+      exfalso; exact (Hmt_not_cs eq_refl).
       all: 
       destruct mt;
-      try solve [exfalso; apply Hmtype; reflexivity].
+      try solve [exfalso; apply (proj1 Hmtype); reflexivity |
+                 exfalso; apply (proj2 Hmtype); reflexivity].
       2:{
         inversion Hmt_sub; subst.
       }
@@ -1939,19 +1938,15 @@ Proof.
       }
 
       rewrite Hmsigeq in Hmethodbody_typing.
-      have Hconcrete_not_abs : ConcreteImm <> AbstractImm.
-      {
-        discriminate.
-      }
-      have Hsafe_ro_not_abs : SafeRO <> AbstractImm.
-      {
-        discriminate.
-      }
+      have Hconcrete_not_abs : safe_readonly_method_type ConcreteImm by (split; discriminate).
+      have Hsafe_ro_not_abs : safe_readonly_method_type SafeRO by (split; discriminate).
       destruct (mtype (msignature mdef0)).
       exfalso; exact (Hmt_not_abs eq_refl).
+      exfalso; exact (Hmt_not_cs eq_refl).
       all: 
       destruct mt;
-      try solve [exfalso; apply Hmtype; reflexivity].
+      try solve [exfalso; apply (proj1 Hmtype); reflexivity |
+                 exfalso; apply (proj2 Hmtype); reflexivity].
       2:{
         inversion Hmt_sub; subst.
       }

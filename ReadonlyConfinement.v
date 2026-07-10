@@ -8,7 +8,7 @@ Lemma stmt_preserves_confinement :
     (Hconfined : env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Hmtype: mt <> AbstractImm)
+    (Hmtype: safe_readonly_method_type mt)
     (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h'),
   env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ' rΓ'.
 Proof.
@@ -156,6 +156,8 @@ Proof.
       exact Hconfined.
       unfold env_respects_protected_set in *.
       exact Hconfined.
+      unfold env_respects_protected_set in *.
+      exact Hconfined.
     - (* Invariant preserved *)
       inversion Htyping; subst sΓ'; subst.
       unfold env_respects_protected_set in *.
@@ -183,7 +185,8 @@ Proof.
       eapply Hconfined; eauto.
   - (* call *)
     inversion Htyping; subst sΓ'; subst.
-    exfalso; apply Hmtype; reflexivity.
+    exfalso. destruct Hscope as [Hscope | [Hscope _]]; subst;
+      [apply (proj1 Hmtype) | apply (proj2 Hmtype)]; reflexivity.
     have Hwfcopy := Hwf.
     unfold wf_r_config in Hwf.
     destruct Hwf as [Hclasstable [Hheap [Hrenv [Hsenv [Henv_len Htypable]]]]].
@@ -1015,17 +1018,16 @@ Proof.
     }
 
     rewrite Hmsigeq in Hmethodbody_typing.
-    have H15 : ConcreteImm <> AbstractImm.
-      discriminate.
-    have H26 : ConcreteImm <> AbstractImm.
-      discriminate.
+    have H15 : safe_readonly_method_type ConcreteImm by (split; discriminate).
+    have H26 : safe_readonly_method_type ConcreteImm by (split; discriminate).
+    have H23 : safe_readonly_method_type SafeRO by (split; discriminate).
     destruct (mtype (msignature mdef0)).
     exfalso; exact (Hmt_not_abs eq_refl).
-    have H23 : SafeRO <> AbstractImm.
-    discriminate.
+    exfalso; exact (Hmt_not_cs eq_refl).
     have H24 := Hmt_sub.
     destruct mt;
-    try solve [exfalso; apply H23; reflexivity].
+    try solve [exfalso; apply (proj1 Hmtype); reflexivity |
+               exfalso; apply (proj2 Hmtype); reflexivity].
     specialize (IHHeval Heval SafeRO H23 sΓmethodend sΓmethodinit).
     specialize (IHHeval HenvInvariant Hwf_method_frame).
     specialize (IHHeval Hmethodbody_typing).
@@ -1176,81 +1178,6 @@ Proof.
           eapply Hconfined; eauto.
       }
       exact Henv_respects''.
-    specialize (IHHeval Heval SafeRO H23 sΓmethodend sΓmethodinit).
-    specialize (IHHeval HenvInvariant Hwf_method_frame).
-    specialize (IHHeval Hmethodbody_typing).
-    assert (Henv_respects'': env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ''' ).
-    {
-      rewrite HeqrΓ'''.
-      unfold env_respects_protected_set.
-      intros z l_z T_z Hlookup_s Hlookup_r Hin_P.
-      destruct (Nat.eq_dec x z); subst.
-      -- (* CASE: z = x (New Variable) *)
-        assert (T_z = Tx). 
-        {
-          rewrite Hget_x in Hlookup_s. 
-          injection Hlookup_s as H_eq_T. subst T_z.
-          reflexivity.
-        }
-        subst T_z.
-        unfold env_respects_protected_set in IHHeval.
-        have HGetMethodReturnType: static_getType sΓmethodend (mreturn (Syntax.mbody mdef)) = Some mbodyreturntype.
-        {
-          unfold static_getType; auto.
-        }
-        rewrite <- Hvars in Hlookup_r.
-        have Hdom_z : z < dom (vars rΓ). 
-        { 
-          apply runtime_getVal_dom in Hlookup_r.
-          rewrite update_length in Hlookup_r.
-          exact Hlookup_r.
-        }
-        have Hlookup_r_copy := Hlookup_r.
-        unfold runtime_getVal in Hlookup_r.
-        rewrite update_same in Hlookup_r.
-        lia.
-        inversion Hlookup_r; subst.
-
-        have Hin_P_inner: Ensembles.In Loc (reachable_locations_from_initial_env CT h
-        {| vars := Iot ly :: vals |}) l_z.
-        {
-          eapply reachable_return_implies_reachable_args; eauto.
-          apply reachable_locations_from_initial_env_dom in Hin_P; auto. (* This is not provable, need a lot changes *)
-        }
-        specialize (IHHeval (mreturn (Syntax.mbody mdef)) l_z mbodyreturntype HGetMethodReturnType Hretval Hin_P_inner).
-          have Hsafe_ret : is_safe_mode (sqtype (mret (msignature mdef0))).
-          {
-            rewrite Hmsigeq in HmethodReturnSubtype.
-            apply subtype_safe_implies_safe in HmethodReturnSubtype; auto.
-          }
-        assert (HlyInP: Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) ly).
-        {
-          unfold reachable_locations_from_initial_env.
-          exists y, ly.
-          split; auto.
-          apply rch_heap.
-          apply runtime_getObj_dom in Hobjy; auto.
-        }
-        specialize (Hconfined y ly Ty Hget_y Hval_y HlyInP).
-        have Hsafe_ty : is_safe_mode (sqtype Ty) := Hconfined.
-        have Hsafe_tx : is_safe_mode (sqtype Tx).
-        {
-          exact (subtype_safe_implies_safe_adapted CT (mret (msignature mdef0)) Ty Tx
-            Hret_sub Hsafe_ret Hsafe_ty).
-        }
-        exact Hsafe_tx.
-      -- (* CASE: z <> x (Old Variables) *)
-        assert (Hupdate_env : (set_vars rΓ (update x retval (vars rΓ))) = update_r_env_value rΓ x retval).
-        {
-          destruct rΓ.
-          reflexivity.
-        }
-        rewrite <- Hvars in Hlookup_r.
-        rewrite Hupdate_env in Hlookup_r.
-        rewrite runtime_getVal_update_diff in Hlookup_r; auto.
-        eapply Hconfined; eauto.
-    }
-    exact Henv_respects''.
     specialize (IHHeval Heval ConcreteImm H26 sΓmethodend sΓmethodinit).
     specialize (IHHeval HenvInvariant Hwf_method_frame).
     specialize (IHHeval Hmethodbody_typing).
@@ -1326,6 +1253,83 @@ Proof.
         eapply Hconfined; eauto.
     }
     exact Henv_respects''.
+    (* The preceding branch discharges the remaining safe caller.
+    specialize (IHHeval Heval ConcreteImm H26 sΓmethodend sΓmethodinit).
+    specialize (IHHeval HenvInvariant Hwf_method_frame).
+    specialize (IHHeval Hmethodbody_typing).
+    assert (Henv_respects'': env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ''' ).
+    {
+      rewrite HeqrΓ'''.
+      unfold env_respects_protected_set.
+      intros z l_z T_z Hlookup_s Hlookup_r Hin_P.
+      destruct (Nat.eq_dec x z); subst.
+      -- (* CASE: z = x (New Variable) *)
+        assert (T_z = Tx). 
+        {
+          rewrite Hget_x in Hlookup_s. 
+          injection Hlookup_s as H_eq_T. subst T_z.
+          reflexivity.
+        }
+        subst T_z.
+        unfold env_respects_protected_set in IHHeval.
+        have HGetMethodReturnType: static_getType sΓmethodend (mreturn (Syntax.mbody mdef)) = Some mbodyreturntype.
+        {
+          unfold static_getType; auto.
+        }
+        rewrite <- Hvars in Hlookup_r.
+        have Hdom_z : z < dom (vars rΓ). 
+        { 
+          apply runtime_getVal_dom in Hlookup_r.
+          rewrite update_length in Hlookup_r.
+          exact Hlookup_r.
+        }
+        have Hlookup_r_copy := Hlookup_r.
+        unfold runtime_getVal in Hlookup_r.
+        rewrite update_same in Hlookup_r.
+        lia.
+        inversion Hlookup_r; subst.
+
+        have Hin_P_inner: Ensembles.In Loc (reachable_locations_from_initial_env CT h
+        {| vars := Iot ly :: vals |}) l_z.
+        {
+          eapply reachable_return_implies_reachable_args; eauto.
+          apply reachable_locations_from_initial_env_dom in Hin_P; auto. (* This is not provable, need a lot changes *)
+        }
+        specialize (IHHeval (mreturn (Syntax.mbody mdef)) l_z mbodyreturntype HGetMethodReturnType Hretval Hin_P_inner).
+          have Hsafe_ret : is_safe_mode (sqtype (mret (msignature mdef0))).
+          {
+            rewrite Hmsigeq in HmethodReturnSubtype.
+            apply subtype_safe_implies_safe in HmethodReturnSubtype; auto.
+          }
+        assert (HlyInP: Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) ly).
+        {
+          unfold reachable_locations_from_initial_env.
+          exists y, ly.
+          split; auto.
+          apply rch_heap.
+          apply runtime_getObj_dom in Hobjy; auto.
+        }
+        specialize (Hconfined y ly Ty Hget_y Hval_y HlyInP).
+        have Hsafe_ty : is_safe_mode (sqtype Ty) := Hconfined.
+        have Hsafe_tx : is_safe_mode (sqtype Tx).
+        {
+          exact (subtype_safe_implies_safe_adapted CT (mret (msignature mdef0)) Ty Tx
+            Hret_sub Hsafe_ret Hsafe_ty).
+        }
+        exact Hsafe_tx.
+      -- (* CASE: z <> x (Old Variables) *)
+        assert (Hupdate_env : (set_vars rΓ (update x retval (vars rΓ))) = update_r_env_value rΓ x retval).
+        {
+          destruct rΓ.
+          reflexivity.
+        }
+        rewrite <- Hvars in Hlookup_r.
+        rewrite Hupdate_env in Hlookup_r.
+        rewrite runtime_getVal_update_diff in Hlookup_r; auto.
+        eapply Hconfined; eauto.
+    }
+    exact Henv_respects''.
+    *)
     +
     assert (Hwfmethod: exists D ddef, base_subtype CT cy D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef).
     {
@@ -2169,14 +2173,17 @@ Proof.
       eapply method_signature_consistent_subtype; eauto.
     }
 
-    rewrite <- getmbody in Hmethodbody_typing.
-    rewrite Hmsigeq in Hmethodbody_typing.
+	    rewrite <- getmbody in Hmethodbody_typing.
+	    rewrite Hmsigeq in Hmethodbody_typing.
+	    have H23 : safe_readonly_method_type SafeRO by (split; discriminate).
+	    have H26 : safe_readonly_method_type ConcreteImm by (split; discriminate).
 	    destruct (mtype (msignature mdef0)) eqn:Hcallee_mtype.
 	    ++ exfalso; exact (Hmt_not_abs eq_refl).
-	    ++ have H23 : SafeRO <> AbstractImm.
-	      discriminate.
+	    ++ exfalso; exact (Hmt_not_cs eq_refl).
+	    ++
 	      destruct mt eqn:Hcaller_mtype.
-	      +++ exfalso; exact (Hmtype eq_refl).
+	      +++ exfalso; exact ((proj1 Hmtype) eq_refl).
+	      +++ exfalso; exact ((proj2 Hmtype) eq_refl).
 	      +++ specialize (IHHeval Heval SafeRO H23 sΓmethodend sΓmethodinit).
     specialize (IHHeval HenvInvariant Hwf_method_frame).
     specialize (IHHeval Hmethodbody_typing).
@@ -2256,10 +2263,10 @@ Proof.
     }
 	    exact Henv_respects''.
 	      +++ inversion Hmt_sub.
-	    ++ have H26 : ConcreteImm <> AbstractImm.
-	      discriminate.
+	    ++
 	      destruct mt eqn:Hcaller_mtype.
-		      +++ exfalso; exact (Hmtype eq_refl).
+		      +++ exfalso; exact ((proj1 Hmtype) eq_refl).
+		      +++ exfalso; exact ((proj2 Hmtype) eq_refl).
 		      +++ specialize (IHHeval Heval ConcreteImm H26 sΓmethodend sΓmethodinit).
     specialize (IHHeval HenvInvariant Hwf_method_frame).
     specialize (IHHeval Hmethodbody_typing).

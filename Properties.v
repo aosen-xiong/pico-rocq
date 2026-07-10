@@ -1057,6 +1057,8 @@ Proof.
     assumption.
   - (* FldWrite *)
     assumption.  
+  - (* FldWrite — ConcreteImm *)
+    assumption.
   - (* New x q c ys *)
     simpl.
     destruct x as [|x']; simpl in *.
@@ -3195,6 +3197,9 @@ Proof.
     intros.
     inversion Htyping; subst.
     - eapply preservation_fldwrite_ok_abs_imm; eauto.
+    - eapply preservation_fldwrite_ok_abs_imm; eauto.
+      econstructor; eauto.
+      eapply concrete_assignable_implies_assignable; eauto.
     - eapply preservation_fldwrite_ok_safe_ro; eauto.
     - eapply preservation_fldwrite_ok_concrete_imm; eauto.
 Qed.

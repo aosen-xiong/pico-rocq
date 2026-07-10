@@ -144,6 +144,8 @@ Proof.
     rewrite runtime_getObj_last2 in Hobj'; auto.
   - (* Call *)
     inversion Htyping; subst sΓ'; subst.
+    + destruct Hscope as [Hscope | [Hscope _]]; inversion Hscope.
+    +
     have Hwfcopy := Hwf.
     unfold wf_r_config in Hwf.
     destruct Hwf as [Hclasstable [Hheap [Hrenv [Hsenv [_ Htypable]]]]].
@@ -988,13 +990,18 @@ Proof.
         discriminate.
       }
       destruct (mtype (msignature mdef0)).
-      exfalso; exact (Hmt_not_abs eq_refl).
-      inversion Hmt_sub; subst.
-      specialize (IHHeval Hlocalset' vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
-      specialize (IHHeval HenvInvariant Hwf_method_frame).
-      specialize (IHHeval Hmethodbody_typing); auto.
+      { exfalso; exact (Hmt_not_abs eq_refl). }
+      { exfalso; exact (Hmt_not_cs eq_refl). }
+      { inversion Hmt_sub; subst; discriminate. }
+      {
+        specialize (IHHeval Hlocalset' vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
+        specialize (IHHeval HenvInvariant Hwf_method_frame).
+        exact (IHHeval Hmethodbody_typing).
+      }
+      all: inversion Hmt_sub; subst; try discriminate.
     }
-    +
+    all: try solve [inversion Hmt_sub; subst; discriminate].
+    {
     assert (Hwfmethod: exists D ddef, base_subtype CT cy D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef).
     {
       eapply method_lookup_in_wellformed_inherited; eauto.
@@ -1846,11 +1853,16 @@ Proof.
         discriminate.
       }
       destruct (mtype (msignature mdef0)).
-      exfalso; exact (Hmt_not_abs eq_refl).
-      inversion Hmt_sub; subst.
-      specialize (IHHeval Hlocalset' vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
-      specialize (IHHeval HenvInvariant Hwf_method_frame).
-      specialize (IHHeval Hmethodbody_typing); auto.
+      { exfalso; exact (Hmt_not_abs eq_refl). }
+      { exfalso; exact (Hmt_not_cs eq_refl). }
+      { inversion Hmt_sub; subst; discriminate. }
+      {
+        specialize (IHHeval Hlocalset' vals' Hobj' vals0 Hobj sΓmethodend sΓmethodinit).
+        specialize (IHHeval HenvInvariant Hwf_method_frame).
+        exact (IHHeval Hmethodbody_typing).
+      }
+      all: inversion Hmt_sub; subst; try discriminate.
+    }
     }
   - (* Seq *)
     inversion Htyping; subst.
@@ -1913,6 +1925,8 @@ Proof.
   }
   subst vals0.
   inversion Htyping; subst.
+  { destruct Hscope as [Hscope | [Hscope _]]; inversion Hscope. }
+  {
   rename sΓ' into sΓ.
   rewrite Hget_y0 in Hstatic_type.
   inversion Hstatic_type; subst Ty0.
@@ -3262,4 +3276,5 @@ Proof.
     rewrite <- HeqrΓmethodinit in Hsubset.
     unfold Ensembles.Included in Hsubset.
     exact (Hsubset loc_arg HinP).
+  }
 Qed.

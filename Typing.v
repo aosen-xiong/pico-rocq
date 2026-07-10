@@ -528,11 +528,12 @@ Inductive expr_has_type : class_table -> s_env -> method_type -> expr -> qualifi
       expr_has_type CT Γ mt (EVar x) T
 
   (* Field access typing — AbstractImm scope *)
-  | ET_Field_abs_imm : forall CT Γ x T fDef f
+  | ET_Field_abs_imm : forall CT Γ mt x T fDef f
       (Hwf      : wf_senv CT Γ)
       (Hget_x   : static_getType Γ x = Some T)
-      (Hfld_def : sf_def_rel CT (sctype T) f fDef),
-      expr_has_type CT Γ AbstractImm (EField x f)
+      (Hfld_def : sf_def_rel CT (sctype T) f fDef)
+      (Hmt      : mt = AbstractImm \/ mt = ConcreteState),
+      expr_has_type CT Γ mt (EField x f)
         (Build_qualified_type
           (vpa_mutability_stype_fld_abs_imm (sqtype T) (mutability (ftype fDef)))
           (f_base_type (ftype fDef)))
@@ -542,7 +543,7 @@ Inductive expr_has_type : class_table -> s_env -> method_type -> expr -> qualifi
       (Hwf      : wf_senv CT Γ)
       (Hget_x   : static_getType Γ x = Some T)
       (Hfld_def : sf_def_rel CT (sctype T) f fDef)
-      (Hmt      : mt <> AbstractImm),
+      (Hmt      : mt = SafeRO \/ mt = ConcreteImm),
       expr_has_type CT Γ mt (EField x f)
         (Build_qualified_type
           (vpa_mutability_stype_fld_safe_ro (sqtype T) (mutability (ftype fDef)))
@@ -608,6 +609,21 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hassignable : vpa_assignability (sqtype Tx) a = Assignable),
       stmt_typing CT sΓ AbstractImm (SFldWrite x f y) sΓ
 
+  (* Field write — ConcreteState uses AS mutability and TS assignability *)
+  | ST_FldWrite_concrete_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
+      (Hwf         : wf_senv CT sΓ)
+      (Hget_x      : static_getType sΓ x = Some Tx)
+      (Hget_y      : static_getType sΓ y = Some Ty)
+      (Hthis       : get_this_qualified_type sΓ = Some Tthis)
+      (Hfld_def    : sf_def_rel CT (sctype Tx) f fieldT)
+      (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
+      (Hsub        : qualified_type_subtype CT Ty
+                       (Build_qualified_type
+                         (vpa_mutability_stype_fld_abs_imm (sqtype Tx) (mutability (ftype fieldT)))
+                         (f_base_type (ftype fieldT))))
+      (Hassignable : vpa_assignability_concret_imm (sqtype Tx) a = Assignable),
+      stmt_typing CT sΓ ConcreteState (SFldWrite x f y) sΓ
+
   (* Field write — SafeRO scope *)
   | ST_FldWrite_safe_ro : forall CT sΓ x f y Tx Ty Tthis fieldT a
       (Hwf         : wf_senv CT sΓ)
@@ -653,7 +669,7 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       stmt_typing CT sΓ mt (SNew x qc C args) sΓ
 
   (* Method call — AbstractImm scope *)
-  | ST_Call : forall CT sΓ x m y args argtypes Tthis Tx Ty mdef
+  | ST_Call : forall CT sΓ mt x m y args argtypes Tthis Tx Ty mdef
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
@@ -666,8 +682,10 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
                      \/ (sqtype Ty = RO /\ mdef.(msignature).(mreceiver).(sqtype) = RDM
                          /\ base_subtype CT (sctype Ty) mdef.(msignature).(mreceiver).(sctype)))
       (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_abs_imm Ty T))
-                       argtypes (mparams (msignature mdef))),
-      stmt_typing CT sΓ AbstractImm (SCall x m y args) sΓ
+                       argtypes (mparams (msignature mdef)))
+      (Hscope      : mt = AbstractImm \/
+                     (mt = ConcreteState /\ method_subtype mdef.(msignature).(mtype) ConcreteState)),
+      stmt_typing CT sΓ mt (SCall x m y args) sΓ
 
   (* Method call — SafeRO / ConcreteImm scope *)
   | ST_Call_safe_ro : forall CT sΓ mt x m y args argtypes Tthis Tx Ty mdef
@@ -679,6 +697,7 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hfind_m     : FindMethodWithName CT (sctype Ty) m mdef)
       (Hnot_rcv    : x <> 0)
       (Hmt_not_abs : mdef.(msignature).(mtype) <> AbstractImm)
+      (Hmt_not_cs  : mdef.(msignature).(mtype) <> ConcreteState)
       (Hret_sub    : qualified_type_subtype CT (vpa_mutability_tt_safe_ro Ty (mret (msignature mdef))) Tx)
       (Hrcv_sub    : qualified_type_subtype CT Ty (vpa_mutability_tt_safe_ro Ty (mreceiver (msignature mdef)))
                      \/ (sqtype Ty = RO /\ mdef.(msignature).(mreceiver).(sqtype) = RDM
@@ -686,6 +705,7 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_safe_ro Ty T))
                        argtypes (mparams (msignature mdef)))
       (Hmt_not_abs2 : mt <> AbstractImm)
+      (Hmt_not_cs2  : mt <> ConcreteState)
       (Hmt_sub     : method_subtype mdef.(msignature).(mtype) mt),
       stmt_typing CT sΓ mt (SCall x m y args) sΓ
 

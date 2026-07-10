@@ -96,8 +96,15 @@ Record method_body := {
 
 Inductive method_type : Type :=
   | AbstractImm
+  | ConcreteState
   | SafeRO
   | ConcreteImm.
+
+Definition safe_readonly_method_type (mt : method_type) : Prop :=
+  mt <> AbstractImm /\ mt <> ConcreteState.
+
+Definition concrete_assignability_method_type (mt : method_type) : Prop :=
+  mt = ConcreteState \/ mt = ConcreteImm.
 
 Record method_sig := {
   mtype: method_type;

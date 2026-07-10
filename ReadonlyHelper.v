@@ -239,7 +239,7 @@ Lemma expr_eval_to_protected_implies_safe_type :
          (Hconfined : env_respects_protected_set P sΓ rΓ)
          (Heval : eval_expr OK P CT rΓ h e (Iot l_res) OK P rΓ h)
          (Htyp : expr_has_type CT sΓ mt e Te)
-         (Hmtype: mt <> AbstractImm)
+         (Hmtype: safe_readonly_method_type mt)
          (Hin : Ensembles.In Loc P l_res),
     is_safe_mode (sqtype Te).
 Proof.
@@ -271,7 +271,7 @@ Proof.
     exact Hconfined.
   - (* EField case *)
     inversion htyp_copy; subst.
-    exfalso; apply Hmtype; reflexivity.
+    exfalso. destruct Hmt; subst; [apply (proj1 Hmtype) | apply (proj2 Hmtype)]; reflexivity.
     set (P := reachable_locations_from_initial_env CT h rΓ).
     destruct (classic (Ensembles.In Loc P v)) as [Hv_in | Hv_out].
     +
@@ -522,7 +522,7 @@ Lemma expr_eval_result_in_protected_set :
          (Hwf: wf_r_config CT sΓ rΓ h)
          (HP_def : P = reachable_locations_from_initial_env CT h rΓ)
          (Htyping : expr_has_type CT sΓ mt e Te)
-        (Hmtype: mt <> AbstractImm)
+        (Hmtype: safe_readonly_method_type mt)
          (Heval : eval_expr OK P CT rΓ h e v2 OK P rΓ h),
     (forall l, v2 = Iot l -> Ensembles.In Loc P l) \/
     (v2 = Null_a).
@@ -597,7 +597,7 @@ Lemma reachable_return_implies_reachable_args :
   forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ret_var l_z
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Hmtype: mt <> AbstractImm)
+    (Hmtype: safe_readonly_method_type mt)
     (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (HgetVal: runtime_getVal rΓ' ret_var = Some (Iot l_z))
     (Hdom: l_z < dom h),
@@ -784,7 +784,8 @@ Proof.
       apply rch_heap; auto.
   - (* call *)
     inversion Htyping; subst.
-    exfalso; apply Hmtype; reflexivity.
+    exfalso. destruct Hscope as [Hscope | [Hscope _]]; subst;
+      [apply (proj1 Hmtype) | apply (proj2 Hmtype)]; reflexivity.
     rename sΓ' into sΓ.
     remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
     assert (HformatExchange: update_r_env_value rΓ x retval = (set_vars rΓ (update x retval (vars rΓ)))).
@@ -1427,17 +1428,20 @@ Proof.
       rewrite Hmsigeq in Hmethodbody_typing.
       destruct (mtype (msignature mdef0)).
       exfalso; apply Hmt_not_abs; reflexivity.
+      exfalso; apply Hmt_not_cs; reflexivity.
       all: destruct mt.
-      exfalso; apply Hmtype; reflexivity.
+      exfalso; apply (proj1 Hmtype); reflexivity.
+      exfalso; apply (proj2 Hmtype); reflexivity.
       specialize (IHHeval eq_refl Hdom (mreturn mbody) Hretval SafeRO Hmtype sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
       rewrite HeqrΓmethodinit in IHHeval.
       eapply reachable_locations_from_initial_env_subset; eauto.
       inversion Hmt_sub.
       exfalso; apply Hmt_not_abs2; reflexivity.
-      specialize (IHHeval eq_refl Hdom (mreturn mbody) Hretval ConcreteImm Hmt_not_abs sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
+      exfalso; apply Hmt_not_cs2; reflexivity.
+      specialize (IHHeval eq_refl Hdom (mreturn mbody) Hretval ConcreteImm (conj Hmt_not_abs Hmt_not_cs) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
       rewrite HeqrΓmethodinit in IHHeval.
       eapply reachable_locations_from_initial_env_subset; eauto.
-      specialize (IHHeval eq_refl Hdom (mreturn mbody) Hretval ConcreteImm Hmt_not_abs sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
+      specialize (IHHeval eq_refl Hdom (mreturn mbody) Hretval ConcreteImm (conj Hmt_not_abs Hmt_not_cs) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
       rewrite HeqrΓmethodinit in IHHeval.
       eapply reachable_locations_from_initial_env_subset; eauto.
     }
@@ -2047,17 +2051,20 @@ Proof.
       rewrite Hmsigeq in Hmethodbody_typing.
       destruct (mtype (msignature mdef0)).
       exfalso; apply Hmt_not_abs; reflexivity.
+      exfalso; apply Hmt_not_cs; reflexivity.
       all: destruct mt.
-      exfalso; apply Hmtype; reflexivity.
+      exfalso; apply (proj1 Hmtype); reflexivity.
+      exfalso; apply (proj2 Hmtype); reflexivity.
       specialize (IHHeval eq_refl Hdom (mreturn mbody) Hretval SafeRO Hmtype sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
       rewrite HeqrΓmethodinit in IHHeval.
       eapply reachable_locations_from_initial_env_subset; eauto.
       inversion Hmt_sub.
       exfalso; apply Hmt_not_abs2; reflexivity.
-      specialize (IHHeval eq_refl Hdom (mreturn mbody) Hretval ConcreteImm Hmt_not_abs sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
+      exfalso; apply Hmt_not_cs2; reflexivity.
+      specialize (IHHeval eq_refl Hdom (mreturn mbody) Hretval ConcreteImm (conj Hmt_not_abs Hmt_not_cs) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
       rewrite HeqrΓmethodinit in IHHeval.
       eapply reachable_locations_from_initial_env_subset; eauto.
-      specialize (IHHeval eq_refl Hdom (mreturn mbody) Hretval ConcreteImm Hmt_not_abs sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
+      specialize (IHHeval eq_refl Hdom (mreturn mbody) Hretval ConcreteImm (conj Hmt_not_abs Hmt_not_cs) sΓmethodend sΓmethodinit Hwf_method_frame Hmethodbody_typing).
       rewrite HeqrΓmethodinit in IHHeval.
       eapply reachable_locations_from_initial_env_subset; eauto.
     }

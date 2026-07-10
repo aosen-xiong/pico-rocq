@@ -2,7 +2,7 @@ From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
 
-Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties Reachability Preservation.
+Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties Reachability Preservation ConcreteState.
 
 Definition LocSet      : Type := Ensembles.Ensemble Loc.
 
@@ -24,7 +24,9 @@ Theorem shallow_immutability_pico :
     (Htyping    : stmt_typing CT sΓ mt stmt sΓ')
     (Heval      : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (Hobj_end   : runtime_getObj h' l = Some (mkObj (mkruntime_type Imm_r C) vals'))
-    (Hfield_imm : sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA),
+    (Hfield_imm : sf_assignability_rel CT C f Final \/
+                  sf_assignability_rel CT C f RDA \/
+                  concrete_assignability_method_type mt),
     nth_error vals f = nth_error vals' f.
 Proof.
   intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals vals' f
@@ -88,13 +90,16 @@ Proof.
         subst f.
         exfalso.
         simpl in Hruntime_assignable.
-        destruct Hfield_imm as [Hffinal | HfRDA].
+        destruct Hfield_imm as [Hffinal | [HfRDA | Hcs]].
         * assert (Heq : Final = a) by (eapply sf_assignability_deterministic_rel; eauto).
           rewrite <- Heq in Hruntime_assignable.
           discriminate.
         * assert (Heq : RDA = a) by (eapply sf_assignability_deterministic_rel; eauto).
           rewrite <- Heq in Hruntime_assignable.
           discriminate.
+        * destruct Hcs as [Hcs | Hts]; subst mt.
+          eapply concrete_state_write_cannot_target_immutable; eauto.
+          eapply concrete_immutability_write_cannot_target_immutable; eauto.
         +
         assert (Hvals_eq : vals' = [f0 ↦ val_y] (vals)).
         {
@@ -158,7 +163,21 @@ Proof.
   apply method_body_well_typed_by_find in mdeflookup; auto.
   destruct mdeflookup as [sΓmethodend Htyping_method].
   remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
-  apply IHHeval with (mt:=(mtype (msignature mdef)))(sΓ' := sΓmethodend)(sΓ := sΓmethodinit). 1-9: auto.
+  assert (Hsigeq_scope : msignature mdef = msignature mdef0).
+  { eapply runtime_and_static_method_signatures_agree; eauto. }
+  assert (Hfield_callee : sf_assignability_rel CT C f Final \/
+                          sf_assignability_rel CT C f RDA \/
+                          concrete_assignability_method_type (mtype (msignature mdef))).
+  {
+    destruct Hfield_imm as [Hfinal | [Hrda | Hconcrete]].
+    - left; exact Hfinal.
+    - right; left; exact Hrda.
+    - right; right.
+      destruct Hscope as [Habs | [Hcs Hsub]].
+      + subst mt. destruct Hconcrete as [Hbad | Hbad]; discriminate.
+      + subst mt. rewrite Hsigeq_scope. eapply concrete_assignability_submethod; eauto.
+  }
+  apply IHHeval with (mt:=(mtype (msignature mdef)))(sΓ' := sΓmethodend)(sΓ := sΓmethodinit). 1-5: auto.
   remember {| vars := Iot ly :: vals |} as rΓmethodinit.
   destruct (r_muttype h ly) eqn: Hinnerthis.
   2:{
@@ -790,7 +809,19 @@ Proof.
   apply method_body_well_typed_by_find in mdeflookup; auto.
   destruct mdeflookup as [sΓmethodend Htyping_method].
   remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
-  apply IHHeval with (mt:=(mtype (msignature mdef)))(sΓ' := sΓmethodend)(sΓ := sΓmethodinit). 1-9: auto.
+  assert (Hsigeq_scope : msignature mdef = msignature mdef0).
+  { eapply runtime_and_static_method_signatures_agree; eauto. }
+  assert (Hfield_callee : sf_assignability_rel CT C f Final \/
+                          sf_assignability_rel CT C f RDA \/
+                          concrete_assignability_method_type (mtype (msignature mdef))).
+  {
+    destruct Hfield_imm as [Hfinal | [Hrda | Hconcrete]].
+    - left; exact Hfinal.
+    - right; left; exact Hrda.
+    - right; right. rewrite Hsigeq_scope.
+      eapply concrete_assignability_submethod; eauto.
+  }
+  apply IHHeval with (mt:=(mtype (msignature mdef)))(sΓ' := sΓmethodend)(sΓ := sΓmethodinit). 1-5: auto.
   remember {| vars := Iot ly :: vals |} as rΓmethodinit.
   destruct (r_muttype h ly) eqn: Hinnerthis.
   2:{
@@ -1420,9 +1451,9 @@ Proof.
   specialize (runtime_preserves_r_type_heap CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
   h' vals s1 rΓ' Hobj_start Heval1) as [vals1 Hrtype].
   rewrite Hrtype in Hh'some; inversion Hh'some; subst.
-  specialize (IHHeval1 Hloc Heqok Hfield_imm values' Hrtype vals Hobj_start mt sΓ'0 sΓ Hwf Htype1).
+  specialize (IHHeval1 Hloc Heqok values' Hrtype vals Hobj_start mt Hfield_imm sΓ'0 sΓ Hwf Htype1).
   specialize (preservation_pico CT sΓ mt rΓ h s1 rΓ' h' sΓ'0 Hwf Htype1 Heval1) as Hwf'.
-  specialize (IHHeval2 Hloc_h' Heqok Hfield_imm vals' Hobj_end values' Hrtype mt sΓ' sΓ'0 Hwf' Htype2).
+  specialize (IHHeval2 Hloc_h' Heqok vals' Hobj_end values' Hrtype mt Hfield_imm sΓ' sΓ'0 Hwf' Htype2).
   rewrite IHHeval2 in IHHeval1; auto.
 Qed.
 
@@ -1592,6 +1623,11 @@ Proof.
   intros.
   eapply protected_locset_all_imm in Hreach; eauto.
   destruct Hreach as [C' [vals'' Himm_l]].
+  rewrite Himm_l in Hobj.
+  injection Hobj; intros; subst.
   eapply shallow_immutability_pico with (l := l); eauto.
-  apply runtime_getObj_dom in Hobj. exact Hobj.
+  apply runtime_getObj_dom in Himm_l. exact Himm_l.
+  destruct Hprotected as [Hfinal | Hrda].
+  - left; exact Hfinal.
+  - right; left; exact Hrda.
 Qed.

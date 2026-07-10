@@ -67,6 +67,14 @@ Definition vpa_assignability_concret_imm (q1: q) (a1: a) : a :=
     | _, _ => Final
   end.
 
+Lemma concrete_assignable_implies_assignable : forall q1 a1,
+  vpa_assignability_concret_imm q1 a1 = Assignable ->
+  vpa_assignability q1 a1 = Assignable.
+Proof.
+  intros q1 a1 H.
+  destruct q1, a1; simpl in *; try discriminate; reflexivity.
+Qed.
+
 (* Check whether a type respect its bound *)
 Definition vpa_mutability_bound (q1: q)(q2 : q_c) : q :=
   match q1, q2 with

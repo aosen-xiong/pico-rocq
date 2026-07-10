@@ -11,7 +11,7 @@ Theorem readonly_pico_field_write :
     (Hqt_ro : sqtype qt = RO)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Hmtype: mt <> AbstractImm)
+    (Hmtype: safe_readonly_method_type mt)
     (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (Hget_readonly : runtime_getVal rΓ readonlyx = Some (Iot l))
     (Hobj_before : runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals))
@@ -29,7 +29,9 @@ Proof.
   (* Invert typing to get field write constraints *)
   inversion Htyping; subst.
   -
-    exfalso; apply Hmtype; reflexivity.
+    exfalso; apply (proj1 Hmtype); reflexivity.
+  -
+    exfalso; apply (proj2 Hmtype); reflexivity.
   -
     unfold wf_r_config in Hwf.
     destruct Hwf as [Hclasstable [_ [Hrenv [_ [_ Htypable]]]]].
@@ -349,7 +351,7 @@ Theorem readonly_method_call_preserves_arguments :
     (Hmethod_lookup : FindMethodWithName CT (sctype Ty) mindex mdef)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Hmtype: mt <> AbstractImm)
+    (Hmtype: safe_readonly_method_type mt)
     (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (Hget_y : runtime_getVal rΓ y = Some (Iot ly))
     (Hget_zs : runtime_lookup_list rΓ zs = Some vals)
@@ -376,7 +378,8 @@ Theorem readonly_method_call_preserves_arguments :
   }
   subst vals0.
   inversion Htyping; subst.
-  exfalso; apply Hmtype; reflexivity.
+  exfalso. destruct Hscope as [Hscope | [Hscope _]]; subst;
+    [apply (proj1 Hmtype) | apply (proj2 Hmtype)]; reflexivity.
   rename sΓ' into sΓ.
   rewrite Hget_y0 in Hstatic_type.
   inversion Hstatic_type; subst Ty0.
@@ -1052,7 +1055,7 @@ Theorem readonly_method_call_preserves_arguments :
     {
       eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
     }
-    rewrite Hmsigeq; exact Hmt_not_abs.
+    rewrite Hmsigeq; split; assumption.
     have Hsubset := reachable_locations_subset_reachable_from_method_frame CT h ly vals.
     rewrite <- HeqrΓmethodinit in Hsubset.
     unfold Ensembles.Included in Hsubset.
@@ -1719,7 +1722,7 @@ Theorem readonly_method_call_preserves_arguments :
     {
       eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
     }
-    rewrite Hmsigeq; exact Hmt_not_abs.
+    rewrite Hmsigeq; split; assumption.
     have Hsubset := reachable_locations_subset_reachable_from_method_frame CT h ly vals.
     rewrite <- HeqrΓmethodinit in Hsubset.
     unfold Ensembles.Included in Hsubset.

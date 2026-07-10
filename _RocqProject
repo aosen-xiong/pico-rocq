@@ -7,6 +7,7 @@ Syntax.v
 Notations.v
 Helpers.v
 ViewpointAdaptation.v
+ConcreteState.v
 Subtyping.v
 Typing.v
 ObjectCreationExamples.v
@@ -15,6 +16,7 @@ Bigstep.v
 Properties.v
 Preservation.v
 DeepImmutability.v
+ConcreteStateImmutability.v
 ReadonlyHelper.v
 ReadonlyConfinement.v
 ReadonlyNoMutation.v
