@@ -4,6 +4,7 @@
 *.vo
 *.vok
 *.vos
+.DS_Store
 .d
 CoqMakefile
 CoqMakefile.conf
