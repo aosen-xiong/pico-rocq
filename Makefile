@@ -86,6 +86,8 @@ alectryon-doc: coq
 	  '  <h2>Immutability</h2>' \
 	  '  <ul>' \
 	  '    <li><a href="DeepImmutability.html">DeepImmutability</a></li>' \
+	  '    <li><a href="ConcreteState.html">ConcreteState</a></li>' \
+	  '    <li><a href="ConcreteStateImmutability.html">ConcreteStateImmutability</a></li>' \
 	  '    <li><a href="ConcreteImmutability.html">ConcreteImmutability</a></li>' \
 	  '  </ul>' \
 	  '  <h2>Readonly</h2>' \

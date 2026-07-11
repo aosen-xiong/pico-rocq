@@ -1,8 +1,9 @@
-# Pico Rocq Artifact
+# PICO Rocq Formalization
 
-This repository contains the Rocq/Coq mechanization for the Pico language.  The
-core artifact claims are organized around type soundness, immutability, and
-readonly guarantees.
+This directory contains the Rocq/Coq mechanization for the paper
+**Transitive, Abstract, and Class Polymorphic Immutability**. The core artifact
+claims are organized around type soundness, immutability, and readonly
+guarantees.
 
 Top-level theorem entry points:
 
@@ -33,12 +34,12 @@ Top-level theorem entry points:
 | Theorem 1 support | Object creation preserves well-formedness | `SNew x q_c c ys` is well-typed and evaluates by `eval_stmt` | Extending the heap and assigning the fresh object preserves `wf_r_config` | `preservation_new_ok` in [Properties.v](Properties.v) |
 | Theorem 2 | Shallow abstract immutability | Immutable object exists before and after evaluation; field is `Final` or `RDA`; statement is well-typed and evaluates successfully | Protected field value is unchanged | `shallow_immutability_pico` in [DeepImmutability.v](DeepImmutability.v) |
 | Lemma 1 | Reachable-abstract-state reachability from an immutable root preserves immutability | Object is reachable from an immutable root through abstract-state fields | The reachable object is also immutable | `reachable_abs_from_imm_points_to_imm` in [DeepImmutability.v](DeepImmutability.v) |
-| Theorem 3 | Transitive abstract immutability | Object is reachable from an immutable root; statement is well-typed and evaluates successfully | Reachable abstract-state objects remain protected | `deep_immutability_pico` in [DeepImmutability.v](DeepImmutability.v) |
-| CS theorem | Concrete-state preservation | Object is reachable through abstract state from an immutable root; statement is well-typed in `ConcreteState` scope | Every field retains its entry value, including fields declared `Assignable` | `concrete_state_preservation` in [ConcreteStateImmutability.v](ConcreteStateImmutability.v), supported by the direct-write lemmas in [ConcreteState.v](ConcreteState.v) |
-| Theorem 4 | Safe readonly method call | Method call through readonly receiver; arguments are protected/readable; method body evaluates successfully | Readonly-reachable arguments remain protected across the call | `readonly_method_call_preserves_arguments` in [ReadonlySafety.v](ReadonlySafety.v) |
+| Theorem 3, AS clause | Transitive abstract immutability | Object is reachable from an immutable root through abstract state; statement is well-typed and evaluates successfully | Every non-`Assignable` field of the reachable object retains its entry value | `deep_immutability_pico` in [DeepImmutability.v](DeepImmutability.v) |
+| Theorem 3, CS clause | Concrete-state preservation | Object is reachable through abstract state from an immutable root; statement is well-typed in `ConcreteState` scope | Every field retains its entry value, including fields declared `Assignable` | `concrete_state_preservation` in [ConcreteStateImmutability.v](ConcreteStateImmutability.v), supported by [ConcreteState.v](ConcreteState.v) |
+| Theorem 4, RS clause | Safe readonly method call | Method call occurs in `SafeRO` scope through protected receiver/arguments and evaluates successfully | Non-`Assignable` fields of objects reachable from the call roots retain their entry values | `readonly_method_call_preserves_arguments` in [ReadonlySafety.v](ReadonlySafety.v) |
 | Theorem 4 support | Readonly field-write safety | Receiver expression has static type `RO`; field-write statement evaluates successfully; method scope is not `AbstractImm` | Protected field of the readonly-referenced object is unchanged | `readonly_pico_field_write` in [ReadonlySafety.v](ReadonlySafety.v) |
-| Theorem 5 | Concrete immutability | Method call occurs in `ConcreteImm` scope; receiver and all parameters are safe | Entire reachable receiver/argument object graph remains unchanged for all fields | `ConcreteImmutability` in [ConcreteImmutability.v](ConcreteImmutability.v) |
-| Proof integrity | No axioms/admitted proof gaps in submitted sources | Artifact sources exclude forbidden `Axiom`, `Admitted`, and `admit`, except bundled `LibTactics.v` support library | Mechanical checker passes | [scripts/check-no-axioms-admits.py](scripts/check-no-axioms-admits.py) via `make check` |
+| Theorem 4, TS clause | Concrete immutability | Method call occurs in `ConcreteImm` scope; receiver and all parameters are safe | Every field of objects reachable from the call roots retains its entry value | `ConcreteImmutability` in [ConcreteImmutability.v](ConcreteImmutability.v) |
+| Proof-hygiene scan | Submitted proof sources do not use the forbidden commands scanned by the artifact | Every submitted `.v` file excludes literal `Axiom`, `Admitted`, and `admit` | Mechanical forbidden-command scan passes | [scripts/check-no-axioms-admits.py](scripts/check-no-axioms-admits.py) via `make check` |
 
 ## Paper/Formalization Notes
 
@@ -54,7 +55,7 @@ Top-level theorem entry points:
 
 ## Toolchain
 
-- Rocq/Coq: `9.1.0`
+- Rocq/Coq: `9.1.1`
 - OCaml: `5.2.1`
 
 ## Artifact verification
@@ -65,9 +66,8 @@ The recommended reviewer command is:
 make check
 ```
 
-This builds all Rocq sources and checks that the submitted proof files do not
-use forbidden `Axiom`, `Admitted`, or `admit` declarations outside the bundled
-`LibTactics.v` support library.
+This builds all Rocq sources and checks that every submitted `.v` file avoids
+the forbidden `Axiom`, `Admitted`, and `admit` commands.
 
 The same checks can be run separately:
 
