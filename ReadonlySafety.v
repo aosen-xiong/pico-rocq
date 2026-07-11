@@ -248,6 +248,25 @@ Definition all_params_safe (msig : method_sig) : Prop :=
   is_safe_mode (sqtype (mreceiver msig)) /\
   Forall (fun T => is_safe_mode (sqtype T)) (mparams msig).
 
+Lemma callee_frame_respects_protected_set :
+  forall CT h ly vals msig
+    (Hwf : wf_r_config CT
+      (mreceiver msig :: mparams msig) (mkr_env (Iot ly :: vals)) h)
+    (Hsafe : all_params_safe msig),
+    env_respects_protected_set
+      (reachable_locations_from_initial_env CT h (mkr_env (Iot ly :: vals)))
+      (mreceiver msig :: mparams msig) (mkr_env (Iot ly :: vals)).
+Proof.
+  intros CT h ly vals msig Hwf [Hreceiver_safe Hparams_safe].
+  eapply confinement_from_all_readonly_env; eauto.
+  intros index T Hlookup.
+  unfold static_getType in Hlookup.
+  destruct index as [|index].
+  - simpl in Hlookup. injection Hlookup as <-. exact Hreceiver_safe.
+  - simpl in Hlookup.
+    eapply Forall_nth_error in Hparams_safe; eauto.
+Qed.
+
 Definition reachable_locations_from_vals
   (CT : class_table) (h : heap) (vals : list value) : Ensembles.Ensemble Loc :=
   fun l_target =>
@@ -438,72 +457,21 @@ Lemma readonly_method_call_preserves_arguments_with_end :
     }
 
     eapply deep_readonly_preservation with (stmt := (mbody_stmt mbody)) (sΓ' := sΓmethodend) (mt:=(mtype (msignature mdef))); eauto.
-    assert (HenvImpliesEnvRespect: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓmethodinit) sΓmethodinit rΓmethodinit).
+    assert (HenvImpliesEnvRespect :
+      env_respects_protected_set
+        (reachable_locations_from_initial_env CT h rΓmethodinit)
+        sΓmethodinit rΓmethodinit).
     {
-      eapply confinement_from_all_readonly_env; eauto.
-      assert (Hy_dom : y < dom sΓ).
-      {
-        apply static_getType_dom in Hget_y0.
-        exact Hget_y0.
-      }
-      assert (HOutterReceiverAddr: exists lOutterReceiver, get_this_var_mapping (vars rΓ) = Some lOutterReceiver).
-      {
-        eapply get_this_exists_from_wf_r_config; eauto.
-      }
-      destruct HOutterReceiverAddr as [lOutterReceiver HOutterReceiverAddr].
-      assert (HOutterReceiverMutability: exists qcontext, r_muttype h lOutterReceiver = Some qcontext).
-      {
-        eapply receiver_mutability_exists_wf_renv; eauto.
-      }
-      destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
-      have Hcorr := Htypable.
-      have Hcorrcopy := Hcorr.
-      specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty_call Hget_y0).
-      unfold wf_r_typable in Hcorr.
-      unfold r_basetype in Hbase.
-      unfold r_type.
-      destruct (runtime_getObj h ly) as [obj|] eqn:Hobjy; [|discriminate].
-      injection Hbase as Hcy_eq.
-      subst cy.
-      destruct obj as [rt_obj fields_obj].
-      destruct rt_obj as [rq_obj rc_obj].
-
-      unfold wf_renv in Hrenv.
-      destruct Hrenv as [_ [Hreceiver _]].
-      destruct Hreceiver as [iot [Hget_iot _]].
-      unfold get_this_var_mapping.
-      unfold gget in Hget_iot.
-      destruct (vars rΓ) as [|v0 vs] eqn:Hvars; [discriminate|].
-
-      unfold r_type in Hcorr.
-      rewrite Hval_y in Hcorr.
-      rewrite Hobjy in Hcorr.
-      simpl in Hcorr.
-      destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-      assert (Hmsigeq: msignature mdef = msignature mdef1).
-      {
-        eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
-      }
-      subst Ty.
-      intros y0 T Hlookup_s.
-      unfold static_getType in Hlookup_s.
-      simpl in Hlookup_s.
-      rewrite HeqsΓmethodinit in Hlookup_s.
-      simpl in Hlookup_s.
-      destruct y0 as [|y0'].
-      - (* Case: y0 = 0 (receiver) *)
-        simpl in Hlookup_s.
-        injection Hlookup_s as <-.
-        unfold all_params_safe in Hall_readonly.
-        destruct Hall_readonly as [Hreceiver_safe _].
-        rewrite Hmsigeq.
-        exact Hreceiver_safe.
-      - (* Case: y0 = S y0' (a parameter) *)
-        simpl in Hlookup_s.
-        unfold all_params_safe in Hall_readonly.
-        destruct Hall_readonly as [_ Hall_params].
-        rewrite Hmsigeq in Hlookup_s.
-        eapply Forall_nth_error in Hall_params; eauto.
+      have Hwf_frame := Hwf_method_frame.
+      rewrite HeqsΓmethodinit in Hwf_frame.
+      rewrite HeqTy in Hwf_frame.
+      rewrite HeqrΓmethodinit in Hwf_frame.
+      rewrite HeqsΓmethodinit.
+      rewrite HeqTy.
+      rewrite HeqrΓmethodinit.
+      eapply callee_frame_respects_protected_set.
+      exact Hwf_frame.
+      rewrite Hframe_sig. exact Hall_readonly.
     }
     exact HenvImpliesEnvRespect.
     rewrite getmbody; auto.
@@ -582,72 +550,21 @@ Lemma readonly_method_call_preserves_arguments_with_end :
       all: rewrite Hframe_sig; assumption.
     }
     eapply deep_readonly_preservation with (stmt := (mbody_stmt mbody)) (sΓ' := sΓmethodend) (mt:=(mtype (msignature mdef))); eauto.
-    assert (HenvImpliesEnvRespect: env_respects_protected_set (reachable_locations_from_initial_env CT h rΓmethodinit) sΓmethodinit rΓmethodinit).
+    assert (HenvImpliesEnvRespect :
+      env_respects_protected_set
+        (reachable_locations_from_initial_env CT h rΓmethodinit)
+        sΓmethodinit rΓmethodinit).
     {
-      eapply confinement_from_all_readonly_env; eauto.
-      assert (Hy_dom : y < dom sΓ).
-      {
-        apply static_getType_dom in Hget_y0.
-        exact Hget_y0.
-      }
-      assert (HOutterReceiverAddr: exists lOutterReceiver, get_this_var_mapping (vars rΓ) = Some lOutterReceiver).
-      {
-        eapply get_this_exists_from_wf_r_config; eauto.
-      }
-      destruct HOutterReceiverAddr as [lOutterReceiver HOutterReceiverAddr].
-      assert (HOutterReceiverMutability: exists qcontext, r_muttype h lOutterReceiver = Some qcontext).
-      {
-        eapply receiver_mutability_exists_wf_renv; eauto.
-      }
-      destruct HOutterReceiverMutability as [OutterReceiverMutability HOutterReceiverMutabilityType].
-      have Hcorr := Htypable.
-      have Hcorrcopy := Hcorr.
-      specialize (Hcorr lOutterReceiver OutterReceiverMutability HOutterReceiverAddr HOutterReceiverMutabilityType y Hy_dom Ty_call Hget_y0).
-      unfold wf_r_typable in Hcorr.
-      unfold r_basetype in Hbase.
-      unfold r_type.
-      destruct (runtime_getObj h ly) as [obj|] eqn:Hobjy; [|discriminate].
-      injection Hbase as Hcy_eq.
-      subst cy.
-      destruct obj as [rt_obj fields_obj].
-      destruct rt_obj as [rq_obj rc_obj].
-
-      unfold wf_renv in Hrenv.
-      destruct Hrenv as [_ [Hreceiver _]].
-      destruct Hreceiver as [iot [Hget_iot _]].
-      unfold get_this_var_mapping.
-      unfold gget in Hget_iot.
-      destruct (vars rΓ) as [|v0 vs] eqn:Hvars; [discriminate|].
-
-      unfold r_type in Hcorr.
-      rewrite Hval_y in Hcorr.
-      rewrite Hobjy in Hcorr.
-      simpl in Hcorr.
-      destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-      assert (Hmsigeq: msignature mdef = msignature mdef1).
-      {
-        eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
-      }
-      subst Ty.
-      intros y0 T Hlookup_s.
-      unfold static_getType in Hlookup_s.
-      simpl in Hlookup_s.
-      rewrite HeqsΓmethodinit in Hlookup_s.
-      simpl in Hlookup_s.
-      destruct y0 as [|y0'].
-      - (* Case: y0 = 0 (receiver) *)
-        simpl in Hlookup_s.
-        injection Hlookup_s as <-.
-        unfold all_params_safe in Hall_readonly.
-        destruct Hall_readonly as [Hreceiver_safe _].
-        rewrite Hmsigeq.
-        exact Hreceiver_safe.
-      - (* Case: y0 = S y0' (a parameter) *)
-        simpl in Hlookup_s.
-        unfold all_params_safe in Hall_readonly.
-        destruct Hall_readonly as [_ Hall_params].
-        rewrite Hmsigeq in Hlookup_s.
-        eapply Forall_nth_error in Hall_params; eauto.
+      have Hwf_frame := Hwf_method_frame.
+      rewrite HeqsΓmethodinit in Hwf_frame.
+      rewrite HeqTy in Hwf_frame.
+      rewrite HeqrΓmethodinit in Hwf_frame.
+      rewrite HeqsΓmethodinit.
+      rewrite HeqTy.
+      rewrite HeqrΓmethodinit.
+      eapply callee_frame_respects_protected_set.
+      exact Hwf_frame.
+      rewrite Hframe_sig. exact Hall_readonly.
     }
     exact HenvImpliesEnvRespect.
     rewrite getmbody; auto.

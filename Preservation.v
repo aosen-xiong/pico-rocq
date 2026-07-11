@@ -1186,6 +1186,52 @@ Proof.
     eapply callee_frame_wf_rs_ts; eauto.
 Qed.
 
+(** Collect all facts about the dynamically selected target of a typed call.
+    In particular, clients do not need to distinguish a method declared in
+    the receiver class from one inherited from an ancestor. *)
+Lemma typed_call_target :
+  forall CT sΓ mt rΓ h x m y zs sΓ' vals ly cy mdef
+    (Hwf : wf_r_config CT sΓ rΓ h)
+    (Htyping : stmt_typing CT sΓ mt (SCall x m y zs) sΓ')
+    (Hval_y : runtime_getVal rΓ y = Some (Iot ly))
+    (Hbase : r_basetype h ly = Some cy)
+    (Hfind : FindMethodWithName CT cy m mdef)
+    (Hargs : runtime_lookup_list rΓ zs = Some vals),
+    exists D ddef sΓbody',
+      base_subtype CT cy D /\
+      find_class CT D = Some ddef /\
+      In mdef (methods (body ddef)) /\
+      wf_method CT D mdef /\
+      stmt_typing CT
+        (mreceiver (msignature mdef) :: mparams (msignature mdef))
+        (mtype (msignature mdef))
+        (mbody_stmt (mbody mdef)) sΓbody' /\
+      wf_r_config CT
+        (mreceiver (msignature mdef) :: mparams (msignature mdef))
+        (mkr_env (Iot ly :: vals)) h.
+Proof.
+  intros CT sΓ mt rΓ h x m y zs sΓ' vals ly cy mdef
+    Hwf Htyping Hval_y Hbase Hfind Hargs.
+  have Hwf_ct : wf_class_table CT.
+  { unfold wf_r_config in Hwf. exact (proj1 Hwf). }
+  have Hwf_heap : wf_heap CT h.
+  { unfold wf_r_config in Hwf. exact (proj1 (proj2 Hwf)). }
+  have Hcy_dom : cy < dom CT.
+  { eapply r_basetype_in_dom; eauto. }
+  destruct (method_lookup_in_wellformed_inherited CT cy m mdef
+              Hwf_ct Hcy_dom Hfind)
+    as [D [ddef [Hsub [Hfind_D [Hin Hwf_method]]]]].
+  destruct (typed_call_has_wf_callee_frame CT sΓ mt rΓ h x m y zs
+              sΓ' vals ly cy mdef Hwf Htyping Hval_y Hbase Hfind Hargs)
+    as [sΓbody' [Hbody Hframe]].
+  exists D, ddef, sΓbody'.
+  exact (conj Hsub
+    (conj Hfind_D
+      (conj Hin
+        (conj Hwf_method
+          (conj Hbody Hframe))))).
+Qed.
+
 (* Soundness properties for PICO *)
 Theorem preservation_pico :
   forall CT sΓ mt rΓ h stmt rΓ' h' sΓ'

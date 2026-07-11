@@ -155,9 +155,10 @@ Proof.
       (mt := mt) (sΓ' := sΓ'); eauto.
     eapply SBS_FldWrite_MUTATIONEXP; eauto.
   - destruct Hfind as [Hfind Hmbody].
-    destruct (typed_call_has_wf_callee_frame CT sΓ mt rΓ h x m y zs
+    destruct (typed_call_target CT sΓ mt rΓ h x m y zs
                 sΓ' vals ly cy mdef Hwf Htyping Hval_y Hbase Hfind Hargs)
-      as [sΓbody' [Hbody_typing Hframe_wf]].
+      as [D [ddef [sΓbody'
+        [_ [_ [_ [_ [Hbody_typing Hframe_wf]]]]]]]].
     subst mbody mstmt rΓ'.
     eapply IHHeval; eauto.
   - inversion Htyping; subst.
