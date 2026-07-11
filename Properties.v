@@ -4010,3 +4010,51 @@ Proof.
       exists j.
       split; simpl; assumption.
 Qed.
+
+(** A statically typed variable that evaluates to a non-null location has a
+    runtime class below its static class.  This is the caller-side fact needed
+    to relate static and dynamically selected method signatures. *)
+Lemma runtime_value_base_subtype :
+  forall CT sΓ rΓ h y Ty ly cy
+    (Hwf : wf_r_config CT sΓ rΓ h)
+    (Hget_y : static_getType sΓ y = Some Ty)
+    (Hval_y : runtime_getVal rΓ y = Some (Iot ly))
+    (Hbase : r_basetype h ly = Some cy),
+    base_subtype CT cy (sctype Ty).
+Proof.
+  intros CT sΓ rΓ h y Ty ly cy Hwf Hget_y Hval_y Hbase.
+  unfold wf_r_config in Hwf.
+  destruct Hwf as [_ [_ [Hrenv [_ [_ Hcorr]]]]].
+  unfold wf_renv in Hrenv.
+  destruct Hrenv as [_ [[receiver [Hreceiver Hreceiver_dom]] _]].
+  destruct (receiver_mutability_exists_from_bound h receiver
+              Hreceiver_dom) as [qcontext Hqcontext].
+  specialize (Hcorr receiver qcontext Hreceiver Hqcontext).
+  assert (Hy_dom : y < dom sΓ).
+  { apply static_getType_dom in Hget_y. exact Hget_y. }
+  specialize (Hcorr y Hy_dom Ty Hget_y).
+  rewrite Hval_y in Hcorr.
+  unfold wf_r_typable, r_type in Hcorr.
+  unfold r_basetype in Hbase.
+  destruct (runtime_getObj h ly) as [obj|] eqn:Hobj; [|discriminate].
+  destruct obj as [[rq rc] fields].
+  simpl in Hbase, Hcorr.
+  injection Hbase as Hcy; subst rc.
+  exact (proj1 Hcorr).
+Qed.
+
+Lemma runtime_call_signature_agrees :
+  forall CT sΓ rΓ h y Ty ly cy m mdef_runtime mdef_static
+    (Hwf : wf_r_config CT sΓ rΓ h)
+    (Hget_y : static_getType sΓ y = Some Ty)
+    (Hval_y : runtime_getVal rΓ y = Some (Iot ly))
+    (Hbase : r_basetype h ly = Some cy)
+    (Hfind_runtime : FindMethodWithName CT cy m mdef_runtime)
+    (Hfind_static : FindMethodWithName CT (sctype Ty) m mdef_static),
+    msignature mdef_runtime = msignature mdef_static.
+Proof.
+  intros.
+  eapply method_signature_consistent_subtype; eauto.
+  - unfold wf_r_config in Hwf. exact (proj1 Hwf).
+  - eapply runtime_value_base_subtype; eauto.
+Qed.

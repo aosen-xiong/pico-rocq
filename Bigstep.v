@@ -383,6 +383,17 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Hframe     : rΓ' = mkr_env (Iot ly :: vals))
       (Heval_body : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ') CT rΓ' h mstmt NPE (reachable_locations_from_initial_env CT h rΓ') rΓ'' h'),
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SCall x m y zs) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'
+
+  | SBS_Call_MUTATIONEXP_Body : forall CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret h' rΓ' rΓ''
+      (Hval_y     : runtime_getVal rΓ y = Some (Iot ly))
+      (Hbase      : r_basetype h ly = Some cy)
+      (Hfind      : FindMethodWithName CT cy m mdef /\ mbody = Syntax.mbody mdef)
+      (Hstmt      : mstmt = mbody.(mbody_stmt))
+      (Hret       : mret = mbody.(mreturn))
+      (Hargs      : runtime_lookup_list rΓ zs = Some vals)
+      (Hframe     : rΓ' = mkr_env (Iot ly :: vals))
+      (Heval_body : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ') CT rΓ' h mstmt MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ') rΓ'' h'),
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SCall x m y zs) MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'
   (* evaluate sequence of statements *)
   | SBS_Seq : forall CT rΓ h s1 s2 rΓ' h' rΓ'' h''
       (Heval1 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
@@ -397,7 +408,16 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Heval1 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
       (Heval2 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ' h' s2 NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''),
       eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
-.
+
+  | SBS_Seq_MUTATIONEXP_first : forall CT rΓ h s1 s2 rΓ' h'
+      (Heval1 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ' h'),
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
+
+  | SBS_Seq_MUTATIONEXP_second : forall CT rΓ h s1 s2 rΓ' h' rΓ'' h''
+      (Heval1 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+      (Heval2 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ' h' s2 MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''),
+      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
+  .
 
 (* Determinism of eval_stmt.
 
@@ -512,6 +532,16 @@ Proof.
       rewrite Hargs0 in Hargs; injection Hargs as Hvals_eq; subst.
       destruct (IHeval_stmt _ _ _ _ Heval_body) as [Hres_eq _].
       discriminate.
+    + (* H2 : SBS_Call_MUTATIONEXP_Body — IH: OK = MUTATIONEXP *)
+      rewrite Hval_y0 in Hval_y; injection Hval_y as Hly_eq; subst.
+      rewrite Hbase0 in Hbase; injection Hbase as Hcy_eq; subst.
+      destruct Hfind as [Hfmn1 Hmbody1].
+      destruct Hfind0 as [Hfmn2 Hmbody2].
+      pose proof (find_method_with_name_deterministic _ _ _ _ _ Hfmn1 Hfmn2) as Hmdef_eq.
+      subst.
+      rewrite Hargs0 in Hargs; injection Hargs as Hvals_eq; subst.
+      destruct (IHeval_stmt _ _ _ _ Heval_body) as [Hres_eq _].
+      discriminate.
   - (* SBS_Call_NPE *)
     inversion H2; subst.
     + (* H2 : SBS_Call — Null vs Iot *)
@@ -519,6 +549,8 @@ Proof.
     + (* H2 : SBS_Call_NPE *)
       repeat split; reflexivity.
     + (* H2 : SBS_Call_NPE_Body — Null vs Iot *)
+      rewrite Hval_y in Hnull; discriminate.
+    + (* H2 : SBS_Call_MUTATIONEXP_Body — Null vs Iot *)
       rewrite Hval_y in Hnull; discriminate.
   - (* SBS_Call_NPE_Body *)
     inversion H2; subst.
@@ -545,6 +577,51 @@ Proof.
       destruct (IHeval_stmt _ _ _ _ Heval_body) as [_ [_ [Henv_eq Hheap_eq]]].
       subst.
       repeat split; reflexivity.
+    + (* H2 : SBS_Call_MUTATIONEXP_Body — IH: NPE = MUTATIONEXP *)
+      rewrite Hval_y0 in Hval_y; injection Hval_y as Hly_eq; subst.
+      rewrite Hbase0 in Hbase; injection Hbase as Hcy_eq; subst.
+      destruct Hfind as [Hfmn1 Hmbody1].
+      destruct Hfind0 as [Hfmn2 Hmbody2].
+      pose proof (find_method_with_name_deterministic _ _ _ _ _ Hfmn1 Hfmn2) as Hmdef_eq.
+      subst.
+      rewrite Hargs0 in Hargs; injection Hargs as Hvals_eq; subst.
+      destruct (IHeval_stmt _ _ _ _ Heval_body) as [Hres_eq _].
+      discriminate.
+  - (* SBS_Call_MUTATIONEXP_Body *)
+    inversion H2; subst.
+    + (* H2 : SBS_Call — IH: MUTATIONEXP = OK *)
+      rewrite Hval_y0 in Hval_y; injection Hval_y as Hly_eq; subst.
+      rewrite Hbase0 in Hbase; injection Hbase as Hcy_eq; subst.
+      destruct Hfind as [Hfmn1 Hmbody1].
+      destruct Hfind0 as [Hfmn2 Hmbody2].
+      pose proof (find_method_with_name_deterministic _ _ _ _ _ Hfmn1 Hfmn2) as Hmdef_eq.
+      subst.
+      rewrite Hargs0 in Hargs; injection Hargs as Hvals_eq; subst.
+      destruct (IHeval_stmt _ _ _ _ Heval_body) as [Hres_eq _].
+      discriminate.
+    + (* H2 : SBS_Call_NPE — Iot vs Null *)
+      rewrite Hnull in Hval_y; discriminate.
+    + (* H2 : SBS_Call_NPE_Body — IH: MUTATIONEXP = NPE *)
+      rewrite Hval_y0 in Hval_y; injection Hval_y as Hly_eq; subst.
+      rewrite Hbase0 in Hbase; injection Hbase as Hcy_eq; subst.
+      destruct Hfind as [Hfmn1 Hmbody1].
+      destruct Hfind0 as [Hfmn2 Hmbody2].
+      pose proof (find_method_with_name_deterministic _ _ _ _ _ Hfmn1 Hfmn2) as Hmdef_eq.
+      subst.
+      rewrite Hargs0 in Hargs; injection Hargs as Hvals_eq; subst.
+      destruct (IHeval_stmt _ _ _ _ Heval_body) as [Hres_eq _].
+      discriminate.
+    + (* H2 : SBS_Call_MUTATIONEXP_Body *)
+      rewrite Hval_y0 in Hval_y; injection Hval_y as Hly_eq; subst.
+      rewrite Hbase0 in Hbase; injection Hbase as Hcy_eq; subst.
+      destruct Hfind as [Hfmn1 Hmbody1].
+      destruct Hfind0 as [Hfmn2 Hmbody2].
+      pose proof (find_method_with_name_deterministic _ _ _ _ _ Hfmn1 Hfmn2) as Hmdef_eq.
+      subst.
+      rewrite Hargs0 in Hargs; injection Hargs as Hvals_eq; subst.
+      destruct (IHeval_stmt _ _ _ _ Heval_body) as [_ [_ [Henv_eq Hheap_eq]]].
+      subst.
+      repeat split; reflexivity.
   - (* SBS_Seq *)
     inversion H2; subst.
     + (* H2 : SBS_Seq *)
@@ -559,6 +636,14 @@ Proof.
       subst.
       destruct (IHeval_stmt2 _ _ _ _ Heval2) as [Hres_eq _].
       discriminate.
+    + (* H2 : SBS_Seq_MUTATIONEXP_first — IH on s1: OK = MUTATIONEXP *)
+      destruct (IHeval_stmt1 _ _ _ _ Heval1) as [Hres_eq _].
+      discriminate.
+    + (* H2 : SBS_Seq_MUTATIONEXP_second — IH on s2: OK = MUTATIONEXP *)
+      destruct (IHeval_stmt1 _ _ _ _ Heval1) as [_ [_ [Hrenv1 Hh1]]].
+      subst.
+      destruct (IHeval_stmt2 _ _ _ _ Heval2) as [Hres_eq _].
+      discriminate.
   - (* SBS_Seq_NPE_first *)
     inversion H2; subst.
     + (* H2 : SBS_Seq — IH on s1: NPE = OK *)
@@ -567,6 +652,12 @@ Proof.
     + (* H2 : SBS_Seq_NPE_first *)
       exact (IHeval_stmt _ _ _ _ Heval1).
     + (* H2 : SBS_Seq_NPE_second — IH on s1: NPE = OK *)
+      destruct (IHeval_stmt _ _ _ _ Heval1) as [Hres_eq _].
+      discriminate.
+    + (* H2 : SBS_Seq_MUTATIONEXP_first — IH on s1: NPE = MUTATIONEXP *)
+      destruct (IHeval_stmt _ _ _ _ Heval1) as [Hres_eq _].
+      discriminate.
+    + (* H2 : SBS_Seq_MUTATIONEXP_second — IH on s1: NPE = OK *)
       destruct (IHeval_stmt _ _ _ _ Heval1) as [Hres_eq _].
       discriminate.
   - (* SBS_Seq_NPE_second *)
@@ -583,6 +674,31 @@ Proof.
       destruct (IHeval_stmt1 _ _ _ _ Heval1) as [_ [_ [Hrenv1 Hh1]]].
       subst.
       exact (IHeval_stmt2 _ _ _ _ Heval2).
+    + (* H2 : SBS_Seq_MUTATIONEXP_first — IH on s1: OK = MUTATIONEXP *)
+      destruct (IHeval_stmt1 _ _ _ _ Heval1) as [Hres_eq _].
+      discriminate.
+    + (* H2 : SBS_Seq_MUTATIONEXP_second — IH on s2: NPE = MUTATIONEXP *)
+      destruct (IHeval_stmt1 _ _ _ _ Heval1) as [_ [_ [Hrenv1 Hh1]]].
+      subst.
+      destruct (IHeval_stmt2 _ _ _ _ Heval2) as [Hres_eq _].
+      discriminate.
+  - (* SBS_Seq_MUTATIONEXP_first *)
+    inversion H2; subst.
+    + destruct (IHeval_stmt _ _ _ _ Heval1) as [Hres_eq _]; discriminate.
+    + destruct (IHeval_stmt _ _ _ _ Heval1) as [Hres_eq _]; discriminate.
+    + destruct (IHeval_stmt _ _ _ _ Heval1) as [Hres_eq _]; discriminate.
+    + exact (IHeval_stmt _ _ _ _ Heval1).
+    + destruct (IHeval_stmt _ _ _ _ Heval1) as [Hres_eq _]; discriminate.
+  - (* SBS_Seq_MUTATIONEXP_second *)
+    inversion H2; subst.
+    + destruct (IHeval_stmt1 _ _ _ _ Heval1) as [_ [_ [Hrenv1 Hh1]]].
+      subst. destruct (IHeval_stmt2 _ _ _ _ Heval2) as [Hres_eq _]; discriminate.
+    + destruct (IHeval_stmt1 _ _ _ _ Heval1) as [Hres_eq _]; discriminate.
+    + destruct (IHeval_stmt1 _ _ _ _ Heval1) as [_ [_ [Hrenv1 Hh1]]].
+      subst. destruct (IHeval_stmt2 _ _ _ _ Heval2) as [Hres_eq _]; discriminate.
+    + destruct (IHeval_stmt1 _ _ _ _ Heval1) as [Hres_eq _]; discriminate.
+    + destruct (IHeval_stmt1 _ _ _ _ Heval1) as [_ [_ [Hrenv1 Hh1]]].
+      subst. exact (IHeval_stmt2 _ _ _ _ Heval2).
 Qed.
 
 Lemma r_type_dom : forall h loc rqt

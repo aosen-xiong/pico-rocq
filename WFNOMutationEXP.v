@@ -5,7 +5,7 @@ Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdapta
 Require Import Properties DeepImmutability Reachability Preservation.
 Require Import ReadonlyHelper.
 
-Theorem well_typed_no_mutation_exp :
+Lemma well_typed_field_write_no_mutation_exp :
   forall CT sΓ mt rΓ h x f y sΓ'
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt (SFldWrite x f y) sΓ')
@@ -131,4 +131,38 @@ Proof.
   unfold vpa_assignability_concret_imm in Hvpa_assignable.
   destruct a eqn: Heq_a; destruct (rqtype (rt_type o)) eqn: Heq_rq; destruct (sqtype Tx) eqn: Heq_sq; try discriminate.
   destruct qcontext eqn: Heq_qc; try easy.
+Qed.
+
+(** Mutation exceptions cannot arise anywhere in the evaluation of a
+    well-typed statement.  In particular, the result covers writes nested in
+    sequences and in dynamically dispatched method bodies. *)
+Theorem well_typed_no_mutation_exp :
+  forall CT sΓ mt rΓ h stmt initial_locs result_locs rΓ' h' sΓ'
+    (Hwf : wf_r_config CT sΓ rΓ h)
+    (Htyping : stmt_typing CT sΓ mt stmt sΓ')
+    (Heval : eval_stmt OK initial_locs CT rΓ h stmt MUTATIONEXP
+               result_locs rΓ' h'),
+    False.
+Proof.
+  intros CT sΓ mt rΓ h stmt initial_locs result_locs rΓ' h' sΓ'
+    Hwf Htyping Heval.
+  generalize dependent sΓ'.
+  generalize dependent mt.
+  generalize dependent sΓ.
+  remember MUTATIONEXP as mutation_result eqn:Hmutation in Heval.
+  induction Heval; intros; try (discriminate Hmutation).
+  - eapply well_typed_field_write_no_mutation_exp with
+      (mt := mt) (sΓ' := sΓ'); eauto.
+    eapply SBS_FldWrite_MUTATIONEXP; eauto.
+  - destruct Hfind as [Hfind Hmbody].
+    destruct (typed_call_has_wf_callee_frame CT sΓ mt rΓ h x m y zs
+                sΓ' vals ly cy mdef Hwf Htyping Hval_y Hbase Hfind Hargs)
+      as [sΓbody' [Hbody_typing Hframe_wf]].
+    subst mbody mstmt rΓ'.
+    eapply IHHeval; eauto.
+  - inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - inversion Htyping; subst.
+    eapply IHHeval2; eauto.
+    eapply preservation_pico; eauto.
 Qed.
