@@ -151,61 +151,6 @@ Proof.
   apply (field_inheritance_subtyping CT C D f fdef); auto.
 Qed.
 
-Lemma sf_def_subtyping_reverse : forall CT C D f fdef
-  (Hsub    : base_subtype CT C D)
-  (Hlookup : sf_def_rel CT C f fdef),
-  sf_def_rel CT D f fdef \/ ~(exists fdef', sf_def_rel CT D f fdef').
-Proof.
-  intros CT C D f fdef Hsub Hlookup.
-  unfold sf_def_rel in *.
-  (* Use classical reasoning on the existence of field in D *)
-  destruct (classic (exists fdef', FieldLookup CT D f fdef')) as [Hexists | Hnotexists].
-  - (* Field exists in D *)
-    destruct Hexists as [fdef' Hlookup_D].
-    left.
-    (* Use consistency: if field exists in both C and D, they must be the same *)
-    assert (Hfdef_eq : fdef = fdef').
-    {
-      eapply field_def_consistent_through_subtyping; eauto.
-    }
-    subst fdef'.
-    exact Hlookup_D.
-  - (* Field doesn't exist in D *)
-    right.
-    exact Hnotexists.
-Qed.
-
-Lemma sf_assignability_subtyping_reverse : forall CT C D f a
-  (Hsub      : base_subtype CT C D)
-  (Hassign_C : sf_assignability_rel CT C f a),
-  sf_assignability_rel CT D f a \/ ~(exists a0, sf_assignability_rel CT D f a0).
-Proof.
-  intros CT C D f a Hsub Hassign_C.
-  unfold sf_assignability_rel in *.
-  destruct Hassign_C as [fdef [Hfield_C Hassign]].
-  
-  (* Use classical reasoning on field existence in D *)
-  destruct (classic (exists fdef', FieldLookup CT D f fdef')) as [Hexists | Hnotexists].
-  - (* Field exists in D *)
-    destruct Hexists as [fdef' Hfield_D].
-    left.
-    (* Use field consistency to show fdef = fdef' *)
-    assert (Hfdef_eq : fdef = fdef').
-    {
-      eapply field_def_consistent_through_subtyping; eauto.
-    }
-    subst fdef'.
-    exists fdef.
-    split; [exact Hfield_D | exact Hassign].
-  - (* Field doesn't exist in D *)
-    right.
-    intro Hcontra.
-    destruct Hcontra as [a0 [fdef' [Hfield_D' _]]].
-    apply Hnotexists.
-    exists fdef'.
-    exact Hfield_D'.
-Qed.
-
 Lemma sf_assignability_subtyping : forall CT C D f a
   (Hsub    : base_subtype CT C D)
   (Hlookup : sf_assignability_rel CT D f a),

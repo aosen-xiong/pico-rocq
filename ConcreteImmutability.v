@@ -181,7 +181,7 @@ Proof.
       eapply callee_frame_wf_rs_ts; eauto.
       all: rewrite Hframe_sig; assumption.
     }
-    destruct (classic (Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓmethodinit) l)) as [Hlocalset' | Hnot_reachable].
+    destruct (reachable_locations_from_initial_env_dec CT h rΓmethodinit l) as [Hlocalset' | Hnot_reachable].
     2:
     {
       have Hunchanged : vals0 = vals'.
@@ -518,7 +518,7 @@ Proof.
       eapply callee_frame_wf_rs_ts; eauto.
       all: rewrite Hframe_sig; assumption.
     }
-    destruct (classic (Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓmethodinit) l)) as [Hlocalset' | Hnot_reachable].
+    destruct (reachable_locations_from_initial_env_dec CT h rΓmethodinit l) as [Hlocalset' | Hnot_reachable].
     2:
     {
       have Hunchanged : vals0 = vals'.

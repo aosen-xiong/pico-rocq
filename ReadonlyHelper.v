@@ -273,8 +273,15 @@ Proof.
     inversion htyp_copy; subst.
     exfalso. destruct Hmt; subst; [apply (proj1 Hmtype) | apply (proj2 Hmtype)]; reflexivity.
     set (P := reachable_locations_from_initial_env CT h rΓ).
-    destruct (classic (Ensembles.In Loc P v)) as [Hv_in | Hv_out].
-    +
+    assert (Hv_in : Ensembles.In Loc P v).
+    {
+      unfold reachable_locations_from_initial_env.
+      exists x, v.
+      split; [exact Hval|].
+      apply rch_heap.
+      apply runtime_getObj_dom in Hobj.
+      exact Hobj.
+    }
 	      specialize (Hconfined x v T Hget_x Hval Hv_in).
       unfold is_safe_mode in Hconfined.
       subst. simpl.
@@ -303,13 +310,6 @@ Proof.
       unfold is_safe_mode.
       destruct (mutability (ftype fDef));
       try solve solve_safe_mode.
-    +
-	    assert (Hdom_v : v < dom h) by (apply runtime_getObj_dom in Hobj; exact Hobj).
-    unfold reachable_locations_from_initial_env in P.
-    exfalso.
-    apply Hv_out.
-    exists x, v.
-	    split; [exact Hval | apply rch_heap; apply runtime_getObj_dom in Hobj; exact Hobj].
 Qed.
 
 Lemma runtime_getObj_app_left_equal : forall h h_ext loc,

@@ -2,7 +2,6 @@ From Stdlib Require Import Lia.
 From Stdlib Require Import List.
 From Stdlib Require String.
 Require Import Stdlib.Sets.Ensembles.
-Require Import Stdlib.Logic.Classical_Prop.
 Require Import Stdlib.Classes.RelationClasses.
 Import ListNotations.
 
@@ -231,6 +230,55 @@ Definition reachable_locations_from_initial_env
     exists x l_root ,
       runtime_getVal rΓ x = Some (Iot l_root) /\
       reachable h l_root l_target.
+
+Fixpoint find_in_list_dec {A : Type} (P : A -> Prop)
+  (P_dec : forall x, {P x} + {~ P x}) (xs : list A) :
+  {x | List.In x xs /\ P x} +
+  {forall x, List.In x xs -> ~ P x}.
+Proof.
+  destruct xs as [|x xs].
+  - right. intros y Hin. inversion Hin.
+  - destruct (P_dec x) as [HP|HnotP].
+    + left. exists x. split; [left; reflexivity|exact HP].
+    + destruct (@find_in_list_dec A P P_dec xs) as [Hex|Hnone].
+      * left. destruct Hex as [y [Hin HPy]].
+        exists y. split; [right; exact Hin|exact HPy].
+      * right. intros y [Heq|Hin] HPy.
+        -- subst y. contradiction.
+        -- exact (Hnone y Hin HPy).
+Defined.
+
+Lemma reachable_locations_from_initial_env_dec : forall CT h rΓ l,
+  {Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) l} +
+  {~ Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) l}.
+Proof.
+  intros CT h rΓ l.
+  unfold Ensembles.In, reachable_locations_from_initial_env.
+  set (root_reaches := fun x =>
+    exists l_root,
+      runtime_getVal rΓ x = Some (Iot l_root) /\ reachable h l_root l).
+  assert (Hroot_dec : forall x, {root_reaches x} + {~ root_reaches x}).
+  {
+    intro x. unfold root_reaches.
+    destruct (runtime_getVal rΓ x) as [v|] eqn:Hval.
+    2:{ right. intros [l_root [Hsome _]]. discriminate. }
+    destruct v as [|l_root].
+    - right. intros [l_root [Hsome _]]. discriminate.
+    - destruct (reachable_dec h l_root l) as [Hreach|Hnotreach].
+      + left. exists l_root. split; [reflexivity|exact Hreach].
+      + right. intros [l_root' [Hsome Hreach]].
+        injection Hsome as <-. contradiction.
+  }
+  destruct (find_in_list_dec root_reaches Hroot_dec
+    (seq 0 (List.length rΓ.(vars)))) as [Hex|Hnone].
+  - left. destruct Hex as [x [_ Hroot]]. exists x. exact Hroot.
+  - right. intros [x [l_root [Hval Hreach]]].
+    apply (Hnone x).
+    + apply in_seq. split; [lia|].
+      unfold runtime_getVal in Hval.
+      apply nth_error_Some. rewrite Hval. discriminate.
+    + exists l_root. split; assumption.
+Qed.
 
 (* PICO expression evaluation *)
 Inductive eval_expr : eval_result -> (Loc -> Prop) -> class_table -> r_env -> heap -> expr -> value -> eval_result -> (Loc -> Prop)  -> r_env -> heap -> Prop :=
