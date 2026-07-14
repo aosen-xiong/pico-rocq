@@ -13,6 +13,7 @@ Typing.v
 ObjectCreationExamples.v
 Reachability.v
 Bigstep.v
+WellformednessRegression.v
 Properties.v
 SemanticsRegression.v
 Preservation.v

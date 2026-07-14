@@ -48,20 +48,8 @@ Proof.
     destruct (runtime_getObj h ly); discriminate.
   }
  (* Method inner config wellformed.*)
-  have Hclasstable := Hclass.
-  unfold  wf_class_table in Hclass.
-  destruct Hclass as [Hclass [Hobj [Hotherclasses Hcname_consistent]]].
+  split; [exact Hclass|].
   repeat split.
-  -
-    exact Hclass.
-  -
-    exact Hobj.
-  -
-    exact Hotherclasses.
-  -
-    apply Hcname_consistent.
-  -
-    apply Hcname_consistent.
   -
     exact Hheap.
   -
@@ -618,20 +606,8 @@ Proof.
     destruct (runtime_getObj h ly); discriminate.
   }
  (* Method inner config wellformed.*)
-  have Hclasstable := Hclass.
-  unfold  wf_class_table in Hclass.
-  destruct Hclass as [Hclass [Hobj [Hotherclasses Hcname_consistent]]].
+  split; [exact Hclass|].
   repeat split.
-  -
-    exact Hclass.
-  -
-    exact Hobj.
-  -
-    exact Hotherclasses.
-  -
-    apply Hcname_consistent.
-  -
-    apply Hcname_consistent.
   -
     exact Hheap.
   -
@@ -1353,13 +1329,8 @@ Proof.
         have Hrenvcopy := Hrenv.
         unfold wf_renv in Hrenv.
         destruct Hrenv as [HrEnvLen [Hreceiver Hrenvval]].
-        destruct Hclass as [Hclass_ [Hobj_ [Hcname_consistent_ Hfind_consistent_]]].
+        split; [exact Hclass|].
         repeat split.
-        exact Hclass_.
-        exact Hobj_.
-        apply Hcname_consistent_.
-        apply Hfind_consistent_.
-        apply Hfind_consistent_.
         exact Hheapinit.
         rewrite HeqrΓ'''.
         simpl.
@@ -1764,13 +1735,8 @@ Proof.
         destruct H8 as [_ [Hheapinit [Hrenvinit [Hsenvinit [Hleninit Hcorrinit]]]]].
         unfold wf_renv in Hrenv.
         destruct Hrenv as [HrEnvLen [Hreceiver Hrenvval]].
-        destruct Hclass as [Hclass_ [Hobj_ [Hcname_consistent_ Hfind_consistent_]]].
+        split; [exact Hclass|].
         repeat split.
-        exact Hclass_.
-        exact Hobj_.
-        apply Hcname_consistent_.
-        apply Hfind_consistent_.
-        apply Hfind_consistent_.
         exact Hheapinit.
         rewrite HeqrΓ'''.
         simpl.
@@ -2239,13 +2205,8 @@ Proof.
         have Hrenvcopy := Hrenv.
         unfold wf_renv in Hrenv.
         destruct Hrenv as [HrEnvLen [Hreceiver Hrenvval]].
-        destruct Hclass as [Hclass_ [Hobj_ [Hcname_consistent_ Hfind_consistent_]]].
+        split; [exact Hclass|].
         repeat split.
-        exact Hclass_.
-        exact Hobj_.
-        apply Hcname_consistent_.
-        apply Hfind_consistent_.
-        apply Hfind_consistent_.
         exact Hheapinit.
         rewrite HeqrΓ'''.
         simpl.
@@ -2649,13 +2610,8 @@ Proof.
         destruct H8 as [_ [Hheapinit [Hrenvinit [Hsenvinit [Hleninit Hcorrinit]]]]].
         unfold wf_renv in Hrenv.
         destruct Hrenv as [HrEnvLen [Hreceiver Hrenvval]].
-        destruct Hclass as [Hclass_ [Hobj_ [Hcname_consistent_ Hfind_consistent_]]].
+        split; [exact Hclass|].
         repeat split.
-        exact Hclass_.
-        exact Hobj_.
-        apply Hcname_consistent_.
-        apply Hfind_consistent_.
-        apply Hfind_consistent_.
         exact Hheapinit.
         rewrite HeqrΓ'''.
         simpl.

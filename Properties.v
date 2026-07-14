@@ -1359,17 +1359,8 @@ Proof.
     inversion Htyping; subst.
     unfold wf_r_config in *.
     destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
+    split; [exact Hclass|].
     repeat split.
-    + (* wellformed class *) 
-    unfold  wf_class_table in Hclass. destruct Hclass as [Hclass _]. exact Hclass.
-    + (* Object wellformedness *)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [Hobject _]]. exact Hobject.
-    + (* All other classes have super class*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[Hotherclasses _]]]. exact Hotherclasses.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
     + (* wellformed heap *) exact Hheap.
     + (* Length of runtime environment greater than 0 *)
     simpl. rewrite length_app. simpl. lia.
@@ -1480,17 +1471,8 @@ Proof.
     intros.
     unfold wf_r_config.
     destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
+    split; [exact Hclass|].
     repeat split.
-    + (* wellformed class *) 
-    unfold  wf_class_table in Hclass. destruct Hclass as [Hclass _]. exact Hclass.
-    + (* Object wellformedness *)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [Hobject _]]. exact Hobject.
-    + (* All other classes have super class*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[Hotherclasses _]]]. exact Hotherclasses.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
     + (* wellformed heap *) exact Hheap.
     + (* Length of runtime environment greater than 0 *)
       simpl. destruct Hsenv as [HsenvLength HsenvWellTyped].      
@@ -1712,17 +1694,8 @@ Proof.
     inversion Htyping; subst.
     unfold wf_r_config in Hwf.
     destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
+    split; [exact Hclass|].
     repeat split.
-    + (* wellformed class *) 
-    unfold  wf_class_table in Hclass. destruct Hclass as [Hclass _]. exact Hclass.
-    + (* Object wellformedness *)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [Hobject _]]. exact Hobject.
-    + (* All other classes have super class*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[Hotherclasses _]]]. exact Hotherclasses.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
     + (* wellformed heap *) 
     unfold wf_heap in *.
     intros ι0 Hdom.
@@ -2208,17 +2181,8 @@ Proof.
     inversion Htyping; subst.
     unfold wf_r_config in Hwf.
     destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
+    split; [exact Hclass|].
     repeat split.
-    + (* wellformed class *) 
-    unfold  wf_class_table in Hclass. destruct Hclass as [Hclass _]. exact Hclass.
-    + (* Object wellformedness *)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [Hobject _]]. exact Hobject.
-    + (* All other classes have super class*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[Hotherclasses _]]]. exact Hotherclasses.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
     + (* wellformed heap *) 
     unfold wf_heap in *.
     intros ι0 Hdom.
@@ -2706,17 +2670,8 @@ Proof.
     inversion Htyping; subst.
     unfold wf_r_config in Hwf.
     destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
+    split; [exact Hclass|].
     repeat split.
-    + (* wellformed class *) 
-    unfold  wf_class_table in Hclass. destruct Hclass as [Hclass _]. exact Hclass.
-    + (* Object wellformedness *)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [Hobject _]]. exact Hobject.
-    + (* All other classes have super class*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[Hotherclasses _]]]. exact Hotherclasses.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
     + (* wellformed heap *) 
     unfold wf_heap in *.
     intros ι0 Hdom.
@@ -3246,17 +3201,8 @@ Proof.
     unfold wf_r_config.
     unfold wf_r_config in Hwf.
     destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
+    split; [exact Hclass|].
     repeat split.
-    + (* wellformed class *) 
-    unfold  wf_class_table in Hclass. destruct Hclass as [Hclass _]. exact Hclass.
-    + (* Object wellformedness *)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [Hobject _]]. exact Hobject.
-    + (* All other classes have super class*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[Hotherclasses _]]]. exact Hotherclasses.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
-    + (* Class identifier match*)
-    unfold  wf_class_table in Hclass. destruct Hclass as [_ [_[_ Hclassnamematch]]]. apply Hclassnamematch.
     + (* wellformed heap *) 
     unfold wf_heap.
     intros ι0 Hι.

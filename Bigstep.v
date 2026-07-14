@@ -1870,17 +1870,3 @@ Proof.
   - (* Rest of the list: vals0 *)
     eapply runtime_lookup_list_preserves_wf_values; eauto.
 Qed.
-
-Lemma wf_class_in_table : forall CT C
-  (Hwf_ct    : wf_class_table CT)
-  (Hwf_class : wf_class CT C)
-  (Hdom      : cname (signature C) < dom CT),
-  find_class CT (cname (signature C)) = Some C.
-Proof.
-  intros CT C Hwf_ct Hwf_class Hdom.
-  unfold wf_class_table in Hwf_ct.
-  destruct Hwf_ct as [Hforall Hcname_consistent].
-  (* Use the bidirectional consistency directly *)
-  apply Hcname_consistent.
-  reflexivity.
-Qed.

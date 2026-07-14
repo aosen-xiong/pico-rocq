@@ -784,7 +784,7 @@ Definition wf_class_table (CT : class_table) : Prop :=
     forall i def, i > 0 -> find_class CT i = Some def ->
                   super (signature def) <> None in
   let class_name_matches_index :=
-    forall i def, find_class CT i = Some def <->
+    forall i def, find_class CT i = Some def ->
                   cname (signature def) = i in
   Forall (wf_class CT) CT /\
   object_class_at_zero /\
