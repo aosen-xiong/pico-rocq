@@ -19,17 +19,12 @@ def check_no_axioms_admits(root_dir: Path) -> bool:
     # Pattern to match Axiom, Admitted, or admit as whole words
     pattern = re.compile(r'(^|[^A-Za-z0-9_\'])(Axiom|Admitted|admit)([^A-Za-z0-9_\']|$)')
     
-    # Files to exclude
-    excluded_files = {'LibTactics.v'}
+    # Ignore generated/dependency directories, but scan every submitted .v file.
     excluded_dirs = {'.git', '_build', '.dune', '_opam', '.opam-switch'}
     
     violations = []
     
     for v_file in root_dir.rglob('*.v'):
-        # Skip excluded files
-        if v_file.name in excluded_files:
-            continue
-        
         # Skip files in excluded directories
         if any(part in excluded_dirs for part in v_file.parts):
             continue

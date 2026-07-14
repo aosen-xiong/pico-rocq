@@ -2,7 +2,7 @@ From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
 
-Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties Reachability Preservation.
+Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties Reachability Preservation ConcreteState.
 
 Definition LocSet      : Type := Ensembles.Ensemble Loc.
 
@@ -16,7 +16,7 @@ Proof.
   destruct q, a; simpl in Hvpa; try discriminate; auto.
 Qed.
 
-Theorem shallow_immutability_pico :
+Lemma shallow_immutability_pico_with_end :
   forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals vals' f
     (Hloc       : l < dom h)
     (Hobj_start : runtime_getObj h l = Some (mkObj (mkruntime_type Imm_r C) vals))
@@ -24,7 +24,9 @@ Theorem shallow_immutability_pico :
     (Htyping    : stmt_typing CT sΓ mt stmt sΓ')
     (Heval      : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
     (Hobj_end   : runtime_getObj h' l = Some (mkObj (mkruntime_type Imm_r C) vals'))
-    (Hfield_imm : sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA),
+    (Hfield_imm : sf_assignability_rel CT C f Final \/
+                  sf_assignability_rel CT C f RDA \/
+                  concrete_assignability_method_type mt),
     nth_error vals f = nth_error vals' f.
 Proof.
   intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals vals' f
@@ -88,13 +90,14 @@ Proof.
         subst f.
         exfalso.
         simpl in Hruntime_assignable.
-        destruct Hfield_imm as [Hffinal | HfRDA].
+        destruct Hfield_imm as [Hffinal | [HfRDA | Hconcrete]].
         * assert (Heq : Final = a) by (eapply sf_assignability_deterministic_rel; eauto).
           rewrite <- Heq in Hruntime_assignable.
           discriminate.
         * assert (Heq : RDA = a) by (eapply sf_assignability_deterministic_rel; eauto).
           rewrite <- Heq in Hruntime_assignable.
           discriminate.
+        * eapply concrete_assignability_write_cannot_target_immutable; eauto.
         +
         assert (Hvals_eq : vals' = [f0 ↦ val_y] (vals)).
         {
@@ -159,6 +162,21 @@ Proof.
   destruct mdeflookup as [sΓmethodend Htyping_method].
   remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
   apply IHHeval with (mt:=(mtype (msignature mdef)))(sΓ' := sΓmethodend)(sΓ := sΓmethodinit). 1-9: auto.
+  destruct Hfield_imm as [Hfinal | [Hrda | Hconcrete]].
+  { left. exact Hfinal. }
+  { right. left. exact Hrda. }
+  { right. right.
+    destruct Hscope as [Habs | [Hcs Hsubmethod]].
+    { subst mt. destruct Hconcrete as [Hbad | Hbad]; discriminate. }
+    { subst mt.
+      assert (Hsignature : msignature mdef = msignature mdef0).
+      { exact (runtime_and_static_method_signatures_agree
+          CT sΓ' rΓ h y ly Ty C0 cy m mdef mdef0 Hwf Hget_y Href
+          Hval_y Hbase mdeflookupcopy Hfind_m). }
+      rewrite Hsignature.
+      exact (concrete_assignability_submethod
+        (mtype (msignature mdef0)) ConcreteState Hconcrete Hsubmethod). }
+  }
   remember {| vars := Iot ly :: vals |} as rΓmethodinit.
   destruct (r_muttype h ly) eqn: Hinnerthis.
   2:{
@@ -848,6 +866,18 @@ Proof.
   destruct mdeflookup as [sΓmethodend Htyping_method].
   remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
   apply IHHeval with (mt:=(mtype (msignature mdef)))(sΓ' := sΓmethodend)(sΓ := sΓmethodinit). 1-9: auto.
+  destruct Hfield_imm as [Hfinal | [Hrda | Hconcrete]].
+  { left. exact Hfinal. }
+  { right. left. exact Hrda. }
+  { right. right.
+    assert (Hsignature : msignature mdef = msignature mdef0).
+    { exact (runtime_and_static_method_signatures_agree
+        CT sΓ' rΓ h y ly Ty C0 cy m mdef mdef0 Hwf Hget_y Href
+        Hval_y Hbase mdeflookupcopy Hfind_m). }
+    rewrite Hsignature.
+    exact (concrete_assignability_submethod
+      (mtype (msignature mdef0)) mt Hconcrete Hmt_sub).
+  }
   remember {| vars := Iot ly :: vals |} as rΓmethodinit.
   destruct (r_muttype h ly) eqn: Hinnerthis.
   2:{
@@ -1520,12 +1550,14 @@ Proof.
   specialize (eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1) as Hh'.
   assert (Hloc_h' : l < dom h') by lia.
   specialize (runtime_getObj_Some h' l Hloc_h') as [C' [values' Hh'some]].
-  specialize (runtime_preserves_r_type_heap CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
+  specialize (runtime_preserves_r_type_heap P CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
   h' vals s1 rΓ' Hobj_start Heval1) as [vals1 Hrtype].
   rewrite Hrtype in Hh'some; inversion Hh'some; subst.
-  specialize (IHHeval1 Hloc Heqok Hfield_imm values' Hrtype vals Hobj_start mt sΓ'0 sΓ Hwf Htype1).
-  specialize (preservation_pico CT sΓ mt rΓ h s1 rΓ' h' sΓ'0 Hwf Htype1 Heval1) as Hwf'.
-  specialize (IHHeval2 Hloc_h' Heqok Hfield_imm vals' Hobj_end values' Hrtype mt sΓ' sΓ'0 Hwf' Htype2).
+  specialize (IHHeval1 Hloc Heqok values' Hrtype vals Hobj_start mt
+    Hfield_imm sΓ'0 sΓ Hwf Htype1).
+  specialize (preservation_pico P CT sΓ mt rΓ h s1 rΓ' h' sΓ'0 Hwf Htype1 Heval1) as Hwf'.
+  specialize (IHHeval2 Hloc_h' Heqok vals' Hobj_end values' Hrtype mt
+    Hfield_imm sΓ' sΓ'0 Hwf' Htype2).
   rewrite IHHeval2 in IHHeval1; auto.
   - (* IfZero *)
     intros. inversion Htyping; subst.
@@ -1533,6 +1565,27 @@ Proof.
   - (* IfNonzero *)
     intros. inversion Htyping; subst.
     eapply IHHeval; eauto.
+Qed.
+
+Theorem shallow_immutability_pico :
+  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals vals' f
+    (Hloc       : l < dom h)
+    (Hobj_start : runtime_getObj h l = Some (mkObj (mkruntime_type Imm_r C) vals))
+    (Hwf        : wf_r_config CT sΓ rΓ h)
+    (Htyping    : stmt_typing CT sΓ mt stmt sΓ')
+    (Heval      : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)
+      CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Hobj_end   : runtime_getObj h' l = Some (mkObj (mkruntime_type Imm_r C) vals'))
+    (Hfield_imm : sf_assignability_rel CT C f Final \/
+                  sf_assignability_rel CT C f RDA),
+    nth_error vals f = nth_error vals' f.
+Proof.
+  intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals vals' f Hloc
+    Hobj_start Hwf Htyping Heval Hobj_end Hfield_imm.
+  eapply shallow_immutability_pico_with_end; eauto.
+  destruct Hfield_imm as [Hfinal | Hrda].
+  - left. exact Hfinal.
+  - right. left. exact Hrda.
 Qed.
 
 Lemma imm_step_preserves_imm :

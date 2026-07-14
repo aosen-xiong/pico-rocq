@@ -108,8 +108,15 @@ Record method_body := {
 
 Inductive method_type : Type :=
   | AbstractImm
+  | ConcreteState
   | SafeRO
   | ConcreteImm.
+
+Definition safe_readonly_method_type (mt : method_type) : Prop :=
+  mt <> AbstractImm /\ mt <> ConcreteState.
+
+Definition concrete_assignability_method_type (mt : method_type) : Prop :=
+  mt = ConcreteState \/ mt = ConcreteImm.
 
 Record method_sig := {
   mtype: method_type;
@@ -177,6 +184,12 @@ Definition default_value (T : qualified_type) : value :=
   | TInt => Int 0
   | TRef _ => Null_a
   end.
+
+Lemma default_value_not_location :
+  forall T l, default_value T <> Iot l.
+Proof.
+  intros T l. unfold default_value. destruct (sbase T); discriminate.
+Qed.
 
 (** Variable Mapping *)
 Definition var_mapping   := list value.

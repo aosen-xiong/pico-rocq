@@ -267,13 +267,13 @@ Qed.
 (* ------------------------------------------------------------- *)
 (* Soundness properties for PICO *)
 Theorem preservation_pico :
-  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ'
+  forall P CT sΓ mt rΓ h stmt rΓ' h' sΓ'
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h'),
+    (Heval   : eval_stmt OK P CT rΓ h stmt OK P rΓ' h'),
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
-  intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' Hwf Htyping Heval.
+  intros P CT sΓ mt rΓ h stmt rΓ' h' sΓ' Hwf Htyping Heval.
   generalize dependent sΓ.
   generalize dependent sΓ'.
   generalize dependent mt.
@@ -1095,8 +1095,8 @@ Proof.
             assert (HreceiverAddrInit : get_this_var_mapping (vars rΓ'') = Some ly).
             {
               eapply eval_stmt_preserves_receiver_addr_typed; eauto.
-              unfold get_this_var_mapping.
               rewrite HeqrΓmethodinit.
+              unfold get_this_var_mapping.
               simpl.
               reflexivity.
             }
@@ -4604,6 +4604,7 @@ Proof.
           }
       }
     }
+  all: try congruence.
   - (* Case: stmt = Skip *)
     eapply preservation_skip; eauto.
   - (* Case: stmt = Local *)

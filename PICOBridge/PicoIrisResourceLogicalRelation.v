@@ -758,6 +758,10 @@ Section pico_resource_logical_relation.
       iPureIntro. econstructor; eauto.
     - iIntros "#Hprimitives".
       iDestruct "Hprimitives" as "[_ [#Hwrite _]]".
+      iApply ("Hwrite" $! sΓ sΓ ConcreteState x f y).
+      iPureIntro. econstructor; eauto.
+    - iIntros "#Hprimitives".
+      iDestruct "Hprimitives" as "[_ [#Hwrite _]]".
       iApply ("Hwrite" $! sΓ sΓ SafeRO x f y).
       iPureIntro. econstructor; eauto.
     - iIntros "#Hprimitives".
@@ -770,12 +774,12 @@ Section pico_resource_logical_relation.
       iPureIntro. econstructor; eauto.
     - iIntros "#Hprimitives".
       iDestruct "Hprimitives" as "[_ [_ [_ #Hcall]]]".
-      iApply ("Hcall" $! sΓ sΓ AbstractImm x y m args).
-      iPureIntro. econstructor; eauto.
+      iApply ("Hcall" $! sΓ sΓ mt x y m args).
+      iPureIntro. eapply ST_Call; eauto.
     - iIntros "#Hprimitives".
       iDestruct "Hprimitives" as "[_ [_ [_ #Hcall]]]".
       iApply ("Hcall" $! sΓ sΓ mt x y m args).
-      iPureIntro. econstructor; eauto.
+      iPureIntro. eapply ST_Call_safe_ro; eauto.
     - iIntros "#Hprimitives".
       iApply pico_core_resource_seq_compositionI.
       + iApply (IHHtyping1 eq_refl). iExact "Hprimitives".

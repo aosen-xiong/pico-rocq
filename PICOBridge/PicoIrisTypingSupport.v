@@ -147,7 +147,8 @@ Section pico_typing_support.
         Hnone) as Hnone_rt.
     exists qcontext, receiver.
     split.
-    - eapply preservation_local_ok; eauto.
+    - eapply (@preservation_local_ok
+        (reachable_locations_from_initial_env CT h rΓ)); eauto.
       eapply SBS_Local.
       exact Hnone_rt.
     - split.
@@ -174,7 +175,8 @@ Section pico_typing_support.
     destruct Henv as (qcontext & receiver & Hcfg & Hrecv & Hrmut).
     exists qcontext, receiver.
     split.
-    - eapply preservation_varass_ok; eauto.
+    - eapply (@preservation_varass_ok
+        (reachable_locations_from_initial_env CT h rΓ)); eauto.
       eapply SBS_Assign.
       + exact Hold.
       + apply EBS_Null.
@@ -201,7 +203,8 @@ Section pico_typing_support.
     destruct Henv as (qcontext & receiver & Hcfg & Hrecv & Hrmut).
     exists qcontext, receiver.
     split.
-    - eapply preservation_varass_ok; eauto.
+    - eapply (@preservation_varass_ok
+        (reachable_locations_from_initial_env CT h rΓ)); eauto.
       eapply SBS_Assign.
       + exact Hold.
       + apply EBS_Int.
@@ -237,7 +240,8 @@ Section pico_typing_support.
     destruct Henv as (qcontext & receiver & Hcfg & Hrecv & Hrmut).
     exists qcontext, receiver.
     split.
-    - eapply preservation_varass_ok; eauto.
+    - eapply (@preservation_varass_ok
+        (reachable_locations_from_initial_env CT h rΓ)); eauto.
       eapply SBS_Assign.
       + exact Hold.
       + eapply EBS_Val.
@@ -477,7 +481,8 @@ Section pico_typing_support.
       as (old_field_v & Hfield).
     exists qcontext, receiver.
     split.
-    - eapply preservation_fldwrite_ok; eauto.
+    - eapply (@preservation_fldwrite_ok
+        (reachable_locations_from_initial_env CT h rΓ)); eauto.
       eapply SBS_FldWrite; eauto.
     - split.
       + exact Hthis.
@@ -519,7 +524,8 @@ Section pico_typing_support.
     destruct Henv as (qcontext & receiver & Hcfg & Hrecv & Hrmut).
     exists qcontext, receiver.
     split.
-    - eapply preservation_new_ok; eauto.
+    - eapply (@preservation_new_ok
+        (reachable_locations_from_initial_env CT h rΓ)); eauto.
       eapply SBS_New; eauto.
     - split.
       + rewrite get_this_var_mapping_update_vars_nonzero; eauto.

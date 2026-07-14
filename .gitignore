@@ -1,10 +1,10 @@
-.DS_Store
 *.glob
 *.aux
 *.cache
 *.vo
 *.vok
 *.vos
+.DS_Store
 .d
 CoqMakefile
 CoqMakefile.conf
@@ -17,3 +17,4 @@ doc/
 copilot-instructions.md
 rocq-ai-style.instructions.md
 paper/semantic-immutability-paper/
+.local/

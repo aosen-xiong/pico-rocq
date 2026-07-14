@@ -1564,11 +1564,25 @@ Section pico_typing_fundamental_ownp.
 	      repeat split; eauto.
   Qed.
 
+  Lemma pico_core_concrete_state_call_as_abs :
+    forall sGamma sGamma' x y m args,
+      stmt_typing CT sGamma ConcreteState
+        (SCall x y m args) sGamma' ->
+      stmt_typing CT sGamma AbstractImm
+        (SCall x y m args) sGamma'.
+  Proof.
+    intros sGamma sGamma' x y m args Htyping.
+    inversion Htyping; subst.
+    - econstructor; eauto.
+    - exfalso. eauto.
+  Qed.
+
   Lemma pico_core_stmt_typing_call_safe_components :
     forall sGamma sGamma' mt x y m args
       (Htyping : stmt_typing CT sGamma mt
         (SCall x y m args) sGamma')
-      (Hmt : mt <> AbstractImm),
+      (Hmt : mt <> AbstractImm)
+      (Hmt_cs : mt <> ConcreteState),
 	      exists Ty C argtypes Tthis Tx mdef,
 	        static_getType sGamma y = Some Ty /\
 	        sbase Ty = TRef C /\
@@ -1588,11 +1602,11 @@ Section pico_typing_fundamental_ownp.
           (vpa_mutability_tt_safe_ro Ty T))
           argtypes (mparams (msignature mdef)).
   Proof.
-    intros sGamma sGamma' mt x y m args Htyping Hmt.
-    inversion Htyping; subst;
-      try solve [exfalso; eauto];
-	      eexists _, _, _, _, _, _;
-	      repeat split; eauto.
+    intros sGamma sGamma' mt x y m args Htyping Hmt Hmt_cs.
+    inversion Htyping; subst.
+    - destruct Hscope as [Habs | [Hcs _]]; subst; contradiction.
+    - eexists _, _, _, _, _, _.
+      repeat split; eauto.
   Qed.
 
   Lemma pico_core_typed_env_receiver_qualifier :
@@ -2240,6 +2254,7 @@ Section pico_typing_fundamental_ownp.
     forall sGamma sGamma' rGamma h mt x y m args loc C mdef vals
       (Htyping : stmt_typing CT sGamma mt (SCall x y m args) sGamma')
       (Hmt : mt <> AbstractImm)
+      (Hmt_cs : mt <> ConcreteState)
       (Henv : pico_core_typed_env CT sGamma rGamma h)
       (Hreceiver : runtime_getVal rGamma y = Some (Iot loc))
       (Hbase : r_basetype h loc = Some C)
@@ -2250,7 +2265,7 @@ Section pico_typing_fundamental_ownp.
         (mkr_env (Iot loc :: vals)) h.
   Proof.
     intros sGamma sGamma' rGamma h mt x y m args loc C mdef vals
-      Htyping Hmt Henv Hreceiver Hbase Hfind Hargs.
+      Htyping Hmt Hmt_cs Henv Hreceiver Hbase Hfind Hargs.
     destruct
       (pico_core_typed_resolved_method_static
         sGamma sGamma' rGamma h mt x y m args
@@ -2260,7 +2275,7 @@ Section pico_typing_fundamental_ownp.
 	          Hsignature & Hwf_method).
     destruct
       (pico_core_stmt_typing_call_safe_components
-        sGamma sGamma' mt x y m args Htyping Hmt)
+        sGamma sGamma' mt x y m args Htyping Hmt Hmt_cs)
 	      as (Ty' & Cstatic' & argtypes' & Tthis & Tx & mdef_static'
 	          & Hget_y' & Href_static' & Hget_args' & Hthis & Hget_x
 	          & Hfind_static' & Hret_sub & Hrcv_sub & Harg_sub).
@@ -2321,8 +2336,12 @@ Section pico_typing_fundamental_ownp.
       Htyping Henv Hreceiver Hbase Hfind Hargs.
     destruct mt.
     - eapply pico_core_typed_resolved_method_frame_abs_imm; eauto.
+    - eapply pico_core_typed_resolved_method_frame_abs_imm; eauto.
+      eapply pico_core_concrete_state_call_as_abs; eauto.
+    - eapply pico_core_typed_resolved_method_frame_safe_ro; eauto;
+        discriminate.
     - eapply pico_core_typed_resolved_method_frame_safe_ro; eauto.
-    - eapply pico_core_typed_resolved_method_frame_safe_ro; eauto.
+      all: discriminate.
   Qed.
 
   Lemma pico_core_typed_resolved_method_return_abs_imm :
@@ -2415,6 +2434,7 @@ Section pico_typing_fundamental_ownp.
     forall sGamma sGamma' mt caller h x y m args loc C mdef vals
       body_sGamma' body_ret_type callee h' retval
       (Hmt : mt <> AbstractImm)
+      (Hmt_cs : mt <> ConcreteState)
       (Htyping : stmt_typing CT sGamma mt
         (SCall x y m args) sGamma')
       (Hcaller : pico_core_typed_env CT sGamma caller h)
@@ -2434,14 +2454,14 @@ Section pico_typing_fundamental_ownp.
         (set_vars caller (update x retval (vars caller))) h'.
   Proof.
     intros sGamma sGamma' mt caller h x y m args loc C mdef vals
-      body_sGamma' body_ret_type callee h' retval Hmt Htyping Hcaller
+      body_sGamma' body_ret_type callee h' retval Hmt Hmt_cs Htyping Hcaller
       Hreceiver Hbase Hfind Hargs Hbody_ret_static Hbody_return_sub Hextend
       Hcallee Hcallee_receiver Hretval.
     assert (HsGamma_eq : sGamma' = sGamma) by
       (inversion Htyping; reflexivity).
     destruct
       (pico_core_stmt_typing_call_safe_components
-        sGamma sGamma' mt x y m args Htyping Hmt)
+        sGamma sGamma' mt x y m args Htyping Hmt Hmt_cs)
 	      as (Ty & Cstatic & argtypes & Tthis & Tx & mdef_static
 	          & Hget_y & Href_static & Hget_args & Hthis & Hget_x
 	          & Hfind_static & Hret_sub & Hrcv_sub & Harg_sub).
@@ -2525,22 +2545,27 @@ Section pico_typing_fundamental_ownp.
       Hcallee_receiver Hretval.
     destruct mt.
     - eapply pico_core_typed_resolved_method_return_abs_imm; eauto.
+    - eapply pico_core_typed_resolved_method_return_abs_imm; eauto.
+      eapply pico_core_concrete_state_call_as_abs; eauto.
     - change (stmt_typing CT sGamma SafeRO
         (SCall x y m args) sGamma') in Htyping.
       assert (Hsafe : SafeRO <> AbstractImm) by discriminate.
+      assert (Hsafe_cs : SafeRO <> ConcreteState) by discriminate.
       exact
         (pico_core_typed_resolved_method_return_safe_ro
           sGamma sGamma' SafeRO caller h x y m args loc C mdef vals
-          body_sGamma' body_ret_type callee h' retval Hsafe Htyping Hcaller
+          body_sGamma' body_ret_type callee h' retval Hsafe Hsafe_cs Htyping Hcaller
           Hreceiver Hbase Hfind Hargs Hbody_ret_static Hbody_return_sub
           Hextend Hcallee Hcallee_receiver Hretval).
     - change (stmt_typing CT sGamma ConcreteImm
         (SCall x y m args) sGamma') in Htyping.
       assert (Hconcrete : ConcreteImm <> AbstractImm) by discriminate.
+      assert (Hconcrete_cs : ConcreteImm <> ConcreteState) by discriminate.
       exact
         (pico_core_typed_resolved_method_return_safe_ro
           sGamma sGamma' ConcreteImm caller h x y m args loc C mdef vals
-          body_sGamma' body_ret_type callee h' retval Hconcrete Htyping Hcaller
+          body_sGamma' body_ret_type callee h' retval Hconcrete Hconcrete_cs
+          Htyping Hcaller
           Hreceiver Hbase Hfind Hargs Hbody_ret_static Hbody_return_sub
           Hextend Hcallee Hcallee_receiver Hretval).
   Qed.
@@ -3911,6 +3936,11 @@ Section pico_typing_fundamental_ownp.
       econstructor; eauto.
     - iIntros "#Hprimitives".
       iDestruct "Hprimitives" as "[_ [#Hwrite _]]".
+      iApply ("Hwrite" $! sΓ sΓ ConcreteState x f y).
+      iPureIntro.
+      econstructor; eauto.
+    - iIntros "#Hprimitives".
+      iDestruct "Hprimitives" as "[_ [#Hwrite _]]".
       iApply ("Hwrite" $! sΓ sΓ SafeRO x f y).
       iPureIntro.
       econstructor; eauto.
@@ -3926,14 +3956,14 @@ Section pico_typing_fundamental_ownp.
       econstructor; eauto.
     - iIntros "#Hprimitives".
       iDestruct "Hprimitives" as "[_ [_ [_ [#Hcall _]]]]".
-      iApply ("Hcall" $! sΓ sΓ AbstractImm x y m args).
+      iApply ("Hcall" $! sΓ sΓ mt x y m args).
       iPureIntro.
-      econstructor; eauto.
+      eapply ST_Call; eauto.
     - iIntros "#Hprimitives".
       iDestruct "Hprimitives" as "[_ [_ [_ [#Hcall _]]]]".
       iApply ("Hcall" $! sΓ sΓ mt x y m args).
       iPureIntro.
-      econstructor; eauto.
+      eapply ST_Call_safe_ro; eauto.
     - iIntros "#Hprimitives".
       iApply pico_core_typed_seq_compositionI.
       + iApply (IHHtyping1 eq_refl).
