@@ -9,6 +9,7 @@ Top-level theorem entry points:
 
 - `Preservation.v`: `preservation_pico`
 - `DeepImmutability.v`: `shallow_immutability_pico`, `deep_immutability_pico`
+- `ConcreteStateImmutability.v`: `concrete_state_preservation`
 - `ReadonlySafety.v`: `readonly_pico_field_write`,
   `readonly_method_call_preserves_arguments`
 - `ConcreteImmutability.v`: `ConcreteImmutability`
@@ -40,6 +41,7 @@ Top-level theorem entry points:
 | Theorem 4 support | Readonly field-write safety | Receiver expression has static type `RO`; field-write statement evaluates successfully; method scope is not `AbstractImm` | Protected field of the readonly-referenced object is unchanged | `readonly_pico_field_write` in [ReadonlySafety.v](ReadonlySafety.v) |
 | Theorem 4, TS clause | Concrete immutability | Method call occurs in `ConcreteImm` scope; receiver and all parameters are safe | Each protected object still exists with the same runtime type, and every field retains its entry value | `ConcreteImmutability` in [ConcreteImmutability.v](ConcreteImmutability.v) |
 | Proof-hygiene scan | Submitted proof sources do not use the forbidden commands scanned by the artifact | Every submitted `.v` file excludes literal `Axiom`, `Admitted`, and `admit` | Mechanical forbidden-command scan passes | [scripts/check-no-axioms-admits.py](scripts/check-no-axioms-admits.py) via `make check` |
+| Kernel-assumption audit | Public results do not depend on global axioms | The explicit [public-theorems.txt](scripts/public-theorems.txt) manifest is checked against every source `Theorem`, then each fully qualified entry is inspected with `Print Assumptions` | The manifest and sources agree, and every public theorem is closed under the global context | [scripts/check-public-assumptions.py](scripts/check-public-assumptions.py) via `make check` |
 
 ## Paper/Formalization Notes
 
@@ -66,8 +68,10 @@ The recommended reviewer command is:
 make check
 ```
 
-This builds all Rocq sources and checks that every submitted `.v` file avoids
-the forbidden `Axiom`, `Admitted`, and `admit` commands.
+This builds all Rocq sources, checks that every submitted `.v` file avoids the
+forbidden `Axiom`, `Admitted`, and `admit` commands, verifies that the explicit
+public-theorem manifest matches the source declarations, and checks that every
+manifest entry is closed under the global context.
 
 The same checks can be run separately:
 
@@ -75,6 +79,7 @@ The same checks can be run separately:
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || printf 1)"
 dune build @default -j"$JOBS"
 python3 scripts/check-no-axioms-admits.py .
+python3 scripts/check-public-assumptions.py .
 ```
 
 ## Rendered proof documentation
@@ -149,4 +154,5 @@ dune build @default -j"$JOBS"
 - `dune` and `_RocqProject` builds are both available during transition.
 - The opam package build uses `dune build`.
 - `WFNOMutationEXP.v` proves a preservation-style mutation-safety claim:
-  well-typed field writes do not produce a mutation exception.
+  no well-typed statement, including nested method calls and sequences,
+  produces a mutation exception.

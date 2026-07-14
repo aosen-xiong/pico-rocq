@@ -27,7 +27,7 @@ Theorem concrete_state_preservation :
 Proof.
   intros CT sΓ rΓ h stmt rΓ' h' sΓ' root C0 vals0 l C qr vals f
     Hroot_dom Hroot_imm Hreach Hwf Htyping Heval Hobj_start.
-  destruct (runtime_preserves_r_type_heap CT rΓ h l
+  destruct (runtime_preserves_r_type_heap (reachable_locations_from_initial_env CT h rΓ) CT rΓ h l
     (mkruntime_type qr C) h' vals stmt rΓ' Hobj_start Heval)
     as [vals' Hobj_end].
   exists vals'. split; [exact Hobj_end|].

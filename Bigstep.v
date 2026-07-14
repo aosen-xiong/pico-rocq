@@ -184,7 +184,9 @@ Proof.
   exact Hwf.
 Qed.
 
-(* Wellformed Runtime Config: if (1) heap is well formed (2) static env is well formed (3) runtime env is well formed (4) the static env and run time env corresponds  *)
+(** A runtime configuration is well formed when its class table, heap, and
+    environments are well formed and the static and runtime environments
+    correspond pointwise. *)
 Definition wf_r_config (CT: class_table) (sΓ: s_env) (rΓ: r_env) (h: heap) : Prop :=
   (* CT is well-formed *)
   wf_class_table CT /\
@@ -201,7 +203,7 @@ Definition wf_r_config (CT: class_table) (sΓ: s_env) (rΓ: r_env) (h: heap) : P
   (r_muttype h ι) = Some qcontext ->
   forall i, i < List.length sΓ ->
   forall sqt,
-    (* TODO: unify the method used to static_get_type *)
+    (* Static lookup at index [i]. *)
     nth_error sΓ i = Some sqt ->
     match runtime_getVal rΓ i with
     | Some (Iot loc) => wf_r_typable CT rΓ h loc sqt qcontext
@@ -283,25 +285,25 @@ Qed.
 (* PICO expression evaluation *)
 Inductive eval_expr : eval_result -> (Loc -> Prop) -> class_table -> r_env -> heap -> expr -> value -> eval_result -> (Loc -> Prop)  -> r_env -> heap -> Prop :=
   (* evalutate null expression  *)
-  | EBS_Null : forall CT rΓ h,
-      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h ENull Null_a OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
+  | EBS_Null : forall P CT rΓ h,
+      eval_expr OK P CT rΓ h ENull Null_a OK P rΓ h
 
   (* evaluate value expression *)
-  | EBS_Val : forall CT rΓ h x v
+  | EBS_Val : forall P CT rΓ h x v
       (Hval : runtime_getVal rΓ x = Some v),
-      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (EVar x) v OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
+      eval_expr OK P CT rΓ h (EVar x) v OK P rΓ h
 
   (* evaluate field access expression *)
-  | EBS_Field : forall CT rΓ h x f v o v1
+  | EBS_Field : forall P CT rΓ h x f v o v1
       (Hval   : runtime_getVal rΓ x = Some (Iot v))
       (Hobj   : runtime_getObj h v = Some o)
       (Hfield : getVal o.(fields_map) f = Some v1),
-      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (EField x f) v1 OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
+      eval_expr OK P CT rΓ h (EField x f) v1 OK P rΓ h
 
   (* evaluate field access expression yields NPE *)
-  | EBS_Field_NPE : forall CT rΓ h x f
+  | EBS_Field_NPE : forall P CT rΓ h x f
       (Hnull : runtime_getVal rΓ x = Some (Null_a)),
-      eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (EField x f) Null_a NPE (reachable_locations_from_initial_env CT h rΓ) rΓ h
+      eval_expr OK P CT rΓ h (EField x f) Null_a NPE P rΓ h
   .
 Notation "rΓ ',' h '⟦' e '⟧' '-->' v ',' rΓ' ',' h'" := (eval_expr OK rΓ h e v OK rΓ' h') (at level 200).
 
@@ -311,14 +313,14 @@ Notation "rΓ ',' h '⟦' e '⟧' '-->' v ',' rΓ' ',' h'" := (eval_expr OK rΓ 
    produces the same result value, outcome tag, reach set, environment,
    and heap. *)
 Lemma eval_expr_deterministic :
-  forall CT rΓ h e v1 r1 reach1' rΓ1' h1' v2 r2 reach2' rΓ2' h2',
-    eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h e v1
+  forall P CT rΓ h e v1 r1 reach1' rΓ1' h1' v2 r2 reach2' rΓ2' h2',
+    eval_expr OK P CT rΓ h e v1
               r1 reach1' rΓ1' h1' ->
-    eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h e v2
+    eval_expr OK P CT rΓ h e v2
               r2 reach2' rΓ2' h2' ->
     v1 = v2 /\ r1 = r2 /\ reach1' = reach2' /\ rΓ1' = rΓ2' /\ h1' = h2'.
 Proof.
-  intros CT rΓ h e v1 r1 reach1' rΓ1' h1' v2 r2 reach2' rΓ2' h2' H1 H2.
+  intros P CT rΓ h e v1 r1 reach1' rΓ1' h1' v2 r2 reach2' rΓ2' h2' H1 H2.
   inversion H1; subst; inversion H2; subst.
   - (* EBS_Null vs EBS_Null *)
     repeat split; reflexivity.
@@ -341,33 +343,33 @@ Qed.
 (* PICO Statement evaluation *)
 Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> heap -> stmt -> eval_result -> (Loc -> Prop)  -> r_env -> heap -> Prop :=
   (* evaluate skip statement *)
-  | SBS_Skip : forall CT rΓ h,
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h SSkip OK (reachable_locations_from_initial_env CT h rΓ) rΓ h
+  | SBS_Skip : forall P CT rΓ h,
+      eval_stmt OK P CT rΓ h SSkip OK P rΓ h
 
   (* evaluate local variable declaration statement *)
-  | SBS_Local : forall CT rΓ h T x
+  | SBS_Local : forall P CT rΓ h T x
       (Hnone : runtime_getVal rΓ x = None),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SLocal T x) OK (reachable_locations_from_initial_env CT h rΓ)
+      eval_stmt OK P CT rΓ h (SLocal T x) OK P
       (set_vars rΓ (rΓ.(vars)++[Null_a]) )
       h
 
   (* evaluate variable assignment statement *)
-  | SBS_Assign : forall CT rΓ h x e v1 v2
+  | SBS_Assign : forall P CT rΓ h x e v1 v2
       (Hval   : runtime_getVal rΓ x = Some v1)
-      (Heval  : eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h e v2 OK (reachable_locations_from_initial_env CT h rΓ) rΓ h),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SVarAss x e) OK (reachable_locations_from_initial_env CT h rΓ)
+      (Heval  : eval_expr OK P CT rΓ h e v2 OK P rΓ h),
+      eval_stmt OK P CT rΓ h (SVarAss x e) OK P
       (set_vars rΓ (update x v2 rΓ.(vars)))
       h
 
-  | SBS_Assign_NPE : forall CT rΓ h x e v1 v2
+  | SBS_Assign_NPE : forall P CT rΓ h x e v1 v2
       (Hval   : runtime_getVal rΓ x = Some v1)
-      (Heval  : eval_expr OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h e v2 NPE (reachable_locations_from_initial_env CT h rΓ) rΓ h),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SVarAss x e) NPE (reachable_locations_from_initial_env CT h rΓ)
+      (Heval  : eval_expr OK P CT rΓ h e v2 NPE P rΓ h),
+      eval_stmt OK P CT rΓ h (SVarAss x e) NPE P
       rΓ
       h
 
   (* evaluate field write statement *)
-  | SBS_FldWrite : forall CT rΓ h x f y loc_x o a vf val_y h'
+  | SBS_FldWrite : forall P CT rΓ h x f y loc_x o a vf val_y h'
       (Hval_x  : runtime_getVal rΓ x = Some (Iot loc_x))
       (Hobj    : runtime_getObj h loc_x = Some o)
       (Hfield  : getVal o.(fields_map) f = Some vf)
@@ -375,24 +377,24 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Hval_y  : runtime_getVal rΓ y = Some val_y)
       (Hruntime_assignable : runtime_vpa_assignability (rqtype (rt_type o)) a = Assignable)
       (Hupdate : h' = update_field h loc_x f val_y),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SFldWrite x f y) OK (reachable_locations_from_initial_env CT h rΓ) rΓ h'
+      eval_stmt OK P CT rΓ h (SFldWrite x f y) OK P rΓ h'
 
   (* evaluate field write statement NPE *)
-  | SBS_FldWrite_NPE : forall CT rΓ h x f y
+  | SBS_FldWrite_NPE : forall P CT rΓ h x f y
       (Hnull : runtime_getVal rΓ x = Some (Null_a)),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SFldWrite x f y) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ h
+      eval_stmt OK P CT rΓ h (SFldWrite x f y) NPE P rΓ h
 
-  | SBS_FldWrite_MUTATIONEXP : forall CT rΓ h x f y loc_x o a vf val_y
+  | SBS_FldWrite_MUTATIONEXP : forall P CT rΓ h x f y loc_x o a vf val_y
       (Hval_x  : runtime_getVal rΓ x = Some (Iot loc_x))
       (Hobj    : runtime_getObj h loc_x = Some o)
       (Hfield  : getVal o.(fields_map) f = Some vf)
       (Hassign : sf_assignability_rel CT (rctype (rt_type o)) f a)
       (Hval_y  : runtime_getVal rΓ y = Some val_y)
       (Hfinal  : runtime_vpa_assignability (rqtype (rt_type o)) a = Final),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SFldWrite x f y) MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ h
+      eval_stmt OK P CT rΓ h (SFldWrite x f y) MUTATIONEXP P rΓ h
 
   (* evaluate object creation statement *)
-  | SBS_New : forall CT rΓ h x (q_c:q_c) c ys l1 qthisr vals o qadapted rΓ' h'
+  | SBS_New : forall P CT rΓ h x (q_c:q_c) c ys l1 qthisr vals o qadapted rΓ' h'
       (Hthis    : runtime_getVal rΓ 0 = Some (Iot l1))
       (Hargs    : runtime_lookup_list rΓ ys = Some vals)
       (Hmut     : r_muttype h l1 = Some qthisr)
@@ -400,10 +402,10 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Hobj     : o = mkObj (mkruntime_type qadapted c) (vals))
       (Hheap    : h' = h++[o])
       (Henv     : rΓ' = (set_vars rΓ (update x (Iot (dom h)) rΓ.(vars)))),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SNew x q_c c ys) OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
+      eval_stmt OK P CT rΓ h (SNew x q_c c ys) OK P rΓ' h'
 
   (* evaluate method call statement *)
-  | SBS_Call : forall CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret retval h' rΓ' rΓ'' rΓ'''
+  | SBS_Call : forall P CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret retval h' rΓ' rΓ'' rΓ'''
       (Hval_y      : runtime_getVal rΓ y = Some (Iot ly))
       (Hbase       : r_basetype h ly = Some cy)
       (Hfind       : FindMethodWithName CT cy m mdef /\ mbody = Syntax.mbody mdef)
@@ -411,17 +413,17 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Hret        : mret = mbody.(mreturn))
       (Hargs       : runtime_lookup_list rΓ zs = Some vals)
       (Hframe      : rΓ' = mkr_env (Iot ly :: vals))
-      (Heval_body  : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ') CT rΓ' h mstmt OK (reachable_locations_from_initial_env CT h rΓ') rΓ'' h')
+      (Heval_body  : eval_stmt OK P CT rΓ' h mstmt OK P rΓ'' h')
       (Hretval     : runtime_getVal rΓ'' mret = Some retval)
       (Henv        : rΓ''' = (set_vars rΓ (update x retval rΓ.(vars)))),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SCall x m y zs) OK (reachable_locations_from_initial_env CT h rΓ) rΓ''' h'
+      eval_stmt OK P CT rΓ h (SCall x m y zs) OK P rΓ''' h'
 
   (* evaluate method call statement NPE *)
-  | SBS_Call_NPE : forall CT rΓ h x y m zs
+  | SBS_Call_NPE : forall P CT rΓ h x y m zs
       (Hnull : runtime_getVal rΓ y = Some (Null_a)),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SCall x m y zs) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ h
+      eval_stmt OK P CT rΓ h (SCall x m y zs) NPE P rΓ h
 
-  | SBS_Call_NPE_Body : forall CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret h' rΓ' rΓ''
+  | SBS_Call_NPE_Body : forall P CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret h' rΓ' rΓ''
       (Hval_y     : runtime_getVal rΓ y = Some (Iot ly))
       (Hbase      : r_basetype h ly = Some cy)
       (Hfind      : FindMethodWithName CT cy m mdef /\ mbody = Syntax.mbody mdef)
@@ -429,10 +431,10 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Hret       : mret = mbody.(mreturn))
       (Hargs      : runtime_lookup_list rΓ zs = Some vals)
       (Hframe     : rΓ' = mkr_env (Iot ly :: vals))
-      (Heval_body : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ') CT rΓ' h mstmt NPE (reachable_locations_from_initial_env CT h rΓ') rΓ'' h'),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SCall x m y zs) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'
+      (Heval_body : eval_stmt OK P CT rΓ' h mstmt NPE P rΓ'' h'),
+      eval_stmt OK P CT rΓ h (SCall x m y zs) NPE P rΓ'' h'
 
-  | SBS_Call_MUTATIONEXP_Body : forall CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret h' rΓ' rΓ''
+  | SBS_Call_MUTATIONEXP_Body : forall P CT rΓ h x y m zs vals ly cy mdef mbody mstmt mret h' rΓ' rΓ''
       (Hval_y     : runtime_getVal rΓ y = Some (Iot ly))
       (Hbase      : r_basetype h ly = Some cy)
       (Hfind      : FindMethodWithName CT cy m mdef /\ mbody = Syntax.mbody mdef)
@@ -440,31 +442,31 @@ Inductive eval_stmt : eval_result -> (Loc -> Prop)  -> class_table -> r_env -> h
       (Hret       : mret = mbody.(mreturn))
       (Hargs      : runtime_lookup_list rΓ zs = Some vals)
       (Hframe     : rΓ' = mkr_env (Iot ly :: vals))
-      (Heval_body : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ') CT rΓ' h mstmt MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ') rΓ'' h'),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SCall x m y zs) MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ'' h'
+      (Heval_body : eval_stmt OK P CT rΓ' h mstmt MUTATIONEXP P rΓ'' h'),
+      eval_stmt OK P CT rΓ h (SCall x m y zs) MUTATIONEXP P rΓ'' h'
   (* evaluate sequence of statements *)
-  | SBS_Seq : forall CT rΓ h s1 s2 rΓ' h' rΓ'' h''
-      (Heval1 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
-      (Heval2 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ' h' s2 OK (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) OK (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
+  | SBS_Seq : forall P CT rΓ h s1 s2 rΓ' h' rΓ'' h''
+      (Heval1 : eval_stmt OK P CT rΓ h s1 OK P rΓ' h')
+      (Heval2 : eval_stmt OK P CT rΓ' h' s2 OK P rΓ'' h''),
+      eval_stmt OK P CT rΓ h (SSeq s1 s2) OK P rΓ'' h''
 
-  | SBS_Seq_NPE_first : forall CT rΓ h s1 s2 rΓ' h'
-      (Heval1 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 NPE (reachable_locations_from_initial_env CT h rΓ) rΓ' h'),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
+  | SBS_Seq_NPE_first : forall P CT rΓ h s1 s2 rΓ' h'
+      (Heval1 : eval_stmt OK P CT rΓ h s1 NPE P rΓ' h'),
+      eval_stmt OK P CT rΓ h (SSeq s1 s2) NPE P rΓ' h'
 
-  | SBS_Seq_NPE_second : forall CT rΓ h s1 s2 rΓ' h' rΓ'' h''
-      (Heval1 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
-      (Heval2 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ' h' s2 NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) NPE (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
+  | SBS_Seq_NPE_second : forall P CT rΓ h s1 s2 rΓ' h' rΓ'' h''
+      (Heval1 : eval_stmt OK P CT rΓ h s1 OK P rΓ' h')
+      (Heval2 : eval_stmt OK P CT rΓ' h' s2 NPE P rΓ'' h''),
+      eval_stmt OK P CT rΓ h (SSeq s1 s2) NPE P rΓ'' h''
 
-  | SBS_Seq_MUTATIONEXP_first : forall CT rΓ h s1 s2 rΓ' h'
-      (Heval1 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ' h'),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ' h'
+  | SBS_Seq_MUTATIONEXP_first : forall P CT rΓ h s1 s2 rΓ' h'
+      (Heval1 : eval_stmt OK P CT rΓ h s1 MUTATIONEXP P rΓ' h'),
+      eval_stmt OK P CT rΓ h (SSeq s1 s2) MUTATIONEXP P rΓ' h'
 
-  | SBS_Seq_MUTATIONEXP_second : forall CT rΓ h s1 s2 rΓ' h' rΓ'' h''
-      (Heval1 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s1 OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
-      (Heval2 : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ' h' s2 MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''),
-      eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SSeq s1 s2) MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ'' h''
+  | SBS_Seq_MUTATIONEXP_second : forall P CT rΓ h s1 s2 rΓ' h' rΓ'' h''
+      (Heval1 : eval_stmt OK P CT rΓ h s1 OK P rΓ' h')
+      (Heval2 : eval_stmt OK P CT rΓ' h' s2 MUTATIONEXP P rΓ'' h''),
+      eval_stmt OK P CT rΓ h (SSeq s1 s2) MUTATIONEXP P rΓ'' h''
   .
 
 (* Determinism of eval_stmt.
@@ -492,20 +494,20 @@ Proof.
   - (* SBS_Assign *)
     inversion H2; subst.
     + (* H2 : SBS_Assign *)
-      pose proof (eval_expr_deterministic _ _ _ _ _ _ _ _ _ _ _ _ _ _ Heval Heval0)
+      pose proof (eval_expr_deterministic _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Heval Heval0)
         as Hdet.
       destruct Hdet as [Hveq _].
       subst.
       repeat split; reflexivity.
     + (* H2 : SBS_Assign_NPE — eval_expr OK vs NPE *)
-      pose proof (eval_expr_deterministic _ _ _ _ _ _ _ _ _ _ _ _ _ _ Heval Heval0)
+      pose proof (eval_expr_deterministic _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Heval Heval0)
         as Hdet.
       destruct Hdet as [_ [Hreq _]].
       discriminate.
   - (* SBS_Assign_NPE *)
     inversion H2; subst.
     + (* H2 : SBS_Assign — eval_expr NPE vs OK *)
-      pose proof (eval_expr_deterministic _ _ _ _ _ _ _ _ _ _ _ _ _ _ Heval Heval0)
+      pose proof (eval_expr_deterministic _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Heval Heval0)
         as Hdet.
       destruct Hdet as [_ [Hreq _]].
       discriminate.
@@ -1173,9 +1175,9 @@ Proof.
 Qed.
 
 (* evaluation preserves runtime type on heap. *)
-Lemma runtime_preserves_r_type_heap : forall CT rΓ h loc C h' vals s rΓ'
+Lemma runtime_preserves_r_type_heap : forall P CT rΓ h loc C h' vals s rΓ'
   (Hobj  : runtime_getObj h loc = Some {| rt_type := C; fields_map := vals |})
-  (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h s OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h'),
+  (Heval : eval_stmt OK P CT rΓ h s OK P rΓ' h'),
   exists vals', runtime_getObj h' loc = Some {| rt_type := C; fields_map := vals' |}.
 Proof.
   intros. remember OK as ok. generalize dependent vals. 
@@ -1266,18 +1268,9 @@ Proof.
       * exact Hfind_CT'.
 Qed.
 
-Lemma vpa_assingability_assign_cases : forall q a
-  (Hvpa : vpa_assignability q a = Assignable),
-  (a = Assignable) \/
-  (q = Mut /\ a = RDA).
-Proof.
-  intros q a Hvpa.
-  unfold vpa_assignability in Hvpa.
-  destruct q, a; simpl in Hvpa; try discriminate; auto.
-Qed.
-
 (* Expression Evaluation Preservation *)
-(* TODO: This could be refactored to remove the first two premises. *)
+(** The receiver premises supply the runtime qualifier context used in the
+    non-null result. *)
 Lemma expr_eval_preservation : forall P CT sΓ mt rΓ h e v rΓ' h' T ι qcontext
   (Hreceiveraddr : get_this_var_mapping (vars rΓ) = Some ι)
   (Hreceiverrmut : (r_muttype h ι) = Some qcontext)

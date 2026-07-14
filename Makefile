@@ -22,6 +22,7 @@ coq: $(COQMAKEFILE)
 
 check: coq
 	python3 "$(PROJECT_DIR)scripts/check-no-axioms-admits.py" "$(PROJECT_DIR)"
+	python3 "$(PROJECT_DIR)scripts/check-public-assumptions.py" "$(PROJECT_DIR)"
 
 doc:
 	mkdir -p "$(DOC_DIR)"
@@ -79,6 +80,20 @@ alectryon-doc: coq
 	  '    <li><a href="Bigstep.html">Bigstep</a></li>' \
 	  '    <li><a href="Properties.html">Properties</a></li>' \
 	  '  </ul>' \
+	  '  <h2>Capability history</h2>' \
+	  '  <ul>' \
+	  '    <li><a href="ExecutionConfinement.html">ExecutionConfinement</a></li>' \
+	  '    <li><a href="MutableCapability.html">MutableCapability</a></li>' \
+	  '    <li><a href="AuthorityCapability.html">AuthorityCapability</a></li>' \
+	  '    <li><a href="ProtectionHistory.html">ProtectionHistory</a></li>' \
+	  '    <li><a href="ComponentColoring.html">ComponentColoring</a></li>' \
+	  '    <li><a href="ForwardCapabilityHistory.html">ForwardCapabilityHistory</a></li>' \
+	  '    <li><a href="AuthorityHistory.html">AuthorityHistory</a></li>' \
+	  '    <li><a href="WatchedFrames.html">WatchedFrames</a></li>' \
+	  '    <li><a href="LiveCapabilityStack.html">LiveCapabilityStack</a></li>' \
+	  '    <li><a href="PotentialCapability.html">PotentialCapability</a></li>' \
+	  '    <li><a href="ProtectedFieldPreservation.html">ProtectedFieldPreservation</a></li>' \
+	  '  </ul>' \
 	  '  <h2>Soundness</h2>' \
 	  '  <ul>' \
 	  '    <li><a href="Preservation.html">Preservation</a></li>' \
@@ -93,7 +108,6 @@ alectryon-doc: coq
 	  '  <h2>Readonly</h2>' \
 	  '  <ul>' \
 	  '    <li><a href="ReadonlyHelper.html">ReadonlyHelper</a></li>' \
-	  '    <li><a href="ReadonlyConfinement.html">ReadonlyConfinement</a></li>' \
 	  '    <li><a href="ReadonlyNoMutation.html">ReadonlyNoMutation</a></li>' \
 	  '    <li><a href="ReadonlySafety.html">ReadonlySafety</a></li>' \
 	  '  </ul>' \
@@ -109,6 +123,7 @@ alectryon-doc: coq
 	    out="$$(printf '%s\n' "$$f" | sed 's#[/]#.#g; s#[.]v$$#.html#')"; \
 	    "$(ALECTRYON)" --frontend coqdoc --coq-driver "$(ALECTRYON_COQ_DRIVER)" --backend webpage --rocq-arg=-exclude-dir --rocq-arg=_opam -Q . "$(PROJECT_NAMESPACE)" "$$f" -o "$(ALECTRYON_DIR)/$$out"; \
 	    perl -0pi -e 's#<script src="alectryon.js"></script>#<link href="project-alectryon.css" rel="stylesheet"><script src="alectryon.js"></script><script src="project-proof-toggle.js"></script>#' "$(ALECTRYON_DIR)/$$out"; \
+	    perl -pi -e 's/[ \t]+$$//' "$(ALECTRYON_DIR)/$$out"; \
 	  done
 
 alectryon-clean:

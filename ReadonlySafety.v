@@ -1,10 +1,10 @@
 Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation.
-Require Import Properties DeepImmutability Reachability Preservation ReadonlyHelper ReadonlyConfinement ReadonlyNoMutation.
+Require Import Properties DeepImmutability Reachability Preservation ReadonlyHelper ReadonlyNoMutation.
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
 
-Theorem readonly_pico_field_write :
+Lemma readonly_pico_field_write_with_end :
   forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals vals' f qt readonlyx anyf rhs anyrq
     (Hstmt : stmt = (SFldWrite readonlyx anyf rhs))
     (Hstatic_type : static_getType sΓ readonlyx = Some qt)
@@ -59,8 +59,8 @@ Proof.
     rewrite Hobj in Htypable.
     destruct Htypable as [base qualifier].
     rewrite Hobj in Hobj_before.
-    inversion Hobj_before.
-    rewrite H1 in base.
+    injection Hobj_before as Hobject_eq.
+    subst o.
     simpl in base.
 
     (* Use the fact that Final/RDA fields are protected from modification *)
@@ -69,7 +69,6 @@ Proof.
       rewrite Hstatic_type in Hget_x.
       inversion Hget_x.
       subst Tx.
-      (* rewrite Hstatic_type in H16. *)
       unfold vpa_assignability in Hassignable.
       destruct a0 eqn: Haeqn; try easy.
       assert (Hneq: anyf <> f).
@@ -82,7 +81,6 @@ Proof.
         }
         discriminate.
       }
-      injection Hobj_before as Hvals_eq.
       unfold update_field in Hobj_after.
       rewrite Hobj in Hobj_after.
       simpl in Hobj_after.
@@ -118,7 +116,6 @@ Proof.
         }
         discriminate.
       }
-      injection Hobj_before as Hvals_eq.
       unfold update_field in Hobj_after.
       rewrite Hobj in Hobj_after.
       simpl in Hobj_after.
@@ -164,8 +161,8 @@ Proof.
     rewrite Hobj in Htypable.
     destruct Htypable as [base qualifier].
     rewrite Hobj in Hobj_before.
-    inversion Hobj_before.
-    rewrite H1 in base.
+    injection Hobj_before as Hobject_eq.
+    subst o.
     simpl in base.
 
     (* Use the fact that Final/RDA fields are protected from modification *)
@@ -174,7 +171,6 @@ Proof.
       rewrite Hstatic_type in Hget_x.
       inversion Hget_x.
       subst Tx.
-      (* rewrite Hstatic_type in H16. *)
       unfold vpa_assignability in Hassignable.
       destruct a0 eqn: Haeqn; try easy.
       assert (Hneq: anyf <> f).
@@ -187,7 +183,6 @@ Proof.
         }
         discriminate.
       }
-      injection Hobj_before as Hvals_eq.
       unfold update_field in Hobj_after.
       rewrite Hobj in Hobj_after.
       simpl in Hobj_after.
@@ -223,7 +218,6 @@ Proof.
         }
         discriminate.
       }
-      injection Hobj_before as Hvals_eq.
       unfold update_field in Hobj_after.
       rewrite Hobj in Hobj_after.
       simpl in Hobj_after.
@@ -242,6 +236,34 @@ Proof.
       exact Hneq.
       rewrite Hqt_ro in Hassignable; easy.
       rewrite Hqt_ro in Hassignable; easy.
+Qed.
+
+(* Paper-facing form: evaluation itself preserves the object's runtime type,
+   so callers need not supply the final-heap object as a premise. *)
+Theorem readonly_pico_field_write :
+  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals f qt readonlyx anyf rhs anyrq
+    (Hstmt : stmt = (SFldWrite readonlyx anyf rhs))
+    (Hstatic_type : static_getType sΓ readonlyx = Some qt)
+    (Hqt_ro : sqtype qt = RO)
+    (Hwf : wf_r_config CT sΓ rΓ h)
+    (Htyping : stmt_typing CT sΓ mt stmt sΓ')
+    (Hmtype : safe_readonly_method_type mt)
+    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Hget_readonly : runtime_getVal rΓ readonlyx = Some (Iot l))
+    (Hobj_before : runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals))
+    (Hassign : sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA),
+    exists vals',
+      runtime_getObj h' l = Some (mkObj (mkruntime_type anyrq C) vals') /\
+      nth_error vals f = nth_error vals' f.
+Proof.
+  intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals f
+    qt readonlyx anyf rhs anyrq Hstmt Hstatic_type Hqt_ro Hwf Htyping
+    Hmtype Heval Hget_readonly Hobj_before Hassign.
+  destruct (runtime_preserves_r_type_heap (reachable_locations_from_initial_env CT h rΓ) CT rΓ h l
+    (mkruntime_type anyrq C) h' vals stmt rΓ' Hobj_before Heval)
+    as [vals' Hobj_after].
+  exists vals'. split; [exact Hobj_after|].
+  eapply readonly_pico_field_write_with_end; eauto.
 Qed.
 
 Definition all_params_safe (msig : method_sig) : Prop :=
@@ -274,28 +296,6 @@ Definition reachable_locations_from_vals
       In (Iot l_root) vals /\
       reachable h l_root l_target.
 
-Definition protected_locations_from_vals
-  (CT : class_table) (h : heap) (vals : list value) : Ensembles.Ensemble Loc :=
-  fun l_target =>
-    exists l_root,
-      In (Iot l_root) vals /\
-      reachable_abs CT h l_root l_target.
-
-Lemma reachable_abs_implies_reachable :
-  forall CT h l_src l_dst
-    (Hreach : reachable_abs CT h l_src l_dst),
-    reachable h l_src l_dst.
-Proof.
-  intros CT h l_src l_dst Hreach.
-  induction Hreach.
-  - (* Base case: reachable_abs_heap *)
-    apply rch_heap; exact Hdom.
-  - (* Step case: reachable_abs_step *)
-    eapply rch_step; eauto.
-  - (* Trans case *)
-    eapply rch_trans; eauto.
-Qed.
-
 Lemma reachable_locations_subset_reachable_from_method_frame :
   forall CT h ly vals,
     let rΓmethodinit := {| vars := Iot ly :: vals |} in
@@ -327,39 +327,6 @@ Proof.
     split.
     -- unfold runtime_getVal. simpl. exact Hnth_vals.
     -- exact Hreach.
-Qed.
-
-Lemma protected_locations_subset_reachable_from_method_frame :
-  forall CT h ly vals,
-    let rΓmethodinit := {| vars := Iot ly :: vals |} in
-    Ensembles.Included Loc
-      (protected_locations_from_vals CT h (Iot ly :: vals))
-      (reachable_locations_from_initial_env CT h rΓmethodinit).
-Proof.
-  intros CT h ly vals rΓmethodinit l Hin.
-  unfold protected_locations_from_vals in Hin.
-  destruct Hin as [l_root [Hin_list Hreach]].
-  unfold reachable_locations_from_initial_env.
-  (* l_root is in (Iot ly :: vals), so either l_root = ly or l_root is in vals *)
-  destruct Hin_list as [Heq | Hin_vals].
-  - (* Case: Iot l_root = Iot ly *)
-    inversion Heq; subst l_root.
-    exists 0, ly.
-    split.
-    -- unfold runtime_getVal. simpl. reflexivity.
-    -- exact (reachable_abs_implies_reachable CT h ly l Hreach).
-  - (* Case: Iot l_root in vals *)
-    (* Find which variable in vals contains this *)
-    have Hin_runtime : exists idx, nth_error vals idx = Some (Iot l_root).
-    {
-      apply In_nth_error in Hin_vals.
-      exact Hin_vals.
-    }
-    destruct Hin_runtime as [idx Hnth_vals].
-    exists (S idx), l_root.
-    split.
-    -- unfold runtime_getVal. simpl. exact Hnth_vals.
-    -- exact (reachable_abs_implies_reachable CT h l_root l Hreach).
 Qed.
 
 Lemma readonly_method_call_preserves_arguments_with_end :
@@ -519,6 +486,7 @@ Lemma readonly_method_call_preserves_arguments_with_end :
       eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
     }
     rewrite Hmsigeq; split; assumption.
+    eapply eval_stmt_protected_set_irrelevant. exact Heval_body.
     have Hsubset := reachable_locations_subset_reachable_from_method_frame CT h ly vals.
     rewrite <- HeqrΓmethodinit in Hsubset.
     unfold Ensembles.Included in Hsubset.
@@ -612,6 +580,7 @@ Lemma readonly_method_call_preserves_arguments_with_end :
       eapply method_signature_consistent_subtype with (C := rc_obj) (D := sctype Ty_call) (m := mindex); eauto.
     }
     rewrite Hmsigeq; split; assumption.
+    eapply eval_stmt_protected_set_irrelevant. exact Heval_body.
     have Hsubset := reachable_locations_subset_reachable_from_method_frame CT h ly vals.
     rewrite <- HeqrΓmethodinit in Hsubset.
     unfold Ensembles.Included in Hsubset.
@@ -644,7 +613,7 @@ Proof.
   intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
     loc_arg C anyrq vals_arg f Hstmt Hstatic_type Hmethod_lookup Hwf Htyping
     Hmtype Heval Hget_y Hget_zs HinP Harg_obj Hassign Hall_readonly.
-  destruct (runtime_preserves_r_type_heap CT rΓ h loc_arg
+  destruct (runtime_preserves_r_type_heap (reachable_locations_from_initial_env CT h rΓ) CT rΓ h loc_arg
     (mkruntime_type anyrq C) h' vals_arg stmt rΓ' Harg_obj Heval)
     as [vals_arg' Harg_obj'].
   exists vals_arg'. split; [exact Harg_obj'|].

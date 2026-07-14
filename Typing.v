@@ -682,7 +682,7 @@ Proof.
   assert (argtypes = argtypes0) by congruence.
   subst.
   apply Forall2_length in Harg_sub.
-  rewrite map_length in Harg_sub.
+  rewrite length_map in Harg_sub.
   rewrite <- Harg_sub.
   eapply static_getType_list_preserves_length; eauto.
 Qed.
