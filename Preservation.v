@@ -4,6 +4,266 @@ From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
 
+Lemma call_int_arg_base_abs :
+  forall CT sΓ rΓ h zs vals argtypes Ty mdef mdef_static i sqt n recv qrecv
+    (Harg_sub :
+      Forall2
+        (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_abs_imm Ty T))
+        argtypes (mparams (msignature mdef_static)))
+    (Hget_args : static_getType_list sΓ zs = Some argtypes)
+    (Hargs : runtime_lookup_list rΓ zs = Some vals)
+    (Hval_i : nth_error vals i = Some (Int n))
+    (Hnth : nth_error (mreceiver (msignature mdef) :: mparams (msignature mdef)) (S i) = Some sqt)
+    (Hmsigeq : msignature mdef = msignature mdef_static)
+    (Hrecv : get_this_var_mapping (vars rΓ) = Some recv)
+    (Hmut : r_muttype h recv = Some qrecv)
+    (Hcorr :
+      forall (ι : Loc) (qcontext : q_r),
+      get_this_var_mapping (vars rΓ) = Some ι ->
+      r_muttype h ι = Some qcontext ->
+      forall j, j < dom sΓ ->
+      forall T,
+        nth_error sΓ j = Some T ->
+        match runtime_getVal rΓ j with
+        | Some Null_a => True
+        | Some (Iot loc) => wf_r_typable CT rΓ h loc T qcontext
+        | Some (Int _) => sbase T = TInt
+        | None => False
+        end),
+    sbase sqt = TInt.
+Proof.
+  intros CT sΓ rΓ h zs vals argtypes Ty mdef mdef_static i sqt n recv qrecv
+    Harg_sub Hget_args Hargs Hval_i Hnth Hmsigeq Hrecv Hmut Hcorr.
+  assert (Hi_bound : i < List.length argtypes).
+  {
+    apply Forall2_length in Harg_sub.
+    rewrite Harg_sub.
+    apply nth_error_Some.
+    rewrite <- Hmsigeq.
+    simpl in Hnth.
+    intros Hnone.
+    rewrite Hnth in Hnone.
+    discriminate.
+  }
+  assert (Hnth_param_static :
+    nth_error (mparams (msignature mdef_static)) i = Some sqt).
+  {
+    simpl in Hnth.
+    rewrite Hmsigeq in Hnth.
+    exact Hnth.
+  }
+  destruct (nth_error_Some_exists _ _ Hi_bound) as [argtype Hargtype].
+  pose proof Harg_sub as Harg_sub_base.
+  eapply Forall2_nth_error with (i:=i) (a:=argtype) (b:=sqt) in Harg_sub_base; eauto.
+  destruct (static_getType_list_nth_zs sΓ zs argtypes i argtype Hget_args Hargtype)
+    as [j [Hzs_j Hstatic_j]].
+  assert (Hj_dom : j < dom sΓ).
+  {
+    unfold static_getType in Hstatic_j.
+    apply nth_error_Some.
+    rewrite Hstatic_j.
+    discriminate.
+  }
+  destruct (runtime_lookup_list_nth_zs rΓ zs vals i (Int n) Hargs Hval_i)
+    as [j' [Hzs_j' Hruntime_j']].
+  assert (Heq_j : j = j').
+  {
+    rewrite Hzs_j in Hzs_j'.
+    inversion Hzs_j'.
+    reflexivity.
+  }
+  subst j'.
+  unfold static_getType in Hstatic_j.
+  specialize (Hcorr recv qrecv Hrecv Hmut j Hj_dom argtype Hstatic_j).
+  unfold runtime_getVal in Hcorr.
+  unfold runtime_getVal in Hruntime_j'.
+  rewrite Hruntime_j' in Hcorr.
+  apply qualified_type_subtype_base_subtype in Harg_sub_base.
+  rewrite (vpa_mutability_tt_sbase_abs_imm Ty sqt) in Harg_sub_base.
+  rewrite Hcorr in Harg_sub_base.
+  apply base_subtype_from_int in Harg_sub_base.
+  exact Harg_sub_base.
+Qed.
+
+Lemma call_int_return_base_abs :
+  forall CT Ty Tx mdef mdef_static mbody mrettype sΓend rΓend hend n recv qrecv
+    (Hret_dom : mreturn (Syntax.mbody mdef) < dom sΓend)
+    (Hnth_ret : nth_error sΓend (mreturn (Syntax.mbody mdef)) = Some mrettype)
+    (Hbody_ret_sub : qualified_type_subtype CT mrettype (mret (msignature mdef)))
+    (Hcall_ret_sub :
+      qualified_type_subtype CT
+        (vpa_mutability_tt_abs_imm Ty (mret (msignature mdef_static))) Tx)
+    (Hretval : nth_error (vars rΓend) (mreturn mbody) = Some (Int n))
+    (Hbody_eq : mbody = Syntax.mbody mdef)
+    (Hmsigeq : msignature mdef = msignature mdef_static)
+    (Hrecv : get_this_var_mapping (vars rΓend) = Some recv)
+    (Hmut : r_muttype hend recv = Some qrecv)
+    (Hcorr :
+      forall (ι : Loc) (qcontext : q_r),
+      get_this_var_mapping (vars rΓend) = Some ι ->
+      r_muttype hend ι = Some qcontext ->
+      forall i, i < dom sΓend ->
+      forall T,
+        nth_error sΓend i = Some T ->
+        match runtime_getVal rΓend i with
+        | Some Null_a => True
+        | Some (Iot loc) => wf_r_typable CT rΓend hend loc T qcontext
+        | Some (Int _) => sbase T = TInt
+        | None => False
+        end),
+    sbase Tx = TInt.
+Proof.
+  intros CT Ty Tx mdef mdef_static mbody mrettype sΓend rΓend hend n recv qrecv
+    Hret_dom Hnth_ret Hbody_ret_sub Hcall_ret_sub Hretval Hbody_eq Hmsigeq
+    Hrecv Hmut Hcorr.
+  pose proof
+    (Hcorr recv qrecv Hrecv Hmut
+      (mreturn (Syntax.mbody mdef)) Hret_dom mrettype Hnth_ret) as Hret_value_base.
+  unfold runtime_getVal in Hret_value_base.
+  rewrite <- Hbody_eq in Hret_value_base.
+  rewrite Hretval in Hret_value_base.
+  pose proof
+    (qualified_type_subtype_base_subtype CT mrettype (mret (msignature mdef))
+      Hbody_ret_sub) as Hbody_base.
+  rewrite Hret_value_base in Hbody_base.
+  pose proof
+    (qualified_type_subtype_base_subtype CT
+      (vpa_mutability_tt_abs_imm Ty (mret (msignature mdef_static))) Tx
+      Hcall_ret_sub) as Hcall_base.
+  rewrite (vpa_mutability_tt_sbase_abs_imm Ty (mret (msignature mdef_static))) in Hcall_base.
+  rewrite <- Hmsigeq in Hcall_base.
+  assert (Htarget_base : base_subtype CT TInt (sbase Tx)).
+  {
+    eapply base_trans; eauto.
+  }
+  apply base_subtype_from_int in Htarget_base.
+  exact Htarget_base.
+Qed.
+
+Lemma call_int_arg_base_safe_ro :
+  forall CT sΓ rΓ h zs vals argtypes Ty mdef i sqt n recv qrecv
+    (Harg_sub :
+      Forall2
+        (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_safe_ro Ty T))
+        argtypes (mparams (msignature mdef)))
+    (Hget_args : static_getType_list sΓ zs = Some argtypes)
+    (Hargs : runtime_lookup_list rΓ zs = Some vals)
+    (Hval_i : nth_error vals i = Some (Int n))
+    (Hnth : nth_error (mparams (msignature mdef)) i = Some sqt)
+    (Hrecv : get_this_var_mapping (vars rΓ) = Some recv)
+    (Hmut : r_muttype h recv = Some qrecv)
+    (Hcorr :
+      forall (ι : Loc) (qcontext : q_r),
+      get_this_var_mapping (vars rΓ) = Some ι ->
+      r_muttype h ι = Some qcontext ->
+      forall j, j < dom sΓ ->
+      forall T,
+        nth_error sΓ j = Some T ->
+        match runtime_getVal rΓ j with
+        | Some Null_a => True
+        | Some (Iot loc) => wf_r_typable CT rΓ h loc T qcontext
+        | Some (Int _) => sbase T = TInt
+        | None => False
+        end),
+    sbase sqt = TInt.
+Proof.
+  intros CT sΓ rΓ h zs vals argtypes Ty mdef i sqt n recv qrecv
+    Harg_sub Hget_args Hargs Hval_i Hnth Hrecv Hmut Hcorr.
+  assert (Hi_bound : i < List.length argtypes).
+  {
+    apply Forall2_length in Harg_sub.
+    rewrite Harg_sub.
+    apply nth_error_Some.
+    intros Hnone.
+    rewrite Hnth in Hnone.
+    discriminate.
+  }
+  destruct (nth_error_Some_exists _ _ Hi_bound) as [argtype Hargtype].
+  pose proof Harg_sub as Harg_sub_base.
+  eapply Forall2_nth_error with (i:=i) (a:=argtype) (b:=sqt) in Harg_sub_base; eauto.
+  destruct (static_getType_list_nth_zs sΓ zs argtypes i argtype Hget_args Hargtype)
+    as [j [Hzs_j Hstatic_j]].
+  assert (Hj_dom : j < dom sΓ).
+  {
+    unfold static_getType in Hstatic_j.
+    apply nth_error_Some.
+    rewrite Hstatic_j.
+    discriminate.
+  }
+  destruct (runtime_lookup_list_nth_zs rΓ zs vals i (Int n) Hargs Hval_i)
+    as [j' [Hzs_j' Hruntime_j']].
+  assert (Heq_j : j = j').
+  {
+    rewrite Hzs_j in Hzs_j'.
+    inversion Hzs_j'.
+    reflexivity.
+  }
+  subst j'.
+  unfold static_getType in Hstatic_j.
+  specialize (Hcorr recv qrecv Hrecv Hmut j Hj_dom argtype Hstatic_j).
+  unfold runtime_getVal in Hcorr.
+  unfold runtime_getVal in Hruntime_j'.
+  rewrite Hruntime_j' in Hcorr.
+  apply qualified_type_subtype_base_subtype in Harg_sub_base.
+  rewrite (vpa_mutability_tt_sbase_safe_ro Ty sqt) in Harg_sub_base.
+  rewrite Hcorr in Harg_sub_base.
+  apply base_subtype_from_int in Harg_sub_base.
+  exact Harg_sub_base.
+Qed.
+
+Lemma call_int_return_base_safe_ro :
+  forall CT Ty Tx mdef mbody mrettype sΓend rΓend hend n recv qrecv
+    (Hret_dom : mreturn (Syntax.mbody mdef) < dom sΓend)
+    (Hnth_ret : nth_error sΓend (mreturn (Syntax.mbody mdef)) = Some mrettype)
+    (Hbody_ret_sub : qualified_type_subtype CT mrettype (mret (msignature mdef)))
+    (Hcall_ret_sub :
+      qualified_type_subtype CT
+        (vpa_mutability_tt_safe_ro Ty (mret (msignature mdef))) Tx)
+    (Hretval : nth_error (vars rΓend) (mreturn mbody) = Some (Int n))
+    (Hbody_eq : mbody = Syntax.mbody mdef)
+    (Hrecv : get_this_var_mapping (vars rΓend) = Some recv)
+    (Hmut : r_muttype hend recv = Some qrecv)
+    (Hcorr :
+      forall (ι : Loc) (qcontext : q_r),
+      get_this_var_mapping (vars rΓend) = Some ι ->
+      r_muttype hend ι = Some qcontext ->
+      forall i, i < dom sΓend ->
+      forall T,
+        nth_error sΓend i = Some T ->
+        match runtime_getVal rΓend i with
+        | Some Null_a => True
+        | Some (Iot loc) => wf_r_typable CT rΓend hend loc T qcontext
+        | Some (Int _) => sbase T = TInt
+        | None => False
+        end),
+    sbase Tx = TInt.
+Proof.
+  intros CT Ty Tx mdef mbody mrettype sΓend rΓend hend n recv qrecv
+    Hret_dom Hnth_ret Hbody_ret_sub Hcall_ret_sub Hretval Hbody_eq
+    Hrecv Hmut Hcorr.
+  pose proof
+    (Hcorr recv qrecv Hrecv Hmut
+      (mreturn (Syntax.mbody mdef)) Hret_dom mrettype Hnth_ret) as Hret_value_base.
+  unfold runtime_getVal in Hret_value_base.
+  rewrite <- Hbody_eq in Hret_value_base.
+  rewrite Hretval in Hret_value_base.
+  pose proof
+    (qualified_type_subtype_base_subtype CT mrettype (mret (msignature mdef))
+      Hbody_ret_sub) as Hbody_base.
+  rewrite Hret_value_base in Hbody_base.
+  pose proof
+    (qualified_type_subtype_base_subtype CT
+      (vpa_mutability_tt_safe_ro Ty (mret (msignature mdef))) Tx
+      Hcall_ret_sub) as Hcall_base.
+  rewrite (vpa_mutability_tt_sbase_safe_ro Ty (mret (msignature mdef))) in Hcall_base.
+  assert (Htarget_base : base_subtype CT TInt (sbase Tx)).
+  {
+    eapply base_trans; eauto.
+  }
+  apply base_subtype_from_int in Htarget_base.
+  exact Htarget_base.
+Qed.
+
 (* ------------------------------------------------------------- *)
 (* Soundness properties for PICO *)
 Theorem preservation_pico :
@@ -55,7 +315,7 @@ Proof.
         discriminate Hbase.
       }
       remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
-      
+
       assert (Hmsigeq: msignature mdef = msignature mdef0).
       {
         assert (Hy_dom : y < dom sΓ').
@@ -72,7 +332,7 @@ Proof.
           eapply receiver_mutability_exists_from_bound.
           exact OutterReceiverAddrBound.
         }
-        
+
         destruct H5 as [qrout H5].
         assert (Hmethod_this_addr : get_this_var_mapping (vars rΓmethodinit) = Some ly).
         {
@@ -98,11 +358,15 @@ Proof.
         unfold get_this_var_mapping.
 
         unfold r_type in Hytypable.
-        rewrite Hobjy in Hytypable.
-        simpl in Hytypable.
-        destruct Hytypable as [Hsubtype _].
-        eapply method_signature_consistent_subtype; eauto.
-      }
+	        rewrite Hobjy in Hytypable.
+	        simpl in Hytypable.
+	        destruct Hytypable as [Hsubtype _].
+	        destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hsubtype)
+	          as [D [HbaseTy Hclass_sub]].
+	        rewrite HbaseTy in Href.
+	        inversion Href; subst D.
+	        eapply method_signature_consistent_subtype; eauto.
+	      }
       rewrite <- Hmsigeq in Hrcv_sub.
       rewrite <- Hmsigeq in Hret_sub.
       rewrite <- Hmsigeq in Harg_sub.
@@ -120,9 +384,7 @@ Proof.
           exact Hotherclasses.
         -
           apply Hcname_consistent.
-        - 
-          apply Hcname_consistent.
-        - 
+        -
           exact Hheap.
         -
           rewrite HeqrΓmethodinit.
@@ -244,7 +506,7 @@ Proof.
         assert (H5 : exists qrout, r_muttype h OutterReceiverAddr = Some qrout).
         {
           unfold r_muttype.
-          destruct (runtime_getObj h OutterReceiverAddr) eqn: Hobjaddr. 
+          destruct (runtime_getObj h OutterReceiverAddr) eqn: Hobjaddr.
           2:{
             apply runtime_getObj_not_dom in Hobjaddr.
             lia.
@@ -252,7 +514,7 @@ Proof.
           eexists.
           reflexivity.
         }
-        
+
         destruct H5 as [qrout H5].
         assert (Hmethod_this_addr : get_this_var_mapping (vars rΓmethodinit) = Some ly).
         {
@@ -261,7 +523,7 @@ Proof.
           simpl.
           auto.
         }
-        assert (Hytypable: wf_r_typable CT rΓ h ly Ty qrout). 
+        assert (Hytypable: wf_r_typable CT rΓ h ly Ty qrout).
         {
           eapply correspondence_to_typable; eauto.
           specialize (Hcorr OutterReceiverAddr qrout OutterReceiverGetAddr H5).
@@ -313,7 +575,7 @@ Proof.
             destruct Hrcv_sub as [Hrcv_sub | H24Special].
             ----
               apply qualified_type_subtype_base_subtype in Hrcv_sub.
-              rewrite (vpa_mutability_tt_sctype_abs_imm Ty (mreceiver (msignature mdef))) in Hrcv_sub.
+              rewrite (vpa_mutability_tt_sbase_abs_imm Ty (mreceiver (msignature mdef))) in Hrcv_sub.
               eapply base_trans; eauto.
             ----
               destruct H24Special as [HReceiverQualifier HBasetype].
@@ -370,7 +632,7 @@ Proof.
           all: destruct (sqtype Ty) eqn:Htyq;
           simpl in Hrcv_sub;
           try solve_q_subtype_wrong.
-          all: 
+          all:
           destruct (rqtype (rt_type outterreceiverobj)) eqn:Hrqtoutter;
           try solve_qualifier_typable_wrong_concrete.
         ---- (* The special case *)
@@ -459,11 +721,12 @@ Proof.
 
         unfold runtime_getVal.
         simpl.
-        destruct (nth_error vals i') as [v|] eqn:Hval_i.
-        --- (* Parameter i' exists *)
-          destruct v as [|loc|n]; [trivial| | trivial].
+	        destruct (nth_error vals i') as [v|] eqn:Hval_i.
+	        --- (* Parameter i' exists *)
+	          destruct v as [|loc|n]; [trivial| |].
           (* Use Hret_sub to get the subtyping relationship *)
-          assert (Hi'_bound : i' < List.length argtypes).
+	          ----
+		          assert (Hi'_bound : i' < List.length argtypes).
           {
             apply Forall2_length in Harg_sub.
             simpl in Hi.
@@ -552,16 +815,18 @@ Proof.
           rewrite HargtypeFromrEnv in Hcorrcopy2.
           unfold wf_r_typable in Hcorrcopy2.
           unfold r_type in Hcorrcopy2.
-          rewrite Hobj_loc in Hcorrcopy2.
-          destruct Hcorrcopy2 as [Harg_base_subtype Harg_qual_subtype].
-          split.
+	          rewrite Hobj_loc in Hcorrcopy2.
+	          destruct Hcorrcopy2 as [Harg_base_subtype Harg_qual_subtype].
+	          split.
+	          {
+	          (* Base type subtype *)
+	          apply qualified_type_subtype_base_subtype in Harg_sub.
+	          rewrite (vpa_mutability_tt_sbase_abs_imm Ty) in Harg_sub.
+	          eapply base_trans; [exact Harg_base_subtype | exact Harg_sub].
+	          }
 
-          (* Base type subtype *)
-          apply qualified_type_subtype_base_subtype in Harg_sub.
-          rewrite (vpa_mutability_tt_sctype_abs_imm Ty) in Harg_sub.
-          eapply base_trans; eauto.
-
-          (* Quliafier type correspondence *)
+	          {
+	          (* Quliafier type correspondence *)
           assert (Hqcontext_eq: qcontext = rqtype (rt_type objι)).
           {
             unfold r_muttype in getqcontext.
@@ -585,7 +850,7 @@ Proof.
             destruct (rqtype (rt_type objι)) eqn:HInnerReceiverMutability;
             destruct (sqtype sqt) eqn:HParameterStaticDeclearedMutability;
             try solve_qualifier_typable_correct_concrete.
-            all: 
+            all:
             destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
             destruct (sqtype Ty) eqn:HyStaticMutability;
             try solve_qualifier_typable_wrong_concrete.
@@ -593,12 +858,12 @@ Proof.
             destruct (sqtype argtype) eqn:Hargqtype;
             try solve_qualifier_typable_wrong_concrete.
 
-            all: destruct (sqtype Tthis) eqn:HOutterReceiverStaticMutability;
-            simpl in Harg_sub;
-            try solve_qualifier_typable_wrong_concrete;
-            try solve_q_subtype_wrong.
-          ----
-            destruct H24Special as [HReceiverQualifier HBasetype].
+		            all: destruct (sqtype Tthis) eqn:HOutterReceiverStaticMutability;
+		            simpl in Harg_sub;
+		            try solve_qualifier_typable_wrong_concrete;
+		            try solve_q_subtype_wrong.
+		          ----
+	            destruct H24Special as [HReceiverQualifier HBasetype].
             destruct HBasetype as [HReceiverDeclaredQualifier HBasetype].
             clear - Harg_qual_subtype Houtterqualifier HInnerReceiverQualifier Harg_sub.
             rewrite sq_vpa_tt_eq_qq_abs_imm in Harg_sub.
@@ -606,7 +871,7 @@ Proof.
             destruct (rqtype (rt_type objι)) eqn:HInnerReceiverMutability;
             destruct (sqtype sqt) eqn:HParameterStaticDeclearedMutability;
             try solve_qualifier_typable_correct_concrete.
-            all: 
+            all:
             destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
             destruct (sqtype Ty) eqn:HyStaticMutability;
             try solve_qualifier_typable_wrong_concrete.
@@ -614,12 +879,72 @@ Proof.
             destruct (sqtype argtype) eqn:Hargqtype;
             try solve_qualifier_typable_wrong_concrete.
 
-            all: destruct (sqtype Tthis) eqn:HOutterReceiverStaticMutability;
-            simpl in Harg_sub;
-            try solve_qualifier_typable_wrong_concrete;
-            try solve_q_subtype_wrong.
-          
-        --- (* Parameter i' doesn't exist - contradiction *)
+		            all: destruct (sqtype Tthis) eqn:HOutterReceiverStaticMutability;
+		            simpl in Harg_sub;
+		            try solve_qualifier_typable_wrong_concrete;
+		            try solve_q_subtype_wrong.
+	          }
+	          ----
+		          assert (Hi'_bound : i' < List.length argtypes).
+	          {
+	            apply Forall2_length in Harg_sub.
+	            simpl in Hi.
+	            simpl in Hnth.
+	            assert (Hi_mparams : i' < dom (mparams (msignature mdef))).
+	            { apply nth_error_Some. rewrite Hnth. discriminate. }
+	            rewrite <- Harg_sub in Hi_mparams.
+	            exact Hi_mparams.
+	          }
+	          assert (Harg_type : exists argtype, nth_error argtypes i' = Some argtype).
+	          {
+	            apply nth_error_Some_exists.
+	            exact Hi'_bound.
+	          }
+	          destruct Harg_type as [argtype Hargtype].
+	          eapply Forall2_nth_error in Harg_sub; eauto.
+	          assert (HargtypeFromsEnv :
+	            exists iArgInSenv,
+	              nth_error sΓ' iArgInSenv = Some argtype /\
+	              nth_error zs i' = Some iArgInSenv).
+	          {
+	            destruct (static_getType_list_nth_zs sΓ' zs argtypes i' argtype Hget_args Hargtype)
+	              as [j [Hzs_j Hst_j]].
+	            exists j.
+	            split.
+	            - unfold static_getType in Hst_j; exact Hst_j.
+	            - exact Hzs_j.
+	          }
+	          destruct HargtypeFromsEnv as [iArgInSenv [HargtypeFromsEnv Hzs_iArg]].
+	          assert (Hi'dom : iArgInSenv < dom sΓ').
+	          {
+	            apply nth_error_Some.
+	            rewrite HargtypeFromsEnv; discriminate.
+	          }
+	          assert (HargtypeFromrEnv :
+	                    nth_error (vars rΓ) iArgInSenv = Some (Int n)).
+	          {
+	            destruct (runtime_lookup_list_nth_zs rΓ zs vals i' (Int n) Hargs Hval_i)
+	              as [j [Hzs_j Hget_j]].
+	            assert (HiEq : iArgInSenv = j).
+	            {
+	              rewrite Hzs_iArg in Hzs_j.
+	              inversion Hzs_j; reflexivity.
+	            }
+	            subst iArgInSenv.
+	            unfold runtime_getVal in Hget_j.
+	            exact Hget_j.
+	          }
+	          specialize (Hcorrcopy2 OutterReceiverAddr qrout OutterReceiverGetAddr_copy H5_copy).
+	          specialize (Hcorrcopy2 iArgInSenv Hi'dom argtype HargtypeFromsEnv).
+	          unfold runtime_getVal in Hcorrcopy2.
+	          rewrite HargtypeFromrEnv in Hcorrcopy2.
+	          apply qualified_type_subtype_base_subtype in Harg_sub.
+	          rewrite (vpa_mutability_tt_sbase_abs_imm Ty sqt) in Harg_sub.
+	          rewrite Hcorrcopy2 in Harg_sub.
+	          apply base_subtype_from_int in Harg_sub.
+	          exact Harg_sub.
+
+	        --- (* Parameter i' doesn't exist - contradiction *)
           exfalso.
           apply nth_error_None in Hval_i.
           apply runtime_lookup_list_preserves_length in Hargs.
@@ -632,11 +957,11 @@ Proof.
           simpl in Hnth.
           lia.
       }
-      assert (H5 : wf_r_config CT sΓmethodend rΓ'' h'). 
+      assert (H5 : wf_r_config CT sΓmethodend rΓ'' h').
       {
         eapply IHHeval with (sΓ := sΓmethodinit) (sΓ' := sΓmethodend); eauto.
       }
-      
+
       {
         (* Method call resulting config is wellformed *)
         have H5copy := H5.
@@ -651,7 +976,6 @@ Proof.
         exact Hclass_.
         exact Hobj_.
         apply Hcname_consistent_.
-        apply Hfind_consistent_.
         apply Hfind_consistent_.
         exact Hheapinit.
         rewrite HeqrΓ'''.
@@ -750,8 +1074,8 @@ Proof.
             (* Use the fact that retval is well-typed from method return *)
             unfold runtime_getVal in Hretval.
               destruct retval as [|loc_ret|nret].
-              * simpl. exact I.
-              *
+		              * simpl. exact I.
+	              *
               assert (Hret_dom : mreturn (Syntax.mbody mdef) < dom (vars rΓ'')).
             {
               apply nth_error_Some.
@@ -846,11 +1170,11 @@ Proof.
               destruct Hsubtype_ret as [Hsubtype_ret Hmethodoveride].
               apply qualified_type_subtype_base_subtype in Hsubtype_ret.
               apply qualified_type_subtype_base_subtype in Hret_sub.
-              (* rewrite (vpa_mutability_tt_sctype Tthis Tx) in H22. *)
+              (* rewrite (vpa_mutability_tt_sbase Tthis Tx) in H22. *)
               (* rewrite (vpa_mutability_tt Ty (mret (msignature mdef0))) in H22. *)
-              rewrite (vpa_mutability_tt_sctype_abs_imm Ty (mret (msignature mdef))) in Hret_sub.
-              (* rewrite (vpa_mutability_tt_sctype (mreceiver (msignature mdef)) mrettype) in Hsubtype_ret.
-              rewrite (vpa_mutability_tt_sctype (mreceiver (msignature mdef)) (mret (msignature mdef))) in Hsubtype_ret. *)
+              rewrite (vpa_mutability_tt_sbase_abs_imm Ty (mret (msignature mdef))) in Hret_sub.
+              (* rewrite (vpa_mutability_tt_sbase (mreceiver (msignature mdef)) mrettype) in Hsubtype_ret.
+              rewrite (vpa_mutability_tt_sbase (mreceiver (msignature mdef)) (mret (msignature mdef))) in Hsubtype_ret. *)
               (* rewrite <- Hmsigeq in Harg_sub. *)
               eapply base_trans; eauto.
               eapply base_trans; eauto.
@@ -985,7 +1309,47 @@ Proof.
               rewrite getmbody in Hretval.
               rewrite Hretval in Hmet_val.
               easy.
-              * simpl. exact I.
+	              * simpl.
+	                assert (Hret_dom : mreturn (Syntax.mbody mdef) < dom (vars rΓ'')).
+	                {
+	                  apply nth_error_Some.
+	                  rewrite <- getmbody.
+	                  rewrite Hretval.
+	                  discriminate.
+	                }
+	                rewrite <- Hleninit in Hret_dom.
+	                destruct Hmethodret as [Hmbodyretvar_dom [Hnth_mbodyret [Hsubtype_ret Hmethodoverride]]].
+	                assert (HreceiverAddrInit : get_this_var_mapping (vars rΓ'') = Some ly).
+	                {
+	                  eapply eval_stmt_preserves_receiver_addr_typed; eauto.
+	                  unfold get_this_var_mapping.
+	                  rewrite HeqrΓmethodinit.
+	                  simpl.
+	                  reflexivity.
+	                }
+	                assert (HInnerReceiverEndFrame : r_muttype h' ly = Some q).
+	                {
+	                  eapply eval_stmt_preserves_r_muttype; eauto.
+	                  unfold r_muttype in Hinnerthis.
+	                  destruct (runtime_getObj h ly) as [innerthisobj|] eqn:Hinnerobj; [|discriminate].
+	                  apply runtime_getObj_dom in Hinnerobj.
+	                  exact Hinnerobj.
+	                }
+	                pose proof Hcorrinit as Hcorr_ret.
+	                specialize (Hcorr_ret ly q HreceiverAddrInit HInnerReceiverEndFrame
+	                  (mreturn (Syntax.mbody mdef)) Hret_dom mrettype Hnth_mbodyret).
+	                unfold runtime_getVal in Hcorr_ret.
+	                rewrite <- getmbody in Hcorr_ret.
+	                rewrite Hretval in Hcorr_ret.
+	                pose proof (qualified_type_subtype_base_subtype _ _ _ Hsubtype_ret) as Hbody_ret_base.
+	                pose proof (qualified_type_subtype_base_subtype _ _ _ Hret_sub) as Hcall_ret_base.
+	                rewrite (vpa_mutability_tt_sbase_abs_imm Ty (mret (msignature mdef))) in Hcall_ret_base.
+	                rewrite Hcorr_ret in Hbody_ret_base.
+	                pose proof
+	                  (base_trans CT TInt (sbase (mret (msignature mdef))) (sbase Tx)
+	                    Hbody_ret_base Hcall_ret_base) as Htarget_base.
+	                apply base_subtype_from_int in Htarget_base.
+	                exact Htarget_base.
           - (* Case: i ≠ x (unchanged variable) *)
           rewrite HeqrΓ'''.
           simpl.
@@ -1033,7 +1397,7 @@ Proof.
             exact Hcorr.
           }
       }
-      assert (H2 : exists D ddef, base_subtype CT cy D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef).
+	      assert (H2 : exists D ddef, class_subtype CT cy D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef).
       {
         eapply method_lookup_in_wellformed_inherited; eauto.
         eapply r_basetype_in_dom; eauto.
@@ -1049,7 +1413,7 @@ Proof.
       remember {| vars := Iot ly :: vals |} as rΓmethodinit.
       remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
       assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
-      { 
+      {
         (* Method inner config wellformed.*)
         have Hclasstable := Hclass.
         unfold  wf_class_table in Hclass.
@@ -1058,7 +1422,6 @@ Proof.
         exact Hclass.
         exact Hobj.
         exact Hotherclasses.
-        apply Hcname_consistent.
         apply Hcname_consistent.
         exact Hheap.
         rewrite HeqrΓmethodinit.
@@ -1175,11 +1538,15 @@ Proof.
         rewrite Hval_y in Hcorr.
         rewrite Hobjy in Hcorr.
         simpl in Hcorr.
-        destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-        assert (Hmsigeq_inner : msignature mdef = msignature mdef0).
-        {
-          eapply method_signature_consistent_subtype; eauto.
-        }
+	        destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
+	        assert (Hmsigeq_inner : msignature mdef = msignature mdef0).
+	        {
+	          destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hbasesubtype)
+	            as [D0 [HbaseTy Hclass_sub]].
+	          rewrite HbaseTy in Href.
+	          inversion Href; subst D0.
+	          eapply method_signature_consistent_subtype; eauto.
+	        }
         rewrite Hmsigeq_inner.
         rewrite Hargs.
         rewrite <- Harg_sub.
@@ -1230,11 +1597,15 @@ Proof.
         rewrite Hobjy in Hcorr.
         simpl in Hcorr.
         destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-        
-        assert (Hmsigeq: msignature mdef = msignature mdef0).
-        {
-          eapply method_signature_consistent_subtype; eauto.
-        }
+
+	        assert (Hmsigeq: msignature mdef = msignature mdef0).
+	        {
+	          destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hbasesubtype)
+	            as [D0 [HbaseTy Hclass_sub]].
+	          rewrite HbaseTy in Href.
+	          inversion Href; subst D0.
+	          eapply method_signature_consistent_subtype; eauto.
+	        }
         destruct i as [|i'].
 
         (* Reciever index - 0 *)
@@ -1255,7 +1626,7 @@ Proof.
         1:
         {
           apply qualified_type_subtype_base_subtype in Hrcv_sub.
-          rewrite (vpa_mutability_tt_sctype_abs_imm Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
+          rewrite (vpa_mutability_tt_sbase_abs_imm Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
           eapply base_trans; eauto.
         }
         1:{
@@ -1265,7 +1636,7 @@ Proof.
         }
 
         (* Qualifier typbility *)
-        1: 
+        1:
         {
           destruct Hrcv_sub as [Hrcv_sub | H24Special].
           1:{
@@ -1293,7 +1664,7 @@ Proof.
             }
             subst OutterReceiverMutability.
 
-            assert (ly = ι). 
+            assert (ly = ι).
             {
               rewrite HeqrΓmethodinit in HreceiverAddr.
               unfold get_this_var_mapping in HreceiverAddr.
@@ -1366,7 +1737,7 @@ Proof.
             }
             subst OutterReceiverMutability.
 
-            assert (ly = ι). 
+            assert (ly = ι).
             {
               rewrite HeqrΓmethodinit in HreceiverAddr.
               unfold get_this_var_mapping in HreceiverAddr.
@@ -1416,8 +1787,29 @@ Proof.
         unfold runtime_getVal.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
-          - (* Parameter i' exists *)
-            destruct v as [|loc|n]; [trivial| | trivial].
+	          - (* Parameter i' exists *)
+		            destruct v as [|loc|n];
+		              [trivial
+		              |
+			              | simpl in Hnth;
+			                assert (Hnth_cons :
+			                  nth_error
+			                    (mreceiver (msignature mdef) :: mparams (msignature mdef))
+			                    (S i') = Some sqt) by (simpl; exact Hnth);
+			                eapply call_int_arg_base_abs
+		                  with (mdef:=mdef) (mdef_static:=mdef0) (i:=i') (n:=n)
+		                       (recv:=lOutterReceiver) (qrecv:=OutterReceiverMutability);
+		                  [ exact Harg_sub
+		                  | exact Hget_args
+		                  | exact Hargs
+		                  | exact Hval_i
+		                  | exact Hnth_cons
+		                  | exact Hmsigeq
+		                  | rewrite Hvars; exact HOutterReceiverAddr
+		                  | exact HOutterReceiverMutabilityType
+		                  | intros ι0 q0 Hrecv0 Hmut0 j0 Hj0 T0 HT0;
+		                    rewrite Hvars in Hrecv0;
+		                    exact (Hcorrcopy ι0 q0 Hrecv0 Hmut0 j0 Hj0 T0 HT0) ]].
             (* Use Hret_sub to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -1514,7 +1906,7 @@ Proof.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in Harg_sub; eauto.
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutability_tt_sctype_abs_imm Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sbase_abs_imm Ty sqt) in Harg_sub.
             eapply base_trans; eauto.
 
             (* Qualifier Typability *)
@@ -1565,23 +1957,37 @@ Proof.
               reflexivity.
             }
             subst rq_obj.
-            clear - Harg_sub Harg_qualifiertypability HyQualifierTypablility HOutterReceiverQualifierTypablility.
+	            clear - argtype Harg_sub Harg_qualifiertypability HyQualifierTypablility HOutterReceiverQualifierTypablility.
 
             destruct (rqtype (rt_type argobj)) eqn:Hargobjmutability; move Hargobjmutability at bottom;
             destruct (sqtype sqt) eqn:HParameterStaticDeclearedMutability; move HParameterStaticDeclearedMutability at bottom;
             destruct qinner eqn:HInnerReceiverMutability; move HInnerReceiverMutability at bottom;
             try solve_qualifier_typable_correct_concrete.
 
-            all: destruct (sqtype Ty) eqn:HTyStaticMutability;
-            destruct (sqtype argtype) eqn:HArgTypeStaticMutability;
-            simpl in Harg_sub;
-            try solve_q_subtype_wrong.
+	            all: destruct (sqtype Ty) eqn:HTyStaticMutability;
+	            try destruct (sqtype argtype) eqn:HArgTypeStaticMutability;
+	            simpl in Harg_sub;
+	            try solve_q_subtype_wrong.
 
-            all: 
-            destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
-            try solve_qualifier_typable_wrong_concrete.
+	            all:
+	            try destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
+	            try solve_qualifier_typable_wrong_concrete.
+		            all: eapply call_int_arg_base_abs with
+		              (mdef:=mdef) (mdef_static:=mdef0) (i:=i') (n:=n)
+		              (recv:=lOutterReceiver) (qrecv:=OutterReceiverMutability);
+		              [ exact Harg_sub
+		              | exact Hget_args
+		              | exact Hargs
+		              | exact Hval_i
+		              | exact Hnth
+		              | exact Hmsigeq
+		              | rewrite Hvars; exact HOutterReceiverAddr
+		              | exact HOutterReceiverMutabilityType
+		              | intros ι0 q0 Hrecv0 Hmut0 j0 Hj0 T0 HT0;
+		                rewrite Hvars in Hrecv0;
+		                exact (Hcorrcopy ι0 q0 Hrecv0 Hmut0 j0 Hj0 T0 HT0) ].
 
-          - (* Parameter i' doesn't exist - contradiction *)
+	          - (* Parameter i' doesn't exist - contradiction *)
             exfalso.
             apply nth_error_None in Hval_i.
             apply runtime_lookup_list_preserves_length in Hargs.
@@ -1595,11 +2001,11 @@ Proof.
             rewrite <- Hmsigeq in Hval_i.
             lia.
       }
-      assert (H8 : wf_r_config CT sΓmethodend rΓ'' h'). 
+      assert (H8 : wf_r_config CT sΓmethodend rΓ'' h').
       {
         eapply IHHeval with (sΓ := sΓmethodinit) (sΓ' := sΓmethodend); eauto.
       }
-      
+
       { (* Method call resulting config is wellformed *)
         have H8copy := H8.
         unfold wf_r_config.
@@ -1612,7 +2018,6 @@ Proof.
         exact Hclass_.
         exact Hobj_.
         apply Hcname_consistent_.
-        apply Hfind_consistent_.
         apply Hfind_consistent_.
         exact Hheapinit.
         rewrite HeqrΓ'''.
@@ -1790,11 +2195,15 @@ Proof.
               inversion Hbase; subst cy.
               reflexivity.
             }
-            subst cy.
-            assert (Hmsigeq: msignature mdef = msignature mdef0).
-            {
-              eapply method_signature_consistent_subtype; eauto.
-            }
+	            subst cy.
+	            assert (Hmsigeq: msignature mdef = msignature mdef0).
+	            {
+	              destruct (base_subtype_from_ref CT (rctype (rt_type objly)) (sbase Ty) HyBasetype)
+	                as [D0 [HbaseTy Hclass_sub]].
+	              rewrite HbaseTy in Href.
+	              inversion Href; subst D0.
+	              eapply method_signature_consistent_subtype; eauto.
+	            }
             rewrite Hleninit in Hmbodyretvar_dom.
             destruct (runtime_getVal rΓ'' (mreturn (Syntax.mbody mdef))) eqn: Hmet_val; [|easy].
               destruct v as [|loc|n].
@@ -1827,11 +2236,11 @@ Proof.
                 subst o.
               destruct Hcorrinit as [Hrorettypebase Hrorettypequalifier].
               destruct Hsubtype_ret as [Hsubtype_ret Hmethodoveride].
-            
+
               split.
               (* Base type subtyping *)
               apply qualified_type_subtype_base_subtype in Hret_sub.
-              rewrite (vpa_mutability_tt_sctype_abs_imm Ty (mret (msignature mdef0))) in Hret_sub.
+              rewrite (vpa_mutability_tt_sbase_abs_imm Ty (mret (msignature mdef0))) in Hret_sub.
               rewrite Hmsigeq in Hsubtype_ret.
               apply qualified_type_subtype_base_subtype in Hsubtype_ret.
               eapply base_trans; eauto.
@@ -1899,7 +2308,7 @@ Proof.
                 destruct (sqtype Ty) eqn:HTyStaticMutability;
                 simpl in Hrcv_sub;
                 try solve_q_subtype_wrong.
-                
+
                 all:
                 destruct (sqtype (mret (msignature mdef))) eqn:HMethodRetDeclaredType;
                 simpl in Hret_sub;
@@ -1931,7 +2340,7 @@ Proof.
                 destruct ((sqtype (mreceiver (msignature mdef)))) eqn:HMethodReceiverDeclaredType;
                 destruct (sqtype Ty) eqn:HTyStaticMutability;
                 try solve_q_subtype_wrong.
-                
+
                 all:
                 destruct (sqtype (mret (msignature mdef))) eqn:HMethodRetDeclaredType;
                 simpl in Hret_sub;
@@ -1947,12 +2356,92 @@ Proof.
                 try solve_qualifier_typable_wrong_concrete.
               }
             }
-              unfold runtime_getVal in Hmet_val.
-              rewrite getmbody in Hretval.
-              rewrite Hretval in Hmet_val.
-              easy.
-              * simpl. exact I.
-          - (* Case: i ≠ x (unchanged variable) *)
+	              unfold runtime_getVal in Hmet_val.
+	              rewrite getmbody in Hretval.
+	              rewrite Hretval in Hmet_val.
+	              easy.
+	              *
+	              destruct Hmethodret as
+	                [Hret_bound [Hnth_mbodyret [Hbody_ret_sub _]]].
+	              assert (HInnerReceiverAddr:
+	                get_this_var_mapping (vars rΓ'') = Some ly).
+	              {
+	                eapply eval_stmt_preserves_receiver_addr_typed
+	                  with (rΓ:=rΓmethodinit) (rΓ':=rΓ''); eauto.
+	                unfold get_this_var_mapping.
+	                rewrite HeqrΓmethodinit.
+	                simpl.
+	                reflexivity.
+	              }
+	              assert (HInnerReceiverMutability:
+	                exists InnerReceiverMutability,
+	                  r_muttype h' ly = Some InnerReceiverMutability).
+	              {
+	                eapply receiver_mutability_exists_from_bound; eauto.
+	                unfold r_basetype in Hbase.
+	                destruct (runtime_getObj h ly) as [objly|] eqn:Hobj; [|discriminate].
+	                apply runtime_getObj_dom in Hobj.
+	                assert (dom h <= dom h').
+	                {
+	                  eapply eval_stmt_preserves_heap_domain_simple; eauto.
+	                }
+	                lia.
+	              }
+	              destruct HInnerReceiverMutability as
+	                [InnerReceiverMutability HInnerReceiverMutability].
+	              assert (Hmsigeq_int: msignature mdef = msignature mdef0).
+	              {
+	                assert (Hy_dom : y < dom sΓ').
+	                {
+	                  apply static_getType_dom in Hget_y.
+	                  exact Hget_y.
+	                }
+	                destruct Hreceiver as
+	                  [outterreceiveinitriot [Hget_outter_iot Houtter_iot_dom]].
+		                assert (HOutterReceiverMutabilityInit:
+		                  exists qoutter_init, r_muttype h outterreceiveinitriot = Some qoutter_init).
+	                {
+	                  eapply receiver_mutability_exists_from_bound; eauto.
+	                }
+		                destruct HOutterReceiverMutabilityInit as
+		                  [qoutter_init HOutterReceiverMutabilityInit].
+		                pose proof
+		                  (Hcorr outterreceiveinitriot qoutter_init
+	                    Hget_outter_iot HOutterReceiverMutabilityInit
+	                    y Hy_dom Ty Hget_y) as Hy_typable.
+		                rewrite Hval_y in Hy_typable.
+		                unfold wf_r_typable in Hy_typable.
+	                unfold r_type in Hy_typable.
+	                unfold r_basetype in Hbase.
+	                destruct (runtime_getObj h ly) as [objly|] eqn:Hobj; [|contradiction].
+	                injection Hbase as Hcy_eq.
+	                subst cy.
+	                destruct objly as [rt_obj fields_obj].
+	                destruct rt_obj as [rq_obj rc_obj].
+	                simpl in Hy_typable.
+	                destruct Hy_typable as [HyBase _].
+	                destruct (base_subtype_from_ref CT rc_obj (sbase Ty) HyBase)
+	                  as [D0 [HbaseTy Hclass_sub]].
+	                rewrite HbaseTy in Href.
+	                inversion Href; subst D0.
+		                assert (Hwf_ct : wf_class_table CT).
+		                {
+		                  repeat split.
+		                  - exact Hclass_.
+			                  - exact Hobj_.
+			                  - exact Hcname_consistent_.
+			                  - apply Hfind_consistent_.
+			                }
+	                eapply method_signature_consistent_subtype
+	                  with (C:=rc_obj) (D:=C) (m:=m); eauto.
+	              }
+	              eapply call_int_return_base_abs
+	                with (mdef:=mdef) (mdef_static:=mdef0) (mbody:=mbody)
+	                     (mrettype:=mrettype) (sΓend:=sΓmethodend)
+	                     (rΓend:=rΓ'') (hend:=h') (n:=nret)
+	                     (recv:=ly) (qrecv:=InnerReceiverMutability);
+	                eauto.
+	          - (* Case: i ≠ x (unchanged variable) *)
           rewrite HeqrΓ'''.
           simpl.
           unfold runtime_getVal.
@@ -2023,7 +2512,7 @@ Proof.
         discriminate Hbase.
       }
       remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
-      
+
       assert (Hmsigeq: msignature mdef = msignature mdef0).
       {
         assert (Hy_dom : y < dom sΓ').
@@ -2040,7 +2529,7 @@ Proof.
           eapply receiver_mutability_exists_from_bound.
           exact OutterReceiverAddrBound.
         }
-        
+
         destruct H5 as [qrout H5].
         assert (Hmethod_this_addr : get_this_var_mapping (vars rΓmethodinit) = Some ly).
         {
@@ -2052,7 +2541,7 @@ Proof.
         assert (Hytypable: wf_r_typable CT rΓ h ly Ty qrout). {
           eapply correspondence_to_typable; eauto.
           specialize (Hcorr OutterReceiverAddr qrout OutterReceiverGetAddr H5).
-          exact Hcorr.  
+          exact Hcorr.
         }
 
         (* Extract subtyping from wf_r_typable *)
@@ -2065,12 +2554,16 @@ Proof.
         destruct rt_obj as [rq_obj rc_obj].
         unfold get_this_var_mapping.
 
-        unfold r_type in Hytypable.
-        rewrite Hobjy in Hytypable.
-        simpl in Hytypable.
-        destruct Hytypable as [Hsubtype _].
-        eapply method_signature_consistent_subtype; eauto.
-      }
+	        unfold r_type in Hytypable.
+	        rewrite Hobjy in Hytypable.
+	        simpl in Hytypable.
+	        destruct Hytypable as [Hsubtype _].
+	        destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hsubtype)
+	          as [D [HbaseTy Hclass_sub]].
+	        rewrite HbaseTy in Href.
+	        inversion Href; subst D.
+	        eapply method_signature_consistent_subtype; eauto.
+	      }
       rewrite <- Hmsigeq in Hret_sub.
       rewrite <- Hmsigeq in Hrcv_sub.
       rewrite <- Hmsigeq in Harg_sub.
@@ -2088,9 +2581,7 @@ Proof.
           exact Hotherclasses.
         -
           apply Hcname_consistent.
-        - 
-          apply Hcname_consistent.
-        - 
+        -
           exact Hheap.
         -
           rewrite HeqrΓmethodinit.
@@ -2212,7 +2703,7 @@ Proof.
         assert (H5 : exists qrout, r_muttype h OutterReceiverAddr = Some qrout).
         {
           unfold r_muttype.
-          destruct (runtime_getObj h OutterReceiverAddr) eqn: Hobjaddr. 
+          destruct (runtime_getObj h OutterReceiverAddr) eqn: Hobjaddr.
           2:{
             apply runtime_getObj_not_dom in Hobjaddr.
             lia.
@@ -2220,7 +2711,7 @@ Proof.
           eexists.
           reflexivity.
         }
-        
+
         destruct H5 as [qrout H5].
         assert (Hmethod_this_addr : get_this_var_mapping (vars rΓmethodinit) = Some ly).
         {
@@ -2229,7 +2720,7 @@ Proof.
           simpl.
           auto.
         }
-        assert (Hytypable: wf_r_typable CT rΓ h ly Ty qrout). 
+        assert (Hytypable: wf_r_typable CT rΓ h ly Ty qrout).
         {
           eapply correspondence_to_typable; eauto.
           specialize (Hcorr OutterReceiverAddr qrout OutterReceiverGetAddr H5).
@@ -2281,7 +2772,7 @@ Proof.
             destruct Hrcv_sub as [Hrcv_sub | H24Special].
             ----
               apply qualified_type_subtype_base_subtype in Hrcv_sub.
-              rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef))) in Hrcv_sub.
+              rewrite (vpa_mutability_tt_sbase_safe_ro Ty (mreceiver (msignature mdef))) in Hrcv_sub.
               eapply base_trans; eauto.
               ----
                 destruct H24Special as [HReceiverQualifier HBasetype].
@@ -2339,7 +2830,7 @@ Proof.
           all: destruct (sqtype Ty) eqn:Htyq;
           simpl in Hrcv_sub;
           try solve_q_subtype_wrong.
-          all: 
+          all:
           destruct (rqtype (rt_type outterreceiverobj)) eqn:Hrqtoutter;
           try solve_qualifier_typable_wrong_concrete.
         ---- (* The special case *)
@@ -2429,8 +2920,22 @@ Proof.
         unfold runtime_getVal.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
-        --- (* Parameter i' exists *)
-          destruct v as [|loc|n]; [trivial| | trivial].
+	        --- (* Parameter i' exists *)
+	          destruct v as [|loc|n];
+	            [trivial
+	            |
+	            | simpl in Hnth;
+	              eapply call_int_arg_base_safe_ro
+	                with (mdef:=mdef) (i:=i') (n:=n)
+	                     (recv:=OutterReceiverAddr) (qrecv:=qrout);
+	                [ exact Harg_sub
+	                | exact Hget_args
+	                | exact Hargs
+	                | exact Hval_i
+	                | exact Hnth
+	                | exact OutterReceiverGetAddr_copy
+	                | exact H5_copy
+	                | exact Hcorrcopy2 ]].
           (* Use Hret_sub to get the subtyping relationship *)
           assert (Hi'_bound : i' < List.length argtypes).
           {
@@ -2527,7 +3032,7 @@ Proof.
 
           (* Base type subtype *)
           apply qualified_type_subtype_base_subtype in Harg_sub.
-          rewrite (vpa_mutability_tt_sctype_safe_ro Ty) in Harg_sub.
+          rewrite (vpa_mutability_tt_sbase_safe_ro Ty) in Harg_sub.
           eapply base_trans; eauto.
 
           (* Quliafier type correspondence *)
@@ -2554,7 +3059,7 @@ Proof.
             destruct (rqtype (rt_type objι)) eqn:HInnerReceiverMutability;
             destruct (sqtype sqt) eqn:HParameterStaticDeclearedMutability;
             try solve_qualifier_typable_correct_concrete.
-            all: 
+            all:
             destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
             destruct (sqtype Ty) eqn:HyStaticMutability;
             try solve_qualifier_typable_wrong_concrete.
@@ -2575,7 +3080,7 @@ Proof.
             destruct (rqtype (rt_type objι)) eqn:HInnerReceiverMutability;
             destruct (sqtype sqt) eqn:HParameterStaticDeclearedMutability;
             try solve_qualifier_typable_correct_concrete.
-            all: 
+            all:
             destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
             destruct (sqtype Ty) eqn:HyStaticMutability;
             try solve_qualifier_typable_wrong_concrete.
@@ -2587,7 +3092,7 @@ Proof.
             simpl in Harg_sub;
             try solve_qualifier_typable_wrong_concrete;
             try solve_q_subtype_wrong.
-          
+
         --- (* Parameter i' doesn't exist - contradiction *)
           exfalso.
           apply nth_error_None in Hval_i.
@@ -2601,11 +3106,11 @@ Proof.
           simpl in Hnth.
           lia.
       }
-      assert (H5 : wf_r_config CT sΓmethodend rΓ'' h'). 
+      assert (H5 : wf_r_config CT sΓmethodend rΓ'' h').
       {
         eapply IHHeval with (sΓ := sΓmethodinit) (sΓ' := sΓmethodend); eauto.
       }
-      
+
       {
         (* Method call resulting config is wellformed *)
         have H5copy := H5.
@@ -2620,7 +3125,6 @@ Proof.
         exact Hclass_.
         exact Hobj_.
         apply Hcname_consistent_.
-        apply Hfind_consistent_.
         apply Hfind_consistent_.
         exact Hheapinit.
         rewrite HeqrΓ'''.
@@ -2814,11 +3318,11 @@ Proof.
               destruct Hsubtype_ret as [Hsubtype_ret Hmethodoveride].
               apply qualified_type_subtype_base_subtype in Hsubtype_ret.
               apply qualified_type_subtype_base_subtype in Hret_sub.
-              (* rewrite (vpa_mutability_tt_sctype Tthis Tx) in H22. *)
+              (* rewrite (vpa_mutability_tt_sbase Tthis Tx) in H22. *)
               (* rewrite (vpa_mutability_tt Ty (mret (msignature mdef0))) in H22. *)
-              rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mret (msignature mdef))) in Hret_sub.
-              (* rewrite (vpa_mutability_tt_sctype (mreceiver (msignature mdef)) mrettype) in Hsubtype_ret.
-              rewrite (vpa_mutability_tt_sctype (mreceiver (msignature mdef)) (mret (msignature mdef))) in Hsubtype_ret. *)
+              rewrite (vpa_mutability_tt_sbase_safe_ro Ty (mret (msignature mdef))) in Hret_sub.
+              (* rewrite (vpa_mutability_tt_sbase (mreceiver (msignature mdef)) mrettype) in Hsubtype_ret.
+              rewrite (vpa_mutability_tt_sbase (mreceiver (msignature mdef)) (mret (msignature mdef))) in Hsubtype_ret. *)
               (* rewrite <- Hmsigeq in Harg_sub. *)
               eapply base_trans; eauto.
               eapply base_trans; eauto.
@@ -2949,14 +3453,39 @@ Proof.
                 try solve_qualifier_typable_wrong_concrete.
               }
               }
-              {
-                unfold runtime_getVal in Hmet_val.
-                rewrite getmbody in Hretval.
-                rewrite Hmet_val in Hretval.
-                discriminate Hretval.
-              }
-              * simpl. exact I.
-          - (* Case: i ≠ x (unchanged variable) *)
+	              {
+	                unfold runtime_getVal in Hmet_val.
+	                rewrite getmbody in Hretval.
+	                rewrite Hmet_val in Hretval.
+	                discriminate Hretval.
+	              }
+	              *
+	              destruct Hmethodret as
+	                [Hret_bound [Hnth_mbodyret [Hbody_ret_sub _]]].
+	              assert (HInnerReceiverAddr:
+	                get_this_var_mapping (vars rΓ'') = Some ly).
+	              {
+	                eapply eval_stmt_preserves_receiver_addr_typed
+	                  with (rΓ:=rΓmethodinit) (rΓ':=rΓ''); eauto.
+	                unfold get_this_var_mapping.
+	                rewrite HeqrΓmethodinit.
+	                simpl.
+	                reflexivity.
+	              }
+	              assert (HInnerReceiverEndFrame : r_muttype h' ly = Some q).
+	              {
+	                eapply eval_stmt_preserves_r_muttype; eauto.
+	                unfold r_muttype in Hinnerthis.
+	                destruct (runtime_getObj h ly) as [innerthisobj|] eqn:Hinnerobj; [|discriminate].
+	                apply runtime_getObj_dom in Hinnerobj.
+	                exact Hinnerobj.
+	              }
+	              eapply call_int_return_base_safe_ro
+	                with (mdef:=mdef) (mbody:=mbody) (mrettype:=mrettype)
+	                     (sΓend:=sΓmethodend) (rΓend:=rΓ'') (hend:=h')
+	                     (n:=nret) (recv:=ly) (qrecv:=q);
+	                eauto.
+	          - (* Case: i ≠ x (unchanged variable) *)
           rewrite HeqrΓ'''.
           simpl.
           unfold runtime_getVal.
@@ -3003,7 +3532,7 @@ Proof.
             exact Hcorr.
           }
       }
-      assert (H2 : exists D ddef, base_subtype CT cy D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef).
+	      assert (H2 : exists D ddef, class_subtype CT cy D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef).
       {
         eapply method_lookup_in_wellformed_inherited; eauto.
         eapply r_basetype_in_dom; eauto.
@@ -3019,16 +3548,15 @@ Proof.
       remember {| vars := Iot ly :: vals |} as rΓmethodinit.
       remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
       assert(Hwf_method_frame : wf_r_config CT sΓmethodinit rΓmethodinit h).
-      { 
+      {
         (* Method inner config wellformed.*)
         have Hclasstable := Hclass.
-        unfold  wf_class_table in Hclass. 
+        unfold  wf_class_table in Hclass.
         destruct Hclass as [Hclass [Hobj [Hotherclasses Hcname_consistent]]].
         repeat split.
         exact Hclass.
         exact Hobj.
         exact Hotherclasses.
-        apply Hcname_consistent.
         apply Hcname_consistent.
         exact Hheap.
         rewrite HeqrΓmethodinit.
@@ -3145,11 +3673,15 @@ Proof.
         rewrite Hval_y in Hcorr.
         rewrite Hobjy in Hcorr.
         simpl in Hcorr.
-        destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-        assert (Hmsigeq_inner : msignature mdef = msignature mdef0).
-        {
-          eapply method_signature_consistent_subtype; eauto.
-        }
+	        destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
+	        assert (Hmsigeq_inner : msignature mdef = msignature mdef0).
+	        {
+	          destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hbasesubtype)
+	            as [D0 [HbaseTy Hclass_sub]].
+	          rewrite HbaseTy in Href.
+	          inversion Href; subst D0.
+	          eapply method_signature_consistent_subtype; eauto.
+	        }
         rewrite Hmsigeq_inner.
         rewrite Hargs.
         rewrite <- Harg_sub.
@@ -3200,11 +3732,15 @@ Proof.
         rewrite Hobjy in Hcorr.
         simpl in Hcorr.
         destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-        
-        assert (Hmsigeq: msignature mdef = msignature mdef0).
-        {
-          eapply method_signature_consistent_subtype; eauto.
-        }
+
+	        assert (Hmsigeq: msignature mdef = msignature mdef0).
+	        {
+	          destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hbasesubtype)
+	            as [D0 [HbaseTy Hclass_sub]].
+	          rewrite HbaseTy in Href.
+	          inversion Href; subst D0.
+	          eapply method_signature_consistent_subtype; eauto.
+	        }
         destruct i as [|i'].
 
         (* Reciever index - 0 *)
@@ -3225,7 +3761,7 @@ Proof.
         1:
         {
           apply qualified_type_subtype_base_subtype in Hrcv_sub.
-          rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
+          rewrite (vpa_mutability_tt_sbase_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
           eapply base_trans; eauto.
         }
         1:{
@@ -3235,7 +3771,7 @@ Proof.
         }
 
         (* Qualifier typbility *)
-        1: 
+        1:
         {
           destruct Hrcv_sub as [Hrcv_sub | H24Special].
           1:{
@@ -3263,7 +3799,7 @@ Proof.
             }
             subst OutterReceiverMutability.
 
-            assert (ly = ι). 
+            assert (ly = ι).
             {
               rewrite HeqrΓmethodinit in HreceiverAddr.
               unfold get_this_var_mapping in HreceiverAddr.
@@ -3336,7 +3872,7 @@ Proof.
             }
             subst OutterReceiverMutability.
 
-            assert (ly = ι). 
+            assert (ly = ι).
             {
               rewrite HeqrΓmethodinit in HreceiverAddr.
               unfold get_this_var_mapping in HreceiverAddr.
@@ -3386,8 +3922,25 @@ Proof.
         unfold runtime_getVal.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
-          - (* Parameter i' exists *)
-            destruct v as [|loc|n]; [trivial| | trivial].
+	          - (* Parameter i' exists *)
+	            destruct v as [|loc|n];
+	              [trivial
+	              |
+	              | simpl in Hnth;
+	                rewrite Hmsigeq in Hnth;
+	                eapply call_int_arg_base_safe_ro
+	                  with (mdef:=mdef0) (i:=i') (n:=n)
+	                       (recv:=lOutterReceiver) (qrecv:=OutterReceiverMutability);
+	                  [ exact Harg_sub
+	                  | exact Hget_args
+	                  | exact Hargs
+	                  | exact Hval_i
+	                  | exact Hnth
+	                  | rewrite Hvars; exact HOutterReceiverAddr
+	                  | exact HOutterReceiverMutabilityType
+	                  | intros ι0 q0 Hrecv0 Hmut0 j0 Hj0 T0 HT0;
+	                    rewrite Hvars in Hrecv0;
+	                    exact (Hcorrcopy ι0 q0 Hrecv0 Hmut0 j0 Hj0 T0 HT0) ]].
             (* Use Hret_sub to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -3484,7 +4037,7 @@ Proof.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in Harg_sub; eauto.
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sbase_safe_ro Ty sqt) in Harg_sub.
             eapply base_trans; eauto.
 
             (* Qualifier Typability *)
@@ -3534,7 +4087,7 @@ Proof.
               easy.
             }
             subst rq_obj.
-            clear - Harg_sub Harg_qualifiertypability HyQualifierTypablility HOutterReceiverQualifierTypablility.
+	            clear - argtype Harg_sub Harg_qualifiertypability HyQualifierTypablility HOutterReceiverQualifierTypablility.
 
             destruct (rqtype (rt_type argobj)) eqn:Hargobjmutability; move Hargobjmutability at bottom;
             destruct (sqtype sqt) eqn:HParameterStaticDeclearedMutability; move HParameterStaticDeclearedMutability at bottom;
@@ -3546,7 +4099,7 @@ Proof.
             simpl in Harg_sub;
             try solve_q_subtype_wrong.
 
-            all: 
+            all:
             destruct (rqtype (rt_type outterreceiverobj)) eqn:HOutterReceiverMutability;
             try solve_qualifier_typable_wrong_concrete.
 
@@ -3564,11 +4117,11 @@ Proof.
             rewrite <- Hmsigeq in Hval_i.
             lia.
       }
-      assert (H8 : wf_r_config CT sΓmethodend rΓ'' h'). 
+      assert (H8 : wf_r_config CT sΓmethodend rΓ'' h').
       {
         eapply IHHeval with (sΓ := sΓmethodinit) (sΓ' := sΓmethodend); eauto.
       }
-      
+
       { (* Method call resulting config is wellformed *)
         have H8copy := H8.
         unfold wf_r_config.
@@ -3581,7 +4134,6 @@ Proof.
         exact Hclass_.
         exact Hobj_.
         apply Hcname_consistent_.
-        apply Hfind_consistent_.
         apply Hfind_consistent_.
         exact Hheapinit.
         rewrite HeqrΓ'''.
@@ -3759,11 +4311,15 @@ Proof.
               inversion Hbase; subst cy.
               reflexivity.
             }
-            subst cy.
-            assert (Hmsigeq: msignature mdef = msignature mdef0).
-            {
-              eapply method_signature_consistent_subtype; eauto.
-            }
+	            subst cy.
+	            assert (Hmsigeq: msignature mdef = msignature mdef0).
+	            {
+	              destruct (base_subtype_from_ref CT (rctype (rt_type objly)) (sbase Ty) HyBasetype)
+	                as [D0 [HbaseTy Hclass_sub]].
+	              rewrite HbaseTy in Href.
+	              inversion Href; subst D0.
+	              eapply method_signature_consistent_subtype; eauto.
+	            }
             rewrite Hleninit in Hmbodyretvar_dom.
             destruct (runtime_getVal rΓ'' (mreturn (Syntax.mbody mdef))) eqn: Hmet_val; [|easy].
               destruct v as [|loc|n].
@@ -3796,11 +4352,11 @@ Proof.
                 subst o.
               destruct Hcorrinit as [Hrorettypebase Hrorettypequalifier].
               destruct Hsubtype_ret as [Hsubtype_ret Hmethodoveride].
-            
+
               split.
               (* Base type subtyping *)
               apply qualified_type_subtype_base_subtype in Hret_sub.
-              rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mret (msignature mdef0))) in Hret_sub.
+              rewrite (vpa_mutability_tt_sbase_safe_ro Ty (mret (msignature mdef0))) in Hret_sub.
               rewrite Hmsigeq in Hsubtype_ret.
               apply qualified_type_subtype_base_subtype in Hsubtype_ret.
               eapply base_trans; eauto.
@@ -3868,7 +4424,7 @@ Proof.
                 destruct (sqtype Ty) eqn:HTyStaticMutability;
                 simpl in Hrcv_sub;
                 try solve_q_subtype_wrong.
-                
+
                 all:
                 destruct (sqtype (mret (msignature mdef))) eqn:HMethodRetDeclaredType;
                 simpl in Hret_sub;
@@ -3900,7 +4456,7 @@ Proof.
                 destruct ((sqtype (mreceiver (msignature mdef)))) eqn:HMethodReceiverDeclaredType;
                 destruct (sqtype Ty) eqn:HTyStaticMutability;
                 try solve_q_subtype_wrong.
-                
+
                 all:
                 destruct (sqtype (mret (msignature mdef))) eqn:HMethodRetDeclaredType;
                 simpl in Hret_sub;
@@ -3916,12 +4472,98 @@ Proof.
                 try solve_qualifier_typable_wrong_concrete.
               }
             }
-              unfold runtime_getVal in Hmet_val.
-              rewrite getmbody in Hretval.
-              rewrite Hretval in Hmet_val.
-              easy.
-              * simpl. exact I.
-          - (* Case: i ≠ x (unchanged variable) *)
+	              unfold runtime_getVal in Hmet_val.
+	              rewrite getmbody in Hretval.
+	              rewrite Hretval in Hmet_val.
+	              easy.
+	              *
+	              destruct Hmethodret as
+	                [Hret_bound [Hnth_mbodyret [Hbody_ret_sub _]]].
+	              assert (HInnerReceiverAddr:
+	                get_this_var_mapping (vars rΓ'') = Some ly).
+	              {
+	                eapply eval_stmt_preserves_receiver_addr_typed
+	                  with (rΓ:=rΓmethodinit) (rΓ':=rΓ''); eauto.
+	                unfold get_this_var_mapping.
+	                rewrite HeqrΓmethodinit.
+	                simpl.
+	                reflexivity.
+	              }
+	              assert (HInnerReceiverMutability:
+	                exists InnerReceiverMutability,
+	                  r_muttype h' ly = Some InnerReceiverMutability).
+	              {
+	                eapply receiver_mutability_exists_from_bound; eauto.
+	                unfold r_basetype in Hbase.
+	                destruct (runtime_getObj h ly) as [objly|] eqn:Hobj; [|discriminate].
+	                apply runtime_getObj_dom in Hobj.
+	                assert (dom h <= dom h').
+	                {
+	                  eapply eval_stmt_preserves_heap_domain_simple; eauto.
+	                }
+	                lia.
+	              }
+	              destruct HInnerReceiverMutability as
+	                [InnerReceiverMutability HInnerReceiverMutability].
+	              assert (Hmsigeq_int: msignature mdef = msignature mdef0).
+	              {
+	                assert (Hy_dom : y < dom sΓ').
+	                {
+	                  apply static_getType_dom in Hget_y.
+	                  exact Hget_y.
+	                }
+	                destruct Hreceiver as
+	                  [outterreceiveinitriot [Hget_outter_iot Houtter_iot_dom]].
+	                assert (HOutterReceiverMutabilityInit:
+	                  exists qoutter_init, r_muttype h outterreceiveinitriot = Some qoutter_init).
+	                {
+	                  eapply receiver_mutability_exists_from_bound; eauto.
+	                }
+	                destruct HOutterReceiverMutabilityInit as
+	                  [qoutter_init HOutterReceiverMutabilityInit].
+	                pose proof
+	                  (Hcorr outterreceiveinitriot qoutter_init
+	                    Hget_outter_iot HOutterReceiverMutabilityInit
+	                    y Hy_dom Ty Hget_y) as Hy_typable.
+	                rewrite Hval_y in Hy_typable.
+	                unfold wf_r_typable in Hy_typable.
+	                unfold r_type in Hy_typable.
+	                unfold r_basetype in Hbase.
+	                destruct (runtime_getObj h ly) as [objly|] eqn:Hobj; [|contradiction].
+	                injection Hbase as Hcy_eq.
+	                subst cy.
+	                destruct objly as [rt_obj fields_obj].
+	                destruct rt_obj as [rq_obj rc_obj].
+	                simpl in Hy_typable.
+	                destruct Hy_typable as [HyBase _].
+	                destruct (base_subtype_from_ref CT rc_obj (sbase Ty) HyBase)
+	                  as [D0 [HbaseTy Hclass_sub]].
+	                rewrite HbaseTy in Href.
+	                inversion Href; subst D0.
+	                assert (Hwf_ct : wf_class_table CT).
+	                {
+	                  repeat split.
+	                  - exact Hclass_.
+	                  - exact Hobj_.
+		                  - exact Hcname_consistent_.
+		                  - apply Hfind_consistent_.
+		                }
+	                eapply method_signature_consistent_subtype
+	                  with (C:=rc_obj) (D:=C) (m:=m); eauto.
+	              }
+	              assert (Hcall_ret_sub :
+	                qualified_type_subtype CT
+	                  (vpa_mutability_tt_safe_ro Ty (mret (msignature mdef))) Tx).
+	              {
+	                rewrite Hmsigeq_int.
+	                exact Hret_sub.
+	              }
+	              eapply call_int_return_base_safe_ro
+	                with (mdef:=mdef) (mbody:=mbody) (mrettype:=mrettype)
+	                     (sΓend:=sΓmethodend) (rΓend:=rΓ'') (hend:=h')
+	                     (n:=nret) (recv:=ly) (qrecv:=InnerReceiverMutability);
+	                eauto.
+	          - (* Case: i ≠ x (unchanged variable) *)
           rewrite HeqrΓ'''.
           simpl.
           unfold runtime_getVal.
@@ -3977,6 +4619,26 @@ Proof.
     specialize (IHHeval1 eq_refl Heval1 mt sΓ'0 sΓ Hwf Htype1) as IH1.
     specialize (IHHeval2 eq_refl Heval2 mt sΓ' sΓ'0 IH1 Htype2) as IH2.
     exact IH2.
+  - (* Case: stmt = IfZero, zero branch *)
+    intros. inversion Htyping; subst.
+    inversion Heval_copy; subst.
+    all: match goal with
+         | Hzero : runtime_getVal ?rΓ ?x = Some (Int 0),
+           Hnonzero : runtime_getVal ?rΓ ?x = Some (Int (S ?n)) |- _ =>
+             congruence
+         | Hbranch : eval_stmt _ _ _ _ _ _ _ _ _ _ |- _ =>
+             eapply IHHeval; [reflexivity | exact Hbranch | exact Hwf | eauto]
+         end.
+  - (* Case: stmt = IfZero, nonzero branch *)
+    intros. inversion Htyping; subst.
+    inversion Heval_copy; subst.
+    all: match goal with
+         | Hzero : runtime_getVal ?rΓ ?x = Some (Int 0),
+           Hnonzero : runtime_getVal ?rΓ ?x = Some (Int (S ?n)) |- _ =>
+             congruence
+         | Hbranch : eval_stmt _ _ _ _ _ _ _ _ _ _ |- _ =>
+             eapply IHHeval; [reflexivity | exact Hbranch | exact Hwf | eauto]
+         end.
 Qed.
 
 Notation "l [ i ]" := (nth_error l i) (at level 50).

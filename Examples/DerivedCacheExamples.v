@@ -16,7 +16,7 @@ Definition simple_value_field_def : field_def :=
       {|
         assignability := Final;
         mutability := Imm_f;
-        f_base_type := simple_class
+	        f_base_type := TRef simple_class
       |};
     fname := simple_value_field
   |}.
@@ -27,7 +27,7 @@ Definition simple_cache_field_def : field_def :=
       {|
         assignability := Assignable;
         mutability := Imm_f;
-        f_base_type := int_class_name
+	        f_base_type := TInt
       |};
     fname := simple_cache_field
   |}.
@@ -108,7 +108,7 @@ Definition simple_cache_compute_and_write_stmt : stmt :=
   SSeq simple_cache_compute_stmt simple_cache_write_stmt.
 
 Definition simple_cache_senv : s_env :=
-  [Build_qualified_type Imm simple_class; int_type].
+  [Build_qualified_type Imm (TRef simple_class); int_type].
 
 Lemma simple_value_field_final :
   final_field simple_CT simple_class simple_value_field.
@@ -191,9 +191,9 @@ Qed.
 Lemma simple_cache_senv_wf :
   wf_senv simple_CT simple_cache_senv.
 Proof.
-  unfold wf_senv, simple_cache_senv, wf_stypeuse, simple_CT,
-    simple_class, int_type, int_class_name, bound, find_class, gget,
-    vpa_mutability_bound.
+	  unfold wf_senv, simple_cache_senv, wf_stypeuse, simple_CT,
+	    simple_class, int_type, bound, find_class, gget,
+	    vpa_mutability_bound.
   simpl.
   repeat split; try lia; repeat constructor; discriminate.
 Qed.
@@ -203,9 +203,8 @@ Lemma simple_int_literal_typed :
     (EInt (simple_derived [Int 41]))
     int_type.
 Proof.
-  apply ET_Int.
-  - apply simple_cache_senv_wf.
-  - unfold int_class_name, simple_CT. simpl. lia.
+	  apply ET_Int.
+	  apply simple_cache_senv_wf.
 Qed.
 
 Lemma simple_assign_literal_typed :
@@ -214,18 +213,18 @@ Lemma simple_assign_literal_typed :
     simple_cache_senv.
 Proof.
   unfold simple_cache_compute_stmt.
-  eapply ST_VarAss with
-    (Te := int_type)
-    (Tthis := Build_qualified_type Imm simple_class)
-    (Tx := int_type).
+	eapply ST_VarAss with
+	  (Te := int_type)
+	  (Tthis := Build_qualified_type Imm (TRef simple_class))
+	  (Tx := int_type).
   - apply simple_cache_senv_wf.
   - apply simple_int_literal_typed.
   - reflexivity.
   - unfold simple_cache_tmp_var. discriminate.
   - reflexivity.
-  - apply qtype_refl.
-    + unfold int_type, int_class_name, simple_CT. simpl. lia.
-    + unfold int_type. simpl. discriminate.
+	  - apply qtype_refl.
+	    + unfold int_type, wf_qualified_base. simpl. reflexivity.
+	    + unfold int_type. simpl. discriminate.
 Qed.
 
 Lemma simple_int_literal_eval :
@@ -287,17 +286,18 @@ Lemma simple_cache_write_typed :
     simple_cache_senv.
 Proof.
   unfold simple_cache_write_stmt.
-  eapply ST_FldWrite_safe_ro with
-    (Tx := Build_qualified_type Imm simple_class)
-    (Ty := int_type)
-    (Tthis := Build_qualified_type Imm simple_class)
+	  eapply ST_FldWrite_safe_ro with
+	    (Tx := Build_qualified_type Imm (TRef simple_class))
+	    (Ty := int_type)
+	    (Tthis := Build_qualified_type Imm (TRef simple_class))
     (fieldT := simple_cache_field_def)
     (a := Assignable).
   - apply simple_cache_senv_wf.
   - reflexivity.
   - reflexivity.
-  - reflexivity.
-  - unfold sf_def_rel, simple_CT, simple_class, simple_cache_field.
+	  - reflexivity.
+	  - reflexivity.
+	  - unfold sf_def_rel, simple_CT, simple_class, simple_cache_field.
     apply FL_Found with
       (fields := [] ++ [simple_value_field_def; simple_cache_field_def]).
     + eapply CF_Inherit.
@@ -307,9 +307,9 @@ Proof.
       * reflexivity.
     + reflexivity.
   - apply simple_cache_field_assignable.
-  - apply qtype_refl.
-    + change (0 < 2). lia.
-    + unfold int_type. simpl. discriminate.
+	  - apply qtype_refl.
+	    + unfold int_type, wf_qualified_base. simpl. reflexivity.
+	    + unfold int_type. simpl. discriminate.
   - reflexivity.
 Qed.
 

@@ -10,8 +10,8 @@ Definition vpa_mutability_qq_abs_imm (q1: q)(q2 : q) : q :=
 
 Definition vpa_mutability_tt_abs_imm (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   match (sqtype t1), (sqtype t2) with
-    | RO, RDM => Build_qualified_type Lost (sctype t2)
-    | q1, RDM => Build_qualified_type q1 (sctype t2)
+    | RO, RDM => Build_qualified_type Lost (sbase t2)
+    | q1, RDM => Build_qualified_type q1 (sbase t2)
     | _, _ => t2
   end.
 
@@ -36,9 +36,9 @@ Definition vpa_mutability_qq_safe_ro (q1: q)(q2 : q) : q :=
 
 Definition vpa_mutability_tt_safe_ro (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   match (sqtype t1), (sqtype t2) with
-    | RO, RDM => Build_qualified_type Lost (sctype t2)
-    | q1, RDM => Build_qualified_type q1 (sctype t2)
-    | _, Mut => Build_qualified_type Lost (sctype t2)
+    | RO, RDM => Build_qualified_type Lost (sbase t2)
+    | q1, RDM => Build_qualified_type q1 (sbase t2)
+    | _, Mut => Build_qualified_type Lost (sbase t2)
     | _, _ => t2
   end.
 

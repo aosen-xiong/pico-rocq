@@ -279,7 +279,7 @@ Definition pair_left_field_def : field_def :=
       {|
         assignability := Final;
         mutability := Imm_f;
-        f_base_type := int_class_name
+	        f_base_type := TInt
       |};
     fname := pair_left_field
   |}.
@@ -290,7 +290,7 @@ Definition pair_right_field_def : field_def :=
       {|
         assignability := Final;
         mutability := Imm_f;
-        f_base_type := int_class_name
+	        f_base_type := TInt
       |};
     fname := pair_right_field
   |}.
@@ -301,7 +301,7 @@ Definition pair_cache_field_def : field_def :=
       {|
         assignability := Assignable;
         mutability := Imm_f;
-        f_base_type := int_class_name
+	        f_base_type := TInt
       |};
     fname := pair_cache_field
   |}.

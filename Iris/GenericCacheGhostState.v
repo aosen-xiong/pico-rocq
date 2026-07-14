@@ -1,5 +1,5 @@
 From iris.proofmode Require Import proofmode.
-From iris.algebra Require Import auth agree.
+From iris.algebra Require Import excl updates.
 From iris.base_logic Require Import own.
 
 Require Import Core.GenericCacheProtocol.
@@ -9,23 +9,19 @@ Require Import Core.GenericCacheProtocol.
     This file provides PICO-independent Iris ownership for a single
     cache-history snapshot.
 
-    The first ghost-backed layer is deliberately small: an authoritative
-    agreement resource records the snapshot for one object/protocol pair, while
-    the public interpretation pairs that ownership with the generic
-    [CacheHistSnapshotOK] validity predicate.  PICO-specific state
-    interpretations can instantiate this layer with their concrete field
-    histories. *)
+    The layer is deliberately small: an exclusive resource records the current
+    snapshot for one object/protocol pair, while the public interpretation pairs
+    that ownership with [CacheHistSnapshotOK].  A history extension updates the
+    resource in place and therefore preserves its ghost name.  PICO-specific
+    state interpretations instantiate this layer with concrete field histories. *)
 
-(** Iris resource class for authoritative agreement over one protocol-specific
-    cache-history snapshot. *)
+(** Iris resource class for exclusive authoritative ownership of one
+    protocol-specific cache-history snapshot. The exclusive resource can be
+    updated in place, so successive snapshots retain one ghost identity. *)
 Class genericCacheG {AbsVal : Type}
     (P : CacheProtocol AbsVal) (Σ : gFunctors) := GenericCacheG {
   generic_cache_history_inG :
-    inG
-      Σ
-      (authR
-        (optionUR
-          (agreeR (leibnizO (CacheHistorySnapshot P)))))
+    inG Σ (exclR (leibnizO (CacheHistorySnapshot P)))
 }.
 
 Section generic_cache_ghost_state.
@@ -33,37 +29,21 @@ Section generic_cache_ghost_state.
   Context (P : CacheProtocol AbsVal).
   Context `{!genericCacheG P Σ}.
 
-  Definition generic_cache_history_elem
-      (snap : CacheHistorySnapshot P) :
-      optionUR (agreeR (leibnizO (CacheHistorySnapshot P))) :=
-    Some (to_agree (A := leibnizO (CacheHistorySnapshot P)) snap).
-
 (** Authoritative snapshot ownership. *)
   Definition generic_cache_history_auth
       (γ : gname) (snap : CacheHistorySnapshot P) : iProp Σ :=
     @own
       Σ
-      (authR (optionUR (agreeR (leibnizO (CacheHistorySnapshot P)))))
+      (exclR (leibnizO (CacheHistorySnapshot P)))
       generic_cache_history_inG
       γ
-      (● generic_cache_history_elem snap).
-
-(** Persistent fragment witnessing the same snapshot. *)
-  Definition generic_cache_history_own
-      (γ : gname) (snap : CacheHistorySnapshot P) : iProp Σ :=
-    @own
-      Σ
-      (authR (optionUR (agreeR (leibnizO (CacheHistorySnapshot P)))))
-      generic_cache_history_inG
-      γ
-      (◯ generic_cache_history_elem snap).
+      (Excl snap).
 
 (** Public interpretation: ownership of the snapshot plus the pure fact that all
     values in it satisfy the cache protocol for abstract value [a]. *)
   Definition generic_cache_history_interp
       (γ : gname) (a : AbsVal) (snap : CacheHistorySnapshot P) : iProp Σ :=
     generic_cache_history_auth γ snap ∗
-    generic_cache_history_own γ snap ∗
     ⌜CacheHistSnapshotOK P snap a⌝.
 
 (** Semantic immutability interpretation for one provider object and one cache
@@ -74,34 +54,17 @@ Section generic_cache_ghost_state.
       (snap : CacheHistorySnapshot P) : iProp Σ :=
     ⌜Stable o a⌝ ∗ generic_cache_history_interp γ a snap.
 
-  Global Instance generic_cache_history_own_persistent γ snap :
-    Persistent (generic_cache_history_own γ snap).
-  Proof. apply _. Qed.
-
-(** Allocate authoritative and persistent ownership for a snapshot. *)
-  Lemma generic_cache_history_own_alloc snap :
-    ⊢ |==> ∃ γ,
-      generic_cache_history_auth γ snap ∗
-      generic_cache_history_own γ snap.
+(** Allocate authoritative ownership for a snapshot. *)
+  Lemma generic_cache_history_auth_alloc snap :
+    ⊢ |==> ∃ γ, generic_cache_history_auth γ snap.
   Proof.
     iMod (@own_alloc
       Σ
-      (authR (optionUR (agreeR (leibnizO (CacheHistorySnapshot P)))))
+      (exclR (leibnizO (CacheHistorySnapshot P)))
       generic_cache_history_inG
-      (● generic_cache_history_elem snap ⋅
-       ◯ generic_cache_history_elem snap))
-      as (γ) "[Hauth #Hown]".
-    {
-      apply auth_both_valid.
-      split; done.
-    }
+      (Excl snap)) as (γ) "Hauth"; [done |].
     iModIntro.
-    iExists γ.
-    iSplitL "Hauth".
-    - unfold generic_cache_history_auth.
-      iExact "Hauth".
-    - unfold generic_cache_history_own.
-      iExact "Hown".
+    iExists γ. unfold generic_cache_history_auth. iExact "Hauth".
   Qed.
 
 (** Allocate the public interpretation from a valid snapshot. *)
@@ -110,16 +73,12 @@ Section generic_cache_ghost_state.
     ⊢ |==> ∃ γ, generic_cache_history_interp γ a snap.
   Proof.
     intros Hsnap.
-    iMod (generic_cache_history_own_alloc snap) as (γ) "[Hauth #Hown]".
+    iMod (generic_cache_history_auth_alloc snap) as (γ) "Hauth".
     iModIntro.
     iExists γ.
     unfold generic_cache_history_interp.
-    iSplitL "Hauth".
-    - iExact "Hauth".
-    - iSplit.
-      + iExact "Hown".
-      + iPureIntro.
-        exact Hsnap.
+    iSplitL "Hauth"; [iExact "Hauth" |].
+    iPureIntro. exact Hsnap.
   Qed.
 
   Lemma generic_cache_history_interp_alloc_from_hist
@@ -137,22 +96,6 @@ Section generic_cache_ghost_state.
     exact Hhist.
   Qed.
 
-  Lemma generic_cache_history_interp_snapshot γ a snap :
-    generic_cache_history_interp γ a snap -∗
-    generic_cache_history_interp γ a snap ∗
-    generic_cache_history_own γ snap.
-  Proof.
-    iIntros "Hinterp".
-    unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(Hauth & #Hown & %Hsnap)".
-    iSplitL "Hauth".
-    - iFrame.
-      iSplit; first iExact "Hown".
-      iPureIntro.
-      exact Hsnap.
-    - iExact "Hown".
-  Qed.
-
   Lemma generic_cache_history_interp_read_valid γ a snap
       k (v : cache_val P k) :
     generic_cache_history_interp γ a snap -∗
@@ -161,7 +104,7 @@ Section generic_cache_ghost_state.
   Proof.
     iIntros "Hinterp %Hin".
     unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(_ & _ & %Hsnap)".
+    iDestruct "Hinterp" as "(_ & %Hsnap)".
     iPureIntro.
     eapply Hsnap.
     exact Hin.
@@ -178,14 +121,10 @@ Section generic_cache_ghost_state.
   Proof.
     iIntros "Hinterp %Hin".
     unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(Hauth & #Hown & %Hsnap)".
+    iDestruct "Hinterp" as "(Hauth & %Hsnap)".
     iSplitL "Hauth".
-    - iSplitL "Hauth".
-      + iExact "Hauth".
-      + iSplit.
-        * iExact "Hown".
-        * iPureIntro.
-          exact Hsnap.
+    - iSplitL "Hauth"; [iExact "Hauth" |].
+      iPureIntro. exact Hsnap.
     - iPureIntro.
       eapply Hsnap.
       exact Hin.
@@ -198,29 +137,30 @@ Section generic_cache_ghost_state.
   Proof.
     iIntros "Hinterp %Hext".
     unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(_ & _ & %Hsnap)".
+    iDestruct "Hinterp" as "(_ & %Hsnap)".
     iPureIntro.
     eapply cache_hist_snapshot_ok_valid_extension; eauto.
   Qed.
 
-(** Valid history extensions can be reallocated as a fresh snapshot
-    interpretation. *)
-  Lemma generic_cache_history_interp_valid_extension_alloc γ a snap snap' :
+(** A valid history extension updates the snapshot at the same ghost name. *)
+  Lemma generic_cache_history_interp_valid_extension_update γ a snap snap' :
     generic_cache_history_interp γ a snap -∗
     ⌜CacheHistSnapshotValidExtension P snap snap' a⌝ ==∗
-    ∃ γ', generic_cache_history_interp γ' a snap'.
+    generic_cache_history_interp γ a snap'.
   Proof.
     iIntros "Hinterp %Hext".
     unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(_ & _ & %Hsnap)".
+    iDestruct "Hinterp" as "(Hauth & %Hsnap)".
     pose proof
       (cache_hist_snapshot_ok_valid_extension P snap snap' a Hsnap Hext)
       as Hsnap'.
-    iMod (generic_cache_history_interp_alloc a snap' Hsnap')
-      as (γ') "Hinterp'".
+    iMod (@own_update Σ (exclR (leibnizO (CacheHistorySnapshot P)))
+      generic_cache_history_inG γ (Excl snap) (Excl snap') with "Hauth")
+      as "Hauth".
+    { apply cmra_update_exclusive; done. }
     iModIntro.
-    iExists γ'.
-    iExact "Hinterp'".
+    iSplitL "Hauth"; [iExact "Hauth" |].
+    iPureIntro. exact Hsnap'.
   Qed.
 
   Lemma generic_cache_history_interp_valid_trace γ a snap tr :
@@ -230,7 +170,7 @@ Section generic_cache_ghost_state.
   Proof.
     iIntros "Hinterp %Hreads".
     unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(_ & _ & %Hsnap)".
+    iDestruct "Hinterp" as "(_ & %Hsnap)".
     iPureIntro.
     eapply valid_trace_from_snapshot; eauto.
   Qed.
@@ -243,14 +183,10 @@ Section generic_cache_ghost_state.
   Proof.
     iIntros "Hinterp %Hreads".
     unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(Hauth & #Hown & %Hsnap)".
+    iDestruct "Hinterp" as "(Hauth & %Hsnap)".
     iSplitL "Hauth".
-    - iSplitL "Hauth".
-      + iExact "Hauth".
-      + iSplit.
-        * iExact "Hown".
-        * iPureIntro.
-          exact Hsnap.
+    - iSplitL "Hauth"; [iExact "Hauth" |].
+      iPureIntro. exact Hsnap.
     - iPureIntro.
       eapply valid_trace_from_snapshot; eauto.
   Qed.
@@ -264,7 +200,7 @@ Section generic_cache_ghost_state.
   Proof.
     iIntros "Hinterp %Hext %Hreads".
     unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(_ & _ & %Hsnap)".
+    iDestruct "Hinterp" as "(_ & %Hsnap)".
     iPureIntro.
     eapply valid_trace_from_post_snapshot_with_valid_extension; eauto.
   Qed.
@@ -279,14 +215,10 @@ Section generic_cache_ghost_state.
   Proof.
     iIntros "Hinterp %Hext %Hreads".
     unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(Hauth & #Hown & %Hsnap)".
+    iDestruct "Hinterp" as "(Hauth & %Hsnap)".
     iSplitL "Hauth".
-    - iSplitL "Hauth".
-      + iExact "Hauth".
-      + iSplit.
-        * iExact "Hown".
-        * iPureIntro.
-          exact Hsnap.
+    - iSplitL "Hauth"; [iExact "Hauth" |].
+      iPureIntro. exact Hsnap.
     - iPureIntro.
       eapply valid_trace_from_post_snapshot_with_valid_extension; eauto.
   Qed.
@@ -309,7 +241,7 @@ Section generic_cache_ghost_state.
   Proof.
     iIntros "Hinterp %Hsafe %Hreads %Hext_by_writes".
     unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(_ & _ & %Hsnap)".
+    iDestruct "Hinterp" as "(_ & %Hsnap)".
     pose proof
       (valid_trace_from_snapshot P snap a tr Hsnap Hreads) as Htrace.
     iPureIntro.
@@ -335,7 +267,7 @@ Section generic_cache_ghost_state.
   Proof.
     iIntros "Hinterp %Hsafe %Hreads %Hext_by_writes".
     unfold generic_cache_history_interp.
-    iDestruct "Hinterp" as "(Hauth & #Hown & %Hsnap)".
+    iDestruct "Hinterp" as "(Hauth & %Hsnap)".
     pose proof
       (valid_trace_from_snapshot P snap a tr Hsnap Hreads) as Htrace.
     pose proof
@@ -343,17 +275,13 @@ Section generic_cache_ghost_state.
         P snap snap' F run_with_cache_trace a args tr Hsafe Htrace
         Hext_by_writes) as Hext.
     iSplitL "Hauth".
-    - iSplitL "Hauth".
-      + iExact "Hauth".
-      + iSplit.
-        * iExact "Hown".
-        * iPureIntro.
-          exact Hsnap.
+    - iSplitL "Hauth"; [iExact "Hauth" |].
+      iPureIntro. exact Hsnap.
     - iPureIntro.
       exact Hext.
   Qed.
 
-  Lemma generic_cache_history_interp_writes_valid_extension_alloc
+  Lemma generic_cache_history_interp_writes_valid_extension_update
       {Args Result : Type}
       (F : AbsVal -> Args -> Result)
       (run_with_cache_trace :
@@ -367,7 +295,7 @@ Section generic_cache_ghost_state.
         snap
         snap'
         (run_writes (run_with_cache_trace a args tr))⌝ ==∗
-    ∃ γ', generic_cache_history_interp γ' a snap'.
+    generic_cache_history_interp γ a snap'.
   Proof.
     iIntros "Hinterp %Hsafe %Hreads %Hext_by_writes".
     iDestruct
@@ -386,10 +314,10 @@ Section generic_cache_ghost_state.
       iPureIntro.
       exact Hext_by_writes.
     }
-    iApply (generic_cache_history_interp_valid_extension_alloc with
-      "Hinterp []").
-    iPureIntro.
-    exact Hext.
+    iMod (generic_cache_history_interp_valid_extension_update with
+      "Hinterp []") as "Hinterp".
+    { iPureIntro. exact Hext. }
+    iModIntro. iExact "Hinterp".
   Qed.
 
   Theorem generic_cache_history_interp_refines_pure
@@ -401,7 +329,7 @@ Section generic_cache_ghost_state.
     generic_cache_history_interp γ a snap -∗
     ⌜CacheSafeMethod P F run_with_cache_trace⌝ -∗
     ⌜TraceReadsFromSnapshot P snap tr⌝ -∗
-    ⌜weak_exec_matches_trace P run_with_cache_trace a args tr r⌝ -∗
+    ⌜trace_result_matches P run_with_cache_trace a args tr r⌝ -∗
     ⌜PureRecomputeResult F a args r⌝.
   Proof.
     iIntros "Hinterp %Hsafe %Hreads %Hexec".
@@ -425,7 +353,7 @@ Section generic_cache_ghost_state.
     generic_cache_history_interp γ a snap -∗
     ⌜CacheSafeMethod P F run_with_cache_trace⌝ -∗
     ⌜TraceReadsFromSnapshot P snap tr⌝ -∗
-    ⌜weak_exec_matches_trace P run_with_cache_trace a args tr r⌝ -∗
+    ⌜trace_result_matches P run_with_cache_trace a args tr r⌝ -∗
     generic_cache_history_interp γ a snap ∗
     ⌜PureRecomputeResult F a args r⌝.
   Proof.
@@ -453,7 +381,7 @@ Section generic_cache_ghost_state.
     ⌜CacheSafeMethod P F run_with_cache_trace⌝ -∗
     ⌜CacheHistSnapshotValidExtension P snap snap' a⌝ -∗
     ⌜TraceReadsFromSnapshot P snap' tr⌝ -∗
-    ⌜weak_exec_matches_trace P run_with_cache_trace a args tr r⌝ -∗
+    ⌜trace_result_matches P run_with_cache_trace a args tr r⌝ -∗
     ⌜PureRecomputeResult F a args r⌝.
   Proof.
     iIntros "Hinterp %Hsafe %Hext %Hreads %Hexec".
@@ -483,7 +411,7 @@ Section generic_cache_ghost_state.
     ⌜CacheSafeMethod P F run_with_cache_trace⌝ -∗
     ⌜CacheHistSnapshotValidExtension P snap snap' a⌝ -∗
     ⌜TraceReadsFromSnapshot P snap' tr⌝ -∗
-    ⌜weak_exec_matches_trace P run_with_cache_trace a args tr r⌝ -∗
+    ⌜trace_result_matches P run_with_cache_trace a args tr r⌝ -∗
     generic_cache_history_interp γ a snap ∗
     ⌜PureRecomputeResult F a args r⌝.
   Proof.
@@ -516,13 +444,13 @@ Section generic_cache_ghost_state.
     generic_semantic_immutability_interp Stable γ o a snap -∗
     ⌜CacheSafeMethod P F run_with_cache_trace⌝ -∗
     ⌜TraceReadsFromSnapshot P snap tr⌝ -∗
-    ⌜weak_exec_matches_trace P run_with_cache_trace a args tr r⌝ -∗
+    ⌜trace_result_matches P run_with_cache_trace a args tr r⌝ -∗
     ⌜r = F a args⌝ ∗
     generic_semantic_immutability_interp Stable γ o a snap.
   Proof.
     iIntros "Hsem %Hsafe %Hreads %Hexec".
     unfold generic_semantic_immutability_interp, generic_cache_history_interp.
-    iDestruct "Hsem" as "(%Hstable & Hauth & #Hown & %Hsnap)".
+    iDestruct "Hsem" as "(%Hstable & Hauth & %Hsnap)".
     pose proof
       (valid_trace_from_snapshot P snap a tr Hsnap Hreads) as Htrace.
     pose proof
@@ -536,15 +464,11 @@ Section generic_cache_ghost_state.
       iSplit.
       + iPureIntro.
         exact Hstable.
-      + iSplitL "Hauth".
-        * iExact "Hauth".
-        * iSplit.
-          -- iExact "Hown".
-          -- iPureIntro.
-             exact Hsnap.
+      + iSplitL "Hauth"; [iExact "Hauth" |].
+        iPureIntro. exact Hsnap.
   Qed.
 
-  Theorem generic_semantic_immutability_interp_method_post_valid_extension_alloc
+  Theorem generic_semantic_immutability_interp_method_post_valid_extension_update
       {Obj Args Result : Type}
       (Stable : StableAbs Obj AbsVal)
       (F : AbsVal -> Args -> Result)
@@ -554,15 +478,14 @@ Section generic_cache_ghost_state.
     generic_semantic_immutability_interp Stable γ o a snap -∗
     ⌜CacheSafeMethod P F run_with_cache_trace⌝ -∗
     ⌜TraceReadsFromSnapshot P snap tr⌝ -∗
-    ⌜weak_exec_matches_trace P run_with_cache_trace a args tr r⌝ -∗
+    ⌜trace_result_matches P run_with_cache_trace a args tr r⌝ -∗
     ⌜CacheHistSnapshotValidExtension P snap snap' a⌝ ==∗
-    ∃ γ',
-      ⌜r = F a args⌝ ∗
-      generic_semantic_immutability_interp Stable γ' o a snap'.
+    ⌜r = F a args⌝ ∗
+    generic_semantic_immutability_interp Stable γ o a snap'.
   Proof.
     iIntros "Hsem %Hsafe %Hreads %Hexec %Hext".
     unfold generic_semantic_immutability_interp, generic_cache_history_interp.
-    iDestruct "Hsem" as "(%Hstable & Hauth & #Hown & %Hsnap)".
+    iDestruct "Hsem" as "(%Hstable & Hauth & %Hsnap)".
     pose proof
       (valid_trace_from_snapshot P snap a tr Hsnap Hreads) as Htrace.
     pose proof
@@ -572,10 +495,11 @@ Section generic_cache_ghost_state.
     pose proof
       (cache_hist_snapshot_ok_valid_extension P snap snap' a Hsnap Hext)
       as Hsnap'.
-    iMod (generic_cache_history_interp_alloc a snap' Hsnap')
-      as (γ') "Hinterp'".
+    iMod (@own_update Σ (exclR (leibnizO (CacheHistorySnapshot P)))
+      generic_cache_history_inG γ (Excl snap) (Excl snap') with "Hauth")
+      as "Hauth".
+    { apply cmra_update_exclusive; done. }
     iModIntro.
-    iExists γ'.
     iSplit.
     - iPureIntro.
       exact Hresult.
@@ -583,10 +507,11 @@ Section generic_cache_ghost_state.
       iSplit.
       + iPureIntro.
         exact Hstable.
-      + iExact "Hinterp'".
+      + iSplitL "Hauth"; [iExact "Hauth" |].
+        iPureIntro. exact Hsnap'.
   Qed.
 
-  Theorem generic_semantic_immutability_interp_method_post_valid_extension_alloc_post
+  Theorem generic_semantic_immutability_interp_method_post_valid_extension_update_post
       {Obj Args Result : Type}
       (Stable : StableAbs Obj AbsVal)
       (F : AbsVal -> Args -> Result)
@@ -597,15 +522,14 @@ Section generic_cache_ghost_state.
     ⌜Stable o' a⌝ -∗
     ⌜CacheSafeMethod P F run_with_cache_trace⌝ -∗
     ⌜TraceReadsFromSnapshot P snap tr⌝ -∗
-    ⌜weak_exec_matches_trace P run_with_cache_trace a args tr r⌝ -∗
+    ⌜trace_result_matches P run_with_cache_trace a args tr r⌝ -∗
     ⌜CacheHistSnapshotValidExtension P snap snap' a⌝ ==∗
-    ∃ γ',
-      ⌜r = F a args⌝ ∗
-      generic_semantic_immutability_interp Stable γ' o' a snap'.
+    ⌜r = F a args⌝ ∗
+    generic_semantic_immutability_interp Stable γ o' a snap'.
   Proof.
     iIntros "Hsem %Hstable' %Hsafe %Hreads %Hexec %Hext".
     unfold generic_semantic_immutability_interp, generic_cache_history_interp.
-    iDestruct "Hsem" as "(_ & Hauth & #Hown & %Hsnap)".
+    iDestruct "Hsem" as "(_ & Hauth & %Hsnap)".
     pose proof
       (valid_trace_from_snapshot P snap a tr Hsnap Hreads) as Htrace.
     pose proof
@@ -615,10 +539,11 @@ Section generic_cache_ghost_state.
     pose proof
       (cache_hist_snapshot_ok_valid_extension P snap snap' a Hsnap Hext)
       as Hsnap'.
-    iMod (generic_cache_history_interp_alloc a snap' Hsnap')
-      as (γ') "Hinterp'".
+    iMod (@own_update Σ (exclR (leibnizO (CacheHistorySnapshot P)))
+      generic_cache_history_inG γ (Excl snap) (Excl snap') with "Hauth")
+      as "Hauth".
+    { apply cmra_update_exclusive; done. }
     iModIntro.
-    iExists γ'.
     iSplit.
     - iPureIntro.
       exact Hresult.
@@ -626,10 +551,11 @@ Section generic_cache_ghost_state.
       iSplit.
       + iPureIntro.
         exact Hstable'.
-      + iExact "Hinterp'".
+      + iSplitL "Hauth"; [iExact "Hauth" |].
+        iPureIntro. exact Hsnap'.
   Qed.
 
-  Theorem generic_semantic_immutability_interp_method_post_valid_extension_alloc_post_trace
+  Theorem generic_semantic_immutability_interp_method_post_valid_extension_update_post_trace
       {Obj Args Result : Type}
       (Stable : StableAbs Obj AbsVal)
       (F : AbsVal -> Args -> Result)
@@ -640,15 +566,14 @@ Section generic_cache_ghost_state.
     ⌜Stable o' a⌝ -∗
     ⌜CacheSafeMethod P F run_with_cache_trace⌝ -∗
     ⌜TraceReadsFromSnapshot P snap' tr⌝ -∗
-    ⌜weak_exec_matches_trace P run_with_cache_trace a args tr r⌝ -∗
+    ⌜trace_result_matches P run_with_cache_trace a args tr r⌝ -∗
     ⌜CacheHistSnapshotValidExtension P snap snap' a⌝ ==∗
-    ∃ γ',
-      ⌜r = F a args⌝ ∗
-      generic_semantic_immutability_interp Stable γ' o' a snap'.
+    ⌜r = F a args⌝ ∗
+    generic_semantic_immutability_interp Stable γ o' a snap'.
   Proof.
     iIntros "Hsem %Hstable' %Hsafe %Hreads %Hexec %Hext".
     unfold generic_semantic_immutability_interp, generic_cache_history_interp.
-    iDestruct "Hsem" as "(_ & Hauth & #Hown & %Hsnap)".
+    iDestruct "Hsem" as "(_ & Hauth & %Hsnap)".
     pose proof
       (valid_trace_from_post_snapshot_with_valid_extension
         P snap snap' a tr Hsnap Hext Hreads) as Htrace.
@@ -659,10 +584,11 @@ Section generic_cache_ghost_state.
     pose proof
       (cache_hist_snapshot_ok_valid_extension P snap snap' a Hsnap Hext)
       as Hsnap'.
-    iMod (generic_cache_history_interp_alloc a snap' Hsnap')
-      as (γ') "Hinterp'".
+    iMod (@own_update Σ (exclR (leibnizO (CacheHistorySnapshot P)))
+      generic_cache_history_inG γ (Excl snap) (Excl snap') with "Hauth")
+      as "Hauth".
+    { apply cmra_update_exclusive; done. }
     iModIntro.
-    iExists γ'.
     iSplit.
     - iPureIntro.
       exact Hresult.
@@ -670,10 +596,11 @@ Section generic_cache_ghost_state.
       iSplit.
       + iPureIntro.
         exact Hstable'.
-      + iExact "Hinterp'".
+      + iSplitL "Hauth"; [iExact "Hauth" |].
+        iPureIntro. exact Hsnap'.
   Qed.
 
-  Theorem generic_trace_robust_semantic_immutability_interp_alloc_post
+  Theorem generic_trace_robust_semantic_immutability_interp_update_post
       {Obj Args Result : Type}
       (Stable : StableAbs Obj AbsVal)
       (F : AbsVal -> Args -> Result)
@@ -684,19 +611,18 @@ Section generic_cache_ghost_state.
     ⌜Stable o' a⌝ -∗
     ⌜CacheSafeMethod P F run_with_cache_trace⌝ -∗
     ⌜TraceReadsFromSnapshot P snap tr⌝ -∗
-    ⌜weak_exec_matches_trace P run_with_cache_trace a args tr r⌝ -∗
+    ⌜trace_result_matches P run_with_cache_trace a args tr r⌝ -∗
     ⌜CacheHistSnapshotExtendsByTrace
         P
         snap
         snap'
         (run_writes (run_with_cache_trace a args tr))⌝ ==∗
-    ∃ γ',
-      ⌜r = F a args⌝ ∗
-      generic_semantic_immutability_interp Stable γ' o' a snap'.
+    ⌜r = F a args⌝ ∗
+    generic_semantic_immutability_interp Stable γ o' a snap'.
   Proof.
     iIntros "Hsem %Hstable' %Hsafe %Hreads %Hexec %Hext_by_writes".
     unfold generic_semantic_immutability_interp, generic_cache_history_interp.
-    iDestruct "Hsem" as "(_ & Hauth & #Hown & %Hsnap)".
+    iDestruct "Hsem" as "(_ & Hauth & %Hsnap)".
     pose proof
       (valid_trace_from_snapshot P snap a tr Hsnap Hreads) as Htrace.
     pose proof
@@ -710,10 +636,11 @@ Section generic_cache_ghost_state.
     pose proof
       (cache_hist_snapshot_ok_valid_extension P snap snap' a Hsnap Hext)
       as Hsnap'.
-    iMod (generic_cache_history_interp_alloc a snap' Hsnap')
-      as (γ') "Hinterp'".
+    iMod (@own_update Σ (exclR (leibnizO (CacheHistorySnapshot P)))
+      generic_cache_history_inG γ (Excl snap) (Excl snap') with "Hauth")
+      as "Hauth".
+    { apply cmra_update_exclusive; done. }
     iModIntro.
-    iExists γ'.
     iSplit.
     - iPureIntro.
       exact Hresult.
@@ -721,6 +648,7 @@ Section generic_cache_ghost_state.
       iSplit.
       + iPureIntro.
         exact Hstable'.
-      + iExact "Hinterp'".
+      + iSplitL "Hauth"; [iExact "Hauth" |].
+        iPureIntro. exact Hsnap'.
   Qed.
 End generic_cache_ghost_state.

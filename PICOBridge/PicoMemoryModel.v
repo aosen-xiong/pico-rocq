@@ -12,8 +12,10 @@ Import ListNotations.
 
     This file is intentionally only the common interface.  It does not replace
     [eval_stmt], and it does not claim a Java memory model.  Its key memory-side
-    condition is whole-value reads: a cache read observes one complete prior
-    write to the same field, or the field's default/initial value. *)
+    condition is whole-value reads: a cache read observes one complete message
+    in the same field history. Initial/default values are represented by the
+    initial history messages established by allocation and by
+    [pico_core_histories_initialized]; an empty history is not readable. *)
 
 (** Field histories are indexed by object location and field name. *)
 Definition FieldAddr : Type := (Loc * var)%type.
@@ -213,9 +215,10 @@ Qed.
 
 (** ** Memory-Model Interface *)
 
-(** [CacheMemoryModel] supplies the abstract read relation.  The crucial
+(** [CacheMemoryModel] supplies the abstract read relation. The crucial
     side condition is [wm_read_from_history]: every read returns the value of
-    one complete write in the same field history.  Java plain non-volatile
+    one complete message in the same field history. Initial values must already
+    be represented as history messages by the language state invariant. Java plain non-volatile
     [long]/[double] cache fields do not satisfy this by default because reads
     may tear; Java [int], [boolean], and reference cache values do, modulo
     separate safe-publication obligations for object-valued caches. *)
@@ -229,6 +232,24 @@ Class CacheMemoryModel := {
         In msg (history_of sigma addr) /\
         msg_val msg = v
 }.
+
+(** Canonical whole-value history semantics.  A read may select any complete
+    message already present in the addressed field history and does not change
+    the thread view.  More restrictive memory models may refine this relation. *)
+Definition history_read
+    (sigma : wm_state) (V : view) (addr : FieldAddr)
+    (v : value) (V' : view) : Prop :=
+  V' = V /\ exists msg,
+    In msg (history_of sigma addr) /\ msg_val msg = v.
+
+#[global] Instance history_cache_memory_model : CacheMemoryModel :=
+  {| wm_read := history_read;
+     wm_read_from_history :=
+       fun sigma V addr v V' Hread =>
+         match Hread with
+         | conj _ (ex_intro _ msg (conj Hin Hval)) =>
+             ex_intro _ msg (conj Hin Hval)
+         end |}.
 
 (** Reads from a valid derived-cache history produce values accepted by the
     derived-cache protocol. *)
@@ -466,6 +487,9 @@ Fixpoint wm_stmt_writes_allowed_for_cache
         wm_write_allowed_for_cache (loc_x, f) addr val_y derived abs_vals
   | SNew _ _ _ _ => True
   | SCall _ _ _ _ => True
+  | SIfZero _ s_zero s_nonzero =>
+      wm_stmt_writes_allowed_for_cache rΓ s_zero addr derived abs_vals /\
+      wm_stmt_writes_allowed_for_cache rΓ s_nonzero addr derived abs_vals
   | SSeq s1 s2 =>
       wm_stmt_writes_allowed_for_cache rΓ s1 addr derived abs_vals /\
       wm_stmt_writes_allowed_for_cache rΓ s2 addr derived abs_vals

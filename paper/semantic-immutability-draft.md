@@ -14,38 +14,36 @@ Conversely, weak-memory semantics explain which writes a read may observe, but
 they do not by themselves provide an object-level account of semantic
 immutability.
 
-This paper gives a generic semantic theory for racy derived caches.  The theory
-is parameterized by a stable abstract-state provider, written
-`StableAbs(o, a)`, which states that object or record `o` represents a fixed
-abstract value `a`.  A cache protocol then assigns each excluded cache field a
-validity predicate over the stable abstract value.  The key invariant is
-history-based: every value ever written to an excluded cache field is either an
-unknown/default value or a value derived from `a`.  Under a weak-memory-
-parametric field-history interface, every cache read observes some value from
-the corresponding field history.  It follows that every cache read observes
-only values permitted by the cache protocol, even when different reads of the
-same field observe different writes.
+This paper gives a generic semantic theory and mechanized proof architecture
+for racy derived caches.  A `CacheProtocol` assigns each excluded cache field a
+default value, a validity predicate relative to an abstract value, and a
+publication obligation.  Its central invariant, `CacheHistOK`, requires every
+whole value in every governed field history to be protocol valid.  Consequently,
+a history-backed read returns a valid and published value even when repeated
+reads observe different writes.  `CacheSafeMethod` then checks the method's
+abstract trace interpreter against every pointwise-valid observation trace.
+This deliberately adversarial quantification exposes the classic double-read
+bug and validates the local-copy idiom.
 
-The main result is a derived-cache method soundness theorem.  If `StableAbs(o,
-a)`, `CacheHistOK(P, o, a)`, a read-from-history memory interface, and a
-trace-robust method-safety judgment `CacheSafe(m, P, F)` hold, then every
-execution of `m(o, args)` returns the pure result `F(a, args)` and preserves
-`SemImm(P, o, a) = StableAbs(o, a) * CacheHistOK(P, o, a)`.  The same theorem
-gives a refinement result: the cached implementation refines a pure
-implementation that recomputes from `a`.  PICO is one instantiation of the
-stable abstract-state provider.  PICO identifies abstract-state fields and
-proves abstract immutability, while the generic Iris/Rocq wrapper proves that
-excluded cache mutation is semantically invisible.
+The formalization separates this pure theorem from its operational
+realization.  PICO programs execute in a CESK-style small-step language whose
+state contains both a heap and weak field histories.  An Iris logical relation
+uses guarded recursive method resources to justify dynamic calls.  Semantic
+cache APIs strengthen ordinary PICO method well-formedness with an
+object-indexed Iris contract: cache reads consume history validity, protocol-
+valid writes preserve it, and a verified recomputation API supplies the pure
+derived result.  For a concrete one-cache hash model, the artifact constructs
+the stable abstract state from heap contents, proves the good local-copy method
+contract on both hit and miss executions, and refutes installation of the
+double-read implementation at the same API boundary.
 
-The mechanized core is intentionally not a full Java Memory Model
-formalization.  It assumes a field-history interface in which reads come from
-histories, writes extend histories, values are not torn, cache writes are
-grounded in stable abstract state, and stable abstract state is supplied by an
-external invariant or proof system.  Happens-before, final-field freeze
-actions, causality validation, out-of-thin-air prevention, and full Java
-execution validation are outside the current mechanized core.  A future Java
-Memory Model instantiation would need to prove that Java-legal executions
-satisfy the field-history interface used here.
+The result is not Java Memory Model adequacy.  The concrete memory instance is
+an arbitrary-stale, whole-value, same-field history model.  It excludes torn
+values and thin-air reads by interface, and it does not model happens-before,
+final-field freeze actions, or Java causality.  The mechanized claim is instead
+precise: under this memory interface and an explicitly verified semantic cache
+API, racy cache mutation refines pure recomputation without changing the
+object's stable abstract value.
 
 ## 1. Introduction
 
@@ -130,9 +128,7 @@ local-copy pattern avoids this error:
 int h = hash;
 if (h == 0) {
     h = computeHashFromStableAbstractState();
-    if (h != 0) {
-        hash = h;
-    }
+    hash = h;
 }
 return h;
 ```
@@ -151,31 +147,25 @@ This paper makes the following contributions.
    method to return the pure result `F(a, args)` for every valid trace of cache
    observations and to write only protocol-valid cache values.
 
-3. We prove a semantic immutability theorem.  Given stable abstract state,
-   valid cache histories, a read-from-history memory interface, and a cache-safe
-   method, method execution preserves `SemImm(P, o, a)` and returns the pure
-   recomputation result.
+3. We prove pure trace soundness and history preservation.  The theorem is
+   intentionally about an abstract trace interpreter; applying it to source
+   execution requires an execution-to-trace refinement proof.
 
 4. We derive a refinement theorem.  A cached implementation refines a pure
    implementation that ignores cache state and recomputes directly from the
    stable abstract value.
 
-5. We separate PICO from the generic cache theory.  PICO supplies
-   `StableAbs(o, a)` by proving that abstract-state fields are protected and
-   that excluded cache fields are outside the abstract state.  The cache theorem
-   then applies to PICO and to any other system that can supply a stable
-   abstract-state predicate.
+5. We give a CESK operational semantics for PICO with heap state, weak field
+   histories, dynamic calls, and continuations, together with a guarded Iris
+   logical relation for typed calls and return transfer.
 
-6. We mechanize the core theory in Rocq and expose Iris-facing wrappers.  The
-   artifact contains PICO-independent definitions of `StableAbs`,
-   `CacheProtocol`, `CacheHistOK`, `ValidTrace`, and `CacheSafeMethod`; a
-   generic read-from-history soundness theorem; a method-soundness theorem; a
-   derived-cache instance; bad and good hash-cache traces; and staged
-   Iris-facing wrappers and state-interpretation boundaries.
+6. We define semantic cache APIs as Iris callable-method contracts.  Ordinary
+   PICO typing establishes language safety; the stronger contract separately
+   establishes protocol-valid cache effects and the functional result.
 
-7. We present three case-study families as instances of the same theorem:
-   String-like hash caches, URI-like decoded-component caches, and
-   BigInteger-like numeric caches with sentinel encodings.
+7. We mechanize a concrete heap-derived hash provider, positive hit and miss
+   CESK-to-trace refinements, and a concrete double-read counterexample.  URI-
+   and BigInteger-like caches remain protocol sketches illustrating scope.
 
 The paper is scoped deliberately.  It does not prove full Java Memory Model
 soundness.  It does not verify OpenJDK.  It does not provide a production
@@ -241,9 +231,7 @@ int hashCode() {
     int h = hash;
     if (h == 0) {
         h = computeHashFromStableAbstractState();
-        if (h != 0) {
-            hash = h;
-        }
+        hash = h;
     }
     return h;
 }
@@ -259,8 +247,9 @@ no second read whose value affects the result.
 
 Real String-like hashes may be zero.  A single `0` sentinel cannot distinguish
 "not yet cached" from "the computed hash is zero."  A common repair is to add a
-second cache field, such as `hashIsZero`.  The protocol treats each field
-separately:
+second cache field, such as `hashIsZero`.  This illustrates the generic
+multi-field protocol; the concrete mechanized API in Section 11 instead uses
+one field and recomputes zero hashes.  The protocol treats each field separately:
 
 ```text
 H = stringHash(a)
@@ -386,9 +375,10 @@ without intervening synchronization.
 The Java Memory Model is the relevant production model for Java-like code
 [@manson2005jmm].  It includes synchronization order, happens-before,
 final-field rules, and causality constraints.  This paper does not formalize
-those rules.  Instead, it extracts a field-history interface: a cache read must
-observe some whole value from the write history of the same field, or the
-field's initial/default value, and a cache write must extend that history.  We
+   those rules. Instead, it extracts a field-history interface: a cache read must
+   observe some whole value from the write history of the same field, including
+   an allocation-inserted initial/default history message, and a cache write
+   must extend that history. Empty histories admit no read. We
 write this memory-model side condition as `AtomicCacheField(k)`: reads and
 writes of cache field `k` are whole-value operations.  The theorem is
 parametric in this interface.  A future JMM adequacy theorem would have to
@@ -414,90 +404,62 @@ used separation-logic techniques to reason about weak memory, including GPS and
 Iris-based release-acquire reasoning [@turon2014gps; citation needed for
 specific Iris RA/iRC11/Cosmo-style systems].
 
-The development in this paper uses Iris in a staged way.  The generic cache
-theory is first mechanized as ordinary Rocq propositions.  Iris-facing files
-wrap those propositions as pure Iris assertions and introduce invariant and
-state-interpretation boundaries for later WP proofs.  This is a deliberate
-architecture: the generic semantic theorem should be understandable without
-Iris, while Iris supplies the proof infrastructure for integrating the theorem
-with concurrent program reasoning.
+The development separates a pure protocol theorem from a resource-backed Iris
+interpretation.  `SemImmI` owns the semantic object resource and ghost-backed
+cache-history validity. Cache writes update the snapshot ownership in place at
+the same ghost name. The PICO logical relation interprets typed CESK
+controls using weakest preconditions, and a guarded-recursive semantic method
+environment justifies dynamic calls.  A callable cache method combines
+ordinary PICO well-formedness with a stronger, object-indexed Iris contract.
+Thus Iris is not needed to state trace robustness, but it is used to connect
+that specification to compositional calls and state-transforming execution.
 
 ## 4. Core Language and Execution Abstraction
 
-The theorem does not require full Java.  It requires a minimal object or record
-model with stable abstract fields, excluded cache fields, methods that read and
-write cache fields, and executions that produce cache-read traces.
+The formalization has two related execution layers.
 
-Let `Obj` be the type of object identities or records, and let `AbsVal` be the
-type of abstract values.  A stable abstraction provider is a predicate:
+The generic protocol layer uses abstract cache-observation traces.  Let `Obj`
+be object identities and `AbsVal` abstract values.  A provider supplies
+`StableAbs : Obj -> AbsVal -> Prop`.  Despite its name, this predicate alone is
+not a temporal theorem: a provider must prove that the same abstract value is
+represented in the post-state of each relevant operation.  For each object and
+governed field, a history records an explicit allocation-inserted initial
+message followed by all complete writes.  An empty history is not readable.  The
+trace interpreter
+takes an abstract value, ordinary arguments, and observations, and produces a
+result and protocol writes.  It is a specification interface, not a source
+operational semantics.  In particular, `ValidTrace` permits every pointwise-
+valid trace, including combinations that a more coherent memory model might
+exclude.
 
-```text
-StableAbs : Obj -> AbsVal -> Prop
-```
-
-`StableAbs(o, a)` means that `o` has fixed abstract value `a`.  The predicate is
-not defined by the generic theorem.  It is supplied by PICO, by an Iris
-invariant, or by another proof system.
-
-A program state contains field histories for excluded cache fields.  For each
-object `o` and cache field `k`, `Hist(o, k)` is a list of values written to
-that field.  The initial history includes the default write.  A cache write
-appends a value to the corresponding history.  A cache read produces an
-observation:
+The source layer is a CESK-style operational wrapper around PICO:
 
 ```text
-obs = read(o, k, v)
+Control = runtime environment * statement * continuation
+State   = PICO heap * weak field-history state
+
+Continuation ::= done
+               | sequence frame
+               | call frame(caller environment, target, remainder)
 ```
 
-and the memory interface supplies:
+Primitive steps cover locals, assignment, field access, allocation,
+sequencing, conditionals, dynamic method calls, and return.  A field read
+selects a whole value from the addressed history.  A field write updates the
+heap's current field and appends the same value to the weak history.  Allocation
+updates both state components.  Calls install a callee environment and push a
+call continuation; return restores the caller and transfers the result.
 
-```text
-read(o, k, v) -> v in Hist(o, k)
-```
+`heap_wm_type_agree` connects allocation and dynamic type information between
+the heap and weak state.  Cache validity is a separate `SemImmI` resource.  Its
+write rule requires a proof that the appended value satisfies the protocol;
+ordinary PICO typing alone therefore does not certify arbitrary cache writes.
 
-The interface intentionally does not say that `v` is the last value in the
-history.  It also does not impose coherence between two observations in the
-same trace.  A method execution records the sequence of cache observations that
-affect the method.  That sequence is a cache-read trace.
-
-The core calculus can be presented as a small command language:
-
-```text
-e ::= x | c | readAbs(o, f) | readCache(o, k)
-s ::= skip
-    | x := e
-    | writeCache(o, k, e)
-    | s; s
-    | if x then s else s
-    | return e
-```
-
-The calculus distinguishes abstract-state reads from cache reads.  Abstract
-state is stable by premise; excluded cache state is governed by protocols.
-The generic theorem does not require a source-level type system, inheritance,
-method dispatch, exceptions, or Java expressions.  PICO supplies those features
-in its own formalization and then exports the stable abstraction fact needed by
-the cache theorem.
-
-The execution abstraction has four roles.
-
-First, it records cache reads as traces.  A method may be interpreted as a
-function from an abstract value, ordinary arguments, and a cache-read trace to a
-result plus a list of cache writes.  This trace semantics is not a full
-operational semantics; it is a specification interface for method robustness.
-
-Second, it records writes as cache observations for proof purposes.  A write is
-safe when the value written is valid under the protocol for the stable abstract
-value.
-
-Third, it separates abstract-state preservation from cache-history
-preservation.  `StableAbs(o, a)` is preserved because cache-safe methods do not
-write abstract-state fields.  `CacheHistOK(P, o, a)` is preserved because every
-cache write is valid for `a`.
-
-Fourth, it isolates memory-model obligations.  The cache theorem assumes
-read-from-history and write-extends-history.  It does not commit to how a
-particular memory model proves those facts.
+Labeled CESK steps expose cache reads and writes.  For the concrete hash method,
+the artifact proves hit and miss execution-to-trace refinements and constructs
+the bad double-read trace operationally.  It does not yet provide one generic
+extractor from every PICO execution to `CacheSafeMethod`; method-specific
+semantic APIs are the current composition boundary.
 
 ## 5. Generic Cache Protocol
 
@@ -510,15 +472,20 @@ CacheProtocol P contains:
   cache_val(P, k)       the value type of field k
   default(P, k)         the default or unknown value of k
   Valid_k(a, v)         whether value v is valid for abstract value a
+  Published_k(v)        whether v is safe to expose to a reader
 
 Requirement:
   Valid_k(a, default(P, k)) for every a and k.
+  Published_k(default(P, k)).
+  Valid_k(a, v) implies Published_k(v).
 ```
 
 The default-validity requirement reflects the fact that newly allocated objects
 begin with default cache values.  It does not require the default to be a
 completed derived value.  It only requires the method proof to treat the
-default as unknown.
+default as unknown.  The publication implication is trivial for integer caches
+but matters for reference-valued caches: atomicity of the reference does not
+establish that the referenced object was safely initialized.
 
 Given a protocol `P`, a history function `Hist`, an object `o`, and an abstract
 value `a`, the cache-history invariant is:
@@ -558,6 +525,10 @@ and read_cache(o, k, v)
 and read_cache(o, k, v) implies v in Hist(o, k),
 then Valid_k(a, v).
 ```
+
+By `cache_valid_published`, read validity immediately yields the separate
+publication fact `Published_k(v)`.  The Iris cache-read rule exposes both facts
+to clients.
 
 The second key lemma lifts this pointwise result to traces:
 
@@ -609,8 +580,10 @@ CacheSafe(m, P, F) iff
     and every cache write performed by m is valid for a.
 ```
 
-In a fuller source-language presentation, `CacheSafe` has the following
-components.
+The Rocq definition contains exactly the result and emitted-write conditions
+above.  Applying it to a mutable source language additionally requires the
+following operational and framing obligations; they are proved by the provider
+and semantic API rather than hidden inside `CacheSafeMethod`.
 
 1. The method does not write abstract-state fields.
 
@@ -671,6 +644,8 @@ then
 Proof sketch.  The memory interface gives `v in Hist(o, k)`.  The
 `CacheHistOK` invariant says that every value in `Hist(o, k)` is valid for `a`.
 Applying the invariant to `v` yields `Valid_k(a, v)`.
+Protocol validity then entails `Published_k(v)` through the protocol's
+publication law.
 
 ### 7.2 Valid Trace from History
 
@@ -703,58 +678,49 @@ entries remain valid by the induction hypothesis; the new entry is valid by the
 transition premise.  Abstract-state preservation is separate and follows from
 the no-abstract-write condition or from the stable abstraction provider.
 
-### 7.4 Derived-Cache Method Soundness
+### 7.4 Pure Trace Soundness
 
 ```text
-Theorem Derived-Cache Method Soundness.
-For any object o, abstract value a, cache protocol P, method m,
-and pure specification F,
-if
-  StableAbs(o, a),
-  CacheHistOK(P, Hist, o, a),
-  MemoryModelInterface(Hist),
-  CacheSafe(m, P, F),
-and an execution of m(o, args) observes a trace trace allowed by
-the memory interface,
-then the execution returns F(a, args) and preserves SemImm(P, o, a).
+Theorem Cache-Safe Trace Result.
+If CacheSafeMethod(m, P, F), ValidTrace(P, a, trace), and the abstract
+trace interpreter for m returns r on trace, then r = F(a, args), and every
+reported cache write is protocol valid for a.
 ```
 
 In the compact form used by the Rocq core:
 
 ```text
-StableAbs(o, a)
-and CacheHistOK(P, Hist, o, a)
-and CacheSafe(m, P, F)
+CacheSafeMethod(m, P, F)
 and ValidTrace(P, a, trace)
-and weak_exec_matches_trace(m, a, args, trace, r)
-imply
-  r = F(a, args)
-  and SemImm(P, Hist, StableAbs, o, a).
+and trace_result_matches(m, a, args, trace, r)
+imply r = F(a, args).
 ```
 
-Proof sketch.  The memory interface and cache-history invariant imply
-`ValidTrace(P, a, trace)`.  The `CacheSafe` premise applied to this trace gives
-the result equality and validity of writes.  Cache-history preservation uses
-write validity.  Stable abstract state is preserved because the method does not
-write abstract-state fields and the stable abstraction provider remains true.
-Combining these facts yields `SemImm`.
+This theorem is not, by itself, a theorem about arbitrary source executions.
+`trace_result_matches` projects the result of the abstract interpreter.  To
+obtain an operational corollary, one must prove that the relevant labeled CESK
+execution yields that trace and that its writes satisfy the reported protocol
+effects.  The artifact proves these bridges for the concrete local-copy hash
+hit and miss paths, and proves that the double-read execution yields the bad
+trace `[H, 0]` when `H` is nonzero.
 
 ### 7.5 Refinement to Pure Recomputing Implementation
 
 ```text
-Theorem Cached-to-Pure Refinement.
-Let m_cached be a cache-safe implementation for protocol P and pure
-specification F.  Let m_pure(o, args) return F(a, args) whenever
-StableAbs(o, a).  Under SemImm(P, o, a), every observable result of
-m_cached(o, args) is an observable result of m_pure(o, args), and the
-post-state again satisfies SemImm(P, o, a).
+Derived Corollary: Method-Specific Cached-to-Pure Refinement.
+Let m_cached satisfy CacheSafeMethod for P and F.  If a labeled source
+execution of m_cached refines its abstract trace interpretation and preserves
+the provider's stable abstract state, then every terminating execution returns
+F(a, args) and preserves SemImm(P, o, a).
 ```
 
-Proof sketch.  Method soundness gives that every execution of `m_cached`
-returns `F(a, args)`.  The pure method returns the same value by definition.
-Cache writes are hidden from clients and preserve `SemImm`, so clients cannot
-distinguish the cached implementation from recomputation by observing public
-results or abstract state.
+This corollary is obtained by composing the named generic refinement theorem
+with the method-specific CESK-to-trace lemmas; it is not a separate
+language-wide Rocq theorem. The operational refinement supplies the abstract trace and
+write effects for the particular terminating execution.  History validity
+makes the trace valid; `CacheSafeMethod` gives the result `F(a, args)` and
+protocol-valid writes.  The provider framing lemmas and history-extension rule
+re-establish `SemImm`.  The pure method returns the same value by definition.
 
 The refinement is intentionally termination-insensitive in the first
 formulation: it compares returned values for terminating executions.  A
@@ -763,96 +729,76 @@ cache code does not introduce divergence, blocking, or exceptions.  For the
 simple derived-cache methods considered here, those obligations are usually
 straightforward but are not the central contribution.
 
-### 7.6 Class-Level Abstraction Theorem
+### 7.6 Callable Semantic API
 
 ```text
-Theorem Class-Level Semantic Immutability.
-Consider a class or abstraction whose public methods are all cache-safe
-with respect to protocol P, whose excluded cache fields are hidden from
-clients, and whose constructors establish StableAbs and CacheHistOK.
-Then the cached implementation contextually refines the pure implementation
-that recomputes all derived values from the stable abstract state.
+Callable(m) =
+  ordinary PICO well-formedness of m
+  * object-indexed Iris contract for m
 ```
 
-Proof sketch.  Constructors establish `SemImm`.  Each public method preserves
-`SemImm` and returns the pure result by method soundness.  Hidden cache fields
-prevent clients from observing cache histories directly.  The proof proceeds by
-standard simulation over client-visible method calls.  Every cached step
-corresponds to a pure recomputing step with the same public result and the same
-abstract state.
+The semantic method environment stores callable packages.  Its resolved
+non-null branch rule derives the callee frame and runtime-class subtype from
+PICO typing, obtains the override-coherent contract from the TS summary,
+installs the `KCall` continuation, and applies the advertised contract.  The
+runtime receiver, method lookup, arguments, and contract precondition are
+explicit branch premises. The callable proof returns final callee typing,
+receiver identity, heap-extension, state-validity, and return-slot evidence;
+`pico_semantic_typed_call_wpI` consumes it through
+`pico_core_typed_resolved_method_return` before exposing a typed caller frame
+and the functional postcondition. Null-receiver and ordinary calls remain
+justified by the guarded resource-LR outcome handler. The TS call summary requires override
+coherence: every dynamically dispatchable subclass implementation advertises
+the same contract as the static receiver class.  For the hash API the contract
+is indexed by the actual receiver and hash value.  Its receiver invariant is an
+invocation precondition, not a global uniqueness assertion about the heap.
+
+A whole-class contextual-refinement theorem remains future work. The current
+mechanization establishes reusable callable-method contracts. Method-specific
+WPs can be passed to the generic `pico_core_ownP_adequacy` transport; this does
+not quantify over arbitrary external clients.
 
 ## 8. PICO Instantiation
 
-PICO is an instantiation of the stable abstract-state provider, not the whole
-derived-cache theory.  Its role is to identify the abstract-state fields of an
-object and prove that those fields are protected.  The generic cache theorem
-then reasons about excluded mutable fields.
+PICO supplies the source syntax, typing rules, heap model, and the static
+classification of abstract and assignable cache fields.  The semantic provider
+must additionally connect those static facts to a concrete runtime object.
 
-At a high level, the PICO theorem supplies:
+The mechanized hash provider uses a deliberately restricted layout: field zero
+is the integer cache and the remaining fields are the abstract payload.  For a
+receiver `o`, heap `h`, and hash function `hash`, the represented abstract value
+is the tail of the receiver's field vector.  The provider invariant states that
+the heap object has shape `cache :: abstract_values`, that
+`hash(abstract_values) = H`, that heap and weak dynamic types agree, that field
+zero is declared as the PICO cache, and that its weak history is protocol valid.
+This is a genuine heap-derived abstraction; it does not define the abstract
+state to be the desired result `H`.
 
-```text
-PICOStableAbs(o, a)
-```
+The provider proves three framing classes.  A cache write may change the head
+while preserving the abstract tail.  Writes to unrelated objects or fields
+frame the represented receiver.  Allocation extends the heap and weak state
+without changing an existing receiver.  These lemmas establish stability for
+the concrete CESK paths used by the hash API.
 
-where `a` is the tuple or structured value obtained by reading the abstract-
-state fields of `o`.  The PICO proof establishes that, for an object protected
-by the relevant immutability qualifier and method scope, evaluation preserves
-the abstract-state field values.  Assignable cache fields are outside the
-abstract reachability relation used to define `a`.
-
-The bridge from PICO to the generic theorem has three steps.
-
-First, ordinary Rocq PICO theorems prove field-level stability.  In the current
-artifact, `DeepImmutability.v`, `ReadonlySafety.v`, and related files provide
-the core immutability theorems, while `DerivedCache.v` proves a sequential
-derived-cache update shape for final abstract fields and assignable integer
-cache fields.
-
-Second, the PICO stable abstraction is packaged as a pure predicate.  In the
-generic derived-cache instance, the provider hook has the shape:
-
-```text
-pico_stable_abs(CT, C, abs_fields, (h, loc), abs_vals) =
-  final_fields(CT, C, abs_fields)
-  and field_reads(h, loc, abs_fields, abs_vals)
-```
-
-This is a small provider used by the current generic cache bridge.  It is not a
-replacement for the full PICO immutability theorem.  Rather, it is the point at
-which a PICO theorem about abstract-field stability can be exposed to the
-generic cache layer.
-
-Third, Iris-facing wrappers import the pure fact.  The wrapper does not rewrite
-PICO in Iris.  It turns the existing Rocq theorem into an Iris pure assertion,
-for example:
-
-```text
-StableAbsI Stable o a = pure(Stable o a)
-CacheHistOKI P Hist o a = pure(CacheHistOK P Hist o a)
-SemImmI P Hist Stable o a = StableAbsI Stable o a * CacheHistOKI P Hist o a
-```
-
-This division keeps the proof architecture modular.  PICO remains responsible
-for abstract-state immutability.  The Iris/Rocq cache wrapper remains
-responsible for histories, protocols, read validity, trace robustness, and
-refinement to pure recomputation.
-
-The division also prevents an overclaim.  PICO's existing abstract immutability
-theorem does not prove that every Java racy cache execution is safe.  It proves
-that abstract-state fields are protected under the PICO model.  The derived-
-cache theorem adds a separate condition: excluded cache writes must obey a
-protocol, and methods must be correct for every valid cache-read trace.
+PICO typing and the semantic cache contract have distinct jobs.  The typing
+relation guarantees that the method body, frames, and return transfer are
+well-formed.  The computation contract proves that recomputation reads the
+stable representation and returns `Int H`; this functional fact is expressed
+as an Iris pre/postcondition rather than a new source expression.  A small
+effect theorem for `TS` methods proves absence of direct shared writes, but it
+does not by itself prove functional correctness or general data-race freedom.
 
 ## 9. Iris/Rocq Mechanization
 
-The artifact is organized as a staged development rather than a single monolithic
-proof.  The important boundary is between what is mechanized now and what is
-future work.
+The artifact is organized around explicit interfaces rather than one
+monolithic theorem.  This section maps the paper's claims to the mechanization.
 
-### 9.1 Existing PICO Core
+### 9.1 PICO Static Core
 
-The PICO core remains unchanged.  The top-level theorem map in the repository
-identifies the existing proof entry points:
+The source language now distinguishes primitive and reference bases:
+`TInt` and `TRef C`, with qualified types carrying PICO qualifiers.  Integer
+values inhabit `Imm TInt`; field access, allocation, and dispatch require
+reference bases.  The established metatheory includes:
 
 ```text
 Preservation.v              preservation_pico
@@ -864,8 +810,8 @@ ConcreteImmutability.v      ConcreteImmutability
 WFNOMutationEXP.v           well_typed_no_mutation_exp
 ```
 
-These theorems establish type soundness and immutability properties for the
-PICO core language.  They do not contain the generic field-history theorem.
+These results establish sequential PICO typing and immutability properties.
+They do not imply protocol-valid cache effects.
 
 ### 9.2 Generic Cache Protocol Core
 
@@ -886,7 +832,8 @@ CacheSafeMethod
 SemImm
 ```
 
-It proves:
+It proves read validity, publication, valid-trace construction, and abstract
+trace soundness, including:
 
 ```text
 cache_read_valid
@@ -895,120 +842,107 @@ cache_safe_method_sound
 cache_safe_method_sound_from_history
 ```
 
-These are the mechanized core of the generic theorem.  They are intentionally
-small.  The goal is not to encode all Java behavior in this file, but to state
-and prove the reusable semantic fact precisely.
+`trace_result_matches` here refers only to the abstract interpreter.  This file
+does not equate arbitrary language execution with an abstract trace.
 
-### 9.3 Derived-Cache Instance and Hash Traces
+### 9.3 Weak State and CESK Language
 
-`GenericDerivedCache.v` instantiates the generic protocol with current PICO
-values and derived integer caches.  It includes:
+`PicoMemoryModel.v` defines field addresses, whole-value messages, append-only
+histories, weak views, and the `CacheMemoryModel` interface.  Its concrete
+`history_cache_memory_model` may choose any complete message from the addressed
+history and leaves the view unchanged.  `PicoIrisCoreLanguage.v` lifts PICO to
+the CESK state described in Section 4.
 
-```text
-derived_cache_protocol
-wm_derived_cache_history
-wm_derived_cache_read
-wm_derived_cache_read_from_history
-wm_read_valid_via_generic_cache_hist_ok
-```
-
-It also mechanizes the motivating hash-cache distinction:
+The principal operational invariants and rules cover:
 
 ```text
-bad_hash_trace_valid
-bad_hash_trace_returns_wrong
-bad_hash_not_cache_safe
-good_hash_cache_safe_method
+heap_wm_type_agree
+typed field-read and field-write progress
+allocation agreement
+dynamic call entry and return through KCall
 ```
 
-These lemmas match the paper's negative example.  The bad double-read method is
-rejected because a valid trace can make it return the wrong result.  The
-local-copy method is accepted because it is correct for every valid trace in
-the modeled protocol.
+### 9.4 Resource Logical Relation and Semantic APIs
 
-### 9.4 Field-History Memory Interface
+`PicoIrisResourceLogicalRelation.v` is the canonical typed-call proof.  It
+defines value, environment, control, and method interpretations over the CESK
+language.  Method calls use an Iris Löb induction and guarded semantic method
+environment.  Static `wf_method`, class-table well-formedness, heap typing, and
+dynamic resolution derive the callee frame, body typing, and viewpoint-adapted
+return transfer; no user-supplied call-typing model remains.
 
-`PicoMemoryModel.v` begins the weak-memory layer.  It defines field addresses,
-write messages, field histories, weak-memory state, and a parameterized
-`CacheMemoryModel` class:
+`PICOBridge/PicoIrisSemanticAPI.v` defines:
 
 ```text
-wm_read : wm_state -> view -> FieldAddr -> value -> view -> Prop
-
-wm_read_from_history :
-  wm_read sigma V addr v V' ->
-  exists msg, msg in history_of(sigma, addr) and msg_val(msg) = v
+pico_callable_methodI
+pico_exported_methodI
+pico_semantic_methodI
 ```
 
-It also defines weak writes that append to histories and proves preservation
-and read-validity endpoints for allowed cache writes, including:
+The first two are compositional installation boundaries; the last is a closed-
+execution method contract consumed by adequacy examples. Cache reads yield
+validity and publication.
+Cache writes preserve `SemImmI` only after an explicit protocol-validity proof.
+
+### 9.5 Concrete Hash Model and Method Proof
+
+`Examples/PicoConcreteHashModel.v` constructs the restricted heap-derived
+provider from Section 8 and proves initialization and framing.
+`pico_concrete_hash_provider_inhabited` exhibits a closed two-class table, a
+concrete object `[Int 0; Int 7]`, and a nonconstant heap-derived hash function
+whose provider invariant holds. The witness table contains no hash method; it
+proves provider satisfiability, while API installation remains conditional.
+`Examples/PicoSemanticCacheAPIExamples.v` then
+verifies a source-level local-copy method with two integer locals, one cache
+read, conditional recomputation, a protocol write on the miss path, and return.
+Recomputation is supplied by a separately verified Iris computation API; a
+literal-hash implementation remains only a small test model.
+
+The conditional callable-API theorem combines:
 
 ```text
-wm_steps_preserve_cache_history_from_allowed_writes
-wm_steps_read_valid_from_allowed_writes
-wm_steps_preserve_cache_history_from_config_allowed
-wm_steps_read_valid_from_config_allowed
+ordinary wf_method
+continuation-aware callable-method soundness
+object-indexed SemImmI preservation
 ```
 
-This layer is a field-history execution abstraction.  It is not a Java Memory
-Model formalization.
+`CacheSafeMethod` for the local-copy trace interpreter is a separate pure
+theorem.  It is connected to concrete execution only by the labeled trace
+lemmas below.
 
-### 9.5 Iris Wrappers and State Boundaries
+### 9.6 Positive and Negative Operational Bridges
 
-`GenericCacheIris.v` wraps the generic theorem in Iris propositions:
+`Examples/PicoHashExecutionTrace.v` proves both local-copy branches:
 
 ```text
-StableAbsI
-CacheHistOKI
-ValidTraceI
-CacheSafeMethodI
-SemImmI
-CacheMethodPostI
-cache_read_validI
-valid_trace_from_historyI
-cache_safe_method_soundI
-cache_safe_method_sound_from_historyI
+pico_local_copy_cesk_refines_trace_on_hit
+pico_local_copy_cesk_refines_trace_on_miss
 ```
 
-`GenericDerivedCacheIris.v` exposes the derived-cache read-validity bridge as a
-pure Iris fact.  The later PICO Iris files go beyond pure wrappers by adding a
-minimal Iris language instance for weak-memory PICO threads, an invariant over
-cache-history validity, ghost-state facades, WP state-bridge contracts, and
-logical-relation-facing wrappers.  These files give stable theorem boundaries
-for a future full WP/logical-relation development.
+These two theorems execute the literal computation model
+`cache_tmp := hash_value`; the more general verified computation is covered by
+the Iris callable-method theorem, not by a generic CESK-to-trace theorem.  The
+miss theorem includes the literal recomputation, a protocol-valid write, and
+the zero-hash case.  The negative development gives a labeled two-read CESK execution,
+proves that mapping its observations produces `bad_hash_trace H`, and derives
+that, for `H != 0`, the implementation cannot inhabit the required callable
+semantic API.  Thus the bad program remains syntactically expressible and
+ordinarily typed but is rejected at installation.
 
-The current paper should claim the generic Rocq theorem and the Iris-facing
-wrapper/invariant architecture.  It should not claim a complete ghost-backed
-Iris logical relation for all PICO types, nor a full Java weak-memory
-adequacy theorem.
+### 9.7 Mechanized Boundary
 
-### 9.6 Mechanized and Not Mechanized
+Mechanized:
 
-Mechanized in the current core:
+1. Generic protocol, publication, histories, valid traces, and trace safety.
+2. Whole-value history reads and append-only writes.
+3. A CESK PICO language with heap, weak state, calls, and continuations.
+4. A guarded resource logical relation for typed PICO calls.
+5. Ghost-backed `SemImmI` read, write, and method rules.
+6. A concrete one-cache heap provider and local-copy hash callable API.
+7. Concrete hit/miss execution-to-trace lemmas and double-read refutation.
+8. No use of `Axiom`, `Admitted`, or `admit` in the checked artifact.
 
-1. Generic definitions of stable abstraction providers, cache protocols,
-   cache-history validity, valid traces, cache-safe methods, and semantic
-   immutability.
-
-2. Read-from-history soundness: a cache read from a valid history observes a
-   protocol-valid value.
-
-3. Trace validity from history reads.
-
-4. Method soundness for trace-robust cache-safe methods.
-
-5. A derived integer-cache instance and PICO stable-abstraction hook.
-
-6. The bad hash-cache trace counterexample and the local-copy accepted proof
-   shape.
-
-7. Field-history memory-interface lemmas for append-only writes and read
-   validity after allowed-write executions.
-
-8. Iris-facing pure wrappers and staged invariant/state-interpretation
-   boundaries.
-
-Not mechanized in the current core:
+Not mechanized:
 
 1. Full Java Memory Model executions.
 
@@ -1017,21 +951,51 @@ Not mechanized in the current core:
 
 3. Final-field freeze actions and Java initialization safety.
 
-4. A production Java checker for arbitrary cache-safe methods.
+4. A production checker deriving semantic cache contracts automatically.
 
 5. Full OpenJDK verification.
 
-6. A complete ghost-backed Iris logical relation proving all PICO typing rules
-   against the weak-memory state interpretation.
+6. A language-wide execution-to-trace theorem for arbitrary cache methods.
+7. Whole-class contextual refinement against arbitrary clients.
 
 These non-claims are part of the theorem statement, not caveats added after the
 fact.  The proof is designed to be memory-model-parametric.
+
+### 9.8 Claim-to-Theorem Map
+
+| Paper claim | Rocq file | Principal endpoint |
+|---|---|---|
+| A history-backed read is protocol valid | `Core/GenericCacheProtocol.v` | `cache_read_valid` |
+| Valid history reads form a valid trace | `Core/GenericCacheProtocol.v` | `valid_trace_from_history` |
+| Trace-safe methods return the pure result | `Core/GenericCacheProtocol.v` | `cache_safe_method_refines_pure` |
+| Typed PICO statements satisfy the CESK resource interpretation | `PICOBridge/PicoIrisResourceLogicalRelation.v` | `pico_core_resource_stmt_fundamentalI` |
+| Dynamic call frames and returns are derived from PICO typing | `PICOBridge/PicoIrisTypingFundamental.v` | `pico_core_typed_resolved_method_return` |
+| An advertised call combines its functional contract with typed PICO return transfer | `PICOBridge/PicoIrisSemanticAPI.v` | `pico_semantic_typed_call_wpI` |
+| The concrete provider conditionally packages the hash body as a callable/exported API | `Examples/PicoConcreteHashModel.v` | `pico_heap_hash_callable_api_wfI` |
+| The concrete provider invariant is inhabited by an explicit heap state | `Examples/PicoConcreteHashModel.v` | `pico_concrete_hash_provider_inhabited` |
+| Given lookup, closed-dispatch, typing, state, and computation premises, a typed client invokes the singleton installed API | `Examples/PicoConcreteHashModel.v` | `pico_heap_hash_api_call_wpI` |
+| Local-copy CESK execution refines hit and miss traces | `Examples/PicoHashExecutionTrace.v` | `pico_local_copy_cesk_refines_trace_on_hit`, `pico_local_copy_cesk_refines_trace_on_miss` |
+| The double-read implementation cannot inhabit the callable contract; the concrete `[0;7]` state closes its read premises | `Examples/PicoHashExecutionTrace.v` | `pico_hash_witness_double_read_callable_uninhabited` |
+
+The repository's no-admission check rejects `Axiom`, `Admitted`, and `admit`.
+The trusted base is therefore Rocq and Iris plus the explicit semantic
+parameters appearing in these theorem statements, most importantly the cache
+memory interface, provider instance, adapter laws, and verified computation
+contract.
 
 ## 10. Weak-Memory Discussion
 
 The field-history interface deliberately abstracts from the hardest parts of
 the Java Memory Model.  This section explains what is abstracted and why the
 abstraction is still useful.
+
+The concrete instance used by the CESK proofs is intentionally adversarial and
+simple.  At each read it may choose any complete message already present in the
+same field's history, and it leaves the thread view unchanged.  This models
+arbitrary staleness without cross-field corruption, but it is not presented as
+SC, JMM, RC11, or an exact hardware model.  `CacheMemoryModelProgress` supplies
+the existence of a read observation for operational progress; the read-from-
+history law supplies its semantic justification.
 
 ### 10.1 Happens-Before
 
@@ -1081,9 +1045,11 @@ The field-history interface assumes whole-value reads:
 
 ```text
 Whole-value reads.
-  If read(o.k) returns v, then v is the value of some complete write to o.k,
-  or the initial/default value of o.k.
+  If read(o.k) returns v, then v is the value of some complete history message
+  for o.k, including an allocation-inserted initial/default message.
 ```
+
+An empty field history admits no read.
 
 Equivalently, each admissible cache field must satisfy `AtomicCacheField(k)`.
 The interface does not model torn reads.  A Java instantiation must therefore
@@ -1126,9 +1092,8 @@ that such an adequacy result would instantiate.
 
 ## 11. Case Studies
 
-The case studies are proof sketches and protocol instantiations, not full
-OpenJDK verifications.  Their purpose is to show that the theorem captures a
-family of derived caches with one abstraction.
+The hash case has a concrete CESK/Iris proof.  The URI and BigInteger cases are
+protocol instantiations and proof sketches, not full OpenJDK verifications.
 
 ### 11.1 String-Like `hashCode`
 
@@ -1141,8 +1106,7 @@ a = string contents
 Excluded cache fields:
 
 ```text
-hash       : int
-hashIsZero : boolean
+hash : int
 ```
 
 Derived function:
@@ -1158,40 +1122,31 @@ Valid_hash(a, h) =
     h = 0
  or (h = H and H != 0)
 
-Valid_hashIsZero(a, z) =
-    z = false
- or (z = true and H = 0)
 ```
 
 Cache-safe method shape:
 
 ```java
 int h = hash;
-if (h != 0) {
-    return h;
-}
-if (hashIsZero) {
-    return 0;
-}
-h = computeHashFromStableAbstractState();
 if (h == 0) {
-    hashIsZero = true;
-} else {
+    h = verifiedHashComputation(this);
     hash = h;
 }
 return h;
 ```
 
-This sketch is not meant as a prescriptive implementation.  It illustrates the
-proof obligations.  If the method reads `hash` as nonzero, the protocol gives
-`h = H`.  If it reads `hashIsZero` as true, the protocol gives `H = 0`.  If it
-sees only unknown values, it computes from stable contents.  The writes
-`hashIsZero = true` and `hash = h` are valid because they occur only after
-computing `H` from the stable abstract state.
+If the history-backed read is nonzero, protocol validity gives `h = H`.  If it
+is zero, the Iris computation API returns `H` from the receiver's represented
+abstract fields.  The result is appended to the cache history; writing zero is
+a protocol-valid no-op at the abstract level.  Thus collisions between
+distinct abstract values are irrelevant: the contract is per receiver and
+requires only equality with that receiver's deterministic hash result, not an
+injective hash function.
 
-The proof does not assume that the read of `hash` and the read of `hashIsZero`
-come from one snapshot.  Each observation is justified independently by its
-field history.
+The mechanization proves ordinary method well-formedness, callable semantic
+installation, both labeled CESK paths, and preservation of the concrete
+heap-derived provider.  The negative double-read method is separately shown to
+produce observations `[H, 0]` and cannot satisfy the same API when `H != 0`.
 
 ### 11.2 URI-Like Decoded Components
 
@@ -1325,13 +1280,15 @@ StableAbs(o, a)
 CacheHistOK(P, o, a)
 read-from-history memory interface
 CacheSafe(m, P, F)
+method-specific execution-to-trace refinement
 ----------------------------------
 m refines pure recomputation F(a, args)
 ```
 
-The theorem therefore avoids a collection of ad hoc "benign race" arguments.
-Each cache is safe only when its protocol and method proof satisfy the generic
-conditions.
+For the hash case, the artifact additionally discharges the provider,
+callable-method, and execution-to-trace obligations.  For the other cases, the
+diagram states obligations still to be proved.  The generic theory therefore
+organizes rather than assumes away the method-specific work.
 
 ## 12. Related Work
 
@@ -1347,12 +1304,10 @@ with fine-grained assignability information [@CiFi].  Constrictor distinguishes
 view object immutability from transitive state using model checking
 [@kinsbruner2024constrictor].
 
-PICO belongs to this family but provides the stable abstraction provider used
-by this paper.  It identifies abstract-state fields, proves abstract-state
-immutability, and treats excluded cache fields as outside abstract
-reachability.  The new theorem is not another reference-immutability type
-system.  It is a semantic wrapper that explains when excluded cache mutation is
-unobservable under racy reads.
+PICO belongs to this family and supplies the source typing discipline used by
+the concrete provider.  The new theorem is not another reference-immutability
+type system.  It adds a semantic API boundary explaining when excluded cache
+mutation is unobservable under history-backed racy reads.
 
 ### 12.2 Benign Data Races and Lazy Initialization
 
@@ -1390,10 +1345,10 @@ developments [@jung2015iris; @jung2018iris].  Iris-based logics for release-
 acquire or RC11-style reasoning are closely related in proof technology
 [citation needed for exact iRC11/Cosmo references].
 
-The present work uses Iris differently.  Rather than building a full weak-
-memory program logic first, it isolates a cache-specific semantic theorem and
-wraps it in Iris predicates.  The theorem can later be connected to a richer
-Iris memory model, but the core proof does not depend on that model.
+The present work uses Iris to package ghost-backed semantic object resources,
+prove CESK weakest-precondition rules, and guard recursive method calls.  The
+underlying weak state remains a custom whole-value history model rather than an
+Iris formalization of Java, RC11, or another standard weak memory model.
 
 ### 12.5 Semantic Type Soundness and Logical Relations
 
@@ -1445,19 +1400,24 @@ are not full OpenJDK verifications.  A full library verification would require
 source-level modeling of each class, constructor, method, object-valued cache,
 and Java memory behavior.
 
-The fifth limitation is the staged Iris development.  The artifact contains
-pure Iris wrappers, invariant boundaries, ghost-state facades, WP-state bridge
-contracts, and logical-relation-facing endpoints.  It does not yet complete a
-full ghost-backed Iris logical relation for all PICO typing rules over the
-weak-memory state.
+The fifth limitation is operational generality.  The artifact has a guarded
+resource logical relation for PICO calls and concrete CESK refinements for the
+hash hit, miss, and bad double-read paths.  It does not yet derive an abstract
+cache trace for every PICO method, nor prove whole-class contextual refinement.
+
+The sixth limitation is provider and computation scope.  The concrete provider
+uses a one-cache layout, and the verified hash computation is an explicit Iris
+API premise.  PICO typing proves language safety and a limited direct-shared-
+write effect property; it does not automatically derive that an arbitrary
+computation returns the desired mathematical hash.
 
 Future work follows directly from these limits.  The first direction is a Java
 Memory Model adequacy theorem for the field-history interface.  The second is a
 source-level cache-safety checker or proof automation tactic.  The third is a
-library-scale verification of more cache patterns, including object-valued
-caches and multi-field protocols.  The fourth is deeper integration with Iris
-weak-memory logics, replacing pure wrappers with ghost-backed WP rules where
-the additional proof power is needed.
+library-scale verification of object-valued caches and multi-field protocols.
+The fourth is a general execution-to-trace or effect-indexed method theorem.
+The fifth is integration with an established Iris weak-memory logic and a
+corresponding Java adequacy argument.
 
 ## 14. Conclusion
 
@@ -1467,19 +1427,20 @@ valid for the stable abstract value, and every method that reads them must be
 correct for every valid cache-read trace.  The current heap value is not the
 right invariant under weak memory.  The right invariant is history validity.
 
-This paper gives a generic theorem for that condition.  `StableAbs(o, a)` fixes
-the abstract value.  `CacheHistOK(P, o, a)` ensures that cache histories contain
-only protocol-valid values.  A read-from-history memory interface turns valid
-histories into valid observations.  `CacheSafe(m, P, F)` ensures that methods
-are robust to all valid observation traces and write only valid cache values.
-Together these premises imply `SemImm(P, o, a)` preservation and refinement to
-pure recomputation.
+The proof now makes each connection explicit.  The pure protocol theorem turns
+valid histories into valid observations and validates trace-robust methods.
+The CESK language exposes weak reads, writes, allocation, calls, and return.  A
+guarded Iris logical relation handles typed method calls, while semantic cache
+APIs require the stronger functional and effect contract that ordinary typing
+cannot provide.  A concrete heap-derived provider and hit/miss trace refinements
+complete this chain for the local-copy hash method; the double-read method is
+refuted at the same callable boundary.
 
-PICO supplies one stable abstract-state provider.  The Iris/Rocq cache wrapper
-proves the generic semantic fact around it.  The result is deliberately not a
-full Java Memory Model theorem.  It is a smaller theorem that makes the required
-memory assumption explicit and reusable: stable abstract state plus valid cache
-histories implies semantic immutability for trace-robust derived caches.
+The result remains deliberately short of Java Memory Model soundness.  Its
+claim is a reusable one about arbitrary-stale whole-value field histories:
+given a stable represented value, published protocol-valid cache histories,
+and a verified callable cache method, racy cache mutation preserves semantic
+immutability and the terminating result agrees with pure recomputation.
 
 ## References (working)
 

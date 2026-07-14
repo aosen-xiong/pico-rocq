@@ -35,6 +35,13 @@ Proof.
   destruct Hcorr as [Hbase Hqualifer].
   assert (sf_assignability_rel CT (rctype (rt_type o)) f a0).
   {
+    destruct (base_subtype_from_ref CT (rctype (rt_type o)) (sbase Tx) Hbase)
+      as [D0 [HbaseTx Hclass_sub]].
+    match goal with
+    | Href : sbase Tx = TRef _ |- _ =>
+        rewrite HbaseTx in Href;
+        inversion Href; subst D0
+    end.
     eapply sf_assignability_subtyping; eauto.
   }
   assert (a0 = a).
@@ -63,6 +70,13 @@ Proof.
   destruct Hcorr as [Hbase Hqualifer].
   assert (sf_assignability_rel CT (rctype (rt_type o)) f a0).
   {
+    destruct (base_subtype_from_ref CT (rctype (rt_type o)) (sbase Tx) Hbase)
+      as [D0 [HbaseTx Hclass_sub]].
+    match goal with
+    | Href : sbase Tx = TRef _ |- _ =>
+        rewrite HbaseTx in Href;
+        inversion Href; subst D0
+    end.
     eapply sf_assignability_subtyping; eauto.
   }
   assert (a0 = a).
@@ -91,6 +105,13 @@ Proof.
   destruct Hcorr as [Hbase Hqualifer].
   assert (sf_assignability_rel CT (rctype (rt_type o)) f a0).
   {
+    destruct (base_subtype_from_ref CT (rctype (rt_type o)) (sbase Tx) Hbase)
+      as [D0 [HbaseTx Hclass_sub]].
+    match goal with
+    | Href : sbase Tx = TRef _ |- _ =>
+        rewrite HbaseTx in Href;
+        inversion Href; subst D0
+    end.
     eapply sf_assignability_subtyping; eauto.
   }
   assert (a0 = a).

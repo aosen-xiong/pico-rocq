@@ -37,11 +37,16 @@ Proof.
     cache_val := fun _ => value;
     cache_default := fun _ => Int 0;
     cache_valid := derived_cache_valid derived;
-    cache_default_valid := _
+    cache_published := fun _ _ => True;
+    cache_default_valid := _;
+    cache_default_published := _;
+    cache_valid_published := _
   |}.
   intros abs_vals [].
   left.
   reflexivity.
+  intros []. exact I.
+  intros. exact I.
 Defined.
 
 (** Bridge from the protocol predicate back to the old specialized predicate. *)
@@ -230,9 +235,9 @@ Proof.
     exact Hread.
 Qed.
 
-Lemma wm_cache_history_state_valid_extension_generic :
+Lemma wm_cache_safe_transition_valid_extension_generic :
   forall sigma sigma' addr derived abs_vals
-    (Hstate' : wm_cache_history_state sigma' addr derived abs_vals),
+    (Hsafe : wm_cache_safe_transition sigma sigma' addr derived abs_vals),
     CacheHistValidExtension
       (derived_cache_protocol derived)
       (wm_derived_cache_history derived addr)
@@ -241,13 +246,40 @@ Lemma wm_cache_history_state_valid_extension_generic :
       sigma'
       abs_vals.
 Proof.
-  intros sigma sigma' addr derived abs_vals Hstate' [] v Hin.
-  right.
-  pose proof
-    (wm_cache_history_state_generic sigma' addr derived abs_vals Hstate')
-    as Hhist.
-  eapply Hhist.
-  exact Hin.
+  intros sigma sigma' addr derived abs_vals Hsafe [].
+  destruct Hsafe as [Heq | (n & V & V' & Hderived & Hnz & Hwrite)].
+  - exists []. unfold wm_derived_cache_history, values_written_to.
+    rewrite Heq, app_nil_r. split; constructor.
+  - exists [Int n]. unfold wm_derived_cache_history, values_written_to.
+    rewrite (wm_write_history_same sigma sigma' V V' addr (Int n) Hwrite).
+    rewrite map_app. simpl. split; [reflexivity |].
+    constructor; [|constructor].
+    unfold derived_cache_valid. right.
+    exists n. repeat split; assumption.
+Qed.
+
+Theorem wm_steps_valid_extension_from_safe_transitions_generic :
+  forall `{CacheMemoryModel} CT cfg cfg' addr derived abs_vals
+    (Hsteps : wm_steps CT cfg cfg')
+    (Hsafe_all : forall c1 c2,
+      wm_step CT c1 c2 ->
+      wm_cache_safe_transition
+        (wc_state c1) (wc_state c2) addr derived abs_vals),
+    CacheHistValidExtension
+      (derived_cache_protocol derived)
+      (wm_derived_cache_history derived addr)
+      (wm_derived_cache_history derived addr)
+      (wc_state cfg)
+      (wc_state cfg')
+      abs_vals.
+Proof.
+  intros Hmem CT cfg cfg' addr derived abs_vals Hsteps Hsafe_all.
+  induction Hsteps as [cfg0 | cfg1 cfg2 cfg3 Hstep Htail IH].
+  - apply cache_hist_valid_extension_refl.
+  - eapply cache_hist_valid_extension_trans.
+    + eapply wm_cache_safe_transition_valid_extension_generic.
+      eapply Hsafe_all; eauto.
+    + apply IH.
 Qed.
 
 Lemma wm_write_allowed_read_valid_generic :
@@ -299,8 +331,9 @@ Theorem wm_steps_valid_extension_from_allowed_writes_generic :
 Proof.
   intros Hmem CT cfg cfg' addr derived abs_vals
          Hsteps Hallowed_all Hstate.
-  eapply wm_cache_history_state_valid_extension_generic.
-  eapply wm_steps_preserve_cache_history_from_allowed_writes; eauto.
+  eapply wm_steps_valid_extension_from_safe_transitions_generic; eauto.
+  intros c1 c2 Hstep.
+  eapply wm_step_cache_safe_from_allowed_writes; eauto.
 Qed.
 
 Theorem wm_steps_valid_extension_from_thread_allowed_generic :
@@ -322,8 +355,9 @@ Theorem wm_steps_valid_extension_from_thread_allowed_generic :
 Proof.
   intros Hmem CT cfg cfg' addr derived abs_vals
          Hsteps Hall_threads Hstate.
-  eapply wm_cache_history_state_valid_extension_generic.
-  eapply wm_steps_preserve_cache_history_from_thread_allowed; eauto.
+  eapply wm_steps_valid_extension_from_safe_transitions_generic; eauto.
+  intros c1 c2 Hstep.
+  eapply wm_step_cache_safe_from_thread_allowed; eauto.
 Qed.
 
 Theorem wm_steps_valid_extension_from_config_allowed_generic :
@@ -343,10 +377,9 @@ Theorem wm_steps_valid_extension_from_config_allowed_generic :
 Proof.
   intros Hmem CT cfg cfg' addr derived abs_vals
          Hsteps Hall_configs Hstate.
-  eapply wm_cache_history_state_valid_extension_generic.
-  eapply wm_steps_preserve_cache_history_from_config_allowed; eauto.
-  apply wm_steps_allowed_configs_from_global.
-  exact Hall_configs.
+  eapply wm_steps_valid_extension_from_safe_transitions_generic; eauto.
+  intros c1 c2 Hstep.
+  eapply wm_step_cache_safe_from_config_allowed; eauto.
 Qed.
 
 Theorem wm_steps_valid_extension_from_closed_config_safe_generic :
@@ -368,8 +401,19 @@ Theorem wm_steps_valid_extension_from_closed_config_safe_generic :
 Proof.
   intros Hmem CT cfg cfg' addr derived abs_vals
          Hsteps Hsafe_cfg Hclosed Hstate.
-  eapply wm_cache_history_state_valid_extension_generic.
-  eapply wm_steps_preserve_cache_history_from_closed_config_safe; eauto.
+  induction Hsteps as [cfg0 | cfg1 cfg2 cfg3 Hstep Htail IH].
+  - apply cache_hist_valid_extension_refl.
+  - eapply cache_hist_valid_extension_trans.
+    + eapply wm_cache_safe_transition_valid_extension_generic.
+      eapply wm_step_cache_safe_from_config_allowed; eauto.
+      apply cache_safe_config_implies_wm_config_threads_allowed.
+      exact Hsafe_cfg.
+    + apply IH.
+      * eapply Hclosed; eauto.
+      * eapply wm_step_preserves_cache_history; eauto.
+        eapply wm_step_cache_safe_from_config_allowed; eauto.
+        apply cache_safe_config_implies_wm_config_threads_allowed.
+        exact Hsafe_cfg.
 Qed.
 
 (** These read-validity theorems are the operational form of the main field-
@@ -503,11 +547,16 @@ Proof.
     cache_val := fun _ => value;
     cache_default := fun _ => Int 0;
     cache_valid := hash_cache_valid;
-    cache_default_valid := _
+    cache_published := fun _ _ => True;
+    cache_default_valid := _;
+    cache_default_published := _;
+    cache_valid_published := _
   |}.
   intros a [].
   left.
   reflexivity.
+  intros []. exact I.
+  intros. exact I.
 Defined.
 
 Definition hash_obs (v : value) : CacheObs hash_cache_protocol :=
@@ -717,7 +766,7 @@ Qed.
 Theorem good_hash_refines_pure_recompute_run :
   forall H tr r
     (Htrace : ValidTrace hash_cache_protocol H tr)
-    (Hexec : weak_exec_matches_trace hash_cache_protocol good_hash_run H tt tr r),
+    (Hexec : trace_result_matches hash_cache_protocol good_hash_run H tt tr r),
     PureRecomputeResult hash_pure_result H tt r.
 Proof.
   intros H tr r Htrace Hexec.
@@ -1224,6 +1273,11 @@ Proof.
     eapply IH; eauto.
 Qed.
 
+Definition pico_derived_cache_addr
+    (CT : class_table) (C : class_name) (loc : Loc)
+    (addr : FieldAddr) : Prop :=
+  fst addr = loc /\ derived_cache_field CT C (snd addr).
+
 (** The main PICO/provider bridge for the generic theorem.  After weak-memory
     steps preserve the final-field abstraction and the cache history is a valid
     extension, a trace-robust cache method returns the pure result and preserves
@@ -1242,6 +1296,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_after_steps_post_history :
     (Htype : wm_get_type (wc_state cfg) loc = Some rt_abs)
     (HC : rctype rt_abs = C)
     (Hfinals : final_fields CTstep C abs_fields)
+    (Hcache_addr : pico_derived_cache_addr CTstep C loc addr)
     (Hstable :
       pico_wm_stable_abs CTabs C loc abs_fields (wc_state cfg) abs_vals)
     (Hhist : CacheHistOK
@@ -1265,7 +1320,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_after_steps_post_history :
       (wm_derived_cache_read derived addr)
       (wc_state cfg')
       tr)
-    (Hexec : weak_exec_matches_trace
+    (Hexec : trace_result_matches
       (derived_cache_protocol derived)
       run_with_cache_trace
       abs_vals
@@ -1282,7 +1337,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_after_steps_post_history :
 Proof.
   intros Hmem CTstep CTabs C loc abs_fields cfg cfg' rt_abs addr
     derived abs_vals Args Result F run args tr r Hsteps Htype HC Hfinals
-    Hstable Hhist Hext Hsafe Hreads Hexec.
+    Hcache_addr Hstable Hhist Hext Hsafe Hreads Hexec.
   pose proof
     (wm_steps_preserve_pico_wm_stable_abs_from_final_fields
       CTstep CTabs C loc abs_fields cfg cfg' Hsteps rt_abs abs_vals
@@ -1326,6 +1381,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_from_closed_steps_post_history :
     (Htype : wm_get_type (wc_state cfg) loc = Some rt_abs)
     (HC : rctype rt_abs = C)
     (Hfinals : final_fields CTstep C abs_fields)
+    (Hcache_addr : pico_derived_cache_addr CTstep C loc addr)
     (Hstable :
       pico_wm_stable_abs CTabs C loc abs_fields (wc_state cfg) abs_vals)
     (Hstate : wm_config_cache_history_state cfg addr derived abs_vals)
@@ -1343,7 +1399,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_from_closed_steps_post_history :
       (wm_derived_cache_read derived addr)
       (wc_state cfg')
       tr)
-    (Hexec : weak_exec_matches_trace
+    (Hexec : trace_result_matches
       (derived_cache_protocol derived)
       run_with_cache_trace
       abs_vals
@@ -1360,7 +1416,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_from_closed_steps_post_history :
 Proof.
   intros Hmem CTstep CTabs C loc abs_fields cfg cfg' rt_abs addr
     derived abs_vals Args Result F run args tr r Hsteps Htype HC Hfinals
-    Hstable Hstate Hsafe_cfg Hclosed Hsafe Hreads Hexec.
+    Hcache_addr Hstable Hstate Hsafe_cfg Hclosed Hsafe Hreads Hexec.
   pose proof
     (wm_cache_history_state_generic
       (wc_state cfg) addr derived abs_vals Hstate) as Hhist.
@@ -1389,6 +1445,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_after_steps_write_extension :
     (Htype : wm_get_type (wc_state cfg) loc = Some rt_abs)
     (HC : rctype rt_abs = C)
     (Hfinals : final_fields CTstep C abs_fields)
+    (Hcache_addr : pico_derived_cache_addr CTstep C loc addr)
     (Hstable :
       pico_wm_stable_abs CTabs C loc abs_fields (wc_state cfg) abs_vals)
     (Hhist : CacheHistOK
@@ -1413,7 +1470,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_after_steps_write_extension :
       (wm_derived_cache_read derived addr)
       (wc_state cfg')
       tr)
-    (Hexec : weak_exec_matches_trace
+    (Hexec : trace_result_matches
       (derived_cache_protocol derived)
       run_with_cache_trace
       abs_vals
@@ -1437,7 +1494,8 @@ Theorem pico_wm_stable_cache_safe_method_sound_after_steps_write_extension :
 Proof.
   intros Hmem CTstep CTabs C loc abs_fields cfg cfg' sigma' rt_abs addr
     derived abs_vals Args Result F run args tr r Hsteps Htype HC Hfinals
-    Hstable Hhist Hpre_ext Hstable_post Hsafe Hreads Hexec Hext_by_writes.
+    Hcache_addr Hstable Hhist Hpre_ext Hstable_post Hsafe Hreads Hexec
+    Hext_by_writes.
   pose proof
     (wm_steps_preserve_pico_wm_stable_abs_from_final_fields
       CTstep CTabs C loc abs_fields cfg cfg' Hsteps rt_abs abs_vals
@@ -1484,6 +1542,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_after_steps_cache_only_write_exte
     (Htype : wm_get_type (wc_state cfg) loc = Some rt_abs)
     (HC : rctype rt_abs = C)
     (Hfinals : final_fields CTstep C abs_fields)
+    (Hcache_addr : pico_derived_cache_addr CTstep C loc addr)
     (Hstable :
       pico_wm_stable_abs CTabs C loc abs_fields (wc_state cfg) abs_vals)
     (Hhist : CacheHistOK
@@ -1509,7 +1568,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_after_steps_cache_only_write_exte
       (wm_derived_cache_read derived addr)
       (wc_state cfg')
       tr)
-    (Hexec : weak_exec_matches_trace
+    (Hexec : trace_result_matches
       (derived_cache_protocol derived)
       run_with_cache_trace
       abs_vals
@@ -1533,7 +1592,8 @@ Theorem pico_wm_stable_cache_safe_method_sound_after_steps_cache_only_write_exte
 Proof.
   intros Hmem CTstep CTabs C loc abs_fields cfg cfg' sigma' rt_abs addr
     derived abs_vals Args Result F run args tr r Hsteps Htype HC Hfinals
-    Hstable Hhist Hpre_ext Honly Havoid Hsafe Hreads Hexec Hext_by_writes.
+    Hcache_addr Hstable Hhist Hpre_ext Honly Havoid Hsafe Hreads Hexec
+    Hext_by_writes.
   pose proof
     (wm_steps_preserve_pico_wm_stable_abs_from_final_fields
       CTstep CTabs C loc abs_fields cfg cfg' Hsteps rt_abs abs_vals
@@ -1565,6 +1625,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_from_closed_steps_cache_only_writ
     (Htype : wm_get_type (wc_state cfg) loc = Some rt_abs)
     (HC : rctype rt_abs = C)
     (Hfinals : final_fields CTstep C abs_fields)
+    (Hcache_addr : pico_derived_cache_addr CTstep C loc addr)
     (Hstable :
       pico_wm_stable_abs CTabs C loc abs_fields (wc_state cfg) abs_vals)
     (Hstate : wm_config_cache_history_state cfg addr derived abs_vals)
@@ -1584,7 +1645,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_from_closed_steps_cache_only_writ
       (wm_derived_cache_read derived addr)
       (wc_state cfg')
       tr)
-    (Hexec : weak_exec_matches_trace
+    (Hexec : trace_result_matches
       (derived_cache_protocol derived)
       run_with_cache_trace
       abs_vals
@@ -1608,7 +1669,7 @@ Theorem pico_wm_stable_cache_safe_method_sound_from_closed_steps_cache_only_writ
 Proof.
   intros Hmem CTstep CTabs C loc abs_fields cfg cfg' sigma' rt_abs addr
     derived abs_vals Args Result F run args tr r Hsteps Htype HC Hfinals
-    Hstable Hstate Hsafe_cfg Hclosed Honly Havoid Hsafe Hreads Hexec
+    Hcache_addr Hstable Hstate Hsafe_cfg Hclosed Honly Havoid Hsafe Hreads Hexec
     Hext_by_writes.
   pose proof
     (wm_cache_history_state_generic

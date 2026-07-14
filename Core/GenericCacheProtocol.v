@@ -30,14 +30,23 @@ Record CacheProtocol (AbsVal : Type) : Type := {
   cache_val : cache_field -> Type;
   cache_default : forall k, cache_val k;
   cache_valid : AbsVal -> forall k, cache_val k -> Prop;
+  (** For reference-valued caches this predicate records safe publication and
+      transitive stability of the referenced value. Primitive protocols may
+      instantiate it with [True]. *)
+  cache_published : forall k, cache_val k -> Prop;
   cache_default_valid :
-    forall a k, cache_valid a k (cache_default k)
+    forall a k, cache_valid a k (cache_default k);
+  cache_default_published :
+    forall k, cache_published k (cache_default k);
+  cache_valid_published :
+    forall a k v, cache_valid a k v -> cache_published k v
 }.
 
 Arguments cache_field {_} _.
 Arguments cache_val {_} _ _.
 Arguments cache_default {_} _ _.
 Arguments cache_valid {_} _ _ _ _.
+Arguments cache_published {_} _ _ _.
 
 (** ** Histories and History Validity *)
 
@@ -82,16 +91,68 @@ Definition CacheHistSnapshotOK {AbsVal : Type}
 Definition CacheHistValidExtension {Obj AbsVal : Type}
     (P : CacheProtocol AbsVal) (Hist Hist' : CacheHistory P)
     (o o' : Obj) (a : AbsVal) : Prop :=
-  forall k (v : cache_val P k)
-    (Hnew : In v (Hist' o' k)),
-    In v (Hist o k) \/ cache_valid P a k v.
+  forall k,
+    exists added : list (cache_val P k),
+      Hist' o' k = Hist o k ++ added /\
+      Forall (cache_valid P a k) added.
 
 Definition CacheHistSnapshotValidExtension {AbsVal : Type}
     (P : CacheProtocol AbsVal)
     (snap snap' : CacheHistorySnapshot P) (a : AbsVal) : Prop :=
-  forall k (v : cache_val P k)
-    (Hnew : In v (snap' k)),
-    In v (snap k) \/ cache_valid P a k v.
+  forall k,
+    exists added : list (cache_val P k),
+      snap' k = snap k ++ added /\
+      Forall (cache_valid P a k) added.
+
+Lemma cache_hist_valid_extension_refl :
+  forall {Obj AbsVal : Type}
+    (P : CacheProtocol AbsVal) (Hist : @CacheHistory Obj AbsVal P) o a,
+    CacheHistValidExtension P Hist Hist o o a.
+Proof.
+  intros Obj AbsVal P Hist o a k.
+  exists []. rewrite app_nil_r. split; constructor.
+Qed.
+
+Lemma cache_hist_valid_extension_trans :
+  forall {Obj AbsVal : Type}
+    (P : CacheProtocol AbsVal)
+    (Hist1 Hist2 Hist3 : @CacheHistory Obj AbsVal P) o1 o2 o3 a,
+    CacheHistValidExtension P Hist1 Hist2 o1 o2 a ->
+    CacheHistValidExtension P Hist2 Hist3 o2 o3 a ->
+    CacheHistValidExtension P Hist1 Hist3 o1 o3 a.
+Proof.
+  intros Obj AbsVal P Hist1 Hist2 Hist3 o1 o2 o3 a H12 H23 k.
+  destruct (H12 k) as [added12 [Heq12 Hvalid12]].
+  destruct (H23 k) as [added23 [Heq23 Hvalid23]].
+  exists (added12 ++ added23). split.
+  - rewrite Heq23, Heq12, app_assoc. reflexivity.
+  - apply Forall_app. split; assumption.
+Qed.
+
+Lemma cache_hist_snapshot_valid_extension_refl :
+  forall {AbsVal : Type}
+    (P : CacheProtocol AbsVal) (snap : CacheHistorySnapshot P) a,
+    CacheHistSnapshotValidExtension P snap snap a.
+Proof.
+  intros AbsVal P snap a k.
+  exists []. rewrite app_nil_r. split; constructor.
+Qed.
+
+Lemma cache_hist_snapshot_valid_extension_trans :
+  forall {AbsVal : Type}
+    (P : CacheProtocol AbsVal)
+    (snap1 snap2 snap3 : CacheHistorySnapshot P) a,
+    CacheHistSnapshotValidExtension P snap1 snap2 a ->
+    CacheHistSnapshotValidExtension P snap2 snap3 a ->
+    CacheHistSnapshotValidExtension P snap1 snap3 a.
+Proof.
+  intros AbsVal P snap1 snap2 snap3 a H12 H23 k.
+  destruct (H12 k) as [added12 [Heq12 Hvalid12]].
+  destruct (H23 k) as [added23 [Heq23 Hvalid23]].
+  exists (added12 ++ added23). split.
+  - rewrite Heq23, Heq12, app_assoc. reflexivity.
+  - apply Forall_app. split; assumption.
+Qed.
 
 Lemma cache_hist_ok_snapshot :
   forall {Obj AbsVal : Type}
@@ -133,9 +194,8 @@ Lemma cache_hist_valid_extension_snapshot :
       (@cache_history_snapshot Obj AbsVal P Hist' o')
       a.
 Proof.
-  intros Obj AbsVal P Hist Hist' o o' a Hext k v Hin.
-  apply Hext.
-  exact Hin.
+  intros Obj AbsVal P Hist Hist' o o' a Hext k.
+  exact (Hext k).
 Qed.
 
 Lemma cache_hist_ok_valid_extension :
@@ -147,10 +207,11 @@ Lemma cache_hist_ok_valid_extension :
     CacheHistOK P Hist' o' a.
 Proof.
   intros Obj AbsVal P Hist Hist' o o' a Hhist Hext k v Hin.
-  destruct (Hext k v Hin) as [Hold | Hvalid].
-  - apply Hhist.
-    exact Hold.
-  - exact Hvalid.
+  destruct (Hext k) as [added [Heq Hvalid]].
+  rewrite Heq in Hin. apply in_app_or in Hin.
+  destruct Hin as [Hold | Hnew].
+  - eapply Hhist; eauto.
+  - eapply Forall_forall; eauto.
 Qed.
 
 Lemma cache_hist_snapshot_ok_valid_extension :
@@ -162,10 +223,11 @@ Lemma cache_hist_snapshot_ok_valid_extension :
     CacheHistSnapshotOK P snap' a.
 Proof.
   intros AbsVal P snap snap' a Hsnap Hext k v Hin.
-  destruct (Hext k v Hin) as [Hold | Hvalid].
-  - apply Hsnap.
-    exact Hold.
-  - exact Hvalid.
+  destruct (Hext k) as [added [Heq Hvalid]].
+  rewrite Heq in Hin. apply in_app_or in Hin.
+  destruct Hin as [Hold | Hnew].
+  - eapply Hsnap; eauto.
+  - eapply Forall_forall; eauto.
 Qed.
 
 (** ** Cache-Read Traces *)
@@ -368,18 +430,11 @@ Lemma cache_hist_extends_by_valid_trace :
     (Hext : CacheHistExtendsByTrace P Hist Hist' o o' tr),
     CacheHistValidExtension P Hist Hist' o o' a.
 Proof.
-  intros Obj AbsVal P Hist Hist' o o' a tr Htrace Hext k v Hin.
+  intros Obj AbsVal P Hist Hist' o o' a tr Htrace Hext k.
   destruct (Hext k) as [added [Heq Hadded]].
-  rewrite Heq in Hin.
-  apply in_app_or in Hin.
-  destruct Hin as [Hold | Hnew].
-  - left.
-    exact Hold.
-  - right.
-    eapply valid_trace_contains_valid.
-    + exact Htrace.
-    + apply Hadded.
-      exact Hnew.
+  exists added. split; [exact Heq |].
+  apply Forall_forall. intros v Hnew.
+  eapply valid_trace_contains_valid; eauto.
 Qed.
 
 Lemma cache_hist_snapshot_extends_by_valid_trace :
@@ -390,18 +445,11 @@ Lemma cache_hist_snapshot_extends_by_valid_trace :
     (Hext : CacheHistSnapshotExtendsByTrace P snap snap' tr),
     CacheHistSnapshotValidExtension P snap snap' a.
 Proof.
-  intros AbsVal P snap snap' a tr Htrace Hext k v Hin.
+  intros AbsVal P snap snap' a tr Htrace Hext k.
   destruct (Hext k) as [added [Heq Hadded]].
-  rewrite Heq in Hin.
-  apply in_app_or in Hin.
-  destruct Hin as [Hold | Hnew].
-  - left.
-    exact Hold.
-  - right.
-    eapply valid_trace_contains_valid.
-    + exact Htrace.
-    + apply Hadded.
-      exact Hnew.
+  exists added. split; [exact Heq |].
+  apply Forall_forall. intros v Hnew.
+  eapply valid_trace_contains_valid; eauto.
 Qed.
 
 (** ** Method Semantics and Trace-Robust Safety *)
@@ -518,9 +566,11 @@ Proof.
   - exact Hext.
 Qed.
 
-(** [weak_exec_matches_trace] relates an external operational execution to the
-    abstract trace semantics used by the generic proof. *)
-Definition weak_exec_matches_trace {AbsVal Args Result : Type}
+(** [trace_result_matches] is only the result-projection relation for the
+    abstract trace interpreter.  A language-specific execution-to-trace
+    theorem must separately establish which trace an operational execution
+    emits; this definition does not encode an execution relation. *)
+Definition trace_result_matches {AbsVal Args Result : Type}
     (P : CacheProtocol AbsVal)
     (run_with_cache_trace :
       AbsVal -> Args -> CacheTrace P -> CacheRun P Result)
@@ -539,7 +589,7 @@ Definition CacheRefinesPure {AbsVal Args Result : Type}
       AbsVal -> Args -> CacheTrace P -> CacheRun P Result) : Prop :=
   forall a args tr r
     (Htrace : ValidTrace P a tr)
-    (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r),
+    (Hexec : trace_result_matches P run_with_cache_trace a args tr r),
     PureRecomputeResult F a args r.
 
 (** [SemImm] packages the two semantic facts preserved by the main theorem:
@@ -564,12 +614,12 @@ Theorem cache_safe_method_sound :
     (Hhist : CacheHistOK P Hist o a)
     (Hsafe : CacheSafeMethod P F run_with_cache_trace)
     (Htrace : ValidTrace P a tr)
-    (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r),
+    (Hexec : trace_result_matches P run_with_cache_trace a args tr r),
     r = F a args /\ SemImm P Hist Stable o a.
 Proof.
   intros Obj AbsVal Args Result P Hist Stable F run o a args tr r
          Hstable Hhist Hsafe Htrace Hexec.
-  unfold weak_exec_matches_trace in Hexec.
+  unfold trace_result_matches in Hexec.
   destruct (Hsafe a args tr Htrace) as [Hresult _].
   split.
   - rewrite <- Hexec.
@@ -594,7 +644,7 @@ Theorem cache_safe_method_sound_with_valid_history_extension :
     (Hhist : CacheHistOK P Hist o a)
     (Hsafe : CacheSafeMethod P F run_with_cache_trace)
     (Htrace : ValidTrace P a tr)
-    (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r)
+    (Hexec : trace_result_matches P run_with_cache_trace a args tr r)
     (Hext : CacheHistValidExtension P Hist Hist' o o' a),
     r = F a args /\ SemImm P Hist' Stable o' a.
 Proof.
@@ -622,7 +672,7 @@ Theorem cache_safe_method_refines_pure :
     CacheRefinesPure P F run_with_cache_trace.
 Proof.
   intros AbsVal Args Result P F run Hsafe a args tr r Htrace Hexec.
-  unfold PureRecomputeResult, weak_exec_matches_trace in *.
+  unfold PureRecomputeResult, trace_result_matches in *.
   destruct (Hsafe a args tr Htrace) as [Hresult _].
   rewrite <- Hexec.
   exact Hresult.
@@ -647,7 +697,7 @@ Theorem cache_safe_method_sound_from_history :
     (Hhist : CacheHistOK P Hist o a)
     (Hsafe : CacheSafeMethod P F run_with_cache_trace)
     (Hreads : TraceReadsFromHistory P read_cache o tr)
-    (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r),
+    (Hexec : trace_result_matches P run_with_cache_trace a args tr r),
     r = F a args /\ SemImm P Hist Stable o a.
 Proof.
   intros Obj AbsVal Args Result P Hist Stable read_cache read_from_history
@@ -674,7 +724,7 @@ Theorem cache_safe_method_sound_from_history_with_valid_extension :
     (Hhist : CacheHistOK P Hist o a)
     (Hsafe : CacheSafeMethod P F run_with_cache_trace)
     (Hreads : TraceReadsFromHistory P read_cache o tr)
-    (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r)
+    (Hexec : trace_result_matches P run_with_cache_trace a args tr r)
     (Hext : CacheHistValidExtension P Hist Hist' o o' a),
     r = F a args /\ SemImm P Hist' Stable o' a.
 Proof.
@@ -706,7 +756,7 @@ Theorem cache_safe_method_sound_from_post_history_with_valid_extension :
     (Hhist : CacheHistOK P Hist o a)
     (Hsafe : CacheSafeMethod P F run_with_cache_trace)
     (Hreads : TraceReadsFromHistory P read_cache o' tr)
-    (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r)
+    (Hexec : trace_result_matches P run_with_cache_trace a args tr r)
     (Hext : CacheHistValidExtension P Hist Hist' o o' a),
     r = F a args /\ SemImm P Hist' Stable o' a.
 Proof.
@@ -743,7 +793,7 @@ Theorem trace_robust_semantic_immutability :
     (Hstable' : Stable o' a)
     (Hsafe : CacheSafeMethod P F run_with_cache_trace)
     (Hreads : TraceReadsFromHistory P read_cache o tr)
-    (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r)
+    (Hexec : trace_result_matches P run_with_cache_trace a args tr r)
     (Hext_by_writes : CacheHistExtendsByTrace
       P
       Hist
@@ -791,7 +841,7 @@ Theorem trace_robust_semantic_immutability_after_history_extension :
     (Hpre_ext : CacheHistValidExtension P Hist Hist_pre o o_pre a)
     (Hsafe : CacheSafeMethod P F run_with_cache_trace)
     (Hreads : TraceReadsFromHistory P read_cache o_pre tr)
-    (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r)
+    (Hexec : trace_result_matches P run_with_cache_trace a args tr r)
     (Hext_by_writes : CacheHistExtendsByTrace
       P
       Hist_pre
@@ -829,7 +879,7 @@ Theorem cache_safe_method_refines_pure_from_history :
     (Hhist : CacheHistOK P Hist o a)
     (Hsafe : CacheSafeMethod P F run_with_cache_trace)
     (Hreads : TraceReadsFromHistory P read_cache o tr)
-    (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r),
+    (Hexec : trace_result_matches P run_with_cache_trace a args tr r),
     PureRecomputeResult F a args r.
 Proof.
   intros Obj AbsVal Args Result P Hist read_cache read_from_history
@@ -854,7 +904,7 @@ Theorem cache_safe_method_refines_pure_from_post_history_with_valid_extension :
     (Hext : CacheHistValidExtension P Hist Hist' o o' a)
     (Hsafe : CacheSafeMethod P F run_with_cache_trace)
     (Hreads : TraceReadsFromHistory P read_cache o' tr)
-    (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r),
+    (Hexec : trace_result_matches P run_with_cache_trace a args tr r),
     PureRecomputeResult F a args r.
 Proof.
   intros Obj AbsVal Args Result P Hist Hist' read_cache

@@ -446,6 +446,10 @@ Proof.
     specialize (IHHeval2 eq_refl Hnot_protected vals' Hobj' values' Hrtype ).
     rewrite <- IHHeval1 in IHHeval2.
     auto.
+  - (* IfZero *)
+    eapply IHHeval; eauto.
+  - (* IfNonzero *)
+    eapply IHHeval; eauto.
 Qed.
 
 Lemma protected_locset_shrinks_with_null_binding :
@@ -630,7 +634,8 @@ Proof.
     * lia.
     * replace (dom rΓ.(vars) - dom rΓ.(vars)) with 0 in HgetVal by lia.
       simpl in HgetVal.
-      discriminate. (* Null_a <> Iot l_z *)
+      unfold default_value in HgetVal.
+      destruct (sbase T); discriminate.
   + (* Case: ret_var < dom rΓ.(vars) - old variable, unchanged *)
     (* Show ret_var had the same value in original rΓ *)
     assert (ret_var < dom rΓ.(vars) + 1).
@@ -853,7 +858,6 @@ Proof.
         exact Hobjexist.
         exact Hotherclasses.
         apply Hcname_consistent.
-        apply Hcname_consistent.
         exact Hheap.
         rewrite HeqrΓmethodinit.
         simpl.
@@ -968,11 +972,15 @@ Proof.
         rewrite Hval_y in Hcorr.
         rewrite Hobjy in Hcorr.
         simpl in Hcorr.
-        destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-	        assert (Hmsigeq : msignature mdef = msignature mdef0).
-        {
-          eapply method_signature_consistent_subtype; eauto.
-        }
+	        destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
+		        assert (Hmsigeq : msignature mdef = msignature mdef0).
+	        {
+	          destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hbasesubtype)
+	            as [D0 [HbaseTy Hclass_sub]].
+	          rewrite HbaseTy in Href.
+	          inversion Href; subst D0.
+	          eapply method_signature_consistent_subtype; eauto.
+	        }
 	        rewrite Hmsigeq.
         rewrite Hargs.
         rewrite <- Harg_sub.
@@ -1024,10 +1032,14 @@ Proof.
         simpl in Hcorr.
         destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
         
-        assert (Hmsigeq: msignature mdef = msignature mdef0).
-        {
-          eapply method_signature_consistent_subtype; eauto.
-        }
+	        assert (Hmsigeq: msignature mdef = msignature mdef0).
+	        {
+	          destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hbasesubtype)
+	            as [D0 [HbaseTy Hclass_sub]].
+	          rewrite HbaseTy in Href.
+	          inversion Href; subst D0.
+	          eapply method_signature_consistent_subtype; eauto.
+	        }
         destruct i as [|i'].
 
         (* Reciever index - 0 *)
@@ -1046,7 +1058,7 @@ Proof.
         rewrite Hmsigeq.
         destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         apply qualified_type_subtype_base_subtype in Hrcv_sub.
-        rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
+        rewrite (vpa_mutability_tt_sbase_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
         eapply base_trans; eauto.
         destruct Hrcv_sub as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
         eapply base_trans; eauto.
@@ -1202,8 +1214,25 @@ Proof.
         unfold runtime_getVal.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
-          - (* Parameter i' exists *)
-            destruct v as [|loc|n]; [trivial| | trivial].
+	          - (* Parameter i' exists *)
+	            destruct v as [|loc|n];
+	              [trivial
+	              |
+	              | simpl in Hnth;
+	                rewrite Hmsigeq in Hnth;
+	                eapply call_int_arg_base_safe_ro
+	                  with (mdef:=mdef0) (i:=i') (n:=n)
+	                       (recv:=lOutterReceiver) (qrecv:=OutterReceiverMutability);
+	                  [ exact Harg_sub
+	                  | exact Hget_args
+	                  | exact Hargs
+	                  | exact Hval_i
+	                  | exact Hnth
+	                  | rewrite Hvars; exact HOutterReceiverAddr
+	                  | exact HOutterReceiverMutabilityType
+	                  | intros ι0 q0 Hrecv0 Hmut0 j0 Hj0 T0 HT0;
+	                    rewrite Hvars in Hrecv0;
+	                    exact (Hcorrcopy ι0 q0 Hrecv0 Hmut0 j0 Hj0 T0 HT0) ]].
             (* Use H23 to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -1300,7 +1329,7 @@ Proof.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in Harg_sub; eauto.
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sbase_safe_ro Ty sqt) in Harg_sub.
             eapply base_trans; eauto.
 
             (* Qualifier Typability *)
@@ -1350,7 +1379,7 @@ Proof.
               easy.
             }
             subst rq_obj.
-            clear - Harg_sub Harg_qualifiertypability HyQualifierTypablility HOutterReceiverQualifierTypablility.
+	            clear - argtype Harg_sub Harg_qualifiertypability HyQualifierTypablility HOutterReceiverQualifierTypablility.
 
             destruct (rqtype (rt_type argobj)) eqn:Hargobjmutability; move Hargobjmutability at bottom;
             destruct (sqtype sqt) eqn:HParameterStaticDeclearedMutability; move HParameterStaticDeclearedMutability at bottom;
@@ -1422,10 +1451,14 @@ Proof.
     simpl in Hcorr.
     destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
     
-    assert (Hmsigeq: msignature mdef = msignature mdef0).
-    {
-      eapply method_signature_consistent_subtype; eauto.
-    }
+	    assert (Hmsigeq: msignature mdef = msignature mdef0).
+	    {
+	      destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hbasesubtype)
+	        as [D0 [HbaseTy Hclass_sub]].
+	      rewrite HbaseTy in Href.
+	      inversion Href; subst D0.
+	      eapply method_signature_consistent_subtype; eauto.
+	    }
     {
       rewrite Hmsigeq in Hmethodbody_typing.
       destruct (mtype (msignature mdef0)).
@@ -1445,7 +1478,7 @@ Proof.
       eapply reachable_locations_from_initial_env_subset; eauto.
     }
   +
-    assert (Hwfmethod: exists D ddef, base_subtype CT cy D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef).
+    assert (Hwfmethod: exists D ddef, class_subtype CT cy D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef).
     {
       eapply method_lookup_in_wellformed_inherited; eauto.
       eapply r_basetype_in_dom; eauto.
@@ -1468,7 +1501,6 @@ Proof.
         exact Hclass.
         exact Hobjexist.
         exact Hotherclasses.
-        apply Hcname_consistent.
         apply Hcname_consistent.
         exact Hheap.
         rewrite HeqrΓmethodinit.
@@ -1590,11 +1622,15 @@ Proof.
         rewrite Hval_y in Hcorr.
         rewrite Hobjy in Hcorr.
         simpl in Hcorr.
-        destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
-	        assert (Hmsigeq : msignature mdef = msignature mdef0).
-        {
-          eapply method_signature_consistent_subtype; eauto.
-        }
+	        destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
+		        assert (Hmsigeq : msignature mdef = msignature mdef0).
+	        {
+	          destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hbasesubtype)
+	            as [D0 [HbaseTy Hclass_sub]].
+	          rewrite HbaseTy in Href.
+	          inversion Href; subst D0.
+	          eapply method_signature_consistent_subtype; eauto.
+	        }
 	        rewrite Hmsigeq.
         rewrite Hargs.
         rewrite <- Harg_sub.
@@ -1646,10 +1682,14 @@ Proof.
         simpl in Hcorr.
         destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
         
-        assert (Hmsigeq: msignature mdef = msignature mdef0).
-        {
-          eapply method_signature_consistent_subtype; eauto.
-        }
+	        assert (Hmsigeq: msignature mdef = msignature mdef0).
+	        {
+	          destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hbasesubtype)
+	            as [D0 [HbaseTy Hclass_sub]].
+	          rewrite HbaseTy in Href.
+	          inversion Href; subst D0.
+	          eapply method_signature_consistent_subtype; eauto.
+	        }
         destruct i as [|i'].
 
         (* Reciever index - 0 *)
@@ -1668,7 +1708,7 @@ Proof.
         rewrite Hmsigeq.
         destruct Hrcv_sub as [Hrcv_sub | Hrcv_sub].
         apply qualified_type_subtype_base_subtype in Hrcv_sub.
-        rewrite (vpa_mutability_tt_sctype_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
+        rewrite (vpa_mutability_tt_sbase_safe_ro Ty (mreceiver (msignature mdef0))) in Hrcv_sub.
         eapply base_trans; eauto.
         destruct Hrcv_sub as [HTyqualifier [HReceiverDeclearedQualifier HBaseSubtype]].
         eapply base_trans; eauto.
@@ -1823,8 +1863,25 @@ Proof.
         unfold runtime_getVal.
         simpl.
         destruct (nth_error vals i') as [v|] eqn:Hval_i.
-          - (* Parameter i' exists *)
-            destruct v as [|loc|n]; [trivial| | trivial].
+	          - (* Parameter i' exists *)
+	            destruct v as [|loc|n];
+	              [trivial
+	              |
+	              | simpl in Hnth;
+	                rewrite Hmsigeq in Hnth;
+	                eapply call_int_arg_base_safe_ro
+	                  with (mdef:=mdef0) (i:=i') (n:=n)
+	                       (recv:=lOutterReceiver) (qrecv:=OutterReceiverMutability);
+	                  [ exact Harg_sub
+	                  | exact Hget_args
+	                  | exact Hargs
+	                  | exact Hval_i
+	                  | exact Hnth
+	                  | rewrite Hvars; exact HOutterReceiverAddr
+	                  | exact HOutterReceiverMutabilityType
+	                  | intros ι0 q0 Hrecv0 Hmut0 j0 Hj0 T0 HT0;
+	                    rewrite Hvars in Hrecv0;
+	                    exact (Hcorrcopy ι0 q0 Hrecv0 Hmut0 j0 Hj0 T0 HT0) ]].
             (* Use H23 to get the subtyping relationship *)
             assert (Hi'_bound : i' < List.length argtypes).
             {
@@ -1921,7 +1978,7 @@ Proof.
             rewrite Hmsigeq in Hnth.
             eapply Forall2_nth_error in Harg_sub; eauto.
             apply qualified_type_subtype_base_subtype in Harg_sub.
-            rewrite (vpa_mutability_tt_sctype_safe_ro Ty sqt) in Harg_sub.
+            rewrite (vpa_mutability_tt_sbase_safe_ro Ty sqt) in Harg_sub.
             eapply base_trans; eauto.
 
             (* Qualifier Typability *)
@@ -2043,10 +2100,14 @@ Proof.
     simpl in Hcorr.
     destruct Hcorr as [Hbasesubtype HyQualifierTypablility].
     
-    assert (Hmsigeq: msignature mdef = msignature mdef0).
-    {
-      eapply method_signature_consistent_subtype; eauto.
-    }
+	    assert (Hmsigeq: msignature mdef = msignature mdef0).
+	    {
+	      destruct (base_subtype_from_ref CT rc_obj (sbase Ty) Hbasesubtype)
+	        as [D0 [HbaseTy Hclass_sub]].
+	      rewrite HbaseTy in Href.
+	      inversion Href; subst D0.
+	      eapply method_signature_consistent_subtype; eauto.
+	    }
     {
       rewrite Hmsigeq in Hmethodbody_typing.
       destruct (mtype (msignature mdef0)).
@@ -2071,4 +2132,10 @@ Proof.
   specialize (eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1) as Hh'.
   assert (l_z < dom h') by lia.
   eapply IHHeval2; eauto.
+  - (* IfZero *)
+    inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* IfNonzero *)
+    inversion Htyping; subst.
+    eapply IHHeval; eauto.
 Qed.

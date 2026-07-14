@@ -99,6 +99,18 @@ alectryon-doc: coq
 	  '  <ul>' \
 	  '    <li><a href="WFNOMutationEXP.html">WFNOMutationEXP</a></li>' \
 	  '  </ul>' \
+	  '  <h2>Semantic immutability and derived caches</h2>' \
+	  '  <ul>' \
+	  '    <li><a href="Core.GenericCacheProtocol.html">Generic cache protocol</a></li>' \
+	  '    <li><a href="Core.GenericDerivedCache.html">Derived-cache instance</a></li>' \
+	  '    <li><a href="Iris.GenericCacheGhostState.html">Cache ghost state</a></li>' \
+	  '    <li><a href="Iris.IrisSemanticBridge.html">SemImm Iris bridge</a></li>' \
+	  '    <li><a href="PICOBridge.PicoIrisCoreLanguage.html">PICO CESK language</a></li>' \
+	  '    <li><a href="PICOBridge.PicoIrisResourceLogicalRelation.html">Resource logical relation</a></li>' \
+	  '    <li><a href="PICOBridge.PicoIrisSemanticAPI.html">Semantic method API</a></li>' \
+	  '    <li><a href="Examples.PicoConcreteHashModel.html">Concrete hash provider</a></li>' \
+	  '    <li><a href="Examples.PicoHashExecutionTrace.html">Positive and negative execution traces</a></li>' \
+	  '  </ul>' \
 	  '</body>' \
 	  '</html>' \
 	  > "$(ALECTRYON_DIR)/index.html"

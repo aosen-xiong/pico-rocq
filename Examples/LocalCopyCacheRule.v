@@ -44,7 +44,7 @@ Section local_copy_hash_iris_rule.
   Theorem local_copy_hash_cache_method_wpI
       γ snap snap' H tr r
       (Hreads : TraceReadsFromSnapshot hash_cache_protocol snap tr)
-      (Hexec : weak_exec_matches_trace
+      (Hexec : trace_result_matches
         hash_cache_protocol
         good_hash_run
         H
@@ -63,19 +63,18 @@ Section local_copy_hash_iris_rule.
       tt
       H
       snap ==∗
-    ∃ γ',
-      ⌜r = hash_pure_result H tt⌝ ∗
-      SemImmI
-        hash_cache_protocol
-        hash_example_stable_abs
-        γ'
-        tt
-        H
-        snap'.
+    ⌜r = hash_pure_result H tt⌝ ∗
+    SemImmI
+      hash_cache_protocol
+      hash_example_stable_abs
+      γ
+      tt
+      H
+      snap'.
   Proof.
     iIntros "Hsem".
     iApply
-      (cache_safe_method_wpI
+      (cache_safe_method_wp
         hash_cache_protocol
         hash_example_stable_abs
         hash_pure_result

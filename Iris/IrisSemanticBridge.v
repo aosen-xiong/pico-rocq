@@ -3,9 +3,9 @@ From iris.base_logic Require Import own.
 
 Require Import Core.GenericCacheProtocol Iris.GenericCacheGhostState.
 
-(** * Public Iris Semantic Bridge
+(** * Iris Semantic Immutability Protocol
 
-    This file is a small public Iris bridge for the generic trace-robust cache
+    This file is the public Iris protocol for the generic trace-robust cache
     theorem.  The detailed ghost-state lemmas remain in
     [GenericCacheGhostState].  This file exposes the proof story through a
     compact vocabulary:
@@ -14,9 +14,15 @@ Require Import Core.GenericCacheProtocol Iris.GenericCacheGhostState.
       StableAbsI + CacheHistI = SemImmI
     ]]
 
-    and through three rules: cache reads observe valid values, valid history
-    extensions preserve the semantic object predicate, and cache-safe methods
-    preserve semantic immutability while returning the pure result. *)
+    and through three protocol rules: cache reads observe valid values, valid
+    cache writes preserve the semantic object predicate, and cache-safe methods
+    preserve semantic immutability while returning the pure result.
+
+    These rules are intentionally over abstract cache-read/cache-write steps,
+    not ordinary heap_lang loads and stores.  That keeps the weak-memory
+    boundary explicit: a cache read is justified by membership in the field
+    history snapshot, and a cache write is justified by a valid history
+    extension. *)
 
 Section iris_semantic_bridge.
   Context {AbsVal : Type}.
@@ -40,30 +46,25 @@ Section iris_semantic_bridge.
       (snap : CacheHistorySnapshot P) : iProp Σ :=
     StableAbsI Stable o a ∗ CacheHistI γ a snap.
 
+(** Abstract read side condition for the Iris protocol.  It states that the
+    observed value came from the cache-field history snapshot. *)
+  Definition CacheReadStep
+      (snap : CacheHistorySnapshot P) k (v : cache_val P k) : Prop :=
+    In v (snap k).
+
+(** Abstract write side condition for the Iris protocol.  It states both that
+    the written value is valid for the cache protocol and that the post-snapshot
+    is a valid extension of the pre-snapshot. *)
+  Definition CacheWriteStep
+      a (snap snap' : CacheHistorySnapshot P)
+      k (v : cache_val P k) : Prop :=
+    cache_valid P a k v /\
+    CacheHistSnapshotValidExtension P snap snap' a.
+
   Global Instance stable_absI_persistent {Obj : Type}
       (Stable : StableAbs Obj AbsVal) o a :
     Persistent (StableAbsI Stable o a).
   Proof. apply _. Qed.
-
-  Lemma stable_absI_intro {Obj : Type}
-      (Stable : StableAbs Obj AbsVal) o a
-      (Hstable : Stable o a) :
-    ⊢ StableAbsI Stable o a.
-  Proof.
-    iPureIntro.
-    exact Hstable.
-  Qed.
-
-  Lemma cache_histI_alloc a snap
-      (Hsnap : CacheHistSnapshotOK P snap a) :
-    ⊢ |==> ∃ γ, CacheHistI γ a snap.
-  Proof.
-    iMod (generic_cache_history_interp_alloc P a snap Hsnap)
-      as (γ) "Hhist".
-    iModIntro.
-    iExists γ.
-    iExact "Hhist".
-  Qed.
 
   Lemma semimmI_alloc {Obj : Type}
       (Stable : StableAbs Obj AbsVal) o a snap
@@ -71,7 +72,8 @@ Section iris_semantic_bridge.
       (Hsnap : CacheHistSnapshotOK P snap a) :
     ⊢ |==> ∃ γ, SemImmI Stable γ o a snap.
   Proof.
-    iMod (cache_histI_alloc a snap Hsnap) as (γ) "Hhist".
+    iMod (generic_cache_history_interp_alloc P a snap Hsnap)
+      as (γ) "Hhist".
     iModIntro.
     iExists γ.
     unfold SemImmI, StableAbsI, CacheHistI.
@@ -81,17 +83,18 @@ Section iris_semantic_bridge.
     - iExact "Hhist".
   Qed.
 
-(** Cache reads preserve [SemImmI] and expose protocol validity of the observed
-    value. *)
-  Lemma cache_read_validI {Obj : Type}
+(** WP-shaped read rule for the abstract cache protocol: if the memory
+    interface says the read returned a value from the field-history snapshot,
+    then clients may use that value as protocol-valid and keep [SemImmI]. *)
+  Lemma cache_read_valid_wp {Obj : Type}
       (Stable : StableAbs Obj AbsVal)
-      γ o a snap k (v : cache_val P k)
-      (Hin : In v (snap k)) :
+      γ o a snap k (v : cache_val P k) :
     SemImmI Stable γ o a snap -∗
+    ⌜CacheReadStep snap k v⌝ -∗
     SemImmI Stable γ o a snap ∗
-    ⌜cache_valid P a k v⌝.
+    ⌜cache_valid P a k v /\ cache_published P k v⌝.
   Proof.
-    iIntros "Hsem".
+    iIntros "Hsem %Hread".
     unfold SemImmI, StableAbsI, CacheHistI.
     iDestruct "Hsem" as "(#Hstable & Hhist)".
     iDestruct
@@ -100,39 +103,40 @@ Section iris_semantic_bridge.
       as "[Hhist %Hvalid]".
     {
       iPureIntro.
-      exact Hin.
+      exact Hread.
     }
     iSplitL "Hhist".
     - iSplit.
       + iExact "Hstable".
       + iExact "Hhist".
-    - iPureIntro.
-      exact Hvalid.
+    - iPureIntro. split; [exact Hvalid |].
+      eapply cache_valid_published. exact Hvalid.
   Qed.
 
-(** A valid cache-history extension can be reallocated as a fresh [SemImmI] for
-    the post-state object. *)
-  Lemma cache_history_valid_extension_preservesI {Obj : Type}
+(** WP-shaped write rule for the abstract cache protocol: writing a
+    protocol-valid cache value and moving to a valid history extension preserves
+    the semantic immutable-object predicate. *)
+  Lemma cache_write_valid_wp {Obj : Type}
       (Stable : StableAbs Obj AbsVal)
-      γ o o' a snap snap'
-      (Hstable' : Stable o' a)
-      (Hext : CacheHistSnapshotValidExtension P snap snap' a) :
-    SemImmI Stable γ o a snap ==∗
-    ∃ γ', SemImmI Stable γ' o' a snap'.
+      γ o o' a snap snap' k (v : cache_val P k)
+      (Hstable' : Stable o' a) :
+    SemImmI Stable γ o a snap -∗
+    ⌜CacheWriteStep a snap snap' k v⌝ ==∗
+    SemImmI Stable γ o' a snap'.
   Proof.
-    iIntros "Hsem".
+    iIntros "Hsem %Hwrite".
+    destruct Hwrite as [_ Hext].
     unfold SemImmI, StableAbsI, CacheHistI.
     iDestruct "Hsem" as "(_ & Hhist)".
     iMod
-      (generic_cache_history_interp_valid_extension_alloc P
+      (generic_cache_history_interp_valid_extension_update P
         with "Hhist []")
-      as (γ') "Hhist'".
+      as "Hhist'".
     {
       iPureIntro.
       exact Hext.
     }
     iModIntro.
-    iExists γ'.
     iSplit.
     - iPureIntro.
       exact Hstable'.
@@ -142,7 +146,7 @@ Section iris_semantic_bridge.
 (** Iris-style semantic method rule: a trace-robust cache-safe method returns
     the pure result and preserves semantic immutability across the history
     extension induced by its writes. *)
-  Theorem cache_safe_method_wpI {Obj Args Result : Type}
+  Theorem cache_safe_method_wp {Obj Args Result : Type}
       (Stable : StableAbs Obj AbsVal)
       (F : AbsVal -> Args -> Result)
       (run_with_cache_trace :
@@ -151,21 +155,20 @@ Section iris_semantic_bridge.
       (Hstable' : Stable o' a)
       (Hsafe : CacheSafeMethod P F run_with_cache_trace)
       (Hreads : TraceReadsFromSnapshot P snap tr)
-      (Hexec : weak_exec_matches_trace P run_with_cache_trace a args tr r)
+      (Hexec : trace_result_matches P run_with_cache_trace a args tr r)
       (Hext : CacheHistSnapshotExtendsByTrace
         P
         snap
         snap'
         (run_writes (run_with_cache_trace a args tr))) :
     SemImmI Stable γ o a snap ==∗
-    ∃ γ',
-      ⌜r = F a args⌝ ∗
-      SemImmI Stable γ' o' a snap'.
+    ⌜r = F a args⌝ ∗
+    SemImmI Stable γ o' a snap'.
   Proof.
     iIntros "Hsem".
     unfold SemImmI, StableAbsI, CacheHistI.
     iApply
-      (generic_trace_robust_semantic_immutability_interp_alloc_post P
+      (generic_trace_robust_semantic_immutability_interp_update_post P
         with "[$Hsem] [] [] [] [] []").
     - iPureIntro.
       exact Hstable'.

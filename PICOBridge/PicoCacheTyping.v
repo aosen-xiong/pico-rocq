@@ -20,9 +20,182 @@ Import ListNotations.
     in [tmp].  The literal [tmp = EInt n] update shape is a small instance of
     this record. *)
 
+(** Source-level effect judgment for cache initializers.  The compute phase is
+    allowed to use locals, variables, integer/null literals, and reads of
+    abstract fields.  It is not allowed to read cache fields or perform the
+    cache write itself.  Calls and allocation are left out of this first
+    source-level rule; they can be admitted later by adding method summaries. *)
+Inductive cache_init_expr_reads_only_abstract
+    (CT : class_table) (sΓ : s_env) : expr -> Prop :=
+  | CIERO_Null :
+      cache_init_expr_reads_only_abstract CT sΓ ENull
+  | CIERO_Var : forall x,
+      cache_init_expr_reads_only_abstract CT sΓ (EVar x)
+  | CIERO_Int : forall n,
+      cache_init_expr_reads_only_abstract CT sΓ (EInt n)
+  | CIERO_Field : forall x f T C
+      (Hget_x : static_getType sΓ x = Some T)
+      (Href : sbase T = TRef C)
+      (Habs : abstract_field CT C f),
+      cache_init_expr_reads_only_abstract CT sΓ (EField x f).
+
+Inductive cache_init_stmt_reads_only_abstract
+    (CT : class_table) : s_env -> stmt -> s_env -> Prop :=
+  | CISRO_Skip : forall sΓ,
+      cache_init_stmt_reads_only_abstract CT sΓ SSkip sΓ
+  | CISRO_Local : forall sΓ T x sΓ'
+      (Henv' : sΓ' = sΓ ++ [T]),
+      cache_init_stmt_reads_only_abstract CT sΓ (SLocal T x) sΓ'
+  | CISRO_VarAss : forall sΓ x e
+      (Hexpr : cache_init_expr_reads_only_abstract CT sΓ e),
+      cache_init_stmt_reads_only_abstract CT sΓ (SVarAss x e) sΓ
+  | CISRO_Seq : forall sΓ s1 sΓ' s2 sΓ''
+      (Hinit1 : cache_init_stmt_reads_only_abstract CT sΓ s1 sΓ')
+      (Hinit2 : cache_init_stmt_reads_only_abstract CT sΓ' s2 sΓ''),
+      cache_init_stmt_reads_only_abstract CT sΓ (SSeq s1 s2) sΓ''.
+
+(** The literal computation [tmp = n] is abstract-only: it reads no heap state
+    at all, so in particular it reads no cache state. *)
+Lemma cache_init_stmt_reads_only_abstract_assign_int :
+  forall CT sΓ tmp n,
+    cache_init_stmt_reads_only_abstract CT sΓ (SVarAss tmp (EInt n)) sΓ.
+Proof.
+  intros CT sΓ tmp n.
+  constructor.
+  constructor.
+Qed.
+
+(** ** TS Source Effects
+
+    [ts_stmt] is the source-level thread-safe effect used for abstract
+    computations.  It permits locals, variable assignments from stable abstract
+    reads, and calls through an explicit summary predicate.  It excludes direct
+    field writes and allocation from this first theorem boundary.
+
+    The no-call specialization is strong enough to discharge the cache
+    initializer premise above.  The parameterized form records the intended
+    extension point for calls to methods that have already been proved TS. *)
+Inductive ts_expr_reads_only_stable
+    (CT : class_table) (sΓ : s_env) : expr -> Prop :=
+  | TSERO_Null :
+      ts_expr_reads_only_stable CT sΓ ENull
+  | TSERO_Var : forall x,
+      ts_expr_reads_only_stable CT sΓ (EVar x)
+  | TSERO_Int : forall n,
+      ts_expr_reads_only_stable CT sΓ (EInt n)
+  | TSERO_Field : forall x f T C
+      (Hget_x : static_getType sΓ x = Some T)
+      (Href : sbase T = TRef C)
+      (Hstable : abstract_field CT C f),
+      ts_expr_reads_only_stable CT sΓ (EField x f).
+
+Definition ts_call_summary : Type :=
+  s_env -> var -> var -> method_name -> list var -> Prop.
+
+Definition ts_no_calls : ts_call_summary :=
+  fun _ _ _ _ _ => False.
+
+Inductive ts_stmt
+    (CT : class_table) (CallOK : ts_call_summary) :
+    s_env -> stmt -> s_env -> Prop :=
+  | TS_Skip : forall sΓ,
+      ts_stmt CT CallOK sΓ SSkip sΓ
+  | TS_Local : forall sΓ T x sΓ'
+      (Henv' : sΓ' = sΓ ++ [T]),
+      ts_stmt CT CallOK sΓ (SLocal T x) sΓ'
+  | TS_VarAss : forall sΓ x e
+      (Hexpr : ts_expr_reads_only_stable CT sΓ e),
+      ts_stmt CT CallOK sΓ (SVarAss x e) sΓ
+  | TS_Call : forall sΓ x y m args
+      (Hcall : CallOK sΓ x y m args),
+      ts_stmt CT CallOK sΓ (SCall x y m args) sΓ
+  | TS_Seq : forall sΓ s1 sΓ' s2 sΓ''
+      (Hts1 : ts_stmt CT CallOK sΓ s1 sΓ')
+      (Hts2 : ts_stmt CT CallOK sΓ' s2 sΓ''),
+      ts_stmt CT CallOK sΓ (SSeq s1 s2) sΓ''.
+
+Lemma ts_expr_implies_cache_init_expr_reads_only_abstract :
+  forall CT sΓ e
+    (Hts : ts_expr_reads_only_stable CT sΓ e),
+    cache_init_expr_reads_only_abstract CT sΓ e.
+Proof.
+  intros CT sΓ e Hts.
+  induction Hts.
+  - constructor.
+  - constructor.
+  - constructor.
+  - econstructor; eauto.
+Qed.
+
+Theorem ts_stmt_no_calls_implies_cache_init_stmt_reads_only_abstract :
+  forall CT sΓ s sΓ'
+    (Hts : ts_stmt CT ts_no_calls sΓ s sΓ'),
+    cache_init_stmt_reads_only_abstract CT sΓ s sΓ'.
+Proof.
+  intros CT sΓ s sΓ' Hts.
+  induction Hts.
+  - constructor.
+  - constructor.
+    exact Henv'.
+  - constructor.
+    apply ts_expr_implies_cache_init_expr_reads_only_abstract.
+    exact Hexpr.
+  - contradiction.
+  - econstructor; eauto.
+Qed.
+
+Inductive stmt_contains_direct_field_write : stmt -> Prop :=
+  | SCDFW_FieldWrite : forall x f y,
+      stmt_contains_direct_field_write (SFldWrite x f y)
+  | SCDFW_SeqLeft : forall s1 s2
+      (Hwrite : stmt_contains_direct_field_write s1),
+      stmt_contains_direct_field_write (SSeq s1 s2)
+  | SCDFW_SeqRight : forall s1 s2
+      (Hwrite : stmt_contains_direct_field_write s2),
+      stmt_contains_direct_field_write (SSeq s1 s2).
+
+Definition direct_shared_write_free (s : stmt) : Prop :=
+  ~ stmt_contains_direct_field_write s.
+
+Theorem ts_stmt_direct_shared_write_free :
+  forall CT CallOK sΓ s sΓ'
+    (Hts : ts_stmt CT CallOK sΓ s sΓ'),
+    direct_shared_write_free s.
+Proof.
+  intros CT CallOK sΓ s sΓ' Hts Hwrite.
+  induction Hts.
+  - inversion Hwrite.
+  - inversion Hwrite.
+  - inversion Hwrite.
+  - inversion Hwrite.
+  - inversion Hwrite; subst; eauto.
+Qed.
+
+(** A TS verified compute package is the source-level variant of
+    [verified_cache_compute].  The theorem below is the bridge used by cache
+    methods: TS gives the abstract-only initializer premise, while the existing
+    value and derived-result premises give deterministic recomputation. *)
+Record ts_verified_cache_compute
+    (CT : class_table) (sΓ sΓ_mid : s_env) (mt : method_type)
+    (rΓ rΓ_mid : r_env) (compute : stmt) (tmp : var)
+    (derived : list value -> nat) (abs_vals : list value) (n : nat) : Prop :=
+  mkTSVerifiedCacheCompute {
+    tvcc_type_compute :
+      stmt_typing CT sΓ mt compute sΓ_mid;
+    tvcc_ts_compute :
+      ts_stmt CT ts_no_calls sΓ compute sΓ_mid;
+    tvcc_tmp_value :
+      runtime_getVal rΓ_mid tmp = Some (Int n);
+    tvcc_derived :
+      n = derived abs_vals;
+    tvcc_nonzero :
+      n <> 0
+  }.
+
 (** [verified_cache_compute] is the method-local proof obligation for the
-    computation phase: it is typed, it stores [Int n] in [tmp], and [n] is the
-    nonzero derived value for the stable abstract fields. *)
+    computation phase: it is typed, it reads only abstract state, it stores
+    [Int n] in [tmp], and [n] is the nonzero derived value for the stable
+    abstract fields. *)
 Record verified_cache_compute
     (CT : class_table) (sΓ sΓ_mid : s_env) (mt : method_type)
     (rΓ rΓ_mid : r_env) (compute : stmt) (tmp : var)
@@ -30,6 +203,8 @@ Record verified_cache_compute
   mkVerifiedCacheCompute {
     vcc_type_compute :
       stmt_typing CT sΓ mt compute sΓ_mid;
+    vcc_compute_reads_only_abstract :
+      cache_init_stmt_reads_only_abstract CT sΓ compute sΓ_mid;
     vcc_tmp_value :
       runtime_getVal rΓ_mid tmp = Some (Int n);
     vcc_derived :
@@ -37,6 +212,25 @@ Record verified_cache_compute
     vcc_nonzero :
       n <> 0
   }.
+
+Theorem ts_verified_cache_compute_implies_verified_cache_compute :
+  forall CT sΓ sΓ_mid mt rΓ rΓ_mid compute tmp derived abs_vals n
+    (Hcompute :
+      ts_verified_cache_compute
+        CT sΓ sΓ_mid mt rΓ rΓ_mid compute tmp derived abs_vals n),
+    verified_cache_compute
+      CT sΓ sΓ_mid mt rΓ rΓ_mid compute tmp derived abs_vals n.
+Proof.
+  intros CT sΓ sΓ_mid mt rΓ rΓ_mid compute tmp derived abs_vals n Hcompute.
+  destruct Hcompute as [Htype Hts Htmp Hderived Hnz].
+  constructor.
+  - exact Htype.
+  - apply ts_stmt_no_calls_implies_cache_init_stmt_reads_only_abstract.
+    exact Hts.
+  - exact Htmp.
+  - exact Hderived.
+  - exact Hnz.
+Qed.
 
 (** Pure result used by the generic cache protocol for PICO derived integer
     caches. *)
@@ -112,7 +306,7 @@ Lemma verified_cache_compute_pure_result :
       (Int n).
 Proof.
   intros CT sΓ sΓ_mid mt rΓ rΓ_mid compute tmp derived abs_vals n Hcompute.
-  destruct Hcompute as [_ _ Hderived _].
+  destruct Hcompute as [_ _ _ Hderived _].
   unfold PureRecomputeResult, pico_cache_compute_pure_result.
   rewrite Hderived.
   reflexivity.
@@ -124,7 +318,7 @@ Lemma verified_cache_compute_matches_generic_run :
          (Hcompute :
            verified_cache_compute
              CT sΓ sΓ_mid mt rΓ rΓ_mid compute tmp derived abs_vals n),
-    weak_exec_matches_trace
+    trace_result_matches
       (derived_cache_protocol derived)
       (pico_cache_compute_run derived)
       abs_vals
@@ -133,8 +327,8 @@ Lemma verified_cache_compute_matches_generic_run :
       (Int n).
 Proof.
   intros CT sΓ sΓ_mid mt rΓ rΓ_mid compute tmp derived abs_vals n tr Hcompute.
-  destruct Hcompute as [_ _ Hderived _].
-  unfold weak_exec_matches_trace, pico_cache_compute_run.
+  destruct Hcompute as [_ _ _ Hderived _].
+  unfold trace_result_matches, pico_cache_compute_run.
   rewrite Hderived.
   reflexivity.
 Qed.
@@ -178,6 +372,32 @@ Record cache_compute_write_safe
       runtime_getVal rΓ_mid receiver = Some (Iot loc)
   }.
 
+(** A TS compute phase discharges the ordinary compute/write package by
+    proving the abstract-only initializer premise required by
+    [verified_cache_compute]. *)
+Theorem ts_verified_cache_compute_write_safe :
+  forall CT sΓ sΓ_mid mt rΓ rΓ_mid loc cache_f receiver tmp compute
+         derived abs_vals n
+    (Hcompute :
+      ts_verified_cache_compute
+        CT sΓ sΓ_mid mt rΓ rΓ_mid compute tmp derived abs_vals n)
+    (Htype_write :
+      stmt_typing CT sΓ_mid mt (SFldWrite receiver cache_f tmp) sΓ_mid)
+    (Hreceiver :
+      runtime_getVal rΓ_mid receiver = Some (Iot loc)),
+    cache_compute_write_safe
+      CT sΓ sΓ_mid mt rΓ rΓ_mid loc cache_f receiver tmp compute
+      derived abs_vals n.
+Proof.
+  intros CT sΓ sΓ_mid mt rΓ rΓ_mid loc cache_f receiver tmp compute
+         derived abs_vals n Hcompute Htype_write Hreceiver.
+  constructor.
+  - apply ts_verified_cache_compute_implies_verified_cache_compute.
+    exact Hcompute.
+  - exact Htype_write.
+  - exact Hreceiver.
+Qed.
+
 (** The typing-shaped compute/write premise inherits pure recomputation
     refinement from the generic trace-robust method theorem. *)
 Theorem cache_compute_write_safe_refines_pure_via_generic :
@@ -218,7 +438,7 @@ Proof.
   intros CT sΓ sΓ_mid mt rΓ rΓ_mid loc cache_f receiver tmp compute
          derived abs_vals n Hsafe.
   destruct Hsafe as
-    [[_ Htmp Hderived Hnz] _ Hreceiver].
+    [[_ _ Htmp Hderived Hnz] _ Hreceiver].
   eapply cache_safe_fldwrite_target_known; eauto.
 Qed.
 
@@ -442,7 +662,7 @@ Qed.
 
 (** ** Literal Cache-Update Sequence Instance *)
 
-(** The concrete legacy update sequence assigns a literal derived value into a
+(** The concrete literal update sequence assigns a literal derived value into a
     temporary variable and then writes that temporary into the receiver cache
     field. *)
 Definition cache_update_sequence_stmt
@@ -519,6 +739,7 @@ Proof.
   constructor.
   - constructor.
     + exact Htype_compute.
+    + apply cache_init_stmt_reads_only_abstract_assign_int.
     + apply runtime_getVal_set_vars_update_same.
       exact Htmp_dom.
     + exact Hderived.
