@@ -221,9 +221,9 @@ Proof.
   {
     eapply method_lookup_wf_class; eauto.
   }
-  inversion Hwf_mdef; subst.
-  destruct H as [sΓ' [Htyping _]].
-  exists x.
+  unfold wf_method in Hwf_mdef; simpl in Hwf_mdef.
+  destruct Hwf_mdef as [_ [sΓ' [mbodyrettype [Htyping _]]]].
+  exists sΓ'.
   exact Htyping.
 Qed.
 
@@ -265,9 +265,9 @@ Proof.
   destruct Hwf_inherited as [D [ddef [Hsub [Hfind_D [Hin_D Hwf_D]]]]].
 
   (* Extract the statement typing from wf_method *)
-  inversion Hwf_D; subst.
-  destruct H as [sΓ' [Htyping _]].
-  exists x.
+  unfold wf_method in Hwf_D; simpl in Hwf_D.
+  destruct Hwf_D as [_ [sΓ' [mbodyrettype [Htyping _]]]].
+  exists sΓ'.
   exact Htyping.
 Qed.
 
@@ -277,8 +277,8 @@ Lemma wf_method_sig_types : forall CT C mdef
   Forall (fun T => wf_stypeuse CT (sqtype T) (sctype T)) (mparams (msignature mdef)).
 Proof.
   intros CT C mdef Hwf_method.
-  inversion Hwf_method; subst.
-  destruct H as [mreturn [Htyping _]].
+  unfold wf_method in Hwf_method; simpl in Hwf_method.
+  destruct Hwf_method as [_ [sΓ' [mbodyrettype [Htyping _]]]].
   assert (Hwf_env : wf_senv CT (mreceiver (msignature mdef) :: mparams (msignature mdef))).
   {
     eapply stmt_typing_wf_env; eauto.
@@ -569,11 +569,11 @@ Proof.
   exact Hwf_ctor.
 Qed.
 
-Lemma eval_stmt_preserves_heap_domain_simple : forall P CT rΓ h stmt rΓ' h'
-  (Heval : eval_stmt OK P CT rΓ h stmt OK P rΓ' h'),
+Lemma eval_stmt_preserves_heap_domain_simple : forall CT rΓ h stmt rΓ' h'
+  (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h'),
   dom h <= dom h'.
 Proof.
-  intros P CT rΓ h stmt rΓ' h' Heval.
+  intros CT rΓ h stmt rΓ' h' Heval.
   remember OK as ok.
   induction Heval; try reflexivity; try discriminate.
   - (* FldWrite: h' = update_field h lx f v2 *)
@@ -609,13 +609,13 @@ Qed.
 
 (* Not just length, there is no statement can do strong update. *)
 Lemma eval_stmt_preserves_r_type :
-  forall P CT rΓ h stmt rΓ' h' loc rqt
-    (Heval     : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+  forall CT rΓ h stmt rΓ' h' loc rqt
+    (Heval     : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hrtype    : r_type h loc = Some rqt)
     (Hloc_dom  : loc < dom h),
     r_type h' loc = Some rqt.
 Proof.
-  intros P CT rΓ h stmt rΓ' h' loc rqt Heval Hrtype Hloc_dom.
+  intros CT rΓ h stmt rΓ' h' loc rqt Heval Hrtype Hloc_dom.
   remember OK as ok.
   induction Heval; try discriminate; try (subst; exact Hrtype).
   - (* FldWrite: only fields change, not type *)
@@ -646,7 +646,7 @@ Proof.
   - (* Seq: transitivity *)
     assert (Hloc_dom' : loc < dom h').
     {
-      have Hdom_le := eval_stmt_preserves_heap_domain_simple P CT rΓ h s1 rΓ' h' Heval1.
+      have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1.
       lia.
     }
     assert (Hrtype' : r_type h' loc = Some rqt).
@@ -657,13 +657,13 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_r_muttype :
-  forall P CT rΓ h stmt rΓ' h' loc q
-    (Heval     : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+  forall CT rΓ h stmt rΓ' h' loc q
+    (Heval     : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hmut      : r_muttype h loc = Some q)
     (Hloc_dom  : loc < dom h),
     r_muttype h' loc = Some q.
 Proof.
-  intros P CT rΓ h stmt rΓ' h' loc q Heval Hmut Hloc_dom.
+  intros CT rΓ h stmt rΓ' h' loc q Heval Hmut Hloc_dom.
   remember OK as ok.
   induction Heval; try discriminate; try (subst; exact Hmut).
   - (* FldWrite: only fields change, not mutability type *)
@@ -706,7 +706,7 @@ Proof.
   - (* Seq: transitivity *)
     assert (Hloc_dom' : loc < dom h').
     {
-      have Hdom_le := eval_stmt_preserves_heap_domain_simple P CT rΓ h s1 rΓ' h' Heval1.
+      have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1.
       lia.
     }
     assert (Hmut' : r_muttype h' loc = Some q).
@@ -1015,13 +1015,13 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_addr_typed :
-  forall P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι
+  forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι
     (Htyp   : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval  : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+    (Heval  : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hthis  : get_this_var_mapping (vars rΓ) = Some ι),
     get_this_var_mapping (vars rΓ') = Some ι.
 Proof.
-  intros P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι Htyp Heval Hthis.
+  intros CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι Htyp Heval Hthis.
   remember OK as ok eqn:Hok.
   revert sΓ sΓ' Htyp Hthis.
   induction Heval; intros sΓ sΓ' Htyp Hthis'; subst; try discriminate;
@@ -1106,14 +1106,14 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_addr_typed_backwards :
-  forall P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι
+  forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι
     (Hwf    : wf_r_config CT sΓ rΓ h)
     (Htyp   : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval  : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+    (Heval  : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hthis' : get_this_var_mapping (vars rΓ') = Some ι),
     get_this_var_mapping (vars rΓ) = Some ι.
 Proof.
-  intros P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι Hwf Htyp Heval Hthis'.
+  intros CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι Hwf Htyp Heval Hthis'.
   assert (Hthis : exists ι0, get_this_var_mapping (vars rΓ) = Some ι0).
   { 
     unfold wf_r_config in Hwf.
@@ -1127,7 +1127,7 @@ Proof.
   destruct Hthis as [ι0 Hthis0].
   (* forward preservation gives 'ι0' also at the end *)
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι0
+                CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι0
                 Htyp Heval Hthis0) as Hthis0'.
   (* uniqueness of Some _ *)
   rewrite Hthis' in Hthis0'.
@@ -1136,14 +1136,14 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_addr_mapping_eq :
-  forall P CT sΓ mt rΓ h stmt sΓ' rΓ' h'
+  forall CT sΓ mt rΓ h stmt sΓ' rΓ' h'
     (Hwf   : wf_r_config CT sΓ rΓ h)
     (Htyp  : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval : eval_stmt OK P CT rΓ h stmt OK P rΓ' h'),
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h'),
     get_this_var_mapping (vars rΓ) =
     get_this_var_mapping (vars rΓ').
 Proof.
-  intros P CT sΓ mt rΓ h stmt sΓ' rΓ' h' Hwf Htyp Heval.
+  intros CT sΓ mt rΓ h stmt sΓ' rΓ' h' Hwf Htyp Heval.
   (* get some initial receiver address ι₀ from wf_r_config *)
   assert (Hthis : exists ι0, get_this_var_mapping (vars rΓ) = Some ι0).
   { 
@@ -1157,7 +1157,7 @@ Proof.
   }
   destruct Hthis as [ι0 Hthis0].
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι0
+                CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι0
                 Htyp Heval Hthis0) as Hthis0'.
   rewrite Hthis0.
   symmetry.
@@ -1165,39 +1165,39 @@ Proof.
 Qed.
 
 Corollary eval_stmt_preserves_receiver_addr_eq_loc' :
-  forall P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι1 ι2
+  forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι1 ι2
     (Hwf    : wf_r_config CT sΓ rΓ h)
     (Htyp   : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval  : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+    (Heval  : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hthis1 : get_this_var_mapping (vars rΓ)  = Some ι1)
     (Hthis2 : get_this_var_mapping (vars rΓ') = Some ι2),
     ι1 = ι2.
 Proof.
-  intros P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι1 ι2
+  intros CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι1 ι2
          Hwf Htyp Heval Hthis1 Hthis2.
   pose proof (eval_stmt_preserves_receiver_addr_mapping_eq
-               P CT sΓ mt rΓ h stmt sΓ' rΓ' h' Hwf Htyp Heval) as Heq.
+               CT sΓ mt rΓ h stmt sΓ' rΓ' h' Hwf Htyp Heval) as Heq.
   rewrite Hthis1 in Heq.
   rewrite Hthis2 in Heq.
   inversion Heq; reflexivity.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_r_type_typed :
-  forall P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι rqt
+  forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι rqt
     (Htyp    : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+    (Heval   : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hthis   : get_this_var_mapping (vars rΓ) = Some ι)
     (Hrtype  : r_type h ι = Some rqt)
     (Hι_dom  : ι < dom h),
     r_type h' ι = Some rqt.
 Proof.
-  intros P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι rqt Htyp Heval Hthis Hrtype Hι_dom.
+  intros CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι rqt Htyp Heval Hthis Hrtype Hι_dom.
   (* receiver address is preserved *)
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι
+                CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι
                 Htyp Heval Hthis) as Hthis'.
   (* heap domain grows *)
-  pose proof (eval_stmt_preserves_heap_domain_simple P CT rΓ h stmt rΓ' h' Heval)
+  pose proof (eval_stmt_preserves_heap_domain_simple CT rΓ h stmt rΓ' h' Heval)
     as Hdom_le.
   assert (Hι_dom' : ι < dom h') by lia.
   (* type invariant on that fixed loc *)
@@ -1205,21 +1205,21 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_r_muttype_typed :
-  forall P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι q
+  forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι q
     (Htyp    : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+    (Heval   : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hthis   : get_this_var_mapping (vars rΓ) = Some ι)
     (Hmut    : r_muttype h ι = Some q)
     (Hι_dom  : ι < dom h),
     r_muttype h' ι = Some q.
 Proof.
-  intros P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι q Htyp Heval Hthis Hmut Hι_dom.
+  intros CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι q Htyp Heval Hthis Hmut Hι_dom.
   (* receiver address is preserved *)
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι
+                CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι
                 Htyp Heval Hthis) as Hthis'.
   (* heap domain grows *)
-  pose proof (eval_stmt_preserves_heap_domain_simple P CT rΓ h stmt rΓ' h' Heval)
+  pose proof (eval_stmt_preserves_heap_domain_simple CT rΓ h stmt rΓ' h' Heval)
     as Hdom_le.
   assert (Hι_dom' : ι < dom h') by lia.
   (* mutability invariant on that fixed loc *)
@@ -1227,17 +1227,17 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_r_type_backwards :
-  forall P CT rΓ h stmt rΓ' h' loc rqt
-    (Heval     : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+  forall CT rΓ h stmt rΓ' h' loc rqt
+    (Heval     : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hrtype'   : r_type h' loc = Some rqt)
     (Hloc_dom  : loc < dom h),
     r_type h loc = Some rqt.
 Proof.
-  intros P CT rΓ h stmt rΓ' h' loc rqt Heval Hrtype' Hloc_dom.
+  intros CT rΓ h stmt rΓ' h' loc rqt Heval Hrtype' Hloc_dom.
   (* Case on r_type h loc *)
   destruct (r_type h loc) as [rqt0|] eqn:Hrtype0.
   - (* Some rqt0; use forward lemma and equality *)
-    specialize (eval_stmt_preserves_r_type P CT rΓ h stmt rΓ' h' loc rqt0 Heval Hrtype0 Hloc_dom)
+    specialize (eval_stmt_preserves_r_type CT rΓ h stmt rΓ' h' loc rqt0 Heval Hrtype0 Hloc_dom)
       as Hforward.
     rewrite Hforward in Hrtype'.
     inversion Hrtype'; subst rqt0.
@@ -1251,16 +1251,16 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_r_type_typed_backwards :
-  forall P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι rqt
+  forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι rqt
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyp    : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+    (Heval   : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hthis'  : get_this_var_mapping (vars rΓ') = Some ι)
     (Hrtype' : r_type h' ι = Some rqt)
     (Hι_dom  : ι < dom h),
     r_type h ι = Some rqt.
 Proof.
-  intros P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι rqt
+  intros CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι rqt
          Hwf Htyp Heval Hthis' Hrtype' Hι_dom.
   (* get initial receiver address ι0 from wf_r_config *)
   assert (Hthis : exists ι0, get_this_var_mapping (vars rΓ) = Some ι0).
@@ -1276,7 +1276,7 @@ Proof.
   destruct Hthis as [ι0 Hthis0].
   (* receiver addr is preserved forward, so at end we also have ι0 *)
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι0
+                CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι0
                 Htyp Heval Hthis0) as Hthis0'.
   rewrite Hthis' in Hthis0'.
   inversion Hthis0'; subst ι0.
@@ -1285,15 +1285,15 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_r_muttype_backwards :
-  forall P CT rΓ h stmt rΓ' h' loc q
-    (Heval     : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+  forall CT rΓ h stmt rΓ' h' loc q
+    (Heval     : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hmut'     : r_muttype h' loc = Some q)
     (Hloc_dom  : loc < dom h),
     r_muttype h loc = Some q.
 Proof.
-  intros P CT rΓ h stmt rΓ' h' loc q Heval Hmut' Hloc_dom.
+  intros CT rΓ h stmt rΓ' h' loc q Heval Hmut' Hloc_dom.
   destruct (r_muttype h loc) as [q0|] eqn:Hmut0.
-  - specialize (eval_stmt_preserves_r_muttype P CT rΓ h stmt rΓ' h' loc q0
+  - specialize (eval_stmt_preserves_r_muttype CT rΓ h stmt rΓ' h' loc q0
                Heval Hmut0 Hloc_dom) as Hforward.
     rewrite Hforward in Hmut'.
     inversion Hmut'; subst q0.
@@ -1306,16 +1306,16 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_receiver_r_muttype_typed_backwards :
-  forall P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι q
+  forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι q
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyp    : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK P CT rΓ h stmt OK P rΓ' h')
+    (Heval   : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hthis'  : get_this_var_mapping (vars rΓ') = Some ι)
     (Hmut'   : r_muttype h' ι = Some q)
     (Hι_dom  : ι < dom h),
     r_muttype h ι = Some q.
 Proof.
-  intros P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι q
+  intros CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι q
          Hwf Htyp Heval Hthis' Hmut' Hι_dom.
   (* same receiver address argument as in type lemma *)
   assert (Hthis : exists ι0, get_this_var_mapping (vars rΓ) = Some ι0).
@@ -1330,7 +1330,7 @@ Proof.
   }
   destruct Hthis as [ι0 Hthis0].
   pose proof (eval_stmt_preserves_receiver_addr_typed
-                P CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι0
+                CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι0
                 Htyp Heval Hthis0) as Hthis0'.
   rewrite Hthis' in Hthis0'.
   inversion Hthis0'; subst ι0.
@@ -1348,13 +1348,13 @@ Proof.
 Qed.
 
 Lemma preservation_local_ok :
-  forall P CT sΓ mt rΓ h T x rΓ' h' sΓ'
+  forall CT sΓ mt rΓ h T x rΓ' h' sΓ'
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt (SLocal T x) sΓ')
-    (Heval   : eval_stmt OK P CT rΓ h (SLocal T x) OK P rΓ' h'),
+    (Heval   : eval_stmt OK CT rΓ h (SLocal T x) OK rΓ' h'),
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
-    intros P CT sΓ mt rΓ h T x rΓ' h' sΓ' Hwf Htyping Heval.
+    intros CT sΓ mt rΓ h T x rΓ' h' sΓ' Hwf Htyping Heval.
     inversion Heval; subst.
     inversion Htyping; subst.
     unfold wf_r_config in *.
@@ -1454,13 +1454,13 @@ Proof.
 Qed.
 
 Lemma preservation_varass_ok :
-  forall P CT sΓ mt rΓ h x e rΓ' h' sΓ'
+  forall CT sΓ mt rΓ h x e rΓ' h' sΓ'
     (Hwf              : wf_r_config CT sΓ rΓ h)
     (Htyping          : stmt_typing CT sΓ mt (SVarAss x e) sΓ')
-    (Heval_stmt       : eval_stmt OK P CT rΓ h (SVarAss x e) OK P rΓ' h'),
+    (Heval_stmt       : eval_stmt OK CT rΓ h (SVarAss x e) OK rΓ' h'),
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
-    intros P CT sΓ mt rΓ h x e rΓ' h' sΓ' Hwf Htyping Heval_stmt.
+    intros CT sΓ mt rΓ h x e rΓ' h' sΓ' Hwf Htyping Heval_stmt.
     inversion Heval_stmt; subst.
     rename Hval into Htarget.
     rename Heval into Heval_expr.
@@ -1588,7 +1588,7 @@ Proof.
           assert (H_loc_Te : wf_r_typable CT rΓ h' loc Te qcontext).
           {
             (* Apply expression evaluation preservation lemma *)
-            apply (expr_eval_preservation P CT sΓ' mt rΓ h' e (Iot loc) rΓ h' Te ι).
+            apply (expr_eval_preservation CT sΓ' mt rΓ h' e (Iot loc) rΓ h' Te ι).
             auto.
             - rewrite get_this_var_mapping_update_vars_nonzero in HreceiverAddr. exact Hnot_rcv. exact HreceiverAddr.
             - exact Hreceivermut.
@@ -1678,13 +1678,13 @@ Proof.
 Qed.
 
 Lemma preservation_fldwrite_ok_abs_imm :
-  forall P CT sΓ rΓ h x f y h' sΓ'
+  forall CT sΓ rΓ h x f y h' sΓ'
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ AbstractImm (SFldWrite x f y) sΓ')
-    (Heval   : eval_stmt OK P CT rΓ h (SFldWrite x f y) OK P rΓ h'),
+    (Heval   : eval_stmt OK CT rΓ h (SFldWrite x f y) OK rΓ h'),
     wf_r_config CT sΓ' rΓ h'.
 Proof.
-    intros P CT sΓ rΓ h x f y h' sΓ' Hwf Htyping Heval.
+    intros CT sΓ rΓ h x f y h' sΓ' Hwf Htyping Heval.
     inversion Heval; subst.
     rename Hval_x into Hgetx.
     rename Hobj into Hgetobj.
@@ -2165,13 +2165,13 @@ Proof.
 Qed.
 
 Lemma preservation_fldwrite_ok_safe_ro :
-  forall P CT sΓ rΓ h x f y h' sΓ'
+  forall CT sΓ rΓ h x f y h' sΓ'
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ SafeRO (SFldWrite x f y) sΓ')
-    (Heval   : eval_stmt OK P CT rΓ h (SFldWrite x f y) OK P rΓ h'),
+    (Heval   : eval_stmt OK CT rΓ h (SFldWrite x f y) OK rΓ h'),
     wf_r_config CT sΓ' rΓ h'.
 Proof.
-    intros P CT sΓ rΓ h x f y h' sΓ' Hwf Htyping Heval.
+    intros CT sΓ rΓ h x f y h' sΓ' Hwf Htyping Heval.
     inversion Heval; subst.
     rename Hval_x into Hgetx.
     rename Hobj into Hgetobj.
@@ -2654,13 +2654,13 @@ Proof.
 Qed.
 
 Lemma preservation_fldwrite_ok_concrete_imm :
-  forall P CT sΓ rΓ h x f y h' sΓ'
+  forall CT sΓ rΓ h x f y h' sΓ'
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ ConcreteImm (SFldWrite x f y) sΓ')
-    (Heval   : eval_stmt OK P CT rΓ h (SFldWrite x f y) OK P rΓ h'),
+    (Heval   : eval_stmt OK CT rΓ h (SFldWrite x f y) OK rΓ h'),
     wf_r_config CT sΓ' rΓ h'.
 Proof.
-    intros P CT sΓ rΓ h x f y h' sΓ' Hwf Htyping Heval.
+    intros CT sΓ rΓ h x f y h' sΓ' Hwf Htyping Heval.
     inversion Heval; subst.
     rename Hval_x into Hgetx.
     rename Hobj into Hgetobj.
@@ -3143,10 +3143,10 @@ Proof.
 Qed.
 
 Lemma preservation_fldwrite_ok :
-  forall P CT sΓ mt rΓ h x f y h' sΓ'
+  forall CT sΓ mt rΓ h x f y h' sΓ'
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt (SFldWrite x f y) sΓ')
-    (Heval : eval_stmt OK P CT rΓ h (SFldWrite x f y) OK P rΓ h'),
+    (Heval : eval_stmt OK CT rΓ h (SFldWrite x f y) OK rΓ h'),
     wf_r_config CT sΓ' rΓ h'.
 Proof.
     intros.
@@ -3185,13 +3185,13 @@ Proof.
 Qed.
 
 Lemma preservation_new_ok :
-  forall P CT sΓ mt rΓ h x q_c c ys rΓ' h' sΓ'
+  forall CT sΓ mt rΓ h x q_c c ys rΓ' h' sΓ'
     (Hwf                    : wf_r_config CT sΓ rΓ h)
     (Htyping                : stmt_typing CT sΓ mt (SNew x q_c c ys) sΓ')
-    (Heval                  : eval_stmt OK P CT rΓ h (SNew x q_c c ys) OK P rΓ' h'),
+    (Heval                  : eval_stmt OK CT rΓ h (SNew x q_c c ys) OK rΓ' h'),
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
-  intros P CT sΓ mt rΓ h x q_c c ys rΓ' h' sΓ' Hwf Htyping Heval.
+  intros CT sΓ mt rΓ h x q_c c ys rΓ' h' sΓ' Hwf Htyping Heval.
     inversion Heval; subst.
     rename Hthis into Hgetthis.
     rename Hargs into Hlookupvals.
@@ -4003,29 +4003,4 @@ Proof.
   eapply method_signature_consistent_subtype; eauto.
   - unfold wf_r_config in Hwf. exact (proj1 Hwf).
   - eapply runtime_value_base_subtype; eauto.
-Qed.
-
-(** The protected set is ghost instrumentation: evaluation never inspects it.
-    Any derivation can therefore be redecorated with an arbitrary set. *)
-Theorem eval_expr_protected_set_irrelevant :
-  forall input_result P CT rGamma h expression value output_result
-    rGamma' h' Q,
-    eval_expr input_result P CT rGamma h expression value output_result P
-      rGamma' h' ->
-    eval_expr input_result Q CT rGamma h expression value output_result Q
-      rGamma' h'.
-Proof.
-  intros input_result P CT rGamma h expression value output_result rGamma'
-    h' Q Heval.
-  induction Heval; econstructor; eauto.
-Qed.
-
-Theorem eval_stmt_protected_set_irrelevant :
-  forall input_result P CT rGamma h statement output_result rGamma' h' Q,
-    eval_stmt input_result P CT rGamma h statement output_result P rGamma' h' ->
-    eval_stmt input_result Q CT rGamma h statement output_result Q rGamma' h'.
-Proof.
-  intros input_result P CT rGamma h statement output_result rGamma' h' Q
-    Heval.
-  induction Heval; eauto using eval_stmt, eval_expr_protected_set_irrelevant.
 Qed.

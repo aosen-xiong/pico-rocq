@@ -13,9 +13,7 @@ Lemma deep_concrete_immutability_preservation:
       (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ ConcreteImm stmt sΓ')
-    (Heval : eval_stmt OK
-      (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK
-      (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hlocalset : Ensembles.In Loc
       (reachable_locations_from_initial_env CT h rΓ) l)
     (Hobj : runtime_getObj h l =
@@ -43,7 +41,7 @@ Lemma ConcreteImmutability_with_end :
     (Hmethod_lookup : FindMethodWithName CT (sctype Ty) mindex mdef)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ ConcreteImm stmt sΓ')
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hget_y : runtime_getVal rΓ y = Some (Iot ly))
     (Hget_zs : runtime_lookup_list rΓ zs = Some vals)
     (HinP: Ensembles.In Loc (reachable_locations_from_vals CT h (Iot ly :: vals)) loc_arg)
@@ -111,7 +109,7 @@ Proof.
       exact Hmethod_in.
     }
     unfold wf_method in Hwfmethod;
-    destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
+    destruct Hwfmethod as [_ [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
     remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
@@ -195,7 +193,6 @@ Proof.
     }
     rewrite Hmsigeq in Hmethodbody_typing.
     inversion Hmt_sub; subst; try (rewrite <- H1 in Hmethodbody_typing); exact Hmethodbody_typing.
-    eapply eval_stmt_protected_set_irrelevant. exact Heval_body.
     have Hsubset := reachable_locations_subset_reachable_from_method_frame CT h ly vals.
     rewrite <- HeqrΓmethodinit in Hsubset.
     unfold Ensembles.Included in Hsubset.
@@ -211,7 +208,7 @@ Proof.
     destruct Hwfmethod as [Hbasecyd [HfindD [HmdefinD Hwfmethod]]].
 
     unfold wf_method in Hwfmethod;
-    destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
+    destruct Hwfmethod as [_ [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
     remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
@@ -294,7 +291,6 @@ Proof.
     }
     rewrite Hmsigeq in Hmethodbody_typing.
     inversion Hmt_sub; subst; try (rewrite <- H1 in Hmethodbody_typing); exact Hmethodbody_typing.
-    eapply eval_stmt_protected_set_irrelevant. exact Heval_body.
     have Hsubset := reachable_locations_subset_reachable_from_method_frame CT h ly vals.
     rewrite <- HeqrΓmethodinit in Hsubset.
     unfold Ensembles.Included in Hsubset.
@@ -312,7 +308,7 @@ Theorem ConcreteImmutability :
     (Hmethod_lookup : FindMethodWithName CT (sctype Ty) mindex mdef)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ ConcreteImm stmt sΓ')
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hget_y : runtime_getVal rΓ y = Some (Iot ly))
     (Hget_zs : runtime_lookup_list rΓ zs = Some vals)
     (HinP: Ensembles.In Loc (reachable_locations_from_vals CT h (Iot ly :: vals)) loc_arg)
@@ -325,7 +321,7 @@ Proof.
   intros CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
     loc_arg C anyrq vals_arg f Hstmt Hstatic_type Hmethod_lookup Hwf Htyping
     Heval Hget_y Hget_zs HinP Harg_obj Hall_readonly.
-  destruct (runtime_preserves_r_type_heap (reachable_locations_from_initial_env CT h rΓ) CT rΓ h loc_arg
+  destruct (runtime_preserves_r_type_heap CT rΓ h loc_arg
     (mkruntime_type anyrq C) h' vals_arg stmt rΓ' Harg_obj Heval)
     as [vals_arg' Harg_obj'].
   exists vals_arg'. split; [exact Harg_obj'|].

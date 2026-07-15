@@ -46,7 +46,7 @@ Lemma safe_field_write_cannot_target_protected_slot :
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x field y) sGamma' ->
     safe_readonly_method_type mt ->
-    eval_stmt OK P CT rGamma h (SFldWrite x field y) OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
     runtime_getVal rGamma x = Some (Iot source) ->
     runtime_getObj h source = Some (mkObj (mkruntime_type runtime_q C) fields) ->
     In Loc P source ->
@@ -117,7 +117,7 @@ Qed.
 
 Theorem successful_stmt_preserves_protected_field :
   forall P CT rGamma h statement rGamma' h',
-    eval_stmt OK P CT rGamma h statement OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h statement OK rGamma' h' ->
     forall sGamma mt sGamma' authority stack Z cutoff,
       potential_live_history_state CT P Z cutoff
         (mk_watched_frame authority sGamma rGamma) stack h ->
@@ -204,19 +204,19 @@ Proof.
       safe_typed_call_preserves_protected_field_condition CT sGamma mt rΓ h
         x m y zs sGamma ly cy mdef C protected_field Hcaller_wf Htyping Hsafe
         Hval_y Hbase Hfind_method Hprotected.
-    eapply (IHHeval eq_refl eq_refl eq_refl Heval); eauto.
+    eapply (IHHeval eq_refl eq_refl Heval); eauto.
   - inversion Htyping; subst.
     have Hmiddle_state := successful_stmt_preserves_potential_history
       P CT rΓ h s1 rΓ' h' Heval1 sGamma mt sΓ' authority stack Z cutoff
       Hstate Htype1 Hsafe.
-    destruct (runtime_preserves_r_type_heap P CT rΓ h location
+    destruct (runtime_preserves_r_type_heap CT rΓ h location
       (mkruntime_type runtime_q C) h' fields s1 rΓ' Hobj_start Heval1) as
       [middle_fields Hobj_middle].
-    have Hfirst := IHHeval1 eq_refl eq_refl eq_refl Heval1
+    have Hfirst := IHHeval1 eq_refl eq_refl Heval1
       sGamma mt sΓ' authority stack Z cutoff Hstate Htype1 Hsafe
       location runtime_q C fields middle_fields protected_field HinP
       Hobj_start Hobj_middle Hprotected.
-    have Hsecond := IHHeval2 eq_refl eq_refl eq_refl Heval2
+    have Hsecond := IHHeval2 eq_refl eq_refl Heval2
       sΓ' mt sGamma' authority stack Z cutoff Hmiddle_state Htype2 Hsafe
       location runtime_q C middle_fields fields' protected_field HinP
       Hobj_middle Hobj_end Hprotected.

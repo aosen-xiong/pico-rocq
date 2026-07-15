@@ -1372,12 +1372,12 @@ Proof.
 Qed.
 
 Lemma assignment_capability_root_has_live_origin :
-  forall P CT authority sGamma mt rGamma h stack x e old value root,
+  forall CT authority sGamma mt rGamma h stack x e old value root,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK P CT rGamma h e value OK P rGamma h ->
+    eval_expr OK CT rGamma h e value OK rGamma h ->
     frame_capability_root
       (mk_watched_frame authority sGamma
         (update_r_env_value rGamma x value)) root ->
@@ -1386,14 +1386,14 @@ Lemma assignment_capability_root_has_live_origin :
         (mk_watched_frame authority sGamma rGamma) stack old_root /\
       mutable_reachable CT h old_root root.
 Proof.
-  intros P CT authority sGamma mt rGamma h stack x e old value root Hwf
+  intros CT authority sGamma mt rGamma h stack x e old value root Hwf
     Htyping Hscope Hx Heval
     [z [T [Htype [Hvalue Hcapability]]]].
   destruct Hcapability as [Hmut | [Hrdm Hauthority]].
   - assert (Hroot : typed_root Mut sGamma
       (update_r_env_value rGamma x value) root).
     { exists z, T. repeat split; assumption. }
-    destruct (assignment_mut_root_has_old_ancestor P CT sGamma mt rGamma h
+    destruct (assignment_mut_root_has_old_ancestor CT sGamma mt rGamma h
       x e old value Hwf Htyping Hscope Hx Heval root Hroot) as
       [old_root [[old_var [OldT [Holdtype [Holdvalue Holdmut]]]] Hreach]].
     exists old_root. split; [left|exact Hreach].
@@ -1402,7 +1402,7 @@ Proof.
   - assert (Hroot : typed_root RDM sGamma
       (update_r_env_value rGamma x value) root).
     { exists z, T. repeat split; assumption. }
-    destruct (assignment_rdm_root_has_old_ancestor P CT sGamma mt rGamma h
+    destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
       x e old value Hwf Htyping Hscope Hx Heval root Hroot) as
       [old_root [[old_var [OldT [Holdtype [Holdvalue Holdrdm]]]] Hreach]].
     exists old_root. split; [left|exact Hreach].
@@ -1411,21 +1411,21 @@ Proof.
 Qed.
 
 Lemma assignment_live_reachability_is_old :
-  forall P CT authority sGamma mt rGamma h stack x e old value location,
+  forall CT authority sGamma mt rGamma h stack x e old value location,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK P CT rGamma h e value OK P rGamma h ->
+    eval_expr OK CT rGamma h e value OK rGamma h ->
     live_capability_reachable CT h
       (mk_watched_frame authority sGamma
         (update_r_env_value rGamma x value)) stack location ->
     live_capability_reachable CT h
       (mk_watched_frame authority sGamma rGamma) stack location.
 Proof.
-  intros P CT authority sGamma mt rGamma h stack x e old value location
+  intros CT authority sGamma mt rGamma h stack x e old value location
     Hwf Htyping Hscope Hx Heval [root [[Hactive | Hsuspended] Hreach]].
-  - destruct (assignment_capability_root_has_live_origin P CT authority
+  - destruct (assignment_capability_root_has_live_origin CT authority
       sGamma mt rGamma h stack x e old value root Hwf Htyping Hscope Hx
       Heval Hactive) as [old_root [Hlive Holdreach]].
     exists old_root. split; [exact Hlive|].
@@ -1569,7 +1569,7 @@ Lemma live_history_after_assignment :
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK P CT rGamma h e value OK P rGamma h ->
+    eval_expr OK CT rGamma h e value OK rGamma h ->
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma
         (update_r_env_value rGamma x value)) stack h.
@@ -1587,10 +1587,10 @@ Proof.
       set_vars rGamma (update x value (vars rGamma)) =
       update_r_env_value rGamma x value).
   { destruct rGamma. reflexivity. }
-  assert (Hstmt : eval_stmt OK P CT rGamma h (SVarAss x e) OK P
+  assert (Hstmt : eval_stmt OK CT rGamma h (SVarAss x e) OK
       (update_r_env_value rGamma x value) h).
   { rewrite <- Hupdate. eapply SBS_Assign with (v1 := old); eauto. }
-  have Hpost_wf := preservation_pico P CT sGamma mt rGamma h
+  have Hpost_wf := preservation_pico CT sGamma mt rGamma h
     (SVarAss x e) (update_r_env_value rGamma x value) h sGamma Hwf
     Htyping Hstmt.
   assert (Hframes_wf : live_frames_wf CT h
@@ -1652,10 +1652,10 @@ Proof.
       (mk_watched_frame authority sGamma rGamma) stack)
     cutoff authority sGamma mt rGamma h T x sGamma' Hwf Hhistory
     Htyping Hnone.
-  have Hstmt : eval_stmt OK P CT rGamma h (SLocal T x) OK P
+  have Hstmt : eval_stmt OK CT rGamma h (SLocal T x) OK
       (set_vars rGamma (vars rGamma ++ [Null_a])) h.
   { apply SBS_Local. exact Hnone. }
-  have Hpost_wf := preservation_pico P CT sGamma mt rGamma h
+  have Hpost_wf := preservation_pico CT sGamma mt rGamma h
     (SLocal T x) (set_vars rGamma (vars rGamma ++ [Null_a])) h sGamma'
     Hwf Htyping Hstmt.
   assert (Hframes_wf : live_frames_wf CT h
@@ -1707,7 +1707,7 @@ Lemma live_history_after_field_write :
       (mk_watched_frame authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     safe_readonly_method_type mt ->
-    eval_stmt OK P CT rGamma h (SFldWrite x f y) OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma' rGamma') stack h'.
 Proof.
@@ -1726,7 +1726,7 @@ Proof.
       (mk_watched_frame authority sGamma rGamma) stack)
     cutoff authority sGamma mt rGamma h x f y rGamma h' sGamma Hwf
     Hhistory Htyping Hscope Heval) as [Mbig [Hcontains Hbig]].
-  have Hpost_wf := preservation_pico P CT sGamma mt rGamma h
+  have Hpost_wf := preservation_pico CT sGamma mt rGamma h
     (SFldWrite x f y) rGamma h' sGamma Hwf Htyping Heval.
   have Hheap' : wf_heap CT h' := proj1 (proj2 Hpost_wf).
   have Htypes : preserves_old_runtime_types h h'.
@@ -1764,7 +1764,7 @@ Lemma live_history_after_new :
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    eval_stmt OK P CT rGamma h (SNew x qc C args) OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h (SNew x qc C args) OK rGamma' h' ->
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma' rGamma') stack h'.
 Proof.
@@ -1781,7 +1781,7 @@ Proof.
     cutoff authority sGamma mt rGamma h x qc C args rGamma' h' sGamma'
     Hwf Hhistory Htyping Hcutoff Hfresh_zone Heval) as
     [Mbig [Hcontains Hbig]].
-  have Hpost_wf := preservation_pico P CT sGamma mt rGamma h
+  have Hpost_wf := preservation_pico CT sGamma mt rGamma h
     (SNew x qc C args) rGamma' h' sGamma' Hwf Htyping Heval.
   have Hheap' : wf_heap CT h' := proj1 (proj2 Hpost_wf).
   have Htypes : preserves_old_runtime_types h h'.

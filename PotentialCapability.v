@@ -517,7 +517,7 @@ Lemma potential_history_after_assignment :
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK P CT rGamma h e value OK P rGamma h ->
+    eval_expr OK CT rGamma h e value OK rGamma h ->
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma
         (update_r_env_value rGamma x value)) stack h.
@@ -529,7 +529,7 @@ Proof.
   split; [exact Hlive_post|].
   have Hwf : wf_r_config CT sGamma rGamma h :=
     proj1 (proj1 (proj2 Hlive)).
-  have Hdescend := rdm_roots_descend_after_assignment P CT sGamma mt
+  have Hdescend := rdm_roots_descend_after_assignment CT sGamma mt
     rGamma h x e old value Hwf Htyping Hscope Hx Heval.
   intros capability protected Hcapability Hprotected Hconnected.
   apply (Hpotential capability protected).
@@ -993,7 +993,7 @@ Lemma potential_history_after_field_write :
       (mk_watched_frame authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SFldWrite x field y) sGamma' ->
     safe_readonly_method_type mt ->
-    eval_stmt OK P CT rGamma h (SFldWrite x field y) OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma' rGamma') stack h'.
 Proof.
@@ -1745,7 +1745,7 @@ Lemma potential_history_after_new :
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    eval_stmt OK P CT rGamma h (SNew x qc C args) OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h (SNew x qc C args) OK rGamma' h' ->
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma' rGamma') stack h'.
 Proof.
@@ -2914,7 +2914,7 @@ Qed.
 
 Theorem successful_stmt_preserves_potential_history :
   forall P CT rGamma h statement rGamma' h',
-    eval_stmt OK P CT rGamma h statement OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h statement OK rGamma' h' ->
     forall sGamma mt sGamma' authority stack Z cutoff,
       potential_live_history_state CT P Z cutoff
         (mk_watched_frame authority sGamma rGamma) stack h ->
@@ -2970,14 +2970,14 @@ Proof.
           [Hmethod_wf [Hbody_typing Hcallee_initial_wf]]]]]]]].
     unfold wf_method in Hmethod_wf. simpl in Hmethod_wf.
     destruct Hmethod_wf as
-      [method_end [body_return_type
+      [_ [method_end [body_return_type
         [Hmethod_body_typing [Hreturn_dom
-          [Hreturn_type [Hbody_sub Hoverriding]]]]]].
+          [Hreturn_type [Hbody_sub Hoverriding]]]]]]].
     destruct (potential_history_enter_call CT P Z cutoff authority sGamma mt
       rΓ h stack x m y zs sGamma vals ly cy mdef receiver_type Hstate
       Htyping Hsafe Hreceiver_type Hval_y Hbase Hfind_method Hargs) as
       [origins Hentry].
-    have Hbody_post := IHHeval eq_refl eq_refl eq_refl Heval
+    have Hbody_post := IHHeval eq_refl eq_refl Heval
       (mreceiver (msignature mdef) :: mparams (msignature mdef))
       (mtype (msignature mdef)) method_end
       (call_authority authority (sqtype receiver_type))
@@ -2994,7 +2994,7 @@ Proof.
       proj1 (proj2 Hforward_start).
     have Hcaller_env : env_is_confined P cutoff rΓ :=
       proj1 (proj1 (proj2 (proj2 Hforward_start))).
-    have Hcaller_final_wf := preservation_pico P CT sGamma mt rΓ h
+    have Hcaller_final_wf := preservation_pico CT sGamma mt rΓ h
       (SCall x m y zs) (set_vars rΓ (update x retval (vars rΓ))) h' sGamma
       Hcaller_wf Htyping Heval_copy.
     assert (Hupdate : set_vars rΓ (update x retval (vars rΓ)) =
@@ -3024,8 +3024,8 @@ Proof.
         (declared_return_type := mret (msignature mdef))
         (return_location := return_location); eauto.
   - inversion Htyping; subst.
-    eapply (IHHeval2 eq_refl eq_refl eq_refl Heval2).
-    + eapply (IHHeval1 eq_refl eq_refl eq_refl Heval1); eauto.
+    eapply (IHHeval2 eq_refl eq_refl Heval2).
+    + eapply (IHHeval1 eq_refl eq_refl Heval1); eauto.
     + exact Htype2.
     + exact Hsafe.
 Qed.

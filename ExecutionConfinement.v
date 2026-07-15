@@ -69,12 +69,12 @@ Proof.
 Qed.
 
 Lemma eval_expr_preserves_confinement :
-  forall G CT rGamma h e l Q cutoff,
+  forall CT rGamma h e l Q cutoff,
     state_is_confined Q cutoff rGamma h ->
-    eval_expr OK G CT rGamma h e (Iot l) OK G rGamma h ->
+    eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
     confined_loc Q cutoff l.
 Proof.
-  intros G CT rGamma h e l Q cutoff [Henv Hheap] Heval.
+  intros CT rGamma h e l Q cutoff [Henv Hheap] Heval.
   inversion Heval; subst.
   - eapply Henv; eauto.
   - eapply Hheap.
@@ -151,13 +151,13 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_confinement :
-  forall G CT rGamma h stmt result rGamma' h' Q cutoff,
+  forall CT rGamma h stmt result rGamma' h' Q cutoff,
     cutoff <= dom h ->
     state_is_confined Q cutoff rGamma h ->
-    eval_stmt OK G CT rGamma h stmt result G rGamma' h' ->
+    eval_stmt OK CT rGamma h stmt result rGamma' h' ->
     state_is_confined Q cutoff rGamma' h'.
 Proof.
-  intros G CT rGamma h stmt result rGamma' h' Q cutoff Hcutoff Hstate Heval.
+  intros CT rGamma h stmt result rGamma' h' Q cutoff Hcutoff Hstate Heval.
   remember OK as ok. induction Heval; subst; try discriminate.
   - exact Hstate.
   - destruct Hstate as [Henv Hheap]. split; [|exact Hheap].
@@ -221,28 +221,28 @@ Proof.
     + simpl in Hval. exact (env_confined_lookup_list Q cutoff rΓ zs vals
         Henv Hargs i l Hval).
   - have Hmid := IHHeval1 Hcutoff Hstate eq_refl.
-    have Hgrow := eval_stmt_preserves_heap_domain_simple P CT rΓ h s1 rΓ' h' Heval1.
+    have Hgrow := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1.
     exact (IHHeval2 (ltac:(lia)) Hmid eq_refl).
   - eapply IHHeval; eauto.
   - have Hmid := IHHeval1 Hcutoff Hstate eq_refl.
-    have Hgrow := eval_stmt_preserves_heap_domain_simple P CT rΓ h s1 rΓ' h' Heval1.
+    have Hgrow := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1.
     exact (IHHeval2 (ltac:(lia)) Hmid eq_refl).
   - eapply IHHeval; eauto.
   - have Hmid := IHHeval1 Hcutoff Hstate eq_refl.
-    have Hgrow := eval_stmt_preserves_heap_domain_simple P CT rΓ h s1 rΓ' h' Heval1.
+    have Hgrow := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1.
     exact (IHHeval2 (ltac:(lia)) Hmid eq_refl).
 Qed.
 
 Lemma confined_eval_preserves_old_object :
-  forall G CT rGamma h stmt rGamma' h' Q cutoff l C qr vals vals',
+  forall CT rGamma h stmt rGamma' h' Q cutoff l C qr vals vals',
     cutoff <= dom h ->
     state_is_confined Q cutoff rGamma h ->
-    eval_stmt OK G CT rGamma h stmt OK G rGamma' h' ->
+    eval_stmt OK CT rGamma h stmt OK rGamma' h' ->
     runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals) ->
     runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals') ->
     l < cutoff -> ~ In Loc Q l -> vals = vals'.
 Proof.
-  intros G CT rGamma h stmt rGamma' h' Q cutoff l C qr vals vals'
+  intros CT rGamma h stmt rGamma' h' Q cutoff l C qr vals vals'
     Hcutoff Hstate Heval Hbefore Hafter Hlt Hnot.
   remember OK as ok. generalize dependent vals. generalize dependent vals'.
   induction Heval; intros; subst; try discriminate.
@@ -265,11 +265,11 @@ Proof.
           Henv Hargs i loc Hval).
     }
     eapply IHHeval; eauto.
-  - destruct (runtime_preserves_r_type_heap P CT rΓ h l
+  - destruct (runtime_preserves_r_type_heap CT rΓ h l
       (mkruntime_type qr C) h' vals s1 rΓ' Hbefore Heval1) as [mid Hmid].
-    have Hmidstate := eval_stmt_preserves_confinement P CT rΓ h s1 OK rΓ' h'
+    have Hmidstate := eval_stmt_preserves_confinement CT rΓ h s1 OK rΓ' h'
       Q cutoff Hcutoff Hstate Heval1.
-    have Hgrow := eval_stmt_preserves_heap_domain_simple P CT rΓ h s1 rΓ' h' Heval1.
+    have Hgrow := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1.
     assert (Hfirst : vals = mid) by (eapply IHHeval1; eauto).
     assert (Hsecond : mid = vals') by (eapply IHHeval2; eauto; lia).
     congruence.
@@ -278,8 +278,7 @@ Qed.
 Theorem eval_preserves_old_unreachable_object :
   forall CT sGamma rGamma h stmt rGamma' h' l C qr vals vals',
     wf_r_config CT sGamma rGamma h ->
-    eval_stmt OK (reachable_locations_from_initial_env CT h rGamma) CT rGamma h stmt OK
-      (reachable_locations_from_initial_env CT h rGamma) rGamma' h' ->
+    eval_stmt OK CT rGamma h stmt OK rGamma' h' ->
     runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals) ->
     runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals') ->
     ~ In Loc (reachable_locations_from_initial_env CT h rGamma) l ->
@@ -288,7 +287,6 @@ Proof.
   intros CT sGamma rGamma h stmt rGamma' h' l C qr vals vals'
     Hwf Heval Hbefore Hafter Hnotin.
   eapply (@confined_eval_preserves_old_object
-    (reachable_locations_from_initial_env CT h rGamma)
     CT rGamma h stmt rGamma' h'
     (reachable_locations_from_initial_env CT h rGamma)
     (dom h) l C qr vals vals').

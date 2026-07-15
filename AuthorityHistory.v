@@ -91,7 +91,7 @@ Lemma authority_expression_capability_in_history :
     wf_r_config CT sGamma rGamma h ->
     authority_component_history_state CT P Z M cutoff authority
       sGamma rGamma h ->
-    eval_expr OK P CT rGamma h e (Iot l) OK P rGamma h ->
+    eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
     expr_has_type CT sGamma mt e T ->
     safe_readonly_method_type mt ->
     capability_in_context authority (sqtype T) ->
@@ -133,7 +133,7 @@ Lemma authority_history_after_assignment :
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK P CT rGamma h e value OK P rGamma h ->
+    eval_expr OK CT rGamma h e value OK rGamma h ->
     authority_component_history_state CT P Z M cutoff authority sGamma
       (update_r_env_value rGamma x value) h.
 Proof.
@@ -155,7 +155,7 @@ Proof.
         injection Hval as <-. rewrite Hget_x in Htype. injection Htype as <-.
         destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
           as [this [qcontext [Hrthis [_ Hqcontext]]]].
-        pose proof (expr_eval_preservation P CT sGamma mt rGamma h e
+        pose proof (expr_eval_preservation CT sGamma mt rGamma h e
           (Iot result) rGamma h Te this qcontext Hrthis Hqcontext Hwf Htype_e
           Heval) as Htypable.
         have Hexprcap := nonnull_subtype_preserves_authority_capability
@@ -210,7 +210,7 @@ Lemma authority_history_after_field_write :
       sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     safe_readonly_method_type mt ->
-    eval_stmt OK P CT rGamma h (SFldWrite x f y) OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
     exists M',
       Included Loc M M' /\
       authority_component_history_state CT P Z M' cutoff authority
@@ -477,7 +477,7 @@ Lemma authority_history_after_new :
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     cutoff <= dom h ->
     ~ In Loc Z (dom h) ->
-    eval_stmt OK P CT rGamma h (SNew x qc C args) OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h (SNew x qc C args) OK rGamma' h' ->
     exists M',
       Included Loc M M' /\
       authority_component_history_state CT P Z M' cutoff authority

@@ -12,7 +12,7 @@ Lemma shallow_immutability_pico_with_end :
     (Hobj_start : runtime_getObj h l = Some (mkObj (mkruntime_type Imm_r C) vals))
     (Hwf        : wf_r_config CT sΓ rΓ h)
     (Htyping    : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval      : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval      : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hobj_end   : runtime_getObj h' l = Some (mkObj (mkruntime_type Imm_r C) vals'))
     (Hfield_imm : sf_assignability_rel CT C f Final \/
                   sf_assignability_rel CT C f RDA \/
@@ -277,14 +277,14 @@ Proof.
     contradiction.
   -  (* Seq *) (* Apply IH transitively *)
   intros. inversion Htyping; subst.
-  specialize (eval_stmt_preserves_heap_domain_simple P CT rΓ h s1 rΓ' h' Heval1) as Hh'.
+  specialize (eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1) as Hh'.
   assert (Hloc_h' : l < dom h') by lia.
   specialize (runtime_getObj_Some h' l Hloc_h') as [C' [values' Hh'some]].
-  specialize (runtime_preserves_r_type_heap P CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
+  specialize (runtime_preserves_r_type_heap CT rΓ h l ({| rqtype := Imm_r; rctype := C |})
   h' vals s1 rΓ' Hobj_start Heval1) as [vals1 Hrtype].
   rewrite Hrtype in Hh'some; inversion Hh'some; subst.
   specialize (IHHeval1 Hloc Heqok values' Hrtype vals Hobj_start mt Hfield_imm sΓ'0 sΓ Hwf Htype1).
-  specialize (preservation_pico P CT sΓ mt rΓ h s1 rΓ' h' sΓ'0 Hwf Htype1 Heval1) as Hwf'.
+  specialize (preservation_pico CT sΓ mt rΓ h s1 rΓ' h' sΓ'0 Hwf Htype1 Heval1) as Hwf'.
   specialize (IHHeval2 Hloc_h' Heqok vals' Hobj_end values' Hrtype mt Hfield_imm sΓ' sΓ'0 Hwf' Htype2).
   rewrite IHHeval2 in IHHeval1; auto.
 Qed.
@@ -298,7 +298,7 @@ Theorem shallow_immutability_pico :
     (Hobj_start : runtime_getObj h l = Some (mkObj (mkruntime_type Imm_r C) vals))
     (Hwf        : wf_r_config CT sΓ rΓ h)
     (Htyping    : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval      : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval      : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hfield_imm : sf_assignability_rel CT C f Final \/
                   sf_assignability_rel CT C f RDA \/
                   concrete_assignability_method_type mt),
@@ -308,7 +308,7 @@ Theorem shallow_immutability_pico :
 Proof.
   intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals f
     Hloc Hobj_start Hwf Htyping Heval Hfield_imm.
-  destruct (runtime_preserves_r_type_heap (reachable_locations_from_initial_env CT h rΓ) CT rΓ h l
+  destruct (runtime_preserves_r_type_heap CT rΓ h l
     (mkruntime_type Imm_r C) h' vals stmt rΓ' Hobj_start Heval)
     as [vals' Hobj_end].
   exists vals'. split; [exact Hobj_end|].
@@ -471,7 +471,7 @@ Lemma deep_immutability_pico_with_end :
     (Hreach : reachable_abs CT h root l)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals))
     (Hobj' : runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals'))
     (Hprotected : sf_assignability_rel CT C f Final \/
@@ -499,7 +499,7 @@ Theorem deep_immutability_pico :
     (Hreach : reachable_abs CT h root l)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hobj : runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals))
     (Hprotected : sf_assignability_rel CT C f Final \/
                   sf_assignability_rel CT C f RDA),
@@ -509,7 +509,7 @@ Theorem deep_immutability_pico :
 Proof.
   intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' root C0 vals0 l C qr vals f
     Hdom Himm_root Hreach Hwf Htyping Heval Hobj Hprotected.
-  destruct (runtime_preserves_r_type_heap (reachable_locations_from_initial_env CT h rΓ) CT rΓ h l
+  destruct (runtime_preserves_r_type_heap CT rΓ h l
     (mkruntime_type qr C) h' vals stmt rΓ' Hobj Heval)
     as [vals' Hobj'].
   exists vals'. split; [exact Hobj'|].

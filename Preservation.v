@@ -1210,13 +1210,13 @@ Qed.
 
 (* Soundness properties for PICO *)
 Theorem preservation_pico :
-  forall P CT sΓ mt rΓ h stmt rΓ' h' sΓ'
+  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ'
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK P CT rΓ h stmt OK P rΓ' h'),
+    (Heval   : eval_stmt OK CT rΓ h stmt OK rΓ' h'),
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
-  intros P CT sΓ mt rΓ h stmt rΓ' h' sΓ' Hwf Htyping Heval.
+  intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' Hwf Htyping Heval.
   generalize dependent sΓ.
   generalize dependent sΓ'.
   generalize dependent mt.
@@ -1244,7 +1244,7 @@ Proof.
         destruct Hget_method as [Hmethod_in _].
         exact Hmethod_in.
       }
-      destruct H2 as [sΓmethodend [mrettype Htyping_method]].
+      destruct H2 as [_ [sΓmethodend [mrettype Htyping_method]]].
       destruct Htyping_method as [Htyping_method Hmethodret].
       rewrite <- getmbody in Htyping_method.
       remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
@@ -1355,7 +1355,7 @@ Proof.
         destruct v0 as [|loc]; [trivial|].
         exact Hget_iot.
         (* rewrite <- getmbody in Htyping_method. *)
-	        have Hdom_le := eval_stmt_preserves_heap_domain_simple P CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
+	        have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         lia.
 
         (* Outter runtime env is wellformed*)
@@ -1367,7 +1367,7 @@ Proof.
         destruct v as [|loc]; [trivial|].
         destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
-	        have Hdom_le := eval_stmt_preserves_heap_domain_simple P CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
+	        have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.
@@ -1708,7 +1708,7 @@ Proof.
       destruct H2 as [ddef H2].
       destruct H2 as [Hbasecyd [HfindD [HmdefinD H2]]].
 
-      destruct H2 as [sΓmethodend [mrettype Htyping_method]].
+      destruct H2 as [_ [sΓmethodend [mrettype Htyping_method]]].
       destruct Htyping_method as [Htyping_method Hmethodret].
       rewrite <- getmbody in Htyping_method.
       remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
@@ -1763,7 +1763,7 @@ Proof.
         exact Hget_iot.
 
         (* length constraint *)
-	        have Hdom_le := eval_stmt_preserves_heap_domain_simple P CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
+	        have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         lia.
 
         (* Outter runtime env is wellformed*)
@@ -1775,7 +1775,7 @@ Proof.
         destruct v as [|loc]; [trivial|].
         destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
-	        have Hdom_le := eval_stmt_preserves_heap_domain_simple P CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
+	        have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.
@@ -2120,7 +2120,7 @@ Proof.
         destruct Hget_method as [Hmethod_in _].
         exact Hmethod_in.
       }
-      destruct H2 as [sΓmethodend [mrettype Htyping_method]].
+      destruct H2 as [_ [sΓmethodend [mrettype Htyping_method]]].
       destruct Htyping_method as [Htyping_method Hmethodret].
       rewrite <- getmbody in Htyping_method.
       remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
@@ -2231,7 +2231,7 @@ Proof.
         destruct v0 as [|loc]; [trivial|].
         exact Hget_iot.
         (* rewrite <- getmbody in Htyping_method. *)
-	        have Hdom_le := eval_stmt_preserves_heap_domain_simple P CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
+	        have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         lia.
 
         (* Outter runtime env is wellformed*)
@@ -2243,7 +2243,7 @@ Proof.
         destruct v as [|loc]; [trivial|].
         destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
-	        have Hdom_le := eval_stmt_preserves_heap_domain_simple P CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
+	        have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.
@@ -2583,7 +2583,7 @@ Proof.
       destruct H2 as [ddef H2].
       destruct H2 as [Hbasecyd [HfindD [HmdefinD H2]]].
 
-      destruct H2 as [sΓmethodend [mrettype Htyping_method]].
+      destruct H2 as [_ [sΓmethodend [mrettype Htyping_method]]].
       destruct Htyping_method as [Htyping_method Hmethodret].
       rewrite <- getmbody in Htyping_method.
       remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
@@ -2638,7 +2638,7 @@ Proof.
         exact Hget_iot.
 
         (* length constraint *)
-	        have Hdom_le := eval_stmt_preserves_heap_domain_simple P CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
+	        have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         lia.
 
         (* Outter runtime env is wellformed*)
@@ -2650,7 +2650,7 @@ Proof.
         destruct v as [|loc]; [trivial|].
         destruct (runtime_getObj h loc) as [obj|] eqn:Hobjloc; [|contradiction].
         (* rewrite <- getmbody in Htyping_method. *)
-	        have Hdom_le := eval_stmt_preserves_heap_domain_simple P CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
+	        have Hdom_le := eval_stmt_preserves_heap_domain_simple CT rΓmethodinit h (mbody_stmt mbody) rΓ'' h' Heval.
         assert (Hloc_dom : loc < dom h) by (apply runtime_getObj_dom in Hobjloc; exact Hobjloc).
         assert (Hloc_dom' : loc < dom h') by lia.
         destruct (runtime_getObj h' loc) as [obj'|] eqn:Hobj'.

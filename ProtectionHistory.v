@@ -220,9 +220,9 @@ Proof.
 Qed.
 
 Lemma mut_expression_result_has_mutable_root :
-  forall P CT sGamma mt rGamma h e l T,
+  forall CT sGamma mt rGamma h e l T,
     wf_r_config CT sGamma rGamma h ->
-    eval_expr OK P CT rGamma h e (Iot l) OK P rGamma h ->
+    eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
     expr_has_type CT sGamma mt e T ->
     safe_readonly_method_type mt ->
     sqtype T = Mut ->
@@ -230,7 +230,7 @@ Lemma mut_expression_result_has_mutable_root :
       typed_root Mut sGamma rGamma root /\
       mutable_reachable CT h root l.
 Proof.
-  intros P CT sGamma mt rGamma h e l T Hwf Heval Htyping Hscope Hmut.
+  intros CT sGamma mt rGamma h e l T Hwf Heval Htyping Hscope Hmut.
   inversion Heval; subst.
   - inversion Htyping; subst.
     exists l. split.
@@ -251,9 +251,9 @@ Proof.
 Qed.
 
 Lemma rdm_expression_result_has_rdm_root :
-  forall P CT sGamma mt rGamma h e l T,
+  forall CT sGamma mt rGamma h e l T,
     wf_r_config CT sGamma rGamma h ->
-    eval_expr OK P CT rGamma h e (Iot l) OK P rGamma h ->
+    eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
     expr_has_type CT sGamma mt e T ->
     safe_readonly_method_type mt ->
     sqtype T = RDM ->
@@ -261,7 +261,7 @@ Lemma rdm_expression_result_has_rdm_root :
       typed_root RDM sGamma rGamma root /\
       mutable_reachable CT h root l.
 Proof.
-  intros P CT sGamma mt rGamma h e l T Hwf Heval Htyping Hscope Hrdm_result.
+  intros CT sGamma mt rGamma h e l T Hwf Heval Htyping Hscope Hrdm_result.
   inversion Heval; subst.
   - inversion Htyping; subst.
     exists l. split.
@@ -705,19 +705,19 @@ Proof.
 Qed.
 
 Lemma assignment_mut_root_has_old_ancestor :
-  forall P CT sGamma mt rGamma h x e old value,
+  forall CT sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK P CT rGamma h e value OK P rGamma h ->
+    eval_expr OK CT rGamma h e value OK rGamma h ->
     forall root,
       typed_root Mut sGamma (update_r_env_value rGamma x value) root ->
       exists old_root,
         typed_root Mut sGamma rGamma old_root /\
         mutable_reachable CT h old_root root.
 Proof.
-  intros P CT sGamma mt rGamma h x e old value Hwf Htyping Hscope Hx Heval root
+  intros CT sGamma mt rGamma h x e old value Hwf Htyping Hscope Hx Heval root
     [z [Tz [Htype_z [Hval_z Hmut_z]]]].
   inversion Htyping; subst.
   destruct (Nat.eq_dec z x) as [->|Hneq].
@@ -733,7 +733,7 @@ Proof.
       rewrite Hsame in Hval_z. injection Hval_z as <-.
       destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
         as [this [qcontext [Hrthis [_ Hqcontext]]]].
-      have Htypable := expr_eval_preservation P CT sGamma mt rGamma h e
+      have Htypable := expr_eval_preservation CT sGamma mt rGamma h e
         (Iot l) rGamma h Te this qcontext Hrthis Hqcontext Hwf Htype_e Heval.
       have Hmut_e := nonnull_subtype_to_mut_is_mut
         CT rGamma h l Te Tx qcontext Htypable Hsub Hmut_z.
@@ -745,19 +745,19 @@ Proof.
 Qed.
 
 Lemma assignment_rdm_root_has_old_ancestor :
-  forall P CT sGamma mt rGamma h x e old value,
+  forall CT sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK P CT rGamma h e value OK P rGamma h ->
+    eval_expr OK CT rGamma h e value OK rGamma h ->
     forall root,
       typed_root RDM sGamma (update_r_env_value rGamma x value) root ->
       exists old_root,
         typed_root RDM sGamma rGamma old_root /\
         mutable_reachable CT h old_root root.
 Proof.
-  intros P CT sGamma mt rGamma h x e old value Hwf Htyping Hscope Hx Heval root
+  intros CT sGamma mt rGamma h x e old value Hwf Htyping Hscope Hx Heval root
     [z [Tz [Htype_z [Hval_z Hrdm_z]]]].
   inversion Htyping; subst.
   destruct (Nat.eq_dec z x) as [->|Hneq].
@@ -773,7 +773,7 @@ Proof.
       rewrite Hsame in Hval_z. injection Hval_z as <-.
       destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
         as [this [qcontext [Hrthis [_ Hqcontext]]]].
-      have Htypable := expr_eval_preservation P CT sGamma mt rGamma h e
+      have Htypable := expr_eval_preservation CT sGamma mt rGamma h e
         (Iot l) rGamma h Te this qcontext Hrthis Hqcontext Hwf Htype_e Heval.
       have Hrdm_e := nonnull_subtype_to_rdm_is_rdm
         CT rGamma h l Te Tx qcontext Htypable Hsub Hrdm_z.

@@ -9,7 +9,7 @@ Lemma well_typed_field_write_no_mutation_exp :
   forall CT sΓ mt rΓ h x f y sΓ'
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt (SFldWrite x f y) sΓ')
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h (SFldWrite x f y) MUTATIONEXP (reachable_locations_from_initial_env CT h rΓ) rΓ h),
+    (Heval : eval_stmt OK CT rΓ h (SFldWrite x f y) MUTATIONEXP rΓ h),
     False.
 Proof.
   intros.
@@ -137,14 +137,13 @@ Qed.
     well-typed statement.  In particular, the result covers writes nested in
     sequences and in dynamically dispatched method bodies. *)
 Theorem well_typed_no_mutation_exp :
-  forall CT sΓ mt rΓ h stmt initial_locs result_locs rΓ' h' sΓ'
+  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ'
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval : eval_stmt OK initial_locs CT rΓ h stmt MUTATIONEXP
-               result_locs rΓ' h'),
+    (Heval : eval_stmt OK CT rΓ h stmt MUTATIONEXP rΓ' h'),
     False.
 Proof.
-  intros CT sΓ mt rΓ h stmt initial_locs result_locs rΓ' h' sΓ'
+  intros CT sΓ mt rΓ h stmt rΓ' h' sΓ'
     Hwf Htyping Heval.
   generalize dependent sΓ'.
   generalize dependent mt.

@@ -84,19 +84,6 @@ Definition vpa_mutability_bound (q1: q)(q2 : q_c) : q :=
     | _, Mut_c => Mut
     end.
 
-(* Check whether a field declaration respect its bound *)
-Definition vpa_mutability_fld_bound (q1: q_f)(q2 : q_c) : q_f :=
-  match q1, q2 with
-    | Imm_f, RDM_c => Imm_f
-    | Mut_f, RDM_c => Mut_f
-    | RDM_f, RDM_c => RDM_f
-    | RO_f, RDM_c => RO_f (* This is not the rule used to check assignability, use it for wellformedness only*)
-    | _, Imm_c => Imm_f
-    | _, Mut_c => Mut_f
-    end.
-
-
-
 (* Adapting field type from constructor *)
 Definition vpa_mutability_constructor_fld (q1: q_c)(q2 : q_f) : q :=
   match q1, q2 with
