@@ -25,6 +25,7 @@ Examples/PicoIfZeroCacheExamples.v
 PICOBridge/PicoMemoryModel.v
 PICOBridge/PicoCacheTyping.v
 PICOBridge/PicoIrisCoreLanguage.v
+PICOBridge/PicoSemanticConcurrency.v
 PICOBridge/PicoIrisCoreInvariant.v
 PICOBridge/PicoIrisCoreWP.v
 PICOBridge/PicoIrisTypingSupport.v
@@ -36,6 +37,8 @@ PICOBridge/PicoIrisSemImmAdequacy.v
 PICOBridge/PicoIrisSemanticAPI.v
 Examples/PicoSemanticCacheAPIExamples.v
 Examples/PicoConcreteHashModel.v
+Examples/PicoSemanticConcurrencyExamples.v
+Examples/PicoSemanticConcurrencySafety.v
 Examples/PicoHashExecutionTrace.v
 PICOBridge/ConcurrentPico.v
 PICOBridge/WeakPico.v

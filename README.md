@@ -54,6 +54,23 @@ transfer. The closed
 hash example proves its callable/exported contract from one TS/Iris computation package in
 `pico_hash_callable_and_exported_with_computationI`.
 
+PICO source syntax remains sequential. Semantic concurrency is supplied by
+`PICOBridge/PicoSemanticConcurrency.v`: an external invocation pool installs
+ordinary `SCall` controls and schedules their CESK steps over one shared heap
+and weak field-history state. This layer records successful read/write access
+events, defines conflicting-access races, and separates race reachability from
+benignity (state-invariant preservation plus terminal result contracts). It
+does not add `spawn`, `join`, or parallel composition to `stmt`.
+
+`Examples/PicoSemanticConcurrencyExamples.v` closes the existential side for
+two concrete source hash calls: both calls dynamically resolve the verified
+method, both read the default before either write, and both append `Int 7` to
+the same cache-field history. `Examples/PicoSemanticConcurrencySafety.v`
+closes the universal side with a finite CESK phase invariant. Every scheduler
+interleaving preserves the concrete `PicoCoreSemImmInstantiation` state
+invariant, and every completed call returns `Int 7`. The combined endpoint is
+`pico_two_hash_invocations_semimm_benign_race`.
+
 ## Main Files
 
 Pure cache theory:
@@ -68,6 +85,12 @@ PICO core language and typing:
 
 - `PICOBridge/PicoIrisCoreLanguage.v`: continuation machine with ordinary heap
   and weak field histories.
+- `PICOBridge/PicoSemanticConcurrency.v`: source-independent invocation pool,
+  shared-state scheduler, access/race semantics, and invariant composition.
+- `Examples/PicoSemanticConcurrencyExamples.v`: closed two-call hash fixture
+  and explicit default-read/double-write race execution.
+- `Examples/PicoSemanticConcurrencySafety.v`: universal pool invariant,
+  deterministic completed-call results, and the closed benign-race theorem.
 - `PICOBridge/PicoIrisCoreInvariant.v`: typed runtime environments, state
   well-formedness, progress, and one-step preservation.
 - `PICOBridge/PicoIrisCoreWP.v`: primitive Iris WP lifting rules.
@@ -141,6 +164,9 @@ facade files are not part of the source tree or project manifests.
   coherence, runtime cache assignability, and the verified computation API.
 - `pico_heap_hash_api_call_wpI`: invokes that installed API from a typed caller
   under explicit class-table lookup and closed-dispatch premises.
+- `pico_two_hash_invocations_semimm_benign_race`: two concrete calls exhibit
+  a cache race while every interleaving preserves the concrete SemImm provider
+  invariant and every completed call returns the derived hash.
 
 The guarded call theorem derives resolved body typing, return-slot typing,
 callee-frame typing, and qualifier-sensitive return transfer from source call
