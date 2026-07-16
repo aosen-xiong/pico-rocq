@@ -45,6 +45,97 @@ Proof.
     + exfalso. apply find_class_dom in Hfind. simpl in Hfind. lia.
 Qed.
 
+(** Regression for WF-Field: the paper permits the adapted qualifier to be a
+    subtype of the declared qualifier. In particular, RO may name a class
+    whose declaration bound is Mut. *)
+Definition mut_bound_class : class_def :=
+  {| signature :=
+       {| class_qualifier := Mut_c; cname := 1; super := Some 0 |};
+     body :=
+       {| fields := []; constructor := witness_constructor; methods := [] |} |}.
+
+Definition field_rule_CT : class_table := [witness_class; mut_bound_class].
+
+Definition readonly_mut_bound_field : field_def :=
+  {| ftype :=
+       {| assignability := Final; mutability := RO_f;
+          f_base_type := TRef 1 |};
+     fname := 0 |}.
+
+Example readonly_field_with_mutable_bound_is_well_formed :
+  wf_field field_rule_CT readonly_mut_bound_field.
+Proof.
+  unfold wf_field, wf_stypeuse, field_rule_CT, readonly_mut_bound_field,
+    qf2q, bound, find_class, gget, vpa_mutability_bound.
+  simpl.
+  split.
+  - apply q_rd.
+  - lia.
+Qed.
+
+(** Regression for WF-Cons: both the constructor parameter and its
+    corresponding field type are adapted by the constructor qualifier before
+    subtyping is checked. *)
+Definition constructor_rule_field : field_def :=
+  {| ftype :=
+       {| assignability := RDA; mutability := RDM_f;
+          f_base_type := TRef 0 |};
+     fname := 0 |}.
+
+Definition constructor_rule_signature : constructor_sig :=
+  {| cqualifier := Imm_c;
+     cparams := [Build_qualified_type RDM (TRef 0)] |}.
+
+Definition constructor_rule_class : class_def :=
+  {| signature :=
+       {| class_qualifier := Imm_c; cname := 1; super := Some 0 |};
+     body :=
+       {| fields := [constructor_rule_field];
+          constructor := {| csignature := constructor_rule_signature |};
+          methods := [] |} |}.
+
+Definition constructor_rule_CT : class_table :=
+  [witness_class; constructor_rule_class].
+
+Example rdm_constructor_parameter_is_adapted_with_immutable_field :
+  wf_constructor constructor_rule_CT 1 constructor_rule_signature.
+Proof.
+  unfold wf_constructor, constructor_rule_signature.
+  simpl.
+  split.
+  - reflexivity.
+  - split.
+    + constructor.
+      * unfold wf_stypeuse, constructor_rule_CT, bound, find_class, gget,
+          vpa_mutability_bound.
+        simpl.
+        split.
+        -- constructor. discriminate.
+        -- lia.
+      * constructor.
+    + exists [constructor_rule_field].
+      split.
+      * eapply CF_Inherit with
+          (def := constructor_rule_class)
+          (parent := 0)
+          (parent_fields := [])
+          (own_fields := [constructor_rule_field]).
+        -- reflexivity.
+        -- reflexivity.
+        -- eapply CF_Object with (def := witness_class); reflexivity.
+        -- reflexivity.
+      * split; [reflexivity|].
+        constructor.
+        -- eapply qtype_sub;
+             unfold wf_qualified_base, constructor_rule_CT; simpl.
+           ++ lia.
+           ++ lia.
+           ++ constructor. discriminate.
+           ++ apply Subtyping.base_ref.
+              apply Subtyping.class_refl. simpl. lia.
+        -- constructor.
+Qed.
+
 Definition witness_heap : heap :=
   [mkObj (mkruntime_type Mut_r 0) []].
 

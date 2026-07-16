@@ -135,16 +135,16 @@ Proof.
 Qed.
 
 Lemma rdm_roots_descend_after_assignment :
-  forall P CT sGamma mt rGamma h x e old value,
+  forall CT sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK P CT rGamma h e value OK P rGamma h ->
+    eval_expr OK CT rGamma h e value OK rGamma h ->
     rdm_roots_descend_from CT h sGamma rGamma sGamma
       (update_r_env_value rGamma x value).
 Proof.
-  intros P CT sGamma mt rGamma h x e old value Hwf Htyping Hscope Hx
+  intros CT sGamma mt rGamma h x e old value Hwf Htyping Hscope Hx
     Heval root Hroot.
   eapply assignment_rdm_root_has_old_ancestor; eauto.
 Qed.

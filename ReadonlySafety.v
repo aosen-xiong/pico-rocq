@@ -13,7 +13,7 @@ Lemma readonly_pico_field_write_with_end :
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
     (Hmtype: safe_readonly_method_type mt)
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hget_readonly : runtime_getVal rΓ readonlyx = Some (Iot l))
     (Hobj_before : runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals))
     (Hobj_after : runtime_getObj h' l = Some (mkObj (mkruntime_type anyrq C) vals'))
@@ -249,7 +249,7 @@ Theorem readonly_pico_field_write :
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
     (Hmtype : safe_readonly_method_type mt)
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hget_readonly : runtime_getVal rΓ readonlyx = Some (Iot l))
     (Hobj_before : runtime_getObj h l = Some (mkObj (mkruntime_type anyrq C) vals))
     (Hassign : sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA),
@@ -260,7 +260,7 @@ Proof.
   intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C vals f
     qt readonlyx anyf rhs anyrq Hstmt Hstatic_type Hqt_ro Hwf Htyping
     Hmtype Heval Hget_readonly Hobj_before Hassign.
-  destruct (runtime_preserves_r_type_heap (reachable_locations_from_initial_env CT h rΓ) CT rΓ h l
+  destruct (runtime_preserves_r_type_heap CT rΓ h l
     (mkruntime_type anyrq C) h' vals stmt rΓ' Hobj_before Heval)
     as [vals' Hobj_after].
   exists vals'. split; [exact Hobj_after|].
@@ -340,7 +340,7 @@ Lemma readonly_method_call_preserves_arguments_with_end :
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
     (Hmtype: safe_readonly_method_type mt)
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hget_y : runtime_getVal rΓ y = Some (Iot ly))
     (Hget_zs : runtime_lookup_list rΓ zs = Some vals)
     (HinP: Ensembles.In Loc (reachable_locations_from_vals CT h (Iot ly :: vals)) loc_arg)
@@ -410,7 +410,7 @@ Lemma readonly_method_call_preserves_arguments_with_end :
       exact Hmethod_in.
     }
     unfold wf_method in Hwfmethod;
-    destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
+    destruct Hwfmethod as [_ [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
     remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
@@ -446,7 +446,6 @@ Lemma readonly_method_call_preserves_arguments_with_end :
     exact HenvImpliesEnvRespect.
     rewrite getmbody; auto.
     rewrite Hframe_sig; split; assumption.
-    eapply eval_stmt_protected_set_irrelevant. exact Heval_body.
     have Hsubset := reachable_locations_subset_reachable_from_method_frame CT h ly vals.
     rewrite <- HeqrΓmethodinit in Hsubset.
     unfold Ensembles.Included in Hsubset.
@@ -462,7 +461,7 @@ Lemma readonly_method_call_preserves_arguments_with_end :
     destruct Hwfmethod as [Hbasecyd [HfindD [HmdefinD Hwfmethod]]].
 
     unfold wf_method in Hwfmethod;
-    destruct Hwfmethod as [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]];
+    destruct Hwfmethod as [_ [sΓmethodend [mbodyreturntype [Hmethodbody_typing [HmethodReturnBound [HmethodReturnType [HmethodReturnSubtype HMethodoverride]]]]]]];
     remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit;
     remember {| vars := Iot ly :: vals |} as rΓmethodinit;
     remember (set_vars rΓ (update x retval (vars rΓ))) as rΓ'''.
@@ -497,7 +496,6 @@ Lemma readonly_method_call_preserves_arguments_with_end :
     exact HenvImpliesEnvRespect.
     rewrite getmbody; auto.
     rewrite Hframe_sig; split; assumption.
-    eapply eval_stmt_protected_set_irrelevant. exact Heval_body.
     have Hsubset := reachable_locations_subset_reachable_from_method_frame CT h ly vals.
     rewrite <- HeqrΓmethodinit in Hsubset.
     unfold Ensembles.Included in Hsubset.
@@ -517,7 +515,7 @@ Theorem readonly_method_call_preserves_arguments :
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
     (Hmtype: safe_readonly_method_type mt)
-    (Heval : eval_stmt OK (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hget_y : runtime_getVal rΓ y = Some (Iot ly))
     (Hget_zs : runtime_lookup_list rΓ zs = Some vals)
     (HinP: Ensembles.In Loc (reachable_locations_from_vals CT h (Iot ly :: vals)) loc_arg)
@@ -531,7 +529,7 @@ Proof.
   intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty Crecv mdef zs vals ly
     loc_arg C anyrq vals_arg f Hstmt Hstatic_type Href Hmethod_lookup Hwf Htyping
     Hmtype Heval Hget_y Hget_zs HinP Harg_obj Hassign Hall_readonly.
-  destruct (runtime_preserves_r_type_heap (reachable_locations_from_initial_env CT h rΓ) CT rΓ h loc_arg
+  destruct (runtime_preserves_r_type_heap CT rΓ h loc_arg
     (mkruntime_type anyrq C) h' vals_arg stmt rΓ' Harg_obj Heval)
     as [vals_arg' Harg_obj'].
   exists vals_arg'. split; [exact Harg_obj'|].

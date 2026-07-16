@@ -147,8 +147,7 @@ Section pico_typing_support.
         Hnone) as Hnone_rt.
     exists qcontext, receiver.
     split.
-    - eapply (@preservation_local_ok
-        (reachable_locations_from_initial_env CT h rΓ)); eauto.
+    - eapply preservation_local_ok; eauto.
       eapply SBS_Local.
       exact Hnone_rt.
     - split.
@@ -175,8 +174,7 @@ Section pico_typing_support.
     destruct Henv as (qcontext & receiver & Hcfg & Hrecv & Hrmut).
     exists qcontext, receiver.
     split.
-    - eapply (@preservation_varass_ok
-        (reachable_locations_from_initial_env CT h rΓ)); eauto.
+    - eapply preservation_varass_ok; eauto.
       eapply SBS_Assign.
       + exact Hold.
       + apply EBS_Null.
@@ -203,8 +201,7 @@ Section pico_typing_support.
     destruct Henv as (qcontext & receiver & Hcfg & Hrecv & Hrmut).
     exists qcontext, receiver.
     split.
-    - eapply (@preservation_varass_ok
-        (reachable_locations_from_initial_env CT h rΓ)); eauto.
+    - eapply preservation_varass_ok; eauto.
       eapply SBS_Assign.
       + exact Hold.
       + apply EBS_Int.
@@ -240,8 +237,7 @@ Section pico_typing_support.
     destruct Henv as (qcontext & receiver & Hcfg & Hrecv & Hrmut).
     exists qcontext, receiver.
     split.
-    - eapply (@preservation_varass_ok
-        (reachable_locations_from_initial_env CT h rΓ)); eauto.
+    - eapply preservation_varass_ok; eauto.
       eapply SBS_Assign.
       + exact Hold.
       + eapply EBS_Val.
@@ -481,8 +477,7 @@ Section pico_typing_support.
       as (old_field_v & Hfield).
     exists qcontext, receiver.
     split.
-    - eapply (@preservation_fldwrite_ok
-        (reachable_locations_from_initial_env CT h rΓ)); eauto.
+    - eapply preservation_fldwrite_ok; eauto.
       eapply SBS_FldWrite; eauto.
     - split.
       + exact Hthis.
@@ -524,8 +519,7 @@ Section pico_typing_support.
     destruct Henv as (qcontext & receiver & Hcfg & Hrecv & Hrmut).
     exists qcontext, receiver.
     split.
-    - eapply (@preservation_new_ok
-        (reachable_locations_from_initial_env CT h rΓ)); eauto.
+    - eapply preservation_new_ok; eauto.
       eapply SBS_New; eauto.
     - split.
       + rewrite get_this_var_mapping_update_vars_nonzero; eauto.
@@ -543,9 +537,7 @@ Section pico_typing_support.
     forall rΓ caller h s rΓ' h'
       (Hrenv : wf_renv CT caller h)
       (Heval :
-        eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)
-          CT rΓ h s OK (reachable_locations_from_initial_env CT h rΓ)
-          rΓ' h'),
+        eval_stmt OK CT rΓ h s OK rΓ' h'),
       wf_renv CT caller h'.
   Proof.
     intros rΓ caller h s rΓ' h' Hrenv Heval.
@@ -588,9 +580,7 @@ Section pico_typing_support.
     forall rΓ h s rΓ' h' caller loc T qcontext
       (Htypable : wf_r_typable CT caller h loc T qcontext)
       (Heval :
-        eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)
-          CT rΓ h s OK (reachable_locations_from_initial_env CT h rΓ)
-          rΓ' h'),
+        eval_stmt OK CT rΓ h s OK rΓ' h'),
       wf_r_typable CT caller h' loc T qcontext.
   Proof.
     intros rΓ h s rΓ' h' caller loc T qcontext Htypable Heval.
@@ -612,9 +602,7 @@ Section pico_typing_support.
       (Henv : pico_typed_runtime_env sΓ caller h)
       (Hheap' : wf_heap CT h')
       (Heval :
-        eval_stmt OK (reachable_locations_from_initial_env CT h rΓ)
-          CT rΓ h s OK (reachable_locations_from_initial_env CT h rΓ)
-          rΓ' h'),
+        eval_stmt OK CT rΓ h s OK rΓ' h'),
       pico_typed_runtime_env sΓ caller h'.
   Proof.
     intros sΓ caller h rΓ s rΓ' h' Henv Hheap' Heval.

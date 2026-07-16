@@ -417,12 +417,18 @@ Section pico_typing_fundamental_ownp.
       as (declaring_class & declaring_def & Hdecl_sub &
           Hdecl_find & Hdecl_in & Hwf_method).
 	    exists Ty, Cstatic, argtypes, mdef_static, declaring_class.
-	    repeat split; try assumption.
-	    exact
-	      (method_signature_consistent_subtype
-	        CT (rctype (rt_type receiver_obj)) Cstatic
-	        m mdef mdef_static
-	        Hwf_CT Hclass_sub Hfind Hfind_static).
+	    split; [exact Hget_y |].
+	    split; [exact HbaseTy |].
+	    split; [exact Hget_args |].
+	    split; [exact Hfind_static |].
+	    split; [exact Hclass_sub |].
+	    split.
+	    - exact
+	        (method_signature_consistent_subtype
+	          CT (rctype (rt_type receiver_obj)) Cstatic
+	          m mdef mdef_static
+	          Hwf_CT Hclass_sub Hfind Hfind_static).
+	    - exact Hwf_method.
   Qed.
 
   Lemma pico_core_typed_resolved_method_body :
@@ -455,7 +461,7 @@ Section pico_typing_fundamental_ownp.
 	          Hsignature & Hwf_method).
     unfold wf_method in Hwf_method.
     destruct Hwf_method as
-      (body_sGamma' & body_ret_type & Hbody & Hret_dom &
+      (Hreturn_wf & body_sGamma' & body_ret_type & Hbody & Hret_dom &
        Hret_type & Hret_subtype & Hoverride).
     exists body_sGamma', body_ret_type.
     split; [exact Hbody |].
@@ -1814,7 +1820,7 @@ Section pico_typing_fundamental_ownp.
     }
     unfold wf_method in Hwf_method.
     destruct Hwf_method as
-      (body_sGamma' & body_ret_type & Hbody_typing & Hret_dom &
+      (Hreturn_wf & body_sGamma' & body_ret_type & Hbody_typing & Hret_dom &
         Hret_type & Hret_subtype & Hoverride).
     eapply pico_core_typed_method_frame_env with (qinner := qinner);
       eauto.
@@ -1950,7 +1956,7 @@ Section pico_typing_fundamental_ownp.
     }
     unfold wf_method in Hwf_method.
     destruct Hwf_method as
-      (body_sGamma' & body_ret_type & Hbody_typing & Hret_dom &
+      (Hreturn_wf & body_sGamma' & body_ret_type & Hbody_typing & Hret_dom &
         Hret_type & Hret_subtype & Hoverride).
     eapply pico_core_typed_method_frame_env with (qinner := qinner);
       eauto.
@@ -2141,7 +2147,7 @@ Section pico_typing_fundamental_ownp.
     }
     unfold wf_method in Hwf_method.
     destruct Hwf_method as
-      (body_sGamma' & body_ret_type & Hbody_typing & Hret_dom &
+      (Hreturn_wf & body_sGamma' & body_ret_type & Hbody_typing & Hret_dom &
         Hret_type & Hret_subtype & Hoverride).
     eapply pico_core_typed_method_frame_env with (qinner := qinner);
       eauto.
@@ -2243,7 +2249,7 @@ Section pico_typing_fundamental_ownp.
     }
     unfold wf_method in Hwf_method.
     destruct Hwf_method as
-      (body_sGamma' & body_ret_type & Hbody_typing & Hret_dom &
+      (Hreturn_wf & body_sGamma' & body_ret_type & Hbody_typing & Hret_dom &
         Hret_type & Hret_subtype & Hoverride).
     eapply pico_core_typed_method_frame_env with (qinner := qinner);
       eauto.

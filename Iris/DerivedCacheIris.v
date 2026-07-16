@@ -40,13 +40,9 @@ Section derived_cache_iris.
     forall CT rΓ h h' x y loc C abs_fields cache_f derived
            abs_vals old_cache_v n o,
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        CT rΓ h
+        OK CT rΓ h
         (SFldWrite x cache_f y)
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        rΓ h' ->
+        OK rΓ h' ->
       runtime_getVal rΓ x = Some (Iot loc) ->
       runtime_getVal rΓ y = Some (Int n) ->
       runtime_getObj h loc = Some o ->
@@ -69,13 +65,9 @@ Section derived_cache_iris.
   Lemma eval_cache_field_write_preserves_final_readsI :
     forall CT rΓ h h' x y loc C abs_fields cache_f abs_vals o,
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        CT rΓ h
+        OK CT rΓ h
         (SFldWrite x cache_f y)
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        rΓ h' ->
+        OK rΓ h' ->
       runtime_getVal rΓ x = Some (Iot loc) ->
       runtime_getObj h loc = Some o ->
       rctype (rt_type o) = C ->
@@ -94,21 +86,13 @@ Section derived_cache_iris.
     forall CT rΓ rΓ_mid h h' receiver tmp loc C abs_fields cache_f derived
            abs_vals old_cache_v n o,
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        CT rΓ h
+        OK CT rΓ h
         (SVarAss tmp (EInt n))
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        rΓ_mid h ->
+        OK rΓ_mid h ->
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env CT h rΓ_mid)
-        CT rΓ_mid h
+        OK CT rΓ_mid h
         (SFldWrite receiver cache_f tmp)
-        OK
-        (reachable_locations_from_initial_env CT h rΓ_mid)
-        rΓ_mid h' ->
+        OK rΓ_mid h' ->
       runtime_getVal rΓ_mid receiver = Some (Iot loc) ->
       runtime_getVal rΓ_mid tmp = Some (Int n) ->
       runtime_getObj h loc = Some o ->
@@ -137,21 +121,13 @@ Section derived_cache_iris.
       stmt_typing CT sΓ mt (SVarAss tmp (EInt n)) sΓ ->
       stmt_typing CT sΓ mt (SFldWrite receiver cache_f tmp) sΓ ->
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        CT rΓ h
+        OK CT rΓ h
         (SVarAss tmp (EInt n))
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        rΓ_mid h ->
+        OK rΓ_mid h ->
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env CT h rΓ_mid)
-        CT rΓ_mid h
+        OK CT rΓ_mid h
         (SFldWrite receiver cache_f tmp)
-        OK
-        (reachable_locations_from_initial_env CT h rΓ_mid)
-        rΓ_mid h' ->
+        OK rΓ_mid h' ->
       runtime_getVal rΓ_mid receiver = Some (Iot loc) ->
       runtime_getObj h loc = Some o ->
       rctype (rt_type o) = C ->
@@ -175,21 +151,13 @@ Section derived_cache_iris.
       stmt_typing CT sΓ mt (SVarAss tmp (EInt n)) sΓ ->
       stmt_typing CT sΓ mt (SFldWrite receiver cache_f tmp) sΓ ->
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        CT rΓ h
+        OK CT rΓ h
         (SVarAss tmp (EInt n))
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        rΓ_mid h ->
+        OK rΓ_mid h ->
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env CT h rΓ_mid)
-        CT rΓ_mid h
+        OK CT rΓ_mid h
         (SFldWrite receiver cache_f tmp)
-        OK
-        (reachable_locations_from_initial_env CT h rΓ_mid)
-        rΓ_mid h' ->
+        OK rΓ_mid h' ->
       runtime_getVal rΓ_mid receiver = Some (Iot loc) ->
       runtime_getVal rΓ_mid tmp = Some (Int n) ->
       runtime_getObj h loc = Some o ->
@@ -218,16 +186,10 @@ Section derived_cache_iris.
       stmt_typing CT sΓ mt (SVarAss tmp (EInt n)) sΓ ->
       stmt_typing CT sΓ mt (SFldWrite receiver cache_f tmp) sΓ ->
       rΓ_mid = set_vars rΓ (update tmp (Int n) (vars rΓ)) ->
-      reachable_locations_from_initial_env CT h rΓ_mid =
-        reachable_locations_from_initial_env CT h rΓ ->
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        CT rΓ h
+        OK CT rΓ h
         (SSeq (SVarAss tmp (EInt n)) (SFldWrite receiver cache_f tmp))
-        OK
-        (reachable_locations_from_initial_env CT h rΓ)
-        rΓ_mid h' ->
+        OK rΓ_mid h' ->
       runtime_getVal rΓ_mid receiver = Some (Iot loc) ->
       runtime_getVal rΓ_mid tmp = Some (Int n) ->
       runtime_getObj h loc = Some o ->
@@ -243,7 +205,7 @@ Section derived_cache_iris.
   Proof.
     intros CT sΓ mt rΓ rΓ_mid h h' receiver tmp loc C abs_fields cache_f
            derived abs_vals old_cache_v n o
-           Hwf Htype_compute Htype_write Hmid Hreach_stable Hseq
+           Hwf Htype_compute Htype_write Hmid Hseq
            Hreceiver_mid Htmp_mid Hobj HC Hfinals Hcache Hreads Hcache_read
            Hderived Hnz.
     iPureIntro.

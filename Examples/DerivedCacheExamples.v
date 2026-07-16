@@ -229,21 +229,12 @@ Qed.
 
 Lemma simple_int_literal_eval :
   eval_expr
-    OK
-    (reachable_locations_from_initial_env
-       simple_CT
-       (simple_heap (Int 41) (Int 0))
-       (simple_cache_env (Int 0)))
-    simple_CT
+    OK simple_CT
     (simple_cache_env (Int 0))
     (simple_heap (Int 41) (Int 0))
     (EInt (simple_derived [Int 41]))
     (Int (simple_derived [Int 41]))
     OK
-    (reachable_locations_from_initial_env
-       simple_CT
-       (simple_heap (Int 41) (Int 0))
-       (simple_cache_env (Int 0)))
     (simple_cache_env (Int 0))
     (simple_heap (Int 41) (Int 0)).
 Proof.
@@ -252,20 +243,11 @@ Qed.
 
 Lemma simple_assign_literal_eval :
   eval_stmt
-    OK
-    (reachable_locations_from_initial_env
-       simple_CT
-       (simple_heap (Int 41) (Int 0))
-       (simple_cache_env (Int 0)))
-    simple_CT
+    OK simple_CT
     (simple_cache_env (Int 0))
     (simple_heap (Int 41) (Int 0))
     simple_cache_compute_stmt
     OK
-    (reachable_locations_from_initial_env
-       simple_CT
-       (simple_heap (Int 41) (Int 0))
-       (simple_cache_env (Int 0)))
     (simple_cache_env (Int (simple_derived [Int 41])))
     (simple_heap (Int 41) (Int 0)).
 Proof.
@@ -355,20 +337,11 @@ Qed.
 
 Lemma simple_cache_write_eval :
   eval_stmt
-    OK
-    (reachable_locations_from_initial_env
-       simple_CT
-       (simple_heap (Int 41) (Int 0))
-       (simple_cache_env (Int (simple_derived [Int 41]))))
-    simple_CT
+    OK simple_CT
     (simple_cache_env (Int (simple_derived [Int 41])))
     (simple_heap (Int 41) (Int 0))
     simple_cache_write_stmt
     OK
-    (reachable_locations_from_initial_env
-       simple_CT
-       (simple_heap (Int 41) (Int 0))
-       (simple_cache_env (Int (simple_derived [Int 41]))))
     (simple_cache_env (Int (simple_derived [Int 41])))
     (update_field (simple_heap (Int 41) (Int 0)) simple_loc
        simple_cache_field (Int (simple_derived [Int 41]))).
@@ -393,20 +366,11 @@ Qed.
 Lemma simple_cache_write_eval_protocol :
   exists h',
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env
-         simple_CT
-         (simple_heap (Int 41) (Int 0))
-         (simple_cache_env (Int (simple_derived [Int 41]))))
-      simple_CT
+      OK simple_CT
       (simple_cache_env (Int (simple_derived [Int 41])))
       (simple_heap (Int 41) (Int 0))
       simple_cache_write_stmt
       OK
-      (reachable_locations_from_initial_env
-         simple_CT
-         (simple_heap (Int 41) (Int 0))
-         (simple_cache_env (Int (simple_derived [Int 41]))))
       (simple_cache_env (Int (simple_derived [Int 41])))
       h' /\
     derived_int_cache_protocol
@@ -483,20 +447,11 @@ Qed.
 
 Lemma simple_cache_compute_and_write_eval :
   eval_stmt
-    OK
-    (reachable_locations_from_initial_env
-       simple_CT
-       (simple_heap (Int 41) (Int 0))
-       (simple_cache_env (Int 0)))
-    simple_CT
+    OK simple_CT
     (simple_cache_env (Int 0))
     (simple_heap (Int 41) (Int 0))
     simple_cache_compute_and_write_stmt
     OK
-    (reachable_locations_from_initial_env
-       simple_CT
-       (simple_heap (Int 41) (Int 0))
-       (simple_cache_env (Int 0)))
     (simple_cache_env (Int (simple_derived [Int 41])))
     (update_field (simple_heap (Int 41) (Int 0)) simple_loc
        simple_cache_field (Int (simple_derived [Int 41]))).
@@ -506,28 +461,17 @@ Proof.
     (rΓ' := simple_cache_env (Int (simple_derived [Int 41])))
     (h' := simple_heap (Int 41) (Int 0)).
   - apply simple_assign_literal_eval.
-  - rewrite (simple_cache_reachable_ignores_tmp_int
-               0 (simple_derived [Int 41])).
-    apply simple_cache_write_eval.
+  - apply simple_cache_write_eval.
 Qed.
 
 Lemma simple_cache_compute_and_write_eval_protocol :
   exists h',
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env
-         simple_CT
-         (simple_heap (Int 41) (Int 0))
-         (simple_cache_env (Int 0)))
-      simple_CT
+      OK simple_CT
       (simple_cache_env (Int 0))
       (simple_heap (Int 41) (Int 0))
       simple_cache_compute_and_write_stmt
       OK
-      (reachable_locations_from_initial_env
-         simple_CT
-         (simple_heap (Int 41) (Int 0))
-         (simple_cache_env (Int 0)))
       (simple_cache_env (Int (simple_derived [Int 41])))
       h' /\
     derived_int_cache_protocol

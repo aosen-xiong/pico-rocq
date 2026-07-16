@@ -229,13 +229,9 @@ Lemma eval_cache_field_write_establishes_protocol :
   forall CT rΓ h h' x y loc C abs_fields cache_f derived
          abs_vals old_cache_v n o,
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      CT rΓ h
+      OK CT rΓ h
       (SFldWrite x cache_f y)
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      rΓ h' ->
+      OK rΓ h' ->
     runtime_getVal rΓ x = Some (Iot loc) ->
     runtime_getVal rΓ y = Some (Int n) ->
     runtime_getObj h loc = Some o ->
@@ -265,13 +261,9 @@ Qed.
 Lemma eval_cache_field_write_preserves_final_reads :
   forall CT rΓ h h' x y loc C abs_fields cache_f abs_vals o,
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      CT rΓ h
+      OK CT rΓ h
       (SFldWrite x cache_f y)
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      rΓ h' ->
+      OK rΓ h' ->
     runtime_getVal rΓ x = Some (Iot loc) ->
     runtime_getObj h loc = Some o ->
     rctype (rt_type o) = C ->
@@ -292,21 +284,13 @@ Lemma eval_int_compute_and_cache_write_sound :
   forall CT rΓ rΓ_mid h h' receiver tmp loc C abs_fields cache_f derived
          abs_vals old_cache_v n o,
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      CT rΓ h
+      OK CT rΓ h
       (SVarAss tmp (EInt n))
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      rΓ_mid h ->
+      OK rΓ_mid h ->
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env CT h rΓ_mid)
-      CT rΓ_mid h
+      OK CT rΓ_mid h
       (SFldWrite receiver cache_f tmp)
-      OK
-      (reachable_locations_from_initial_env CT h rΓ_mid)
-      rΓ_mid h' ->
+      OK rΓ_mid h' ->
     runtime_getVal rΓ_mid receiver = Some (Iot loc) ->
     runtime_getVal rΓ_mid tmp = Some (Int n) ->
     runtime_getObj h loc = Some o ->
@@ -336,21 +320,13 @@ Theorem derived_cache_update_immutability :
     stmt_typing CT sΓ mt (SVarAss tmp (EInt n)) sΓ ->
     stmt_typing CT sΓ mt (SFldWrite receiver cache_f tmp) sΓ ->
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      CT rΓ h
+      OK CT rΓ h
       (SVarAss tmp (EInt n))
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      rΓ_mid h ->
+      OK rΓ_mid h ->
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env CT h rΓ_mid)
-      CT rΓ_mid h
+      OK CT rΓ_mid h
       (SFldWrite receiver cache_f tmp)
-      OK
-      (reachable_locations_from_initial_env CT h rΓ_mid)
-      rΓ_mid h' ->
+      OK rΓ_mid h' ->
     runtime_getVal rΓ_mid receiver = Some (Iot loc) ->
     runtime_getObj h loc = Some o ->
     rctype (rt_type o) = C ->
@@ -372,21 +348,13 @@ Theorem derived_cache_update_sound :
     stmt_typing CT sΓ mt (SVarAss tmp (EInt n)) sΓ ->
     stmt_typing CT sΓ mt (SFldWrite receiver cache_f tmp) sΓ ->
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      CT rΓ h
+      OK CT rΓ h
       (SVarAss tmp (EInt n))
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      rΓ_mid h ->
+      OK rΓ_mid h ->
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env CT h rΓ_mid)
-      CT rΓ_mid h
+      OK CT rΓ_mid h
       (SFldWrite receiver cache_f tmp)
-      OK
-      (reachable_locations_from_initial_env CT h rΓ_mid)
-      rΓ_mid h' ->
+      OK rΓ_mid h' ->
     runtime_getVal rΓ_mid receiver = Some (Iot loc) ->
     runtime_getVal rΓ_mid tmp = Some (Int n) ->
     runtime_getObj h loc = Some o ->
@@ -407,16 +375,9 @@ Proof.
   eapply eval_int_compute_and_cache_write_sound; eauto.
 Qed.
 
-(* PICO's current big-step semantics is sequential. It has no thread pool,
-   interleaving semantics, data-race relation, or memory model. The theorem
-   below is therefore a sequential semantic soundness theorem for the concrete
-   cache-update sequence shape.
-
-   The explicit reachability-stability premise is needed because [SBS_Seq]
-   threads the initial reachability set through the second statement, while
-   primitive statement rules recompute reachability from their own input
-   runtime environment. Assigning an integer temporary does not add reachable
-   locations, so examples can discharge this premise directly. *)
+(** Sequential semantic soundness for the concrete cache-update sequence.
+    The external semantic-concurrency layer separately schedules ordinary
+    calls over shared weak field histories. *)
 Theorem derived_cache_update_sequence_sound :
   forall CT sΓ mt rΓ rΓ_mid h h' receiver tmp loc C abs_fields cache_f
          derived abs_vals old_cache_v n o,
@@ -424,16 +385,10 @@ Theorem derived_cache_update_sequence_sound :
     stmt_typing CT sΓ mt (SVarAss tmp (EInt n)) sΓ ->
     stmt_typing CT sΓ mt (SFldWrite receiver cache_f tmp) sΓ ->
     rΓ_mid = set_vars rΓ (update tmp (Int n) (vars rΓ)) ->
-    reachable_locations_from_initial_env CT h rΓ_mid =
-      reachable_locations_from_initial_env CT h rΓ ->
     eval_stmt
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      CT rΓ h
+      OK CT rΓ h
       (SSeq (SVarAss tmp (EInt n)) (SFldWrite receiver cache_f tmp))
-      OK
-      (reachable_locations_from_initial_env CT h rΓ)
-      rΓ_mid h' ->
+      OK rΓ_mid h' ->
     runtime_getVal rΓ_mid receiver = Some (Iot loc) ->
     runtime_getVal rΓ_mid tmp = Some (Int n) ->
     runtime_getObj h loc = Some o ->
@@ -449,14 +404,13 @@ Theorem derived_cache_update_sequence_sound :
 Proof.
   intros CT sΓ mt rΓ rΓ_mid h h' receiver tmp loc C abs_fields cache_f
          derived abs_vals old_cache_v n o
-         Hwf Htype_compute Htype_write Hmid Hreach_stable Hseq
+         Hwf Htype_compute Htype_write Hmid Hseq
          Hreceiver_mid Htmp_mid Hobj HC Hfinals Hcache Hreads Hcache_read
          Hderived Hnz.
   subst rΓ_mid.
   inversion Hseq; subst; try discriminate.
   inversion Heval1; subst; try discriminate.
   inversion Heval; subst; try discriminate.
-  rewrite <- Hreach_stable in Heval2.
   eapply derived_cache_update_sound
     with
       (sΓ := sΓ)

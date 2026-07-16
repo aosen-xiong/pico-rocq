@@ -267,13 +267,13 @@ Qed.
 (* ------------------------------------------------------------- *)
 (* Soundness properties for PICO *)
 Theorem preservation_pico :
-  forall P CT sΓ mt rΓ h stmt rΓ' h' sΓ'
+  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ'
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK P CT rΓ h stmt OK P rΓ' h'),
+    (Heval   : eval_stmt OK CT rΓ h stmt OK rΓ' h'),
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
-  intros P CT sΓ mt rΓ h stmt rΓ' h' sΓ' Hwf Htyping Heval.
+  intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' Hwf Htyping Heval.
   generalize dependent sΓ.
   generalize dependent sΓ'.
   generalize dependent mt.
@@ -301,7 +301,7 @@ Proof.
         destruct Hget_method as [Hmethod_in _].
         exact Hmethod_in.
       }
-      destruct H2 as [sΓmethodend [mrettype Htyping_method]].
+      destruct H2 as [_ [sΓmethodend [mrettype Htyping_method]]].
       destruct Htyping_method as [Htyping_method Hmethodret].
       rewrite <- getmbody in Htyping_method.
       remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
@@ -1406,7 +1406,7 @@ Proof.
       destruct H2 as [ddef H2].
       destruct H2 as [Hbasecyd [HfindD [HmdefinD H2]]].
 
-      destruct H2 as [sΓmethodend [mrettype Htyping_method]].
+      destruct H2 as [_ [sΓmethodend [mrettype Htyping_method]]].
       destruct Htyping_method as [Htyping_method Hmethodret].
       rewrite <- getmbody in Htyping_method.
       remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
@@ -2498,7 +2498,7 @@ Proof.
         destruct Hget_method as [Hmethod_in _].
         exact Hmethod_in.
       }
-      destruct H2 as [sΓmethodend [mrettype Htyping_method]].
+      destruct H2 as [_ [sΓmethodend [mrettype Htyping_method]]].
       destruct Htyping_method as [Htyping_method Hmethodret].
       rewrite <- getmbody in Htyping_method.
       remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
@@ -3541,7 +3541,7 @@ Proof.
       destruct H2 as [ddef H2].
       destruct H2 as [Hbasecyd [HfindD [HmdefinD H2]]].
 
-      destruct H2 as [sΓmethodend [mrettype Htyping_method]].
+      destruct H2 as [_ [sΓmethodend [mrettype Htyping_method]]].
       destruct Htyping_method as [Htyping_method Hmethodret].
       rewrite <- getmbody in Htyping_method.
       remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
@@ -4627,7 +4627,7 @@ Proof.
          | Hzero : runtime_getVal ?rΓ ?x = Some (Int 0),
            Hnonzero : runtime_getVal ?rΓ ?x = Some (Int (S ?n)) |- _ =>
              congruence
-         | Hbranch : eval_stmt _ _ _ _ _ _ _ _ _ _ |- _ =>
+         | Hbranch : eval_stmt _ _ _ _ _ _ _ _ |- _ =>
              eapply IHHeval; [reflexivity | exact Hbranch | exact Hwf | eauto]
          end.
   - (* Case: stmt = IfZero, nonzero branch *)
@@ -4637,7 +4637,7 @@ Proof.
          | Hzero : runtime_getVal ?rΓ ?x = Some (Int 0),
            Hnonzero : runtime_getVal ?rΓ ?x = Some (Int (S ?n)) |- _ =>
              congruence
-         | Hbranch : eval_stmt _ _ _ _ _ _ _ _ _ _ |- _ =>
+         | Hbranch : eval_stmt _ _ _ _ _ _ _ _ |- _ =>
              eapply IHHeval; [reflexivity | exact Hbranch | exact Hwf | eauto]
          end.
 Qed.

@@ -14,9 +14,7 @@ Lemma deep_readonly_preservation :
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
     (Hmtype : safe_readonly_method_type mt)
-    (Heval : eval_stmt OK
-      (reachable_locations_from_initial_env CT h rΓ) CT rΓ h stmt
-      OK (reachable_locations_from_initial_env CT h rΓ) rΓ' h')
+    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
     (Hlocalset : Ensembles.In Loc
       (reachable_locations_from_initial_env CT h rΓ) l)
     (Hobj : runtime_getObj h l =

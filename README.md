@@ -26,6 +26,33 @@ cache-read trace admitted by its cache protocol.  The proof separates:
 - `SemImmI`: stable abstract state plus exclusive cache-history snapshot
   ownership, updated in place at the same ghost name.
 
+## PICO Mechanization Map
+
+| Paper reference | Paper-level claim / premise | Mechanized premise in Rocq | Proved guarantee | Rocq theorem / file |
+|---|---|---|---|---|
+| Syntax figures | Pico syntax: qualifiers, expressions, statements, fields, classes, methods, runtime values, heaps | Inductive datatypes and records encode the paper grammar | Source language and runtime configurations used by all later judgments | `q`, `q_f`, `q_c`, `a`, `expr`, `stmt`, `field_type`, `method_sig`, `class_def`, `runtime_type`, `r_env`, `Obj` in [Syntax.v](Syntax.v) |
+| Viewpoint adaptation rules | Mutability, assignability, field, constructor, and runtime viewpoint adaptation | Scope-specific functions encode AS, CS, RS, and TS as independent mutability/assignability choices | Adapted qualifiers used by typing, field access/write, constructors, and runtime typability | `vpa_mutability_qq_abs_imm`, `vpa_mutability_tt_abs_imm`, `vpa_mutability_qq_safe_ro`, `vpa_mutability_tt_safe_ro`, `vpa_assignability`, `vpa_assignability_concret_imm` in [ViewpointAdaptation.v](ViewpointAdaptation.v) |
+| Subtyping rules | Qualifier, class/base, method-scope, and qualified-type subtyping | Inductive relations encode the subtype premises consumed by typing | Subtyping derivations used by statement typing and well-formedness | `q_subtype`, `base_subtype`, `method_subtype`, `qualified_type_subtype` in [Subtyping.v](Subtyping.v) |
+| Static typing | Statement typing and well-formed field, constructor, class, method, and table conditions | Static environments, method scopes, receiver/argument adaptation, and class-table checks are explicit premises | Well-typed statements and well-formed declarations used by preservation and immutability proofs | `stmt_typing`, `wf_stypeuse`, `wf_field`, `wf_constructor`, `wf_method`, `wf_class`, `wf_class_table` in [Typing.v](Typing.v) |
+| Dynamic semantics | Big-step expression and statement evaluation with success, null-pointer, and mutation-exception outcomes | Evaluation relates expressions and statements in an initial runtime configuration to an outcome and final configuration | Operational behavior used by preservation, mutation safety, and the immutability proofs | `eval_expr`, `eval_stmt` and their determinism theorems in [Bigstep.v](Bigstep.v) |
+| Runtime well-formedness | Runtime configuration consistency between static environments, runtime environments, heaps, and class tables | Runtime typability and heap/object well-formedness are bundled in `wf_r_config` | Starting assumption and final guarantee for preservation | `wf_rtypeuse`, `wf_obj`, `wf_heap`, `wf_renv`, `wf_r_config` in [Bigstep.v](Bigstep.v) |
+| Reachability definitions | Ordinary reachability and abstract-state reachability | `reachable` follows arbitrary heap edges; `reachable_abs` and `protected_locset` encode RAS protection | Reachability sets used by shallow/deep immutability, safe readonly, and concrete immutability | `reachable`, `reachable_abs`, `protected_locset` in [Reachability.v](Reachability.v) |
+| Theorem 1 | Preservation and mutation safety | The initial runtime configuration is well-formed and the statement is well-typed; preservation additionally assumes a successful `OK` evaluation, while safety considers an evaluation producing `MUTATIONEXP` | Successful evaluation preserves runtime well-formedness, and no well-typed statement can produce the mutation exception | `preservation_pico` in [Preservation.v](Preservation.v) and `well_typed_no_mutation_exp` in [WFNOMutationEXP.v](WFNOMutationEXP.v) |
+| Theorem 1 support | Big-step evaluation determinism | The same expression or statement evaluates twice from the same initial configuration | The two evaluations produce the same result/configuration | `eval_expr_deterministic` and `eval_stmt_deterministic` in [Bigstep.v](Bigstep.v) |
+| Theorem 1 support | Local variable declaration preserves well-formedness | `SLocal T x` is well-typed and evaluates by `eval_stmt` | Extending runtime/static environments with the local binding preserves `wf_r_config` | `preservation_local_ok` in [Properties.v](Properties.v) |
+| Theorem 1 support | Variable assignment preserves well-formedness | `SVarAss x e` is well-typed and evaluates by `eval_stmt` | Updating `x` with the evaluated value preserves `wf_r_config` | `preservation_varass_ok` in [Properties.v](Properties.v) |
+| Theorem 1 support | Field write preserves well-formedness under permitted writes | `SFldWrite x f y` is well-typed and evaluates successfully by `eval_stmt` | Heap update preserves `wf_r_config` | `preservation_fldwrite_ok` plus scope-specific lemmas in [Properties.v](Properties.v) |
+| Theorem 1 support | Object creation preserves well-formedness | `SNew x q_c c ys` is well-typed and evaluates by `eval_stmt` | Extending the heap and assigning the fresh object preserves `wf_r_config` | `preservation_new_ok` in [Properties.v](Properties.v) |
+| Theorem 2 | Shallow abstract immutability | Immutable object exists at entry; field is `Final` or `RDA`; statement is well-typed and evaluates successfully | The object still exists with the same runtime type, and the protected field value is unchanged | `shallow_immutability_pico` in [DeepImmutability.v](DeepImmutability.v) |
+| Lemma 1 | Reachable-abstract-state reachability from an immutable root preserves immutability | Object is reachable from an immutable root through abstract-state fields | The reachable object is also immutable | `reachable_abs_from_imm_points_to_imm` in [DeepImmutability.v](DeepImmutability.v) |
+| Theorem 3, AS clause | Transitive abstract immutability | Object is reachable from an immutable root through abstract state; statement is well-typed and evaluates successfully | The reachable object still exists with the same runtime type, and every non-`Assignable` field retains its entry value | `deep_immutability_pico` in [DeepImmutability.v](DeepImmutability.v) |
+| Theorem 3, CS clause | Concrete-state preservation | Object is reachable through abstract state from an immutable root; statement is well-typed in `ConcreteState` scope | The reachable object still exists with the same runtime type, and every field retains its entry value, including fields declared `Assignable` | `concrete_state_preservation` in [ConcreteStateImmutability.v](ConcreteStateImmutability.v), supported by [ConcreteState.v](ConcreteState.v) |
+| Theorem 4, RS clause | Safe readonly method call | Method call occurs in `SafeRO` scope through protected receiver/arguments and evaluates successfully | Each protected object still exists with the same runtime type, and its non-`Assignable` fields retain their entry values | `readonly_method_call_preserves_arguments` in [ReadonlySafety.v](ReadonlySafety.v) |
+| Theorem 4 support | Readonly field-write safety | Receiver expression has static type `RO`; field-write statement evaluates successfully; method scope is not `AbstractImm` | Protected field of the readonly-referenced object is unchanged | `readonly_pico_field_write` in [ReadonlySafety.v](ReadonlySafety.v) |
+| Theorem 4, TS clause | Concrete immutability | Method call occurs in `ConcreteImm` scope; receiver and all parameters are safe | Each protected object still exists with the same runtime type, and every field retains its entry value | `ConcreteImmutability` in [ConcreteImmutability.v](ConcreteImmutability.v) |
+| Proof-hygiene scan | Submitted proof sources do not use the forbidden commands scanned by the artifact | Every submitted `.v` file excludes literal `Axiom`, `Admitted`, and `admit` | Mechanical forbidden-command scan passes | [scripts/check-no-axioms-admits.py](scripts/check-no-axioms-admits.py) via `make check` |
+| Kernel-assumption audit | Public results do not depend on global axioms | The explicit [public-theorems.txt](scripts/public-theorems.txt) manifest is checked against every source `Theorem`, then each fully qualified entry is inspected with `Print Assumptions` | The manifest and sources agree, and every public theorem is closed under the global context | [scripts/check-public-assumptions.py](scripts/check-public-assumptions.py) via `make check` |
+
 The source TS judgment in `PICOBridge/PicoCacheTyping.v` checks that a cache
 initializer reads only locals, arguments, and stable abstract fields and has
 no direct shared writes.  A separate semantic computation obligation proves
@@ -43,6 +70,32 @@ aware Iris proof of the derived result, and
 `pico_ts_derived_computation_direct_write_freeI` exports only the absence of a
 direct shared field write. Functional correctness remains a separate Iris
 premise.
+
+## PICO Model Boundaries
+
+- Variable index `0` is reserved for `this`. Following Java, `this` is not a
+  reassignable variable, so variable assignment, object creation, and
+  method-call typing require their destination variable to differ from `0`.
+- The constructor model omits executable constructor bodies and explicit
+  superclass-constructor calls. Consequently, the paper's `checkSuperCall`
+  premise has no separate Rocq judgment; this is part of the declared
+  constructor-body simplification.
+- The development proves declaration-, statement-, and configuration-level
+  results rather than a separate `WF-Prog`/`OS-P-Prog` wrapper judgment.
+- `wf_field` and `wf_constructor` implement the paper's viewpoint-adapted
+  well-formedness checks, and `wf_method` checks its declared return type with
+  `wf_stypeuse`. [WellformednessRegression.v](WellformednessRegression.v)
+  exercises both formerly divergent field/constructor cases and supplies
+  a positive runtime-configuration witness.
+- The paper's full method-overriding rule uses viewpoint-adapted variance. The
+  Rocq development intentionally mechanizes invariant overriding: if a subclass
+  method overrides a parent method, the signatures must be syntactically equal.
+- The paper treats `Lost` as a helper qualifier rather than a programmer-written
+  type qualifier. Rocq represents it in the common qualifier datatype, but
+  `wf_stypeuse` and non-reflexive `Lost` subtyping prevent direct `Lost` type
+  uses in well-formed static environments.
+- The method-call immutability theorems package receiver and parameter
+  non-mutable premises through `all_params_safe`.
 
 The cache API uses `pico_callable_methodI`, whose postcondition is established
 at the actual `KCall` return boundary before the caller continuation resumes;

@@ -51,20 +51,11 @@ Section simple_derived_cache_iris_example.
   Lemma simple_cache_compute_and_write_eval_protocolI :
     exists h',
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env
-           simple_CT
-           (simple_heap (Int 41) (Int 0))
-           (simple_cache_env (Int 0)))
-        simple_CT
+        OK simple_CT
         (simple_cache_env (Int 0))
         (simple_heap (Int 41) (Int 0))
         simple_cache_compute_and_write_stmt
         OK
-        (reachable_locations_from_initial_env
-           simple_CT
-           (simple_heap (Int 41) (Int 0))
-           (simple_cache_env (Int 0)))
         (simple_cache_env (Int (simple_derived [Int 41])))
       h' /\
       (⊢ @derived_int_cache_protocolI PROP
@@ -86,20 +77,11 @@ Section simple_derived_cache_iris_example.
   Lemma simple_cache_compute_and_write_eval_soundI :
     exists h',
       eval_stmt
-        OK
-        (reachable_locations_from_initial_env
-           simple_CT
-           (simple_heap (Int 41) (Int 0))
-           (simple_cache_env (Int 0)))
-        simple_CT
+        OK simple_CT
         (simple_cache_env (Int 0))
         (simple_heap (Int 41) (Int 0))
         simple_cache_compute_and_write_stmt
         OK
-        (reachable_locations_from_initial_env
-           simple_CT
-           (simple_heap (Int 41) (Int 0))
-           (simple_cache_env (Int 0)))
         (simple_cache_env (Int (simple_derived [Int 41])))
         h' /\
       (⊢ @field_readsI PROP h' simple_loc simple_abs_fields [Int 41]) /\

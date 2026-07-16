@@ -486,7 +486,7 @@ Lemma forward_expression_into_zone_has_safe_type :
   forall P Z M cutoff CT sGamma mt rGamma h e l T,
     wf_r_config CT sGamma rGamma h ->
     forward_history_state CT P Z M cutoff sGamma rGamma h ->
-    eval_expr OK P CT rGamma h e (Iot l) OK P rGamma h ->
+    eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
     expr_has_type CT sGamma mt e T ->
     safe_readonly_method_type mt ->
     In Loc Z l ->
@@ -1340,7 +1340,7 @@ Lemma component_forward_history_after_field_write :
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     safe_readonly_method_type mt ->
-    eval_stmt OK P CT rGamma h (SFldWrite x f y) OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
     exists M',
       Included Loc M M' /\
       component_forward_history_state CT P Z M' cutoff sGamma' rGamma' h'.
@@ -1349,7 +1349,7 @@ Proof.
     Hwf Hstate Htyping Hscope Heval.
   assert (HrGamma : rGamma' = rGamma) by (inversion Heval; reflexivity).
   subst rGamma'.
-  have Hwf' := @preservation_fldwrite_ok P CT sGamma mt rGamma h x f y h'
+  have Hwf' := preservation_fldwrite_ok CT sGamma mt rGamma h x f y h'
     sGamma' Hwf Htyping Heval.
   inversion Heval; subst.
   exists (extend_capability_after_write CT h M loc_x o f val_y).
@@ -1930,14 +1930,14 @@ Lemma component_forward_history_after_new :
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     cutoff <= dom h ->
     ~ In Loc Z (dom h) ->
-    eval_stmt OK P CT rGamma h (SNew x qc C args) OK P rGamma' h' ->
+    eval_stmt OK CT rGamma h (SNew x qc C args) OK rGamma' h' ->
     exists M',
       Included Loc M M' /\
       component_forward_history_state CT P Z M' cutoff sGamma' rGamma' h'.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x qc C args rGamma' h'
     sGamma' Hwf Hstate Htyping Hcutoff HfreshZ Heval.
-  have Hwf' := @preservation_new_ok P CT sGamma mt rGamma h x qc C args
+  have Hwf' := preservation_new_ok CT sGamma mt rGamma h x qc C args
     rGamma' h' sGamma' Hwf Htyping Heval.
   inversion Heval; subst.
   assert (HsGamma : sGamma' = sGamma) by (inversion Htyping; reflexivity).
@@ -2013,7 +2013,7 @@ Lemma forward_history_after_assignment :
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK P CT rGamma h e value OK P rGamma h ->
+    eval_expr OK CT rGamma h e value OK rGamma h ->
     forward_history_state CT P Z M cutoff sGamma
       (update_r_env_value rGamma x value) h.
 Proof.
@@ -2051,7 +2051,7 @@ Proof.
     destruct value as [|result|n]; try trivial.
     eapply eval_expr_preserves_confinement; eauto. split; assumption.
   - intros root Hroot.
-    destruct (assignment_mut_root_has_old_ancestor P CT sGamma mt rGamma h
+    destruct (assignment_mut_root_has_old_ancestor CT sGamma mt rGamma h
       x e old value Hwf Htyping Hscope Hx Heval root Hroot)
       as [old_root [Holdroot Holdreach]].
     eapply mutable_heap_closed_reachable with (source := old_root).
@@ -2061,10 +2061,10 @@ Proof.
   - intros capability_root zone_root
       [Hcaproot [cap_target [Hcapreach HcapM]]]
       [Hzoneroot [zone_target [Hzonereach HzoneZ]]].
-    destruct (assignment_rdm_root_has_old_ancestor P CT sGamma mt rGamma h
+    destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
       x e old value Hwf Htyping Hscope Hx Heval capability_root Hcaproot)
       as [old_cap [Holdcap Hcap_prefix]].
-    destruct (assignment_rdm_root_has_old_ancestor P CT sGamma mt rGamma h
+    destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
       x e old value Hwf Htyping Hscope Hx Heval zone_root Hzoneroot)
       as [old_zone [Holdzone Hzone_prefix]].
     eapply Hcolors with (capability_root := old_cap) (zone_root := old_zone).
@@ -2139,7 +2139,7 @@ Lemma component_forward_history_after_assignment :
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK P CT rGamma h e value OK P rGamma h ->
+    eval_expr OK CT rGamma h e value OK rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma
       (update_r_env_value rGamma x value) h.
 Proof.
@@ -2150,10 +2150,10 @@ Proof.
   - split; [exact Hcomponents|].
     intros capability_root zone_root Hcaproot Hcapcomponent
       Hzoneroot Hzonecomponent.
-    destruct (assignment_rdm_root_has_old_ancestor P CT sGamma mt rGamma h
+    destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
       x e old value Hwf Htyping Hscope Hx Heval capability_root Hcaproot)
       as [old_capability [Holdcapability Hcapability_prefix]].
-    destruct (assignment_rdm_root_has_old_ancestor P CT sGamma mt rGamma h
+    destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
       x e old value Hwf Htyping Hscope Hx Heval zone_root Hzoneroot)
       as [old_zone [Holdzone Hzone_prefix]].
     eapply Hactive with (capability_root := old_capability)

@@ -105,6 +105,7 @@ Lemma pico_double_read_hash_method_def_wf : forall
 Proof.
   intros CT C receiver_type method H Htyping Hoverride.
   unfold wf_method; simpl.
+  split; [reflexivity |].
   exists [receiver_type; int_type; int_type], int_type.
   split; [exact Htyping |].
   split; [unfold cache_result; simpl; lia |].
@@ -265,6 +266,7 @@ Lemma pico_hash_method_def_with_wf : forall
 Proof.
   intros CT C receiver_type method compute Htyping Hoverride.
   unfold wf_method; simpl.
+  split; [reflexivity |].
   exists [receiver_type; int_type; int_type], int_type.
   split; [exact Htyping |].
   split; [unfold cache_result; simpl; lia |].

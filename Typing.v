@@ -414,14 +414,19 @@ Definition wf_stypeuse (CT : class_table) (q_use: q) (base: base_type) : Prop :=
     end
   end.
 
-(* Well-formedness of field *)
-Definition wf_field (CT : class_table) (fdef: field_def) : Prop :=
-  match f_base_type (ftype fdef) with
-  | TInt => True
-  | TRef C => exists qbound,
-      bound CT C = Some qbound /\
-      vpa_mutability_fld_bound (mutability (ftype fdef)) qbound = (mutability (ftype fdef))
+Definition qf2q (qf : q_f) : q :=
+  match qf with
+  | Mut_f => Mut
+  | Imm_f => Imm
+  | RDM_f => RDM
+  | RO_f => RO
   end.
+
+(** WF-Field embeds a field qualifier in the common qualifier lattice and
+    applies the same adapted-subtyping check as WF-TypeUse. *)
+Definition wf_field (CT : class_table) (fdef: field_def) : Prop :=
+  wf_stypeuse CT (qf2q (mutability (ftype fdef)))
+    (f_base_type (ftype fdef)).
 
 (* Well-formedness of static environment *)
 Definition wf_senv (CT : class_table) (sΓ : s_env) : Prop :=
@@ -801,9 +806,10 @@ Definition wf_constructor (CT : class_table) (c : class_name) (ctor : constructo
     CollectFields CT c field_defs /\
     length (cparams ctor) = length field_defs /\
     
-  (* 4. Parameter types are compatible with field types *)
+  (* 4. Adapted parameter types are compatible with adapted field types *)
   Forall2 (fun param_type field_def =>
-    qualified_type_subtype CT param_type 
+    qualified_type_subtype CT
+      (vpa_mutability_constructor_param (cqualifier ctor) param_type)
       {| sqtype := vpa_mutability_constructor_fld (cqualifier ctor) (mutability (ftype field_def));
          sbase := f_base_type (ftype field_def) |})
     (cparams ctor) field_defs.
@@ -814,6 +820,7 @@ Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : P
   let methodbody := mbody mdef in
   let mbodystmt := mbody_stmt methodbody in
   let sΓ := msig.(mreceiver) :: msig.(mparams) in
+  wf_stypeuse CT (sqtype (mret msig)) (sbase (mret msig)) /\
   exists sΓ' mbodyrettype,
     stmt_typing CT sΓ mtype mbodystmt sΓ' /\
     let mbodyretvar := mreturn methodbody in
@@ -829,6 +836,16 @@ Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : P
       super (signature parent_def) = Some parent ->
       FindMethodWithName CT parent (mname msig) mdef_parent ->
       msignature mdef_parent = msig).
+
+Lemma wf_method_return_type_well_formed : forall CT C mdef,
+  wf_method CT C mdef ->
+  wf_stypeuse CT (sqtype (mret (msignature mdef)))
+    (sbase (mret (msignature mdef))).
+Proof.
+  intros CT C mdef Hwf.
+  unfold wf_method in Hwf; simpl in Hwf.
+  exact (proj1 Hwf).
+Qed.
 
 (* Well-formedness of class *)
 Inductive wf_class : class_table -> class_def -> Prop :=
@@ -1631,7 +1648,8 @@ Proof.
     destruct Hin1 as [n Hn].
     eapply Forall_nth_error in Hforall_methods; eauto.
     unfold wf_method in Hforall_methods.
-    destruct Hforall_methods as [sΓ' [mbodyrettype [_ [_ [_ [_ Hoverride]]]]]].
+    destruct Hforall_methods as
+      [_ [sΓ' [mbodyrettype [_ [_ [_ [_ Hoverride]]]]]]].
     unfold parent_lookup in Hparent. rewrite Hfind in Hparent. simpl in Hparent. symmetry.
     eapply Hoverride.
     -- assert (HC0_eq : C0 = C) by (unfold wf_class_table in Hwf_ct; destruct Hwf_ct as [_ [_ [_ Hcname]]]; apply Hcname; exact Hfind).

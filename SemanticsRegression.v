@@ -1,15 +1,13 @@
 From Stdlib Require Import List.
 Import ListNotations.
 
-Require Import Syntax Helpers ViewpointAdaptation Bigstep Properties.
+Require Import Syntax Helpers ViewpointAdaptation Typing Bigstep Properties.
 
-(** Regression for the former protected-set mismatch in sequences.
-
-    Allocation changes both the heap and the runtime environment.  The
-    following [skip] must nevertheless execute under the same arbitrary ghost
-    set [P], rather than recomputing a set from the intermediate state. *)
-Example allocation_then_skip_threads_fixed_protected_set :
-  forall P CT rGamma h x qc c args receiver receiver_q values object
+(** Allocation changes both the heap and the runtime environment. The following
+    regression checks that ordinary execution composes the allocation with the
+    subsequent [skip]. *)
+Example allocation_then_skip_executes :
+  forall CT rGamma h x qc c args receiver receiver_q values object
     adapted rGamma' h',
     runtime_getVal rGamma 0 = Some (Iot receiver) ->
     runtime_lookup_list rGamma args = Some values ->
@@ -19,36 +17,54 @@ Example allocation_then_skip_threads_fixed_protected_set :
     h' = h ++ [object] ->
     rGamma' = set_vars rGamma
       (update x (Iot (dom h)) rGamma.(vars)) ->
-    eval_stmt OK P CT rGamma h (SSeq (SNew x qc c args) SSkip)
-      OK P rGamma' h'.
+    eval_stmt OK CT rGamma h (SSeq (SNew x qc c args) SSkip)
+      OK rGamma' h'.
 Proof.
-  intros P CT rGamma h x qc c args receiver receiver_q values object
+  intros CT rGamma h x qc c args receiver receiver_q values object
     adapted rGamma' h' Hreceiver Hargs Hmut Hadapt Hobject Hheap Henv.
   eapply SBS_Seq with (rΓ' := rGamma') (h' := h').
   - eapply SBS_New; eauto.
   - apply SBS_Skip.
 Qed.
 
-(** The ghost set neither enables nor disables any expression execution. *)
-Example expression_execution_redecorates :
-  forall input_result P Q CT rGamma h expression value output_result
-    rGamma' h',
-    eval_expr input_result P CT rGamma h expression value output_result P
-      rGamma' h' ->
-    eval_expr input_result Q CT rGamma h expression value output_result Q
-      rGamma' h'.
+(** Direct null dereferences still produce [NPE]. *)
+Example field_write_npe_executes :
+  forall CT rGamma h x f y,
+    runtime_getVal rGamma x = Some Null_a ->
+    eval_stmt OK CT rGamma h (SFldWrite x f y) NPE rGamma h.
 Proof.
-  intros. eapply eval_expr_protected_set_irrelevant; eauto.
+  intros. apply SBS_FldWrite_NPE. assumption.
 Qed.
 
-(** Redecoration also covers exceptional statement outcomes, because the
-    result is universally quantified. *)
-Example statement_execution_redecorates :
-  forall input_result P Q CT rGamma h statement output_result rGamma' h',
-    eval_stmt input_result P CT rGamma h statement output_result P
-      rGamma' h' ->
-    eval_stmt input_result Q CT rGamma h statement output_result Q
-      rGamma' h'.
+(** A first-statement [NPE] propagates through sequencing. *)
+Example sequence_propagates_npe :
+  forall CT rGamma h s1 s2 rGamma' h',
+    eval_stmt OK CT rGamma h s1 NPE rGamma' h' ->
+    eval_stmt OK CT rGamma h (SSeq s1 s2) NPE rGamma' h'.
 Proof.
-  intros. eapply eval_stmt_protected_set_irrelevant; eauto.
+  intros. apply SBS_Seq_NPE_first. assumption.
+Qed.
+
+(** A non-assignable field write produces [MUTATIONEXP] without changing the
+    environment or heap. *)
+Example field_write_mutation_exception_executes :
+  forall CT rGamma h x f y loc_x object assignability old_value new_value,
+    runtime_getVal rGamma x = Some (Iot loc_x) ->
+    runtime_getObj h loc_x = Some object ->
+    getVal object.(fields_map) f = Some old_value ->
+    sf_assignability_rel CT (rctype (rt_type object)) f assignability ->
+    runtime_getVal rGamma y = Some new_value ->
+    runtime_vpa_assignability (rqtype (rt_type object)) assignability = Final ->
+    eval_stmt OK CT rGamma h (SFldWrite x f y) MUTATIONEXP rGamma h.
+Proof.
+  intros. eapply SBS_FldWrite_MUTATIONEXP; eauto.
+Qed.
+
+(** A first-statement mutation exception propagates through sequencing. *)
+Example sequence_propagates_mutation_exception :
+  forall CT rGamma h s1 s2 rGamma' h',
+    eval_stmt OK CT rGamma h s1 MUTATIONEXP rGamma' h' ->
+    eval_stmt OK CT rGamma h (SSeq s1 s2) MUTATIONEXP rGamma' h'.
+Proof.
+  intros. apply SBS_Seq_MUTATIONEXP_first. assumption.
 Qed.
