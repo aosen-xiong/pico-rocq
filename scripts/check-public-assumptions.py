@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 DECLARATION_RE = re.compile(
@@ -87,6 +88,18 @@ def manifest_theorems(root: Path) -> tuple[list[str], list[str]]:
     return theorems, failures
 
 
+def compiled_project_root(root: Path, modules: list[str]) -> Optional[Path]:
+    """Locate compiled objects from either Make or Dune's build sandbox."""
+    for candidate in (root, root / "_build" / "default"):
+        objects = [
+            candidate.joinpath(*module.split(".")).with_suffix(".vo")
+            for module in modules
+        ]
+        if all(path.is_file() for path in objects):
+            return candidate
+    return None
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     sources = project_sources(root)
@@ -112,6 +125,13 @@ def main() -> int:
             + ", ".join(missing)
         )
 
+    compiled_root = compiled_project_root(root, modules)
+    if compiled_root is None:
+        failures.append(
+            "compiled Rocq objects not found in the repository root or "
+            "_build/default; build the project before running this audit"
+        )
+
     if failures:
         print("Public theorem manifest audit failed:", file=sys.stderr)
         for failure in failures:
@@ -129,7 +149,7 @@ def main() -> int:
             "-exclude-dir",
             "_opam",
             "-Q",
-            str(root),
+            str(compiled_root),
             "",
         ],
         cwd=root,
