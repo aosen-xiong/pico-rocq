@@ -122,7 +122,16 @@ def main() -> int:
     commands.extend(f"Print Assumptions {theorem}." for theorem in manifest)
     commands.append("Quit.")
     result = subprocess.run(
-        ["rocq", "repl", "-quiet", "-Q", str(root), ""],
+        [
+            "rocq",
+            "repl",
+            "-quiet",
+            "-exclude-dir",
+            "_opam",
+            "-Q",
+            str(root),
+            "",
+        ],
         cwd=root,
         input="\n".join(commands) + "\n",
         text=True,
