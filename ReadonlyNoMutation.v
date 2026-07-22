@@ -7,16 +7,16 @@ Import ListNotations.
     from the initial call roots.  The structural history theorem supplies the
     call, nested-call, and sequence reasoning; only the paper-facing projection
     remains here. *)
-Lemma deep_readonly_preservation :
+Lemma readonly_state_statement_preservation :
   forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' l C anyrq vals vals' f
     (Hconfined : env_respects_protected_set
-      (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ)
+      (reachable_locations_from_initial_env h rΓ) sΓ rΓ)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Hmtype : safe_readonly_method_type mt)
-    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Hscope : readonly_state_method_scope mt)
+    (Heval : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hlocalset : Ensembles.In Loc
-      (reachable_locations_from_initial_env CT h rΓ) l)
+      (reachable_locations_from_initial_env h rΓ) l)
     (Hobj : runtime_getObj h l =
       Some (mkObj (mkruntime_type anyrq C) vals))
     (Hobj' : runtime_getObj h' l =
@@ -30,7 +30,7 @@ Proof.
     Hwf Hconfined.
   eapply successful_stmt_preserves_protected_field with
     (authority := Imm_r) (stack := [])
-    (Z := reachable_locations_from_initial_env CT h rΓ)
+    (Z := reachable_locations_from_initial_env h rΓ)
     (cutoff := dom h); eauto.
   destruct Hassignability as [Hfinal | Hrda].
   - left. exact Hfinal.

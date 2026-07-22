@@ -9,7 +9,7 @@ Lemma wf_config_variable_typable :
     wf_r_config CT sΓ rΓ h ->
     static_getType sΓ x = Some T ->
     runtime_getVal rΓ x = Some (Iot loc) ->
-    exists qcontext, wf_r_typable CT rΓ h loc T qcontext.
+    exists qcontext, wf_r_typable CT h loc T qcontext.
 Proof.
   intros CT sΓ rΓ h x loc T Hwf Hget_x Hval_x.
   unfold wf_r_config in Hwf.
@@ -34,7 +34,7 @@ Qed.
     either scope therefore requires a statically mutable receiver. *)
 Theorem concrete_assignability_field_write_requires_mutable_receiver :
   forall CT sΓ mt x f y sΓ',
-    concrete_assignability_method_type mt ->
+    strict_assignability_method_scope mt ->
     stmt_typing CT sΓ mt (SFldWrite x f y) sΓ' ->
     exists Tx,
       static_getType sΓ x = Some Tx /\
@@ -44,12 +44,12 @@ Proof.
   inversion Htyping; subst.
   - destruct Hscope as [H | H]; discriminate.
   - exists Tx. split; [assumption|].
-    unfold vpa_assignability_concret_imm in Hassignable.
+    unfold vpa_assignability_cs_ts in Hassignable.
     destruct (sqtype Tx), a; simpl in Hassignable;
       try discriminate; reflexivity.
   - destruct Hscope as [H | H]; discriminate.
   - exists Tx. split; [assumption|].
-    unfold vpa_assignability_concret_imm in Hassignable.
+    unfold vpa_assignability_cs_ts in Hassignable.
     destruct (sqtype Tx), a; simpl in Hassignable;
       try discriminate; reflexivity.
 Qed.
@@ -65,9 +65,9 @@ Proof.
   left. reflexivity.
 Qed.
 
-Corollary concrete_immutability_field_write_requires_mutable_receiver :
+Corollary transitive_state_field_write_requires_mutable_receiver :
   forall CT sΓ x f y sΓ',
-    stmt_typing CT sΓ ConcreteImm (SFldWrite x f y) sΓ' ->
+    stmt_typing CT sΓ TransitiveState (SFldWrite x f y) sΓ' ->
     exists Tx,
       static_getType sΓ x = Some Tx /\
       sqtype Tx = Mut.
@@ -79,7 +79,7 @@ Qed.
 (** The CS/TS assignability policy is a strengthening of the AS/RS policy. *)
 Corollary concrete_state_write_is_abstract_state_write :
   forall q a,
-    vpa_assignability_concret_imm q a = Assignable ->
+    vpa_assignability_cs_ts q a = Assignable ->
     vpa_assignability q a = Assignable.
 Proof.
   exact concrete_assignable_implies_assignable.
@@ -89,7 +89,7 @@ Qed.
     runtime object in a well-formed configuration. *)
 Lemma concrete_assignability_write_cannot_target_immutable :
   forall CT sΓ mt rΓ h x f y sΓ' loc C vals,
-    concrete_assignability_method_type mt ->
+    strict_assignability_method_scope mt ->
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ mt (SFldWrite x f y) sΓ' ->
     runtime_getVal rΓ x = Some (Iot loc) ->
@@ -106,7 +106,7 @@ Proof.
   rewrite Hobj in Htypable.
   destruct Htypable as [_ Hqual].
   rewrite Hmut in Hqual.
-  unfold qualifier_typable_context, vpa_mutability_rs,
+  unfold qualifier_typable_context, vpa_mutability_runtime,
     qualifier_typable_heap in Hqual.
   destruct qcontext; simpl in Hqual; contradiction.
 Qed.
@@ -123,10 +123,10 @@ Proof.
   left. reflexivity.
 Qed.
 
-Corollary concrete_immutability_write_cannot_target_immutable :
+Corollary transitive_state_write_cannot_target_immutable :
   forall CT sΓ rΓ h x f y sΓ' loc C vals,
     wf_r_config CT sΓ rΓ h ->
-    stmt_typing CT sΓ ConcreteImm (SFldWrite x f y) sΓ' ->
+    stmt_typing CT sΓ TransitiveState (SFldWrite x f y) sΓ' ->
     runtime_getVal rΓ x = Some (Iot loc) ->
     runtime_getObj h loc = Some (mkObj (mkruntime_type Imm_r C) vals) ->
     False.

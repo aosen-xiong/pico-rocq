@@ -128,19 +128,6 @@ Proof.
     eapply mutable_reachable_preserves_runtime_mutability; eauto.
 Qed.
 
-Lemma mutable_heap_closed_reachable :
-  forall CT h M source target,
-    mutable_heap_closed CT h M ->
-    mutable_reachable CT h source target ->
-    In Loc M source ->
-    In Loc M target.
-Proof.
-  intros CT h M source target Hclosed Hreach Hsource.
-  induction Hreach; [exact Hsource|].
-  eapply Hclosed.
-  - apply IHHreach. exact Hsource.
-  - exact H.
-Qed.
 
 Lemma retained_heap_closed_reachable :
   forall CT h M source target,
@@ -158,10 +145,10 @@ Lemma initial_forward_history :
   forall CT sGamma rGamma h,
     wf_r_config CT sGamma rGamma h ->
     env_respects_protected_set
-      (reachable_locations_from_initial_env CT h rGamma) sGamma rGamma ->
+      (reachable_locations_from_initial_env h rGamma) sGamma rGamma ->
     forward_history_state CT
-      (reachable_locations_from_initial_env CT h rGamma)
-      (reachable_locations_from_initial_env CT h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
       (Empty_set Loc) (dom h) sGamma rGamma h.
 Proof.
   intros CT sGamma rGamma h Hwf Henv.
@@ -172,11 +159,11 @@ Proof.
   - intros l Hin. contradiction.
   - intros root [x [T [Htype [Hval Hmut]]]].
     assert (HinP : In Loc
-      (reachable_locations_from_initial_env CT h rGamma) root).
+      (reachable_locations_from_initial_env h rGamma) root).
     { exists x, root. split; [exact Hval|].
       apply rch_heap. eapply wf_config_value_dom; eauto. }
     have Hsafe := Henv x root T Htype Hval HinP.
-    rewrite Hmut in Hsafe. unfold is_safe_mode in Hsafe.
+    rewrite Hmut in Hsafe. unfold is_nonmutable_qualifier in Hsafe.
     intuition discriminate.
   - intros l Hin. contradiction.
   - intros capability_root zone_root Hcapability Hzone.
@@ -187,10 +174,10 @@ Lemma initial_component_forward_history :
   forall CT sGamma rGamma h,
     wf_r_config CT sGamma rGamma h ->
     env_respects_protected_set
-      (reachable_locations_from_initial_env CT h rGamma) sGamma rGamma ->
+      (reachable_locations_from_initial_env h rGamma) sGamma rGamma ->
     component_forward_history_state CT
-      (reachable_locations_from_initial_env CT h rGamma)
-      (reachable_locations_from_initial_env CT h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
       (Empty_set Loc) (dom h) sGamma rGamma h.
 Proof.
   intros CT sGamma rGamma h Hwf Henv. split.
@@ -206,7 +193,7 @@ Lemma safe_call_callee_rdm_root_origin :
     vals ly cy runtime_mdef root,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m runtime_mdef ->
@@ -237,7 +224,7 @@ Proof.
       destruct Hrcv_sub as [Hordinary | [Hreadonly [Hformal_rdm Hbase_sub]]].
       * left. exists Ty. split; [exact Hget_y|]. split.
         -- apply qualified_type_subtype_q_subtype in Hordinary.
-           unfold vpa_mutability_tt_safe_ro in Hordinary.
+           unfold vpa_mutability_tt_readonly_state in Hordinary.
            rewrite Hrdm in Hordinary. simpl in Hordinary.
            have Hnotbot := wf_config_nonnull_variable_not_bot
              CT _ rGamma h y Ty ly Hwf Hget_y Hval_y.
@@ -264,7 +251,7 @@ Proof.
       left. exists Ty. split; [exact Hget_y|]. split.
       2: { exists arg, Targ. repeat split; try assumption.
            apply qualified_type_subtype_q_subtype in Hsub_i.
-           unfold vpa_mutability_tt_safe_ro in Hsub_i.
+           unfold vpa_mutability_tt_readonly_state in Hsub_i.
            rewrite Hrdm in Hsub_i. simpl in Hsub_i.
            have Hnotbot := wf_config_nonnull_variable_not_bot
              CT _ rGamma h arg Targ root Hwf Harg_type Harg_val.
@@ -274,7 +261,7 @@ Proof.
              try (exfalso; apply Hnotbot; exact Hactual);
              inversion Hsub_i; subst; congruence. }
       apply qualified_type_subtype_q_subtype in Hsub_i.
-      unfold vpa_mutability_tt_safe_ro in Hsub_i.
+      unfold vpa_mutability_tt_readonly_state in Hsub_i.
       rewrite Hrdm in Hsub_i. simpl in Hsub_i.
       have Hnotbot := wf_config_nonnull_variable_not_bot
         CT _ rGamma h arg Targ root Hwf Harg_type Harg_val.
@@ -381,7 +368,7 @@ Lemma safe_call_callee_active_component_colors :
     vals ly cy runtime_mdef,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -445,7 +432,7 @@ Lemma safe_call_callee_component_forward_history :
     vals ly cy runtime_mdef,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -491,18 +478,18 @@ Lemma forward_expression_into_zone_has_safe_type :
     wf_r_config CT sGamma rGamma h ->
     forward_history_state CT P Z M cutoff sGamma rGamma h ->
     retained_heap_closed CT h M ->
-    eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
+    eval_expr CT rGamma h e (Iot l) OK rGamma h ->
     expr_has_type CT sGamma mt e T ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     In Loc Z l ->
-    is_safe_mode (sqtype T).
+    is_nonmutable_qualifier (sqtype T).
 Proof.
   intros P Z M cutoff CT sGamma mt rGamma h e l T Hwf
     [Hcontains [Henv [Hconfined [Hclosed [Hruntime
       [Hmutroots [Havoid Hcolors]]]]]]] Hretained Heval Htyping Hscope HinZ.
   inversion Heval; subst.
   - inversion Htyping; subst.
-    destruct (sqtype T) eqn:Hq; unfold is_safe_mode; auto.
+    destruct (sqtype T) eqn:Hq; unfold is_nonmutable_qualifier; auto.
     + exfalso. apply (Havoid l).
       * apply Hmutroots. exists x, T. repeat split; assumption.
       * exact HinZ.
@@ -519,7 +506,7 @@ Proof.
     + exfalso. destruct Hmt; subst; destruct Hscope; congruence.
     + destruct (sqtype T0) eqn:Hreceiver;
         destruct (mutability (ftype fDef)) eqn:Hfieldq;
-        simpl; unfold is_safe_mode; auto.
+        simpl; unfold is_nonmutable_qualifier; auto.
       * exfalso. apply (Havoid l).
         -- eapply Hretained.
           ++ apply Hmutroots. exists x, T0.
@@ -554,7 +541,7 @@ Lemma safe_rdm_write_component_colors_cannot_cross :
     runtime_getVal rGamma y = Some (Iot ly) ->
     qualified_type_subtype CT Ty
       (Build_qualified_type
-        (vpa_mutability_stype_fld_safe_ro (sqtype Tx) RDM_f) Ctarget) ->
+        (vpa_mutability_stype_fld_readonly_state (sqtype Tx) RDM_f) Ctarget) ->
     (component_touches CT h M lx ->
       component_touches CT h Z ly -> False) /\
     (component_touches CT h Z lx ->
@@ -575,8 +562,8 @@ Proof.
   have Hxtyp := Hcorr this qcontext Hthis Hqcontext x Hxdom Tx Hgetx.
   have Hytyp := Hcorr this qcontext Hthis Hqcontext y Hydom Ty Hgety.
   rewrite Hvalx in Hxtyp. rewrite Hvaly in Hytyp.
-  have Hxnotbot := typable_nonnull_not_bot CT rGamma h lx Tx qcontext Hxtyp.
-  have Hynotbot := typable_nonnull_not_bot CT rGamma h ly Ty qcontext Hytyp.
+  have Hxnotbot := typable_nonnull_not_bot CT h lx Tx qcontext Hxtyp.
+  have Hynotbot := typable_nonnull_not_bot CT h ly Ty qcontext Hytyp.
   apply qualified_type_subtype_q_subtype in Hsub.
   destruct (sqtype Tx) eqn:Hqx.
   - destruct (sqtype Ty) eqn:Hqy; simpl in Hsub;
@@ -638,7 +625,7 @@ Lemma typed_runtime_rdm_field_write_subtyping :
   forall CT sGamma mt rGamma h x f y lx old D runtime_fd sGamma',
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getObj h lx = Some old ->
     base_subtype CT (rctype (rt_type old)) D ->
@@ -649,7 +636,7 @@ Lemma typed_runtime_rdm_field_write_subtyping :
       static_getType sGamma y = Some Ty /\
       qualified_type_subtype CT Ty
         (Build_qualified_type
-          (vpa_mutability_stype_fld_safe_ro (sqtype Tx) RDM_f)
+          (vpa_mutability_stype_fld_readonly_state (sqtype Tx) RDM_f)
           (f_base_type (ftype runtime_fd))).
 Proof.
   intros CT sGamma mt rGamma h x f y lx old D runtime_fd sGamma' Hwf
@@ -693,7 +680,7 @@ Lemma typed_runtime_mut_field_write_subtyping :
   forall CT sGamma mt rGamma h x f y lx old D runtime_fd sGamma',
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getObj h lx = Some old ->
     base_subtype CT (rctype (rt_type old)) D ->
@@ -704,7 +691,7 @@ Lemma typed_runtime_mut_field_write_subtyping :
       static_getType sGamma y = Some Ty /\
       qualified_type_subtype CT Ty
         (Build_qualified_type
-          (vpa_mutability_stype_fld_safe_ro (sqtype Tx) Mut_f)
+          (vpa_mutability_stype_fld_readonly_state (sqtype Tx) Mut_f)
           (f_base_type (ftype runtime_fd))).
 Proof.
   intros CT sGamma mt rGamma h x f y lx old D runtime_fd sGamma' Hwf
@@ -757,7 +744,7 @@ Lemma safe_rdm_write_endpoint_qualifiers :
     runtime_getVal rGamma y = Some (Iot ly) ->
     qualified_type_subtype CT Ty
       (Build_qualified_type
-        (vpa_mutability_stype_fld_safe_ro (sqtype Tx) RDM_f) Ctarget) ->
+        (vpa_mutability_stype_fld_readonly_state (sqtype Tx) RDM_f) Ctarget) ->
     (sqtype Tx = Mut /\ sqtype Ty = Mut) \/
     (sqtype Tx = Imm /\ sqtype Ty = Imm) \/
     (sqtype Tx = RDM /\ sqtype Ty = RDM).
@@ -774,8 +761,8 @@ Proof.
   have Hxtyp := Hcorr receiver qcontext Hreceiver Hcontext x Hxdom Tx Hgetx.
   have Hytyp := Hcorr receiver qcontext Hreceiver Hcontext y Hydom Ty Hgety.
   rewrite Hvalx in Hxtyp. rewrite Hvaly in Hytyp.
-  have Hxnotbot := typable_nonnull_not_bot CT rGamma h lx Tx qcontext Hxtyp.
-  have Hynotbot := typable_nonnull_not_bot CT rGamma h ly Ty qcontext Hytyp.
+  have Hxnotbot := typable_nonnull_not_bot CT h lx Tx qcontext Hxtyp.
+  have Hynotbot := typable_nonnull_not_bot CT h ly Ty qcontext Hytyp.
   apply qualified_type_subtype_q_subtype in Hsub.
   destruct (sqtype Tx) eqn:Hqx;
     destruct (sqtype Ty) eqn:Hqy;
@@ -797,7 +784,7 @@ Lemma safe_mut_write_endpoint_qualifiers :
     runtime_getVal rGamma y = Some (Iot ly) ->
     qualified_type_subtype CT Ty
       (Build_qualified_type
-        (vpa_mutability_stype_fld_safe_ro (sqtype Tx) Mut_f) Ctarget) ->
+        (vpa_mutability_stype_fld_readonly_state (sqtype Tx) Mut_f) Ctarget) ->
     sqtype Tx = Mut /\ sqtype Ty = Mut.
 Proof.
   intros CT sGamma rGamma h x y lx ly Tx Ty Ctarget Hwf Hgetx Hgety
@@ -811,8 +798,8 @@ Proof.
   have Hxtyp := Hcorr receiver qcontext Hreceiver Hcontext x Hxdom Tx Hgetx.
   have Hytyp := Hcorr receiver qcontext Hreceiver Hcontext y Hydom Ty Hgety.
   rewrite Hvalx in Hxtyp. rewrite Hvaly in Hytyp.
-  have Hxnotbot := typable_nonnull_not_bot CT rGamma h lx Tx qcontext Hxtyp.
-  have Hynotbot := typable_nonnull_not_bot CT rGamma h ly Ty qcontext Hytyp.
+  have Hxnotbot := typable_nonnull_not_bot CT h lx Tx qcontext Hxtyp.
+  have Hynotbot := typable_nonnull_not_bot CT h ly Ty qcontext Hytyp.
   apply qualified_type_subtype_q_subtype in Hsub.
   destruct (sqtype Tx) eqn:Hqx;
     destruct (sqtype Ty) eqn:Hqy;
@@ -854,7 +841,7 @@ Lemma component_colors_after_typed_rdm_field_update_existing_set :
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getVal rGamma y = Some value ->
     runtime_getObj h lx = Some old ->
@@ -897,7 +884,7 @@ Lemma component_colors_after_typed_field_update_existing_set :
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getVal rGamma y = Some value ->
     runtime_getObj h lx = Some old ->
@@ -939,7 +926,7 @@ Lemma capability_extension_after_typed_write_avoids_zone :
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getVal rGamma y = Some value ->
     runtime_getObj h lx = Some old ->
@@ -977,7 +964,7 @@ Lemma component_colors_after_typed_field_write_extension :
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getVal rGamma y = Some value ->
     runtime_getObj h lx = Some old ->
@@ -1130,7 +1117,7 @@ Lemma old_active_capability_blocks_new_zone_bridge :
     runtime_getVal rGamma y = Some (Iot ly) ->
     qualified_type_subtype CT Ty
       (Build_qualified_type
-        (vpa_mutability_stype_fld_safe_ro (sqtype Tx) RDM_f) Ctarget) ->
+        (vpa_mutability_stype_fld_readonly_state (sqtype Tx) RDM_f) Ctarget) ->
     typed_root RDM sGamma rGamma capability_root ->
     component_touches CT h M capability_root ->
     typed_root RDM sGamma rGamma zone_root ->
@@ -1156,8 +1143,8 @@ Proof.
   have Hxtyp := Hcorr this qcontext Hthis Hqcontext x Hxdom Tx Hgetx.
   have Hytyp := Hcorr this qcontext Hthis Hqcontext y Hydom Ty Hgety.
   rewrite Hvalx in Hxtyp. rewrite Hvaly in Hytyp.
-  have Hxnotbot := typable_nonnull_not_bot CT rGamma h lx Tx qcontext Hxtyp.
-  have Hynotbot := typable_nonnull_not_bot CT rGamma h ly Ty qcontext Hytyp.
+  have Hxnotbot := typable_nonnull_not_bot CT h lx Tx qcontext Hxtyp.
+  have Hynotbot := typable_nonnull_not_bot CT h ly Ty qcontext Hytyp.
   apply qualified_type_subtype_q_subtype in Hsub.
   destruct (sqtype Tx) eqn:Hqx.
   - destruct (sqtype Ty) eqn:Hqy; simpl in Hsub;
@@ -1212,7 +1199,7 @@ Lemma new_capability_bridge_blocks_old_active_zone :
     runtime_getVal rGamma y = Some (Iot ly) ->
     qualified_type_subtype CT Ty
       (Build_qualified_type
-        (vpa_mutability_stype_fld_safe_ro (sqtype Tx) RDM_f) Ctarget) ->
+        (vpa_mutability_stype_fld_readonly_state (sqtype Tx) RDM_f) Ctarget) ->
     typed_root RDM sGamma rGamma capability_root ->
     typed_root RDM sGamma rGamma zone_root ->
     component_touches CT h Z zone_root ->
@@ -1238,8 +1225,8 @@ Proof.
   have Hxtyp := Hcorr this qcontext Hthis Hqcontext x Hxdom Tx Hgetx.
   have Hytyp := Hcorr this qcontext Hthis Hqcontext y Hydom Ty Hgety.
   rewrite Hvalx in Hxtyp. rewrite Hvaly in Hytyp.
-  have Hxnotbot := typable_nonnull_not_bot CT rGamma h lx Tx qcontext Hxtyp.
-  have Hynotbot := typable_nonnull_not_bot CT rGamma h ly Ty qcontext Hytyp.
+  have Hxnotbot := typable_nonnull_not_bot CT h lx Tx qcontext Hxtyp.
+  have Hynotbot := typable_nonnull_not_bot CT h ly Ty qcontext Hytyp.
   apply qualified_type_subtype_q_subtype in Hsub.
   destruct (sqtype Tx) eqn:Hqx.
   - destruct (sqtype Ty) eqn:Hqy; simpl in Hsub;
@@ -1298,7 +1285,7 @@ Lemma active_rdm_colors_after_typed_rdm_field_write :
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     runtime_getObj h lx = Some old ->
@@ -1389,7 +1376,7 @@ Lemma active_rdm_colors_after_typed_field_write :
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getVal rGamma y = Some value ->
     runtime_getObj h lx = Some old ->
@@ -1443,8 +1430,8 @@ Lemma component_forward_history_after_field_write :
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
-    eval_stmt OK CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
+    readonly_state_method_scope mt ->
+    eval_stmt CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
     exists M',
       Included Loc M M' /\
       component_forward_history_state CT P Z M' cutoff sGamma' rGamma' h'.
@@ -2034,7 +2021,7 @@ Lemma component_forward_history_after_new :
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     cutoff <= dom h ->
     ~ In Loc Z (dom h) ->
-    eval_stmt OK CT rGamma h (SNew x qc C args) OK rGamma' h' ->
+    eval_stmt CT rGamma h (SNew x qc C args) OK rGamma' h' ->
     exists M',
       Included Loc M M' /\
       component_forward_history_state CT P Z M' cutoff sGamma' rGamma' h'.
@@ -2116,9 +2103,9 @@ Lemma forward_history_after_assignment :
     forward_history_state CT P Z M cutoff sGamma rGamma h ->
     retained_heap_closed CT h M ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK CT rGamma h e value OK rGamma h ->
+    eval_expr CT rGamma h e value OK rGamma h ->
     forward_history_state CT P Z M cutoff sGamma
       (update_r_env_value rGamma x value) h.
 Proof.
@@ -2236,9 +2223,9 @@ Lemma component_forward_history_after_assignment :
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     retained_heap_closed CT h M ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK CT rGamma h e value OK rGamma h ->
+    eval_expr CT rGamma h e value OK rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma
       (update_r_env_value rGamma x value) h.
 Proof.

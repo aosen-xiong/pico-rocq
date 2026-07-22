@@ -102,7 +102,7 @@ Lemma safe_call_rdm_roots_reflect_through_view :
     vals ly cy runtime_mdef Ty,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -138,9 +138,9 @@ Lemma rdm_roots_descend_after_assignment :
   forall CT sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK CT rGamma h e value OK rGamma h ->
+    eval_expr CT rGamma h e value OK rGamma h ->
     rdm_roots_descend_from CT h sGamma rGamma sGamma
       (update_r_env_value rGamma x value).
 Proof.

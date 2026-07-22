@@ -1,16 +1,16 @@
-Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties DeepImmutability Reachability Preservation ExecutionConfinement.
+Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation Properties AbstractStatePreservation Reachability Preservation ExecutionConfinement.
 From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
 
 (** Qualifiers that do not grant direct mutable authority. *)
-Definition is_safe_mode (m : q) : Prop :=
-  m = RO \/ m = Lost \/ m = RDM \/ m = Imm.
+Definition is_nonmutable_qualifier (qualifier : q) : Prop :=
+  qualifier = RO \/ qualifier = Lost \/ qualifier = RDM \/ qualifier = Imm.
 
-Ltac solve_safe_mode :=
+Ltac solve_nonmutable_qualifier :=
   match goal with
   (* Recursively select a disjunct. *)
-  | |- ?A \/ ?B => (left; solve_safe_mode) || (right; solve_safe_mode)
+  | |- ?A \/ ?B => (left; solve_nonmutable_qualifier) || (right; solve_nonmutable_qualifier)
   | |- ?X = ?X => reflexivity
   | |- _ => assumption
   end.
@@ -24,7 +24,7 @@ Definition env_respects_protected_set
     runtime_getVal rΓ x = Some (Iot l) ->
 
     Ensembles.In Loc P l ->
-    is_safe_mode (sqtype T).
+    is_nonmutable_qualifier (sqtype T).
 
 Lemma extract_receiver_from_wf_config :
   forall CT sΓ rΓ h
@@ -48,10 +48,10 @@ Qed.
 Lemma subtype_safe_implies_safe :
   forall CT T_sub T_super
          (Hsub : qualified_type_subtype CT T_sub T_super)
-         (Hsafe_sub : is_safe_mode (sqtype T_sub)),
-    is_safe_mode (sqtype T_super).
+         (Hsafe_sub : is_nonmutable_qualifier (sqtype T_sub)),
+    is_nonmutable_qualifier (sqtype T_super).
 Proof.
-  intros. unfold is_safe_mode in *.
+  intros. unfold is_nonmutable_qualifier in *.
   apply qualified_type_subtype_q_subtype in Hsub.
   inversion Hsub; subst; auto.
   rewrite <- H0 in Hsafe_sub.
@@ -65,14 +65,14 @@ Qed.
 
 Lemma adapted_subtype_safe_implies_safe :
   forall CT T_sub T_Receiver T_super
-         (Hsub : qualified_type_subtype CT T_sub (vpa_mutability_tt_safe_ro T_Receiver T_super))
-         (Hsafe_sub : is_safe_mode (sqtype T_sub)),
-    is_safe_mode (sqtype T_super).
+         (Hsub : qualified_type_subtype CT T_sub (vpa_mutability_tt_readonly_state T_Receiver T_super))
+         (Hsafe_sub : is_nonmutable_qualifier (sqtype T_sub)),
+    is_nonmutable_qualifier (sqtype T_super).
 Proof.
   intros.
-  unfold is_safe_mode in *.
+  unfold is_nonmutable_qualifier in *.
   apply qualified_type_subtype_q_subtype in Hsub.
-  unfold vpa_mutability_tt_safe_ro in Hsub.
+  unfold vpa_mutability_tt_readonly_state in Hsub.
   destruct (sqtype T_Receiver) eqn: Hreceiver;
   destruct (sqtype T_super) eqn: HSuper;
   destruct Hsafe_sub as [Hrd | [Hlost| [HRDM | HImm]]];
@@ -107,8 +107,8 @@ Lemma confinement_from_all_readonly_env :
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Hall_readonly : forall y T,
       static_getType sΓ y = Some T ->
-      is_safe_mode (sqtype T)),
-    env_respects_protected_set (reachable_locations_from_initial_env CT h rΓ) sΓ rΓ.
+      is_nonmutable_qualifier (sqtype T)),
+    env_respects_protected_set (reachable_locations_from_initial_env h rΓ) sΓ rΓ.
 Proof.
   intros.
   unfold env_respects_protected_set.
@@ -126,8 +126,8 @@ Proof.
 Qed.
 
 Lemma reachable_locations_from_initial_env_dom :
-  forall CT h rΓ l_y
-    (Hin : Ensembles.In Loc (reachable_locations_from_initial_env CT h rΓ) l_y),
+  forall h rΓ l_y
+    (Hin : Ensembles.In Loc (reachable_locations_from_initial_env h rΓ) l_y),
     l_y < dom h.
 Proof.
   intros.

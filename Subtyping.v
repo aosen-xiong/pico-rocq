@@ -3,34 +3,44 @@ Require Import Stdlib.Classes.RelationClasses.
 Import ListNotations.
 Require Import Syntax Notations LibTactics Tactics Helpers.
 
-Inductive method_subtype : method_type -> method_type -> Prop :=
+Inductive method_scope_subtype : method_scope -> method_scope -> Prop :=
   | method_subtyping_refl : forall mt,
-      method_subtype mt mt
-  | method_cs_as : method_subtype ConcreteState AbstractImm
-  | method_rs_as : method_subtype SafeRO AbstractImm
-  | method_ts_as : method_subtype ConcreteImm AbstractImm
-  | method_ts_cs : method_subtype ConcreteImm ConcreteState
-  | method_ts_rs : method_subtype ConcreteImm SafeRO
+      method_scope_subtype mt mt
+  | method_cs_as : method_scope_subtype ConcreteState AbstractState
+  | method_rs_as : method_scope_subtype ReadonlyState AbstractState
+  | method_ts_as : method_scope_subtype TransitiveState AbstractState
+  | method_ts_cs : method_scope_subtype TransitiveState ConcreteState
+  | method_ts_rs : method_scope_subtype TransitiveState ReadonlyState
   .
 
 Lemma method_subtyping_trans : 
   forall mt1 mt2 mt3
-    (H12 : method_subtype mt1 mt2)
-    (H23 : method_subtype mt2 mt3),
-    method_subtype mt1 mt3.
+    (H12 : method_scope_subtype mt1 mt2)
+    (H23 : method_scope_subtype mt2 mt3),
+    method_scope_subtype mt1 mt3.
 Proof.
   intros mt1 mt2 mt3 H12 H23.
   inversion H12; subst; inversion H23; subst; constructor.
 Qed.
 
 Lemma concrete_assignability_submethod : forall callee caller,
-  concrete_assignability_method_type caller ->
-  method_subtype callee caller ->
-  concrete_assignability_method_type callee.
+  strict_assignability_method_scope caller ->
+  method_scope_subtype callee caller ->
+  strict_assignability_method_scope callee.
 Proof.
   intros callee caller Hcaller Hsub.
   destruct Hcaller as [Hcaller | Hcaller]; subst caller;
-    inversion Hsub; subst; unfold concrete_assignability_method_type; auto.
+    inversion Hsub; subst; unfold strict_assignability_method_scope; auto.
+Qed.
+
+Lemma readonly_state_submethod : forall callee caller,
+  readonly_state_method_scope caller ->
+  method_scope_subtype callee caller ->
+  readonly_state_method_scope callee.
+Proof.
+  intros callee caller Hcaller Hsub.
+  destruct Hcaller as [-> | ->]; inversion Hsub; subst;
+    unfold readonly_state_method_scope; auto.
 Qed.
 
 (** Qualifier Ordering *)

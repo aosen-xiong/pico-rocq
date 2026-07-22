@@ -18,8 +18,8 @@ Properties.v
 SemanticsRegression.v
 Preservation.v
 ExecutionConfinement.v
-DeepImmutability.v
-ConcreteStateImmutability.v
+AbstractStatePreservation.v
+ConcreteStatePreservation.v
 ReadonlyHelper.v
 MutableCapability.v
 AuthorityCapability.v
@@ -32,6 +32,6 @@ LiveCapabilityStack.v
 PotentialCapability.v
 ProtectedFieldPreservation.v
 ReadonlyNoMutation.v
-ReadonlySafety.v
-ConcreteImmutability.v
+ReadonlyStatePreservation.v
+TransitiveStatePreservation.v
 WFNOMutationEXP.v

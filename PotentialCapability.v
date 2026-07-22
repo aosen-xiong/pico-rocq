@@ -538,10 +538,10 @@ Lemma initial_potential_live_history :
   forall CT sGamma rGamma h,
     wf_r_config CT sGamma rGamma h ->
     env_respects_protected_set
-      (reachable_locations_from_initial_env CT h rGamma) sGamma rGamma ->
+      (reachable_locations_from_initial_env h rGamma) sGamma rGamma ->
     potential_live_history_state CT
-      (reachable_locations_from_initial_env CT h rGamma)
-      (reachable_locations_from_initial_env CT h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
       (dom h) (mk_watched_frame Imm_r sGamma rGamma) [] h.
 Proof.
   intros CT sGamma rGamma h Hwf Henv.
@@ -560,9 +560,9 @@ Lemma potential_history_after_assignment :
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK CT rGamma h e value OK rGamma h ->
+    eval_expr CT rGamma h e value OK rGamma h ->
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma
         (update_r_env_value rGamma x value)) stack h.
@@ -893,7 +893,7 @@ Proof.
   destruct (runtime_getObj h root) as [object|] eqn:Hobject;
     try contradiction.
   destruct Hcorrespondence as [_ Hqualifier].
-  unfold qualifier_typable_context, vpa_mutability_rs in Hqualifier.
+  unfold qualifier_typable_context, vpa_mutability_runtime in Hqualifier.
   rewrite Himm in Hqualifier.
   unfold r_muttype. rewrite Hobject. simpl.
   destruct (rqtype (rt_type object)).
@@ -1079,8 +1079,8 @@ Lemma live_history_after_field_write_given_potential :
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SFldWrite x field y) sGamma' ->
-    safe_readonly_method_type mt ->
-    eval_stmt OK CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
+    readonly_state_method_scope mt ->
+    eval_stmt CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
     potential_colors_separated CT h'
       (live_capability_set CT h'
         (mk_watched_frame authority sGamma' rGamma') stack) Z
@@ -1163,8 +1163,8 @@ Lemma potential_history_after_field_write :
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SFldWrite x field y) sGamma' ->
-    safe_readonly_method_type mt ->
-    eval_stmt OK CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
+    readonly_state_method_scope mt ->
+    eval_stmt CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma' rGamma') stack h'.
 Proof.
@@ -1550,26 +1550,6 @@ Proof.
   eapply potential_connected_trans; eauto.
 Qed.
 
-Lemma fresh_component_attachment_is_potential_attachment :
-  forall CT sGamma mt rGamma h x qc C args sGamma' vals qruntime
-    authority stack root,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    fresh_component_attachment CT h
-      (mkObj (mkruntime_type qruntime C) vals) root ->
-    potential_new_attachment CT h
-      (mk_watched_frame authority sGamma rGamma) stack qc root.
-Proof.
-  intros CT sGamma mt rGamma h x qc C args sGamma' vals qruntime
-    authority stack root Hwf Htyping Hvals Hattachment.
-  destruct (fresh_attachment_has_creation_root CT sGamma mt rGamma h x qc
-    C args sGamma' vals qruntime root Hwf Htyping Hvals Hattachment) as
-    [Hfresh | [target [Htarget Hconnected]]].
-  - subst root. apply potential_new_attachment_fresh.
-  - exists target. split; [right; left; exact Htarget|].
-    eapply mutable_connected_is_potential_connected; eauto.
-Qed.
 
 Lemma fresh_retained_edge_target_is_potential_attachment :
   forall CT sGamma mt rGamma h x qc C args sGamma' vals qruntime
@@ -2150,7 +2130,7 @@ Lemma potential_history_after_new :
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    eval_stmt OK CT rGamma h (SNew x qc C args) OK rGamma' h' ->
+    eval_stmt CT rGamma h (SNew x qc C args) OK rGamma' h' ->
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma' rGamma') stack h'.
 Proof.
@@ -2550,7 +2530,7 @@ Lemma potential_history_enter_call :
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame caller_authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SCall x method y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -2669,7 +2649,7 @@ Qed.
 Lemma safe_call_rdm_result_reflects_to_body_return :
   forall receiver_q body_return_q declared_return_q result_q,
     q_subtype body_return_q declared_return_q ->
-    q_subtype (vpa_mutability_qq_safe_ro receiver_q declared_return_q)
+    q_subtype (vpa_mutability_qq_readonly_state receiver_q declared_return_q)
       result_q ->
     receiver_q <> Bot ->
     body_return_q <> Bot ->
@@ -2732,7 +2712,7 @@ Lemma caller_post_rdm_root_reflects_before_pop :
     runtime_getVal callee_renv return_var = Some (Iot return_location) ->
     qualified_type_subtype CT body_return_type declared_return_type ->
     qualified_type_subtype CT
-      (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+      (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
       destination_type ->
     typed_root RDM caller_senv
       (update_r_env_value caller_renv destination (Iot return_location)) root ->
@@ -2761,9 +2741,9 @@ Proof.
       (sqtype declared_return_type) (sqtype destination_type)
       (qualified_type_subtype_q_subtype CT body_return_type
         declared_return_type Hbody_sub)
-      (ltac:(rewrite <- sq_vpa_tt_eq_qq_safe_ro;
+      (ltac:(rewrite <- sq_vpa_tt_eq_qq_readonly_state;
         exact (qualified_type_subtype_q_subtype CT
-          (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+          (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
           destination_type Hresult_sub)))
       Hreceiver_nonbottom Hreturn_nonbottom Hdestination_rdm) as
       [Hreceiver_rdm Hbody_rdm].
@@ -2788,7 +2768,7 @@ Lemma potential_adjacent_after_call_pop_reflects :
     runtime_getVal callee_renv return_var = Some (Iot return_location) ->
     qualified_type_subtype CT body_return_type declared_return_type ->
     qualified_type_subtype CT
-      (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+      (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
       destination_type ->
     potential_adjacent CT h
       (mk_watched_frame caller_authority caller_senv
@@ -3016,7 +2996,7 @@ Lemma potential_connected_after_call_pop_reflects :
     runtime_getVal callee_renv return_var = Some (Iot return_location) ->
     qualified_type_subtype CT body_return_type declared_return_type ->
     qualified_type_subtype CT
-      (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+      (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
       destination_type ->
     potential_connected CT h
       (mk_watched_frame caller_authority caller_senv
@@ -3059,7 +3039,7 @@ Lemma potential_history_leave_call :
     runtime_getVal callee_renv return_var = Some (Iot return_location) ->
     qualified_type_subtype CT body_return_type declared_return_type ->
     qualified_type_subtype CT
-      (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+      (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
       destination_type ->
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame
@@ -3289,27 +3269,28 @@ Lemma safe_typed_call_target_method_safe :
   forall CT sGamma mt rGamma h x method y args sGamma' ly cy runtime_mdef,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x method y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy method runtime_mdef ->
-    safe_readonly_method_type (mtype (msignature runtime_mdef)).
+    readonly_state_method_scope (mscope (msignature runtime_mdef)).
 Proof.
   intros CT sGamma mt rGamma h x method y args sGamma' ly cy runtime_mdef
     Hwf Htyping Hsafe Hvalue Hbase Hfind.
   inversion Htyping; subst.
-  - destruct Hsafe as [Hnot_abs Hnot_cs].
-    destruct Hscope as [-> | [-> Hcallee]]; contradiction.
+  - destruct Hsafe as [Hrs | Hts]; subst mt;
+      destruct Hscope as [Has | [Hcs Hcallee]]; discriminate.
   - have Hsignature : msignature runtime_mdef = msignature mdef.
     { eapply runtime_call_signature_agrees; eauto. }
-    split; rewrite Hsignature; assumption.
+    rewrite Hsignature.
+    eapply readonly_state_submethod; eauto.
 Qed.
 
 Lemma safe_typed_call_static_result :
   forall CT sGamma mt rGamma h x method y args sGamma' ly cy runtime_mdef,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x method y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy method runtime_mdef ->
@@ -3319,14 +3300,14 @@ Lemma safe_typed_call_static_result :
       static_getType sGamma x = Some destination_type /\
       static_getType sGamma y = Some receiver_type /\
       qualified_type_subtype CT
-        (vpa_mutability_tt_safe_ro receiver_type
+        (vpa_mutability_tt_readonly_state receiver_type
           (mret (msignature runtime_mdef))) destination_type.
 Proof.
   intros CT sGamma mt rGamma h x method y args sGamma' ly cy runtime_mdef
     Hwf Htyping Hsafe Hvalue Hbase Hfind.
   inversion Htyping; subst.
-  - destruct Hsafe as [Hnot_abs Hnot_cs].
-    destruct Hscope as [-> | [-> Hcallee]]; contradiction.
+  - destruct Hsafe as [Hrs | Hts]; subst mt;
+      destruct Hscope as [Has | [Hcs Hcallee]]; discriminate.
   - have Hsignature : msignature runtime_mdef = msignature mdef.
     { eapply runtime_call_signature_agrees; eauto. }
     exists Tx, Ty. repeat split; try assumption.
@@ -3335,12 +3316,12 @@ Qed.
 
 Theorem successful_stmt_preserves_potential_history :
   forall P CT rGamma h statement rGamma' h',
-    eval_stmt OK CT rGamma h statement OK rGamma' h' ->
+    eval_stmt CT rGamma h statement OK rGamma' h' ->
     forall sGamma mt sGamma' authority stack Z cutoff,
       potential_live_history_state CT P Z cutoff
         (mk_watched_frame authority sGamma rGamma) stack h ->
       stmt_typing CT sGamma mt statement sGamma' ->
-      safe_readonly_method_type mt ->
+      readonly_state_method_scope mt ->
       potential_live_history_state CT P Z cutoff
         (mk_watched_frame authority sGamma' rGamma') stack h'.
 Proof.
@@ -3398,9 +3379,9 @@ Proof.
       rΓ h stack x m y zs sGamma vals ly cy mdef receiver_type Hstate
       Htyping Hsafe Hreceiver_type Hval_y Hbase Hfind_method Hargs) as
       [origins Hentry].
-    have Hbody_post := IHHeval eq_refl eq_refl Heval
+    have Hbody_post := IHHeval eq_refl Heval
       (mreceiver (msignature mdef) :: mparams (msignature mdef))
-      (mtype (msignature mdef)) method_end
+      (mscope (msignature mdef)) method_end
       (call_authority authority (sqtype receiver_type))
       (mk_watched_boundary
         (mk_watched_frame authority sGamma rΓ)
@@ -3445,8 +3426,8 @@ Proof.
         (declared_return_type := mret (msignature mdef))
         (return_location := return_location); eauto.
   - inversion Htyping; subst.
-    eapply (IHHeval2 eq_refl eq_refl Heval2).
-    + eapply (IHHeval1 eq_refl eq_refl Heval1); eauto.
+    eapply (IHHeval2 eq_refl Heval2).
+    + eapply (IHHeval1 eq_refl Heval1); eauto.
     + exact Htype2.
     + exact Hsafe.
 Qed.

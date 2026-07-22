@@ -466,7 +466,7 @@ Proof.
 Qed.
 
 (* EXPRESSION TYPING RULES *)
-Inductive expr_has_type : class_table -> s_env -> method_type -> expr -> qualified_type -> Prop :=
+Inductive expr_has_type : class_table -> s_env -> method_scope -> expr -> qualified_type -> Prop :=
 
   (* Null typing *)
   | ET_Null : forall CT Γ mt q class_name
@@ -480,26 +480,26 @@ Inductive expr_has_type : class_table -> s_env -> method_type -> expr -> qualifi
       (Hget : static_getType Γ x = Some T),
       expr_has_type CT Γ mt (EVar x) T
 
-  (* Field access typing — AbstractImm scope *)
-  | ET_Field_abs_imm : forall CT Γ mt x T fDef f
+  (* Field access typing — AbstractState scope *)
+  | ET_Field_abstract_state : forall CT Γ mt x T fDef f
       (Hwf      : wf_senv CT Γ)
       (Hget_x   : static_getType Γ x = Some T)
       (Hfld_def : sf_def_rel CT (sctype T) f fDef)
-      (Hmt      : mt = AbstractImm \/ mt = ConcreteState),
+      (Hmt      : mt = AbstractState \/ mt = ConcreteState),
       expr_has_type CT Γ mt (EField x f)
         (Build_qualified_type
-          (vpa_mutability_stype_fld_abs_imm (sqtype T) (mutability (ftype fDef)))
+          (vpa_mutability_stype_fld_abstract_state (sqtype T) (mutability (ftype fDef)))
           (f_base_type (ftype fDef)))
 
-  (* Field access typing — SafeRO / ConcreteImm scope *)
-  | ET_Field_safe_ro : forall CT Γ mt x T fDef f
+  (* Field access typing — ReadonlyState / TransitiveState scope *)
+  | ET_Field_readonly_state : forall CT Γ mt x T fDef f
       (Hwf      : wf_senv CT Γ)
       (Hget_x   : static_getType Γ x = Some T)
       (Hfld_def : sf_def_rel CT (sctype T) f fDef)
-      (Hmt      : mt = SafeRO \/ mt = ConcreteImm),
+      (Hmt      : mt = ReadonlyState \/ mt = TransitiveState),
       expr_has_type CT Γ mt (EField x f)
         (Build_qualified_type
-          (vpa_mutability_stype_fld_safe_ro (sqtype T) (mutability (ftype fDef)))
+          (vpa_mutability_stype_fld_readonly_state (sqtype T) (mutability (ftype fDef)))
           (f_base_type (ftype fDef)))
 .
 
@@ -512,7 +512,7 @@ Definition qc2q (qi : q_c) : q :=
 
 Definition vpa_mutability_constructor_param (qc : q_c) (T : qualified_type) : qualified_type :=
   Build_qualified_type
-    (vpa_mutability_qq_abs_imm (qc2q qc) (sqtype T))
+    (vpa_mutability_qq_abstract_state (qc2q qc) (sqtype T))
     (sctype T).
 
 Definition get_this_qualified_type (sΓ : s_env) : option qualified_type :=
@@ -522,7 +522,7 @@ Definition get_this_qualified_type (sΓ : s_env) : option qualified_type :=
       Some T_this
   end.
 
-Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> Prop :=
+Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env -> Prop :=
   (* Skip statement *)
   | ST_Skip : forall CT sΓ mt
       (Hwf : wf_senv CT sΓ),
@@ -547,8 +547,8 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hsub     : qualified_type_subtype CT Te Tx),
       stmt_typing CT sΓ mt (SVarAss x e) sΓ
 
-  (* Field write — AbstractImm scope *)
-  | ST_FldWrite_abs_imm : forall CT sΓ x f y Tx Ty Tthis fieldT a
+  (* Field write — AbstractState scope *)
+  | ST_FldWrite_abstract_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
@@ -557,10 +557,10 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
       (Hsub        : qualified_type_subtype CT Ty
                        (Build_qualified_type
-                         (vpa_mutability_stype_fld_abs_imm (sqtype Tx) (mutability (ftype fieldT)))
+                         (vpa_mutability_stype_fld_abstract_state (sqtype Tx) (mutability (ftype fieldT)))
                          (f_base_type (ftype fieldT))))
       (Hassignable : vpa_assignability (sqtype Tx) a = Assignable),
-      stmt_typing CT sΓ AbstractImm (SFldWrite x f y) sΓ
+      stmt_typing CT sΓ AbstractState (SFldWrite x f y) sΓ
 
   (* Field write — ConcreteState uses AS mutability and TS assignability *)
   | ST_FldWrite_concrete_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
@@ -572,13 +572,13 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
       (Hsub        : qualified_type_subtype CT Ty
                        (Build_qualified_type
-                         (vpa_mutability_stype_fld_abs_imm (sqtype Tx) (mutability (ftype fieldT)))
+                         (vpa_mutability_stype_fld_abstract_state (sqtype Tx) (mutability (ftype fieldT)))
                          (f_base_type (ftype fieldT))))
-      (Hassignable : vpa_assignability_concret_imm (sqtype Tx) a = Assignable),
+      (Hassignable : vpa_assignability_cs_ts (sqtype Tx) a = Assignable),
       stmt_typing CT sΓ ConcreteState (SFldWrite x f y) sΓ
 
-  (* Field write — SafeRO scope *)
-  | ST_FldWrite_safe_ro : forall CT sΓ x f y Tx Ty Tthis fieldT a
+  (* Field write — ReadonlyState scope *)
+  | ST_FldWrite_readonly_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
@@ -587,13 +587,13 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
       (Hsub        : qualified_type_subtype CT Ty
                        (Build_qualified_type
-                         (vpa_mutability_stype_fld_safe_ro (sqtype Tx) (mutability (ftype fieldT)))
+                         (vpa_mutability_stype_fld_readonly_state (sqtype Tx) (mutability (ftype fieldT)))
                          (f_base_type (ftype fieldT))))
       (Hassignable : vpa_assignability (sqtype Tx) a = Assignable),
-      stmt_typing CT sΓ SafeRO (SFldWrite x f y) sΓ
+      stmt_typing CT sΓ ReadonlyState (SFldWrite x f y) sΓ
 
-  (* Field write — ConcreteImm scope *)
-  | ST_FldWrite_concrete_imm : forall CT sΓ x f y Tx Ty Tthis fieldT a
+  (* Field write — TransitiveState scope *)
+  | ST_FldWrite_transitive_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
@@ -602,10 +602,10 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
       (Hsub        : qualified_type_subtype CT Ty
                        (Build_qualified_type
-                         (vpa_mutability_stype_fld_safe_ro (sqtype Tx) (mutability (ftype fieldT)))
+                         (vpa_mutability_stype_fld_readonly_state (sqtype Tx) (mutability (ftype fieldT)))
                          (f_base_type (ftype fieldT))))
-      (Hassignable : vpa_assignability_concret_imm (sqtype Tx) a = Assignable),
-      stmt_typing CT sΓ ConcreteImm (SFldWrite x f y) sΓ
+      (Hassignable : vpa_assignability_cs_ts (sqtype Tx) a = Assignable),
+      stmt_typing CT sΓ TransitiveState (SFldWrite x f y) sΓ
 
   (* Object creation *)
   | S_New : forall CT sΓ mt x Tx (qc:q_c) C args argtypes Tthis consig
@@ -621,7 +621,7 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hresult_sub : qualified_type_subtype CT (Build_qualified_type (qc2q qc) C) Tx),
       stmt_typing CT sΓ mt (SNew x qc C args) sΓ
 
-  (* Method call — AbstractImm scope *)
+  (* Method call — AbstractState scope *)
   | ST_Call : forall CT sΓ mt x m y args argtypes Tthis Tx Ty mdef
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
@@ -630,18 +630,18 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hthis       : get_this_qualified_type sΓ = Some Tthis)
       (Hfind_m     : FindMethodWithName CT (sctype Ty) m mdef)
       (Hnot_rcv    : x <> 0)
-      (Hret_sub    : qualified_type_subtype CT (vpa_mutability_tt_abs_imm Ty (mret (msignature mdef))) Tx)
-      (Hrcv_sub    : qualified_type_subtype CT Ty (vpa_mutability_tt_abs_imm Ty (mreceiver (msignature mdef)))
+      (Hret_sub    : qualified_type_subtype CT (vpa_mutability_tt_abstract_state Ty (mret (msignature mdef))) Tx)
+      (Hrcv_sub    : qualified_type_subtype CT Ty (vpa_mutability_tt_abstract_state Ty (mreceiver (msignature mdef)))
                      \/ (sqtype Ty = RO /\ mdef.(msignature).(mreceiver).(sqtype) = RDM
                          /\ base_subtype CT (sctype Ty) mdef.(msignature).(mreceiver).(sctype)))
-      (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_abs_imm Ty T))
+      (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_abstract_state Ty T))
                        argtypes (mparams (msignature mdef)))
-      (Hscope      : mt = AbstractImm \/
-                     (mt = ConcreteState /\ method_subtype mdef.(msignature).(mtype) ConcreteState)),
+      (Hscope      : mt = AbstractState \/
+                     (mt = ConcreteState /\ method_scope_subtype mdef.(msignature).(mscope) ConcreteState)),
       stmt_typing CT sΓ mt (SCall x m y args) sΓ
 
-  (* Method call — SafeRO / ConcreteImm scope *)
-  | ST_Call_safe_ro : forall CT sΓ mt x m y args argtypes Tthis Tx Ty mdef
+  (* Method call — ReadonlyState / TransitiveState scope *)
+  | ST_Call_readonly_state : forall CT sΓ mt x m y args argtypes Tthis Tx Ty mdef
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
@@ -649,17 +649,17 @@ Inductive stmt_typing : class_table -> s_env -> method_type -> stmt -> s_env -> 
       (Hthis       : get_this_qualified_type sΓ = Some Tthis)
       (Hfind_m     : FindMethodWithName CT (sctype Ty) m mdef)
       (Hnot_rcv    : x <> 0)
-      (Hmt_not_abs : mdef.(msignature).(mtype) <> AbstractImm)
-      (Hmt_not_cs  : mdef.(msignature).(mtype) <> ConcreteState)
-      (Hret_sub    : qualified_type_subtype CT (vpa_mutability_tt_safe_ro Ty (mret (msignature mdef))) Tx)
-      (Hrcv_sub    : qualified_type_subtype CT Ty (vpa_mutability_tt_safe_ro Ty (mreceiver (msignature mdef)))
+      (Hmt_not_abs : mdef.(msignature).(mscope) <> AbstractState)
+      (Hmt_not_cs  : mdef.(msignature).(mscope) <> ConcreteState)
+      (Hret_sub    : qualified_type_subtype CT (vpa_mutability_tt_readonly_state Ty (mret (msignature mdef))) Tx)
+      (Hrcv_sub    : qualified_type_subtype CT Ty (vpa_mutability_tt_readonly_state Ty (mreceiver (msignature mdef)))
                      \/ (sqtype Ty = RO /\ mdef.(msignature).(mreceiver).(sqtype) = RDM
                          /\ base_subtype CT (sctype Ty) mdef.(msignature).(mreceiver).(sctype)))
-      (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_safe_ro Ty T))
+      (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_readonly_state Ty T))
                        argtypes (mparams (msignature mdef)))
-      (Hmt_not_abs2 : mt <> AbstractImm)
+      (Hmt_not_abs2 : mt <> AbstractState)
       (Hmt_not_cs2  : mt <> ConcreteState)
-      (Hmt_sub     : method_subtype mdef.(msignature).(mtype) mt),
+      (Hmt_sub     : method_scope_subtype mdef.(msignature).(mscope) mt),
       stmt_typing CT sΓ mt (SCall x m y args) sΓ
 
   (* Sequence of statements *)
@@ -725,14 +725,14 @@ Definition wf_constructor (CT : class_table) (c : class_name) (ctor : constructo
     (cparams ctor) field_defs.
 
 Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : Prop :=
-  let mtype := mdef.(msignature).(mtype) in
+  let mscope := mdef.(msignature).(mscope) in
   let msig := msignature mdef in
   let methodbody := mbody mdef in
   let mbodystmt := mbody_stmt methodbody in
   let sΓ := msig.(mreceiver) :: msig.(mparams) in
   wf_stypeuse CT (sqtype (mret msig)) (sctype (mret msig)) /\
   exists sΓ' mbodyrettype,
-    stmt_typing CT sΓ mtype mbodystmt sΓ' /\
+    stmt_typing CT sΓ mscope mbodystmt sΓ' /\
     let mbodyretvar := mreturn methodbody in
     mbodyretvar < dom sΓ' /\
     nth_error sΓ' mbodyretvar = Some mbodyrettype /\

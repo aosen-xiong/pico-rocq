@@ -35,7 +35,7 @@ Definition ex_senv (qarg : q) : s_env :=
   [ex_type RDM; ex_type qarg; ex_type RO].
 
 Example object_creation_rdm_constructor_rdm_instantiation :
-  stmt_typing ex_CT (ex_senv RDM) SafeRO (SNew 2 RDM_c 0 [1]) (ex_senv RDM).
+  stmt_typing ex_CT (ex_senv RDM) ReadonlyState (SNew 2 RDM_c 0 [1]) (ex_senv RDM).
 Proof.
   eapply S_New with
     (Tx := ex_type RO)
@@ -57,7 +57,7 @@ Proof.
 Qed.
 
 Example object_creation_rdm_constructor_imm_instantiation :
-  stmt_typing ex_CT (ex_senv Imm) SafeRO (SNew 2 Imm_c 0 [1]) (ex_senv Imm).
+  stmt_typing ex_CT (ex_senv Imm) ReadonlyState (SNew 2 Imm_c 0 [1]) (ex_senv Imm).
 Proof.
   eapply S_New with
     (Tx := ex_type RO)
@@ -79,7 +79,7 @@ Proof.
 Qed.
 
 Example object_creation_rdm_constructor_mut_instantiation :
-  stmt_typing ex_CT (ex_senv Mut) SafeRO (SNew 2 Mut_c 0 [1]) (ex_senv Mut).
+  stmt_typing ex_CT (ex_senv Mut) ReadonlyState (SNew 2 Mut_c 0 [1]) (ex_senv Mut).
 Proof.
   eapply S_New with
     (Tx := ex_type RO)

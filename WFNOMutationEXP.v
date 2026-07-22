@@ -2,14 +2,14 @@ From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
 Require Import Syntax Notations Helpers Typing Subtyping Bigstep ViewpointAdaptation.
-Require Import Properties DeepImmutability Reachability Preservation.
+Require Import Properties AbstractStatePreservation Reachability Preservation.
 Require Import ReadonlyHelper.
 
 Lemma well_typed_field_write_no_mutation_exp :
   forall CT sΓ mt rΓ h x f y sΓ'
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt (SFldWrite x f y) sΓ')
-    (Heval : eval_stmt OK CT rΓ h (SFldWrite x f y) MUTATIONEXP rΓ h),
+    (Heval : eval_stmt CT rΓ h (SFldWrite x f y) MUTATIONEXP rΓ h),
     False.
 Proof.
   intros.
@@ -128,7 +128,7 @@ Proof.
   subst a0.
   rename Hassignable into Hvpa_assignable.
   unfold runtime_vpa_assignability in Hvpa_final.
-  unfold vpa_assignability_concret_imm in Hvpa_assignable.
+  unfold vpa_assignability_cs_ts in Hvpa_assignable.
   destruct a eqn: Heq_a; destruct (rqtype (rt_type o)) eqn: Heq_rq; destruct (sqtype Tx) eqn: Heq_sq; try discriminate.
   destruct qcontext eqn: Heq_qc; try easy.
 Qed.
@@ -140,7 +140,7 @@ Theorem well_typed_no_mutation_exp :
   forall CT sΓ mt rΓ h stmt rΓ' h' sΓ'
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval : eval_stmt OK CT rΓ h stmt MUTATIONEXP rΓ' h'),
+    (Heval : eval_stmt CT rΓ h stmt MUTATIONEXP rΓ' h'),
     False.
 Proof.
   intros CT sΓ mt rΓ h stmt rΓ' h' sΓ'

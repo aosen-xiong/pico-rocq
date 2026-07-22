@@ -7,7 +7,10 @@ import sys
 from pathlib import Path
 
 
-THEOREM_RE = re.compile(r"^\s*Theorem\s+([A-Za-z_][A-Za-z0-9_']*)\b", re.MULTILINE)
+DECLARATION_RE = re.compile(
+    r"^\s*(Theorem|Lemma|Corollary)\s+([A-Za-z_][A-Za-z0-9_']*)\b",
+    re.MULTILINE,
+)
 QUALIFIED_NAME_RE = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)+$"
 )
@@ -45,13 +48,18 @@ def strip_rocq_comments(source: str) -> str:
     return "".join(result)
 
 
-def source_theorems(root: Path, sources: list[Path]) -> list[str]:
+def source_results(root: Path, sources: list[Path]) -> tuple[list[str], list[str]]:
+    results = []
     theorems = []
     for source in sources:
         module = source.relative_to(root).with_suffix("").as_posix().replace("/", ".")
         contents = strip_rocq_comments(source.read_text(encoding="utf-8"))
-        theorems.extend(f"{module}.{name}" for name in THEOREM_RE.findall(contents))
-    return theorems
+        for kind, name in DECLARATION_RE.findall(contents):
+            qualified_name = f"{module}.{name}"
+            results.append(qualified_name)
+            if kind == "Theorem":
+                theorems.append(qualified_name)
+    return results, theorems
 
 
 def manifest_theorems(root: Path) -> tuple[list[str], list[str]]:
@@ -85,12 +93,13 @@ def main() -> int:
     modules = [source.relative_to(root).with_suffix("").as_posix().replace("/", ".")
                for source in sources]
     manifest, failures = manifest_theorems(root)
-    discovered = source_theorems(root, sources)
+    declared_results, source_theorems = source_results(root, sources)
 
     manifest_set = set(manifest)
-    discovered_set = set(discovered)
-    unlisted = sorted(discovered_set - manifest_set)
-    missing = sorted(manifest_set - discovered_set)
+    declared_set = set(declared_results)
+    theorem_set = set(source_theorems)
+    unlisted = sorted(theorem_set - manifest_set)
+    missing = sorted(manifest_set - declared_set)
     if unlisted:
         failures.append(
             "source Theorem declarations missing from the manifest: "
@@ -98,7 +107,8 @@ def main() -> int:
         )
     if missing:
         failures.append(
-            "manifest entries that do not resolve to source Theorem declarations: "
+            "manifest entries that do not resolve to source Theorem, Lemma, or "
+            "Corollary declarations: "
             + ", ".join(missing)
         )
 
@@ -142,7 +152,7 @@ def main() -> int:
         return 1
 
     print(
-        f"All {len(manifest)} manifest-listed public theorems are "
+        f"All {len(manifest)} manifest-listed public results are "
         "closed under the global context; the manifest matches every source "
         "Theorem declaration."
     )

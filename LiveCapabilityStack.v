@@ -85,20 +85,6 @@ Definition live_authority_history_state
   protected_zone_before_cutoff Z cutoff /\
   live_stack_authorities_chain active.(frame_authority) stack.
 
-Lemma mutable_reachable_transitive :
-  forall CT h l1 l2 l3,
-    mutable_reachable CT h l1 l2 ->
-    mutable_reachable CT h l2 l3 ->
-    mutable_reachable CT h l1 l3.
-Proof.
-  intros CT h l1 l2 l3 H12 H23.
-  revert l1 H12.
-  induction H23 as [l | start middle finish Hprefix IH Hedge]; intros.
-  - exact H12.
-  - eapply mr_step.
-    + exact (IH l1 H12).
-    + exact Hedge.
-Qed.
 
 Lemma live_capability_reachable_trans :
   forall CT h active stack root location,
@@ -134,14 +120,14 @@ Proof.
     destruct (runtime_getObj h root) as [object|] eqn:Hobj;
       try contradiction.
     destruct Hcorr as [_ Hqualifier].
-    unfold qualifier_typable_context, vpa_mutability_rs in Hqualifier.
+    unfold qualifier_typable_context, vpa_mutability_runtime in Hqualifier.
     rewrite Hmut in Hqualifier.
     unfold r_muttype. rewrite Hobj. simpl.
     destruct (rqtype (rt_type object)), qcontext;
       try contradiction; reflexivity.
   - subst authority.
     have Hroot_context := rdm_typable_runtime_matches_context
-      CT rGamma h root T qcontext Hcorr Hrdm.
+      CT h root T qcontext Hcorr Hrdm.
     destruct (Hsound eq_refl) as
       [authority_this [Hauthority_this Hauthority_runtime]].
     rewrite Hthis in Hauthority_this. injection Hauthority_this as <-.
@@ -273,10 +259,10 @@ Lemma initial_live_authority_history :
   forall CT sGamma rGamma h,
     wf_r_config CT sGamma rGamma h ->
     env_respects_protected_set
-      (reachable_locations_from_initial_env CT h rGamma) sGamma rGamma ->
+      (reachable_locations_from_initial_env h rGamma) sGamma rGamma ->
     live_authority_history_state CT
-      (reachable_locations_from_initial_env CT h rGamma)
-      (reachable_locations_from_initial_env CT h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
       (dom h) (mk_watched_frame Imm_r sGamma rGamma) [] h.
 Proof.
   intros CT sGamma rGamma h Hwf Henv.
@@ -285,8 +271,8 @@ Proof.
   have Hempty := initial_live_capability_set_empty CT sGamma rGamma h
     (proj1 (proj2 Hinitial)).
   have Hcomponent : authority_component_history_state CT
-      (reachable_locations_from_initial_env CT h rGamma)
-      (reachable_locations_from_initial_env CT h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
       (live_capability_set CT h
         (mk_watched_frame Imm_r sGamma rGamma) [])
       (dom h) Imm_r sGamma rGamma h.
@@ -544,35 +530,7 @@ Proof.
         [exact Hframe|exact Htypes].
 Qed.
 
-Lemma live_capability_set_in_closed_superset :
-  forall CT h h' active stack M,
-    Included Loc (live_capability_set CT h active stack) M ->
-    retained_heap_closed CT h' M ->
-    Included Loc (live_capability_set CT h' active stack) M.
-Proof.
-  intros CT h h' active stack M Hincluded Hclosed location
-    [root [Hroot Hreach]].
-  eapply retained_heap_closed_reachable; [exact Hclosed|exact Hreach|].
-  apply Hincluded. exists root. split; [exact Hroot|constructor].
-Qed.
 
-Lemma live_capability_set_after_active_change_in_superset :
-  forall CT h h' old_active new_active stack M,
-    Included Loc (live_capability_set CT h old_active stack) M ->
-    authority_env_roots_in new_active.(frame_authority) M
-      new_active.(frame_senv) new_active.(frame_renv) ->
-    retained_heap_closed CT h' M ->
-    Included Loc (live_capability_set CT h' new_active stack) M.
-Proof.
-  intros CT h h' old_active new_active stack M Hold Hactive Hclosed location
-    [root [Hlive Hreach]].
-  eapply retained_heap_closed_reachable; [exact Hclosed|exact Hreach|].
-  destruct Hlive as [Hnew_root | [boundary [Hin Hboundary_root]]].
-  - apply Hactive. exact Hnew_root.
-  - apply Hold. exists root. split.
-    + right. exists boundary. split; assumption.
-    + constructor.
-Qed.
 
 (** A capability-bearing callee root is an actual capability root in the
     caller.  This is the call-boundary fact needed to push a continuation
@@ -582,7 +540,7 @@ Lemma safe_call_callee_capability_root_reflects_to_caller :
     vals ly cy runtime_mdef Ty root,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -638,7 +596,7 @@ Lemma call_push_preserves_live_capability_roots :
     vals ly cy runtime_mdef Ty origins stack root,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -687,7 +645,7 @@ Lemma call_push_live_reachability_equivalent :
     vals ly cy runtime_mdef Ty origins stack location,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -724,7 +682,7 @@ Lemma safe_call_result_capability_reflects_to_body_return :
   forall caller_authority receiver_q body_return_q declared_return_q result_q,
     q_subtype body_return_q declared_return_q ->
     q_subtype
-      (vpa_mutability_qq_safe_ro receiver_q declared_return_q) result_q ->
+      (vpa_mutability_qq_readonly_state receiver_q declared_return_q) result_q ->
     receiver_q <> Bot ->
     body_return_q <> Bot ->
     capability_in_context caller_authority result_q ->
@@ -746,13 +704,13 @@ Lemma safe_call_return_destination_is_safe :
   forall caller_authority receiver_q body_return_q declared_return_q result_q,
     q_subtype body_return_q declared_return_q ->
     q_subtype
-      (vpa_mutability_qq_safe_ro receiver_q declared_return_q) result_q ->
+      (vpa_mutability_qq_readonly_state receiver_q declared_return_q) result_q ->
     receiver_q <> Bot ->
     body_return_q <> Bot ->
-    is_safe_mode body_return_q ->
+    is_nonmutable_qualifier body_return_q ->
     ~ capability_in_context
       (call_authority caller_authority receiver_q) body_return_q ->
-    is_safe_mode result_q.
+    is_nonmutable_qualifier result_q.
 Proof.
   intros caller_authority receiver_q body_return_q declared_return_q result_q
     Hbody_sub Hresult_sub Hreceiver_nonbottom Hreturn_nonbottom Hreturn_safe
@@ -762,7 +720,7 @@ Proof.
     repeat match goal with
     | H : q_subtype _ _ |- _ => inversion H; subst; clear H
     end;
-    unfold is_safe_mode, capability_in_context in *;
+    unfold is_nonmutable_qualifier, capability_in_context in *;
     try solve [intuition congruence].
 Qed.
 
@@ -782,7 +740,7 @@ Lemma safe_call_return_value_is_callee_capability_root :
     runtime_getVal callee_renv return_var = Some (Iot return_location) ->
     qualified_type_subtype CT body_return_type declared_return_type ->
     qualified_type_subtype CT
-      (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+      (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
       destination_type ->
     capability_in_context caller_authority (sqtype destination_type) ->
     frame_capability_root
@@ -799,9 +757,9 @@ Proof.
   eapply safe_call_result_capability_reflects_to_body_return.
   - exact (qualified_type_subtype_q_subtype CT body_return_type
       declared_return_type Hbody_sub).
-  - rewrite <- sq_vpa_tt_eq_qq_safe_ro.
+  - rewrite <- sq_vpa_tt_eq_qq_readonly_state.
     exact (qualified_type_subtype_q_subtype CT
-      (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+      (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
       destination_type Hresult_sub).
   - eapply (wf_config_nonnull_variable_not_bot CT caller_senv caller_renv
       caller_h receiver receiver_type receiver_location); eauto.
@@ -829,7 +787,7 @@ Lemma call_return_preserves_zone_env_safe :
     runtime_getVal callee_renv return_var = Some (Iot return_location) ->
     qualified_type_subtype CT body_return_type declared_return_type ->
     qualified_type_subtype CT
-      (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+      (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
       destination_type ->
     authority_component_history_state CT P Z M cutoff
       (call_authority caller_authority (sqtype receiver_type))
@@ -858,7 +816,7 @@ Proof.
     rewrite Hupdated in Hvariable_value. injection Hvariable_value as <-.
     rewrite Hdestination_type in Hvariable_type.
     injection Hvariable_type as <-.
-    have Hreturn_safe : is_safe_mode (sqtype body_return_type).
+    have Hreturn_safe : is_nonmutable_qualifier (sqtype body_return_type).
     { eapply Hcallee_zone; eauto. }
     have Hreceiver_nonbottom : sqtype receiver_type <> Bot.
     { eapply (wf_config_nonnull_variable_not_bot CT caller_senv caller_renv
@@ -871,9 +829,9 @@ Proof.
       (sqtype declared_return_type) (sqtype destination_type)).
     + exact (qualified_type_subtype_q_subtype CT body_return_type
         declared_return_type Hbody_sub).
-    + rewrite <- sq_vpa_tt_eq_qq_safe_ro.
+    + rewrite <- sq_vpa_tt_eq_qq_readonly_state.
       exact (qualified_type_subtype_q_subtype CT
-        (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+        (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
         destination_type Hresult_sub).
     + exact Hreceiver_nonbottom.
     + exact Hreturn_nonbottom.
@@ -939,7 +897,7 @@ Lemma call_return_live_root_reflects_before_pop :
     runtime_getVal callee_renv return_var = Some (Iot return_location) ->
     qualified_type_subtype CT body_return_type declared_return_type ->
     qualified_type_subtype CT
-      (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+      (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
       destination_type ->
     live_capability_root
       (mk_watched_frame caller_authority caller_senv
@@ -1006,7 +964,7 @@ Lemma call_return_live_reachability_reflects_before_pop :
     runtime_getVal callee_renv return_var = Some (Iot return_location) ->
     qualified_type_subtype CT body_return_type declared_return_type ->
     qualified_type_subtype CT
-      (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+      (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
       destination_type ->
     live_capability_reachable CT callee_h
       (mk_watched_frame caller_authority caller_senv
@@ -1054,7 +1012,7 @@ Lemma live_history_leave_call_given_caller_colors :
     runtime_getVal callee_renv return_var = Some (Iot return_location) ->
     qualified_type_subtype CT body_return_type declared_return_type ->
     qualified_type_subtype CT
-      (vpa_mutability_tt_safe_ro receiver_type declared_return_type)
+      (vpa_mutability_tt_readonly_state receiver_type declared_return_type)
       destination_type ->
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame
@@ -1385,9 +1343,9 @@ Lemma assignment_capability_root_has_live_origin :
   forall CT authority sGamma mt rGamma h stack x e old value root,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK CT rGamma h e value OK rGamma h ->
+    eval_expr CT rGamma h e value OK rGamma h ->
     frame_capability_root
       (mk_watched_frame authority sGamma
         (update_r_env_value rGamma x value)) root ->
@@ -1426,9 +1384,9 @@ Lemma assignment_live_reachability_is_old :
   forall CT authority sGamma mt rGamma h stack x e old value location,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK CT rGamma h e value OK rGamma h ->
+    eval_expr CT rGamma h e value OK rGamma h ->
     live_capability_reachable CT h
       (mk_watched_frame authority sGamma
         (update_r_env_value rGamma x value)) stack location ->
@@ -1638,7 +1596,7 @@ Lemma live_capability_set_after_new_in_authority_superset :
     live_frames_wf CT h
       (mk_watched_frame authority sGamma rGamma) stack ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    eval_stmt OK CT rGamma h (SNew x qc C args) OK rGamma' h' ->
+    eval_stmt CT rGamma h (SNew x qc C args) OK rGamma' h' ->
     authority_env_roots_in authority M sGamma' rGamma' ->
     Included Loc
       (live_capability_set CT h
@@ -1700,9 +1658,9 @@ Lemma live_history_after_assignment :
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK CT rGamma h e value OK rGamma h ->
+    eval_expr CT rGamma h e value OK rGamma h ->
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma
         (update_r_env_value rGamma x value)) stack h.
@@ -1722,7 +1680,7 @@ Proof.
       set_vars rGamma (update x value (vars rGamma)) =
       update_r_env_value rGamma x value).
   { destruct rGamma. reflexivity. }
-  assert (Hstmt : eval_stmt OK CT rGamma h (SVarAss x e) OK
+  assert (Hstmt : eval_stmt CT rGamma h (SVarAss x e) OK
       (update_r_env_value rGamma x value) h).
   { rewrite <- Hupdate. eapply SBS_Assign with (v1 := old); eauto. }
   have Hpost_wf := preservation_pico CT sGamma mt rGamma h
@@ -1787,7 +1745,7 @@ Proof.
       (mk_watched_frame authority sGamma rGamma) stack)
     cutoff authority sGamma mt rGamma h T x sGamma' Hwf Hhistory
     Htyping Hnone.
-  have Hstmt : eval_stmt OK CT rGamma h (SLocal T x) OK
+  have Hstmt : eval_stmt CT rGamma h (SLocal T x) OK
       (set_vars rGamma (vars rGamma ++ [Null_a])) h.
   { apply SBS_Local. exact Hnone. }
   have Hpost_wf := preservation_pico CT sGamma mt rGamma h
@@ -1835,67 +1793,6 @@ Proof.
   split; assumption.
 Qed.
 
-Lemma live_history_after_field_write :
-  forall CT P Z cutoff authority sGamma mt rGamma h stack x f y
-    sGamma' rGamma' h',
-    live_authority_history_state CT P Z cutoff
-      (mk_watched_frame authority sGamma rGamma) stack h ->
-    stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
-    eval_stmt OK CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
-    Included Loc
-      (live_capability_set CT h'
-        (mk_watched_frame authority sGamma' rGamma') stack)
-      (live_capability_set CT h
-        (mk_watched_frame authority sGamma rGamma) stack) ->
-    live_authority_history_state CT P Z cutoff
-      (mk_watched_frame authority sGamma' rGamma') stack h'.
-Proof.
-  intros CT P Z cutoff authority sGamma mt rGamma h stack x f y
-    sGamma' rGamma' h'
-    [Hhistory [[Hwf Hstack_wf]
-      [[Hsound Hstack_sound] [Hcutoff [Hzone_bound Hauthority_chain]]]]]
-    Htyping Hscope Heval Hlive_old.
-  assert (HsGamma : sGamma' = sGamma) by
-    (inversion Htyping; reflexivity).
-  assert (HrGamma : rGamma' = rGamma) by
-    (inversion Heval; reflexivity).
-  subst sGamma' rGamma'.
-  destruct (authority_history_after_field_write CT P Z
-    (live_capability_set CT h
-      (mk_watched_frame authority sGamma rGamma) stack)
-    cutoff authority sGamma mt rGamma h x f y rGamma h' sGamma Hwf
-    Hhistory Htyping Hscope Heval) as [Mbig [Hcontains Hbig]].
-  have Hpost_wf := preservation_pico CT sGamma mt rGamma h
-    (SFldWrite x f y) rGamma h' sGamma Hwf Htyping Heval.
-  have Hheap' : wf_heap CT h' := proj1 (proj2 Hpost_wf).
-  have Htypes : preserves_old_runtime_types h h'.
-  { inversion Heval; subst. apply field_update_preserves_old_runtime_types. }
-  destruct (live_frames_preserved_by_runtime_types CT h h'
-    (mk_watched_frame authority sGamma rGamma) stack
-    (conj Hwf Hstack_wf) (conj Hsound Hstack_sound) Hheap' Htypes) as
-    [Hframes_wf Hframes_sound].
-  have Hincluded : Included Loc
-      (live_capability_set CT h'
-        (mk_watched_frame authority sGamma rGamma) stack) Mbig.
-  { intros location Hlocation. apply Hcontains.
-    apply Hlive_old. exact Hlocation. }
-  have Hclosed := live_capability_set_forward_closed CT h'
-    (mk_watched_frame authority sGamma rGamma) stack.
-  have Hruntime := live_capability_members_runtime_mutable CT h'
-    (mk_watched_frame authority sGamma rGamma) stack
-    Hframes_wf Hframes_sound.
-  have Hroots := active_authority_roots_are_live CT h'
-    (mk_watched_frame authority sGamma rGamma) stack.
-  have Hsmall := authority_component_history_shrink CT P Z Mbig
-    (live_capability_set CT h'
-      (mk_watched_frame authority sGamma rGamma) stack)
-    cutoff authority sGamma rGamma h' Hbig Hincluded Hclosed Hruntime Hroots.
-  split; [exact Hsmall|]. split; [exact Hframes_wf|].
-  split; [exact Hframes_sound|]. split.
-  - destruct Htypes as [Hdom _]. lia.
-  - split; assumption.
-Qed.
 
 Lemma live_history_after_new :
   forall CT P Z cutoff authority sGamma mt rGamma h stack x qc C args
@@ -1903,7 +1800,7 @@ Lemma live_history_after_new :
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    eval_stmt OK CT rGamma h (SNew x qc C args) OK rGamma' h' ->
+    eval_stmt CT rGamma h (SNew x qc C args) OK rGamma' h' ->
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma' rGamma') stack h'.
 Proof.
@@ -1976,7 +1873,7 @@ Lemma live_history_enter_call :
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame caller_authority sGamma rGamma) stack h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -2015,8 +1912,8 @@ Proof.
     Hargs.
   assert (Hcallee_wf : wf_r_config CT callee_senv callee_renv h).
   { subst callee_senv callee_renv. inversion Htyping; subst.
-    - exfalso. destruct Hscope as [Hnot_as Hnot_cs].
-      destruct Hscope0 as [-> | [-> _]]; contradiction.
+    - exfalso. destruct Hscope as [Hrs | Hts]; subst mt;
+        destruct Hscope0 as [Has | [Hcs _]]; discriminate.
     - assert (Hframe_sig :
         msignature runtime_mdef = msignature mdef).
       { eapply runtime_call_signature_agrees; eauto. }

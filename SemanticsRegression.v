@@ -17,7 +17,7 @@ Example allocation_then_skip_executes :
     h' = h ++ [object] ->
     rGamma' = set_vars rGamma
       (update x (Iot (dom h)) rGamma.(vars)) ->
-    eval_stmt OK CT rGamma h (SSeq (SNew x qc c args) SSkip)
+    eval_stmt CT rGamma h (SSeq (SNew x qc c args) SSkip)
       OK rGamma' h'.
 Proof.
   intros CT rGamma h x qc c args receiver receiver_q values object
@@ -31,7 +31,7 @@ Qed.
 Example field_write_npe_executes :
   forall CT rGamma h x f y,
     runtime_getVal rGamma x = Some Null_a ->
-    eval_stmt OK CT rGamma h (SFldWrite x f y) NPE rGamma h.
+    eval_stmt CT rGamma h (SFldWrite x f y) NPE rGamma h.
 Proof.
   intros. apply SBS_FldWrite_NPE. assumption.
 Qed.
@@ -39,8 +39,8 @@ Qed.
 (** A first-statement [NPE] propagates through sequencing. *)
 Example sequence_propagates_npe :
   forall CT rGamma h s1 s2 rGamma' h',
-    eval_stmt OK CT rGamma h s1 NPE rGamma' h' ->
-    eval_stmt OK CT rGamma h (SSeq s1 s2) NPE rGamma' h'.
+    eval_stmt CT rGamma h s1 NPE rGamma' h' ->
+    eval_stmt CT rGamma h (SSeq s1 s2) NPE rGamma' h'.
 Proof.
   intros. apply SBS_Seq_NPE_first. assumption.
 Qed.
@@ -55,7 +55,7 @@ Example field_write_mutation_exception_executes :
     sf_assignability_rel CT (rctype (rt_type object)) f assignability ->
     runtime_getVal rGamma y = Some new_value ->
     runtime_vpa_assignability (rqtype (rt_type object)) assignability = Final ->
-    eval_stmt OK CT rGamma h (SFldWrite x f y) MUTATIONEXP rGamma h.
+    eval_stmt CT rGamma h (SFldWrite x f y) MUTATIONEXP rGamma h.
 Proof.
   intros. eapply SBS_FldWrite_MUTATIONEXP; eauto.
 Qed.
@@ -63,8 +63,8 @@ Qed.
 (** A first-statement mutation exception propagates through sequencing. *)
 Example sequence_propagates_mutation_exception :
   forall CT rGamma h s1 s2 rGamma' h',
-    eval_stmt OK CT rGamma h s1 MUTATIONEXP rGamma' h' ->
-    eval_stmt OK CT rGamma h (SSeq s1 s2) MUTATIONEXP rGamma' h'.
+    eval_stmt CT rGamma h s1 MUTATIONEXP rGamma' h' ->
+    eval_stmt CT rGamma h (SSeq s1 s2) MUTATIONEXP rGamma' h'.
 Proof.
   intros. apply SBS_Seq_MUTATIONEXP_first. assumption.
 Qed.

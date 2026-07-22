@@ -100,16 +100,16 @@ alectryon-doc: coq
 	  '  </ul>' \
 	  '  <h2>Immutability</h2>' \
 	  '  <ul>' \
-	  '    <li><a href="DeepImmutability.html">DeepImmutability</a></li>' \
+	  '    <li><a href="AbstractStatePreservation.html">AbstractStatePreservation</a></li>' \
 	  '    <li><a href="ConcreteState.html">ConcreteState</a></li>' \
-	  '    <li><a href="ConcreteStateImmutability.html">ConcreteStateImmutability</a></li>' \
-	  '    <li><a href="ConcreteImmutability.html">ConcreteImmutability</a></li>' \
+	  '    <li><a href="ConcreteStatePreservation.html">ConcreteStatePreservation</a></li>' \
+	  '    <li><a href="TransitiveStatePreservation.html">TransitiveStatePreservation</a></li>' \
 	  '  </ul>' \
 	  '  <h2>Readonly</h2>' \
 	  '  <ul>' \
 	  '    <li><a href="ReadonlyHelper.html">ReadonlyHelper</a></li>' \
 	  '    <li><a href="ReadonlyNoMutation.html">ReadonlyNoMutation</a></li>' \
-	  '    <li><a href="ReadonlySafety.html">ReadonlySafety</a></li>' \
+	  '    <li><a href="ReadonlyStatePreservation.html">ReadonlyStatePreservation</a></li>' \
 	  '  </ul>' \
 	  '  <h2>Mutation safety</h2>' \
 	  '  <ul>' \

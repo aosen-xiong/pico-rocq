@@ -21,13 +21,16 @@ jobs:
       - name: Check for forbidden axioms and admits
         run: python3 scripts/check-no-axioms-admits.py .
 
-      - name: Show Coq toolchain versions
+      - name: Show Rocq toolchain versions
         run: |
           opam exec -- coqc --version
           opam list | grep -E '^(coq|coq-core|coq-stdlib|rocq-runtime|rocq-stdlib)\b' || true
 
       - name: Build with dune (wrapper over coq_makefile)
         run: opam exec -- dune build @default -j"$(nproc)"
+
+      - name: Check public theorem assumptions
+        run: opam exec -- python3 scripts/check-public-assumptions.py .
 
   docs:
     name: Alectryon docs

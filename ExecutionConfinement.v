@@ -51,7 +51,7 @@ Qed.
 
 Lemma initial_state_is_confined : forall CT sGamma rGamma h,
   wf_r_config CT sGamma rGamma h ->
-  state_is_confined (reachable_locations_from_initial_env CT h rGamma) (dom h) rGamma h.
+  state_is_confined (reachable_locations_from_initial_env h rGamma) (dom h) rGamma h.
 Proof.
   intros CT sGamma rGamma h Hwf. split.
   - intros x l Hval. left. unfold reachable_locations_from_initial_env.
@@ -71,7 +71,7 @@ Qed.
 Lemma eval_expr_preserves_confinement :
   forall CT rGamma h e l Q cutoff,
     state_is_confined Q cutoff rGamma h ->
-    eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
+    eval_expr CT rGamma h e (Iot l) OK rGamma h ->
     confined_loc Q cutoff l.
 Proof.
   intros CT rGamma h e l Q cutoff [Henv Hheap] Heval.
@@ -154,11 +154,11 @@ Lemma eval_stmt_preserves_confinement :
   forall CT rGamma h stmt result rGamma' h' Q cutoff,
     cutoff <= dom h ->
     state_is_confined Q cutoff rGamma h ->
-    eval_stmt OK CT rGamma h stmt result rGamma' h' ->
+    eval_stmt CT rGamma h stmt result rGamma' h' ->
     state_is_confined Q cutoff rGamma' h'.
 Proof.
   intros CT rGamma h stmt result rGamma' h' Q cutoff Hcutoff Hstate Heval.
-  remember OK as ok. induction Heval; subst; try discriminate.
+  induction Heval; subst.
   - exact Hstate.
   - destruct Hstate as [Henv Hheap]. split; [|exact Hheap].
     intros y l Hval.
@@ -200,7 +200,7 @@ Proof.
       - simpl in Hval. exact (env_confined_lookup_list Q cutoff rΓ zs vals
           Henv Hargs i l Hval).
     }
-    have Hbody := IHHeval Hcutoff Hframeconf eq_refl.
+    have Hbody := IHHeval Hcutoff Hframeconf.
     destruct Hbody as [Henvbody Hheapbody]. split; [|exact Hheapbody].
     replace (set_vars rΓ (update x retval (vars rΓ))) with
       (update_r_env_value rΓ x retval) by (destruct rΓ; reflexivity).
@@ -220,24 +220,24 @@ Proof.
     + simpl in Hval. injection Hval as <-. eapply Henv; eauto.
     + simpl in Hval. exact (env_confined_lookup_list Q cutoff rΓ zs vals
         Henv Hargs i l Hval).
-  - have Hmid := IHHeval1 Hcutoff Hstate eq_refl.
+  - have Hmid := IHHeval1 Hcutoff Hstate.
     have Hgrow := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1.
-    exact (IHHeval2 (ltac:(lia)) Hmid eq_refl).
+    exact (IHHeval2 (ltac:(lia)) Hmid).
   - eapply IHHeval; eauto.
-  - have Hmid := IHHeval1 Hcutoff Hstate eq_refl.
+  - have Hmid := IHHeval1 Hcutoff Hstate.
     have Hgrow := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1.
-    exact (IHHeval2 (ltac:(lia)) Hmid eq_refl).
+    exact (IHHeval2 (ltac:(lia)) Hmid).
   - eapply IHHeval; eauto.
-  - have Hmid := IHHeval1 Hcutoff Hstate eq_refl.
+  - have Hmid := IHHeval1 Hcutoff Hstate.
     have Hgrow := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1.
-    exact (IHHeval2 (ltac:(lia)) Hmid eq_refl).
+    exact (IHHeval2 (ltac:(lia)) Hmid).
 Qed.
 
 Lemma confined_eval_preserves_old_object :
   forall CT rGamma h stmt rGamma' h' Q cutoff l C qr vals vals',
     cutoff <= dom h ->
     state_is_confined Q cutoff rGamma h ->
-    eval_stmt OK CT rGamma h stmt OK rGamma' h' ->
+    eval_stmt CT rGamma h stmt OK rGamma' h' ->
     runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals) ->
     runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals') ->
     l < cutoff -> ~ In Loc Q l -> vals = vals'.
@@ -278,17 +278,17 @@ Qed.
 Theorem eval_preserves_old_unreachable_object :
   forall CT sGamma rGamma h stmt rGamma' h' l C qr vals vals',
     wf_r_config CT sGamma rGamma h ->
-    eval_stmt OK CT rGamma h stmt OK rGamma' h' ->
+    eval_stmt CT rGamma h stmt OK rGamma' h' ->
     runtime_getObj h l = Some (mkObj (mkruntime_type qr C) vals) ->
     runtime_getObj h' l = Some (mkObj (mkruntime_type qr C) vals') ->
-    ~ In Loc (reachable_locations_from_initial_env CT h rGamma) l ->
+    ~ In Loc (reachable_locations_from_initial_env h rGamma) l ->
     vals = vals'.
 Proof.
   intros CT sGamma rGamma h stmt rGamma' h' l C qr vals vals'
     Hwf Heval Hbefore Hafter Hnotin.
   eapply (@confined_eval_preserves_old_object
     CT rGamma h stmt rGamma' h'
-    (reachable_locations_from_initial_env CT h rGamma)
+    (reachable_locations_from_initial_env h rGamma)
     (dom h) l C qr vals vals').
   - apply Nat.le_refl.
   - eapply initial_state_is_confined; eauto.

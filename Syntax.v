@@ -94,20 +94,20 @@ Record method_body := {
   mreturn: var; (* Return variable *)
 }.
 
-Inductive method_type : Type :=
-  | AbstractImm
+Inductive method_scope : Type :=
+  | AbstractState
   | ConcreteState
-  | SafeRO
-  | ConcreteImm.
+  | ReadonlyState
+  | TransitiveState.
 
-Definition safe_readonly_method_type (mt : method_type) : Prop :=
-  mt <> AbstractImm /\ mt <> ConcreteState.
+Definition readonly_state_method_scope (mt : method_scope) : Prop :=
+  mt = ReadonlyState \/ mt = TransitiveState.
 
-Definition concrete_assignability_method_type (mt : method_type) : Prop :=
-  mt = ConcreteState \/ mt = ConcreteImm.
+Definition strict_assignability_method_scope (mt : method_scope) : Prop :=
+  mt = ConcreteState \/ mt = TransitiveState.
 
 Record method_sig := {
-  mtype: method_type;
+  mscope: method_scope;
   mret : qualified_type; (* Return type *)
   mname : method_name; (* Method name *)
   mreceiver: qualified_type; (*T this*)

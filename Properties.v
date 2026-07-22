@@ -32,7 +32,7 @@ Ltac solve_q_subtype_wrong :=
   end.
 
 Local Ltac qtypable_contradiction H :=
-  exfalso; unfold qualifier_typable_context, vpa_mutability_rs in H; cbn in H; contradiction H.
+  exfalso; unfold qualifier_typable_context, vpa_mutability_runtime in H; cbn in H; contradiction H.
 
 Ltac solve_qualifier_typable_wrong_concrete :=
   lazymatch goal with
@@ -65,20 +65,20 @@ Ltac solve_qualifier_typable_wrong_concrete :=
 
 Ltac solve_qualifier_typable_correct_concrete :=
   lazymatch goal with
-  | |- qualifier_typable_context Imm_r Imm Mut_r  => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Imm_r RO Mut_r   => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Imm_r Lost Mut_r => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Imm_r RO Imm_r   => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Imm_r Imm Imm_r  => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Imm_r Lost Imm_r => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Imm_r RDM Imm_r  => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Mut_r Mut Mut_r  => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Mut_r RO Mut_r   => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Mut_r Lost Mut_r => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Mut_r RDM Mut_r  => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Mut_r RO Imm_r   => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Mut_r Mut Imm_r  => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
-  | |- qualifier_typable_context Mut_r Lost Imm_r => unfold qualifier_typable_context, vpa_mutability_rs; cbn; exact I
+  | |- qualifier_typable_context Imm_r Imm Mut_r  => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Imm_r RO Mut_r   => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Imm_r Lost Mut_r => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Imm_r RO Imm_r   => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Imm_r Imm Imm_r  => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Imm_r Lost Imm_r => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Imm_r RDM Imm_r  => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Mut_r Mut Mut_r  => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Mut_r RO Mut_r   => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Mut_r Lost Mut_r => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Mut_r RDM Mut_r  => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Mut_r RO Imm_r   => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Mut_r Mut Imm_r  => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
+  | |- qualifier_typable_context Mut_r Lost Imm_r => unfold qualifier_typable_context, vpa_mutability_runtime; cbn; exact I
   end.
 
 Lemma collect_methods_exists : forall CT C
@@ -205,7 +205,7 @@ Lemma method_body_well_typed : forall CT C cdef mdef
   (HfindC  : find_class CT C = Some cdef)
   (Hlookup : In mdef (methods (body cdef))),
   exists sΓ', stmt_typing CT (mreceiver (msignature mdef) :: mparams (msignature mdef))
-                           mdef.(msignature).(mtype)
+                           mdef.(msignature).(mscope)
                            (mbody_stmt (mbody mdef))
                            sΓ'.
 Proof.
@@ -232,7 +232,7 @@ Lemma method_body_well_typed_by_find : forall CT C m mdef
   (Hdom    : C < dom CT)
   (Hlookup : FindMethodWithName CT C m mdef),
   exists sΓ', stmt_typing CT (mreceiver (msignature mdef) :: mparams (msignature mdef))
-                            mdef.(msignature).(mtype)
+                            mdef.(msignature).(mscope)
                            (mbody_stmt (mbody mdef))
                            sΓ'.
 Proof.
@@ -570,7 +570,7 @@ Proof.
 Qed.
 
 Lemma eval_stmt_preserves_heap_domain_simple : forall CT rΓ h stmt rΓ' h'
-  (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h'),
+  (Heval : eval_stmt CT rΓ h stmt OK rΓ' h'),
   dom h <= dom h'.
 Proof.
   intros CT rΓ h stmt rΓ' h' Heval.
@@ -610,7 +610,7 @@ Qed.
 (* Not just length, there is no statement can do strong update. *)
 Lemma eval_stmt_preserves_r_type :
   forall CT rΓ h stmt rΓ' h' loc rqt
-    (Heval     : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval     : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hrtype    : r_type h loc = Some rqt)
     (Hloc_dom  : loc < dom h),
     r_type h' loc = Some rqt.
@@ -658,7 +658,7 @@ Qed.
 
 Lemma eval_stmt_preserves_r_muttype :
   forall CT rΓ h stmt rΓ' h' loc q
-    (Heval     : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval     : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hmut      : r_muttype h loc = Some q)
     (Hloc_dom  : loc < dom h),
     r_muttype h' loc = Some q.
@@ -716,22 +716,6 @@ Proof.
     eapply IHHeval2; eauto.
 Qed.
 
-Lemma wf_r_typable_env_independent : forall CT rΓ1 rΓ2 h loc qt l qcontext
-  (Hreceiveraddr  : get_this_var_mapping (vars rΓ1) = Some l)
-  (Henvsame       : get_this_var_mapping (vars rΓ1) = get_this_var_mapping (vars rΓ2))
-  (Hreceiverrmut  : r_muttype h l = Some qcontext)
-  (Hsame_this     : wf_r_typable CT rΓ1 h loc qt qcontext),
-  wf_r_typable CT rΓ2 h loc qt qcontext.
-Proof.
-  intros CT rΓ1 rΓ2 h loc qt l qcontext Hreceiveraddr Henvsame Hreceiverrmut Hsame_this.
-  unfold wf_r_typable in *.
-  destruct (r_type h loc) as [rqt|] eqn:Hrtype; [|contradiction].
-  (* rewrite <- Hsame_this. *)
-  (* destruct (get_this_var_mapping (vars rΓ1)) as [ι'|] eqn:Hthis; [|contradiction]. *)
-  (* destruct (r_muttype h ι') as [q|] eqn:Hmut; [|contradiction]. *)
-  exact Hsame_this.
-Qed.
-
 Lemma r_basetype_in_dom : forall CT h loc cy
   (Hwf_heap     : wf_heap CT h)
   (Hr_basetype  : r_basetype h loc = Some cy),
@@ -758,26 +742,26 @@ Proof.
   - contradiction.
 Qed.
 
-Lemma sq_vpa_tt_eq_qq_abs_imm :
+Lemma sq_vpa_tt_eq_qq_abstract_state :
   forall T1 T2,
-    sqtype (vpa_mutability_tt_abs_imm T1 T2)
-    = vpa_mutability_qq_abs_imm (sqtype T1) (sqtype T2).
+    sqtype (vpa_mutability_tt_abstract_state T1 T2)
+    = vpa_mutability_qq_abstract_state (sqtype T1) (sqtype T2).
 Proof.
   intros T1 T2.
   destruct T1 as [q1 c1], T2 as [q2 c2].
-  unfold vpa_mutability_tt_abs_imm, vpa_mutability_qq_abs_imm.
+  unfold vpa_mutability_tt_abstract_state, vpa_mutability_qq_abstract_state.
   simpl.
   destruct q1; destruct q2; reflexivity.
 Qed.
 
-Lemma sq_vpa_tt_eq_qq_safe_ro :
+Lemma sq_vpa_tt_eq_qq_readonly_state :
   forall T1 T2,
-    sqtype (vpa_mutability_tt_safe_ro T1 T2)
-    = vpa_mutability_qq_safe_ro (sqtype T1) (sqtype T2).
+    sqtype (vpa_mutability_tt_readonly_state T1 T2)
+    = vpa_mutability_qq_readonly_state (sqtype T1) (sqtype T2).
 Proof.
   intros T1 T2.
   destruct T1 as [q1 c1], T2 as [q2 c2].
-  unfold vpa_mutability_tt_safe_ro, vpa_mutability_qq_safe_ro.
+  unfold vpa_mutability_tt_readonly_state, vpa_mutability_qq_readonly_state.
   simpl.
   destruct q1; destruct q2; reflexivity.
 Qed.
@@ -879,13 +863,13 @@ Lemma correspondence_to_typable : forall CT sΓ rΓ h i sqt loc ι qcontext
                      nth_error sΓ i = Some sqt ->
                      match runtime_getVal rΓ i with
                      | Some Null_a => True
-                     | Some (Iot loc) => wf_r_typable CT rΓ h loc sqt qcontext
+                     | Some (Iot loc) => wf_r_typable CT h loc sqt qcontext
                      | None => False
                      end)
   (Hi    : i < dom sΓ)
   (Hnth  : nth_error sΓ i = Some sqt)
   (Hval  : runtime_getVal rΓ i = Some (Iot loc)),
-  wf_r_typable CT rΓ h loc sqt qcontext.
+  wf_r_typable CT h loc sqt qcontext.
 Proof.
   intros CT sΓ rΓ h i sqt loc ι qcontext Hreceiveraddr Hreceiverrmut Hcorr Hi Hnth Hval.
   specialize (Hcorr i Hi sqt Hnth).
@@ -896,7 +880,7 @@ Qed.
 Lemma typable_to_base_and_qualifier : forall CT rΓ h loc sqt rq_obj rc_obj ι qcontext
   (Hreceiveraddr  : get_this_var_mapping (vars rΓ) = Some ι)
   (Hreceiverrmut  : r_muttype h ι = Some qcontext)
-  (Hwf_typable    : wf_r_typable CT rΓ h loc sqt qcontext)
+  (Hwf_typable    : wf_r_typable CT h loc sqt qcontext)
   (Hrtype         : r_type h loc = Some {| rqtype := rq_obj; rctype := rc_obj |}),
   base_subtype CT rc_obj (sctype sqt) /\
   qualifier_typable_context rq_obj (  (sqtype sqt)) qcontext.
@@ -917,7 +901,7 @@ Proof.
   destruct rq as [|]; destruct (sqtype Ty1); destruct (sqtype Ty2);
   simpl in *; auto;
   try (inversion Hsubtype; auto);
-  try unfold vpa_mutability_rs in *;
+  try unfold vpa_mutability_runtime in *;
   try destruct qcontext;
   try reflexivity;
   try easy.
@@ -1017,7 +1001,7 @@ Qed.
 Lemma eval_stmt_preserves_receiver_addr_typed :
   forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι
     (Htyp   : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval  : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval  : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hthis  : get_this_var_mapping (vars rΓ) = Some ι),
     get_this_var_mapping (vars rΓ') = Some ι.
 Proof.
@@ -1057,7 +1041,7 @@ Proof.
     assumption.
   - (* FldWrite *)
     assumption.  
-  - (* FldWrite — ConcreteImm *)
+  - (* FldWrite — TransitiveState *)
     assumption.
   - (* New x q c ys *)
     simpl.
@@ -1109,7 +1093,7 @@ Lemma eval_stmt_preserves_receiver_addr_typed_backwards :
   forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι
     (Hwf    : wf_r_config CT sΓ rΓ h)
     (Htyp   : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval  : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval  : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hthis' : get_this_var_mapping (vars rΓ') = Some ι),
     get_this_var_mapping (vars rΓ) = Some ι.
 Proof.
@@ -1139,7 +1123,7 @@ Lemma eval_stmt_preserves_receiver_addr_mapping_eq :
   forall CT sΓ mt rΓ h stmt sΓ' rΓ' h'
     (Hwf   : wf_r_config CT sΓ rΓ h)
     (Htyp  : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval : eval_stmt OK CT rΓ h stmt OK rΓ' h'),
+    (Heval : eval_stmt CT rΓ h stmt OK rΓ' h'),
     get_this_var_mapping (vars rΓ) =
     get_this_var_mapping (vars rΓ').
 Proof.
@@ -1168,7 +1152,7 @@ Corollary eval_stmt_preserves_receiver_addr_eq_loc' :
   forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι1 ι2
     (Hwf    : wf_r_config CT sΓ rΓ h)
     (Htyp   : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval  : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval  : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hthis1 : get_this_var_mapping (vars rΓ)  = Some ι1)
     (Hthis2 : get_this_var_mapping (vars rΓ') = Some ι2),
     ι1 = ι2.
@@ -1185,7 +1169,7 @@ Qed.
 Lemma eval_stmt_preserves_receiver_r_type_typed :
   forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι rqt
     (Htyp    : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval   : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hthis   : get_this_var_mapping (vars rΓ) = Some ι)
     (Hrtype  : r_type h ι = Some rqt)
     (Hι_dom  : ι < dom h),
@@ -1207,7 +1191,7 @@ Qed.
 Lemma eval_stmt_preserves_receiver_r_muttype_typed :
   forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι q
     (Htyp    : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval   : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hthis   : get_this_var_mapping (vars rΓ) = Some ι)
     (Hmut    : r_muttype h ι = Some q)
     (Hι_dom  : ι < dom h),
@@ -1228,7 +1212,7 @@ Qed.
 
 Lemma eval_stmt_preserves_r_type_backwards :
   forall CT rΓ h stmt rΓ' h' loc rqt
-    (Heval     : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval     : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hrtype'   : r_type h' loc = Some rqt)
     (Hloc_dom  : loc < dom h),
     r_type h loc = Some rqt.
@@ -1254,7 +1238,7 @@ Lemma eval_stmt_preserves_receiver_r_type_typed_backwards :
   forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι rqt
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyp    : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval   : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hthis'  : get_this_var_mapping (vars rΓ') = Some ι)
     (Hrtype' : r_type h' ι = Some rqt)
     (Hι_dom  : ι < dom h),
@@ -1286,7 +1270,7 @@ Qed.
 
 Lemma eval_stmt_preserves_r_muttype_backwards :
   forall CT rΓ h stmt rΓ' h' loc q
-    (Heval     : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval     : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hmut'     : r_muttype h' loc = Some q)
     (Hloc_dom  : loc < dom h),
     r_muttype h loc = Some q.
@@ -1309,7 +1293,7 @@ Lemma eval_stmt_preserves_receiver_r_muttype_typed_backwards :
   forall CT sΓ mt rΓ h stmt sΓ' rΓ' h' ι q
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyp    : stmt_typing CT sΓ mt stmt sΓ')
-    (Heval   : eval_stmt OK CT rΓ h stmt OK rΓ' h')
+    (Heval   : eval_stmt CT rΓ h stmt OK rΓ' h')
     (Hthis'  : get_this_var_mapping (vars rΓ') = Some ι)
     (Hmut'   : r_muttype h' ι = Some q)
     (Hι_dom  : ι < dom h),
@@ -1351,7 +1335,7 @@ Lemma preservation_local_ok :
   forall CT sΓ mt rΓ h T x rΓ' h' sΓ'
     (Hwf     : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt (SLocal T x) sΓ')
-    (Heval   : eval_stmt OK CT rΓ h (SLocal T x) OK rΓ' h'),
+    (Heval   : eval_stmt CT rΓ h (SLocal T x) OK rΓ' h'),
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
     intros CT sΓ mt rΓ h T x rΓ' h' sΓ' Hwf Htyping Heval.
@@ -1457,7 +1441,7 @@ Lemma preservation_varass_ok :
   forall CT sΓ mt rΓ h x e rΓ' h' sΓ'
     (Hwf              : wf_r_config CT sΓ rΓ h)
     (Htyping          : stmt_typing CT sΓ mt (SVarAss x e) sΓ')
-    (Heval_stmt       : eval_stmt OK CT rΓ h (SVarAss x e) OK rΓ' h'),
+    (Heval_stmt       : eval_stmt CT rΓ h (SVarAss x e) OK rΓ' h'),
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
     intros CT sΓ mt rΓ h x e rΓ' h' sΓ' Hwf Htyping Heval_stmt.
@@ -1575,7 +1559,7 @@ Proof.
           trivial.
         -- (* Case: v2 = Iot loc *)
           (* Use subtyping to convert from T to sqt *)
-          assert (Hsubtype_preserved : wf_r_typable CT (set_vars rΓ (update x (Iot loc) (vars rΓ))) h' loc sqt qcontext).
+          assert (Hsubtype_preserved : wf_r_typable CT h' loc sqt qcontext).
           {
             assert (Hsqt_eq : sqt = Tx).
           {
@@ -1585,7 +1569,7 @@ Proof.
             symmetry. exact Hsqt_eq.
           }
           subst sqt.
-          assert (H_loc_Te : wf_r_typable CT rΓ h' loc Te qcontext).
+          assert (H_loc_Te : wf_r_typable CT h' loc Te qcontext).
           {
             (* Apply expression evaluation preservation lemma *)
             apply (expr_eval_preservation CT sΓ' mt rΓ h' e (Iot loc) rΓ h' Te ι).
@@ -1677,11 +1661,11 @@ Proof.
   - reflexivity.
 Qed.
 
-Lemma preservation_fldwrite_ok_abs_imm :
+Lemma preservation_fldwrite_ok_abstract_state :
   forall CT sΓ rΓ h x f y h' sΓ'
     (Hwf     : wf_r_config CT sΓ rΓ h)
-    (Htyping : stmt_typing CT sΓ AbstractImm (SFldWrite x f y) sΓ')
-    (Heval   : eval_stmt OK CT rΓ h (SFldWrite x f y) OK rΓ h'),
+    (Htyping : stmt_typing CT sΓ AbstractState (SFldWrite x f y) sΓ')
+    (Heval   : eval_stmt CT rΓ h (SFldWrite x f y) OK rΓ h'),
     wf_r_config CT sΓ' rΓ h'.
 Proof.
     intros CT sΓ rΓ h x f y h' sΓ' Hwf Htyping Heval.
@@ -1882,7 +1866,7 @@ Proof.
                   unfold qualifier_typable_heap.
                   move Hsub at bottom.
                   move Hqual_typable at bottom.
-                  unfold vpa_mutability_rec_fld; unfold vpa_mutability_stype_fld_abs_imm in Hsub.
+                  unfold vpa_mutability_rec_fld; unfold vpa_mutability_stype_fld_abstract_state in Hsub.
                   subst rqt_x.
 
                   clear - Hsub Hqual_typable Hxyqualifer.
@@ -1962,9 +1946,9 @@ Proof.
                 rewrite Hobj_lx in Hcorr.
                 destruct Hcorr as [_ Hqualifiertypablex].
                 inversion Hgetobj; subst o.
-                unfold vpa_mutability_stype_fld_abs_imm in Hsub.
+                unfold vpa_mutability_stype_fld_abstract_state in Hsub.
                 unfold vpa_mutability_rec_fld.
-                unfold vpa_mutability_rs in Hqual_y.
+                unfold vpa_mutability_runtime in Hqual_y.
                 clear - Hqual_y Hsub Hqualifiertypablex.
                 all:
                 destruct (rqtype rqt_y) eqn: Hrqy;
@@ -2164,11 +2148,11 @@ Proof.
       exact Hcorr_orig.
 Qed.
 
-Lemma preservation_fldwrite_ok_safe_ro :
+Lemma preservation_fldwrite_ok_readonly_state :
   forall CT sΓ rΓ h x f y h' sΓ'
     (Hwf     : wf_r_config CT sΓ rΓ h)
-    (Htyping : stmt_typing CT sΓ SafeRO (SFldWrite x f y) sΓ')
-    (Heval   : eval_stmt OK CT rΓ h (SFldWrite x f y) OK rΓ h'),
+    (Htyping : stmt_typing CT sΓ ReadonlyState (SFldWrite x f y) sΓ')
+    (Heval   : eval_stmt CT rΓ h (SFldWrite x f y) OK rΓ h'),
     wf_r_config CT sΓ' rΓ h'.
 Proof.
     intros CT sΓ rΓ h x f y h' sΓ' Hwf Htyping Heval.
@@ -2371,7 +2355,7 @@ Proof.
                 unfold qualifier_typable_heap.
                 move Hsub at bottom.
                 move Hqual_typable at bottom.
-                unfold vpa_mutability_rec_fld; unfold vpa_mutability_stype_fld_abs_imm in Hsub.
+                unfold vpa_mutability_rec_fld; unfold vpa_mutability_stype_fld_abstract_state in Hsub.
                 subst rqt_x.
 
                 clear - Hsub Hqual_typable Hxyqualifer.
@@ -2451,9 +2435,9 @@ Proof.
                 rewrite Hobj_lx in Hcorr.
                 destruct Hcorr as [_ Hqualifiertypablex].
                 inversion Hgetobj; subst o.
-                unfold vpa_mutability_stype_fld_abs_imm in Hsub.
+                unfold vpa_mutability_stype_fld_abstract_state in Hsub.
                 unfold vpa_mutability_rec_fld.
-                unfold vpa_mutability_rs in Hqual_y.
+                unfold vpa_mutability_runtime in Hqual_y.
                 clear - Hqual_y Hsub Hqualifiertypablex.
                 all:
                 destruct (rqtype rqt_y) eqn: Hrqy;
@@ -2653,510 +2637,24 @@ Proof.
       exact Hcorr_orig.
 Qed.
 
-Lemma preservation_fldwrite_ok_concrete_imm :
-  forall CT sΓ rΓ h x f y h' sΓ'
-    (Hwf     : wf_r_config CT sΓ rΓ h)
-    (Htyping : stmt_typing CT sΓ ConcreteImm (SFldWrite x f y) sΓ')
-    (Heval   : eval_stmt OK CT rΓ h (SFldWrite x f y) OK rΓ h'),
-    wf_r_config CT sΓ' rΓ h'.
-Proof.
-    intros CT sΓ rΓ h x f y h' sΓ' Hwf Htyping Heval.
-    inversion Heval; subst.
-    rename Hval_x into Hgetx.
-    rename Hobj into Hgetobj.
-    rename Hfield into Hgetf.
-    rename Hval_y into Hgety.
-    have Hwfcopy := Hwf.
-    inversion Htyping; subst.
-    unfold wf_r_config in Hwf.
-    destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
-    split; [exact Hclass|].
-    repeat split.
-    + (* wellformed heap *) 
-    unfold wf_heap in *.
-    intros ι0 Hdom.
-    unfold update_field in *.
-    destruct (runtime_getObj h loc_x) as [o_x|] eqn:Hobj.
-    * (* Case: object exists at lx *)
-      destruct (Nat.eq_dec ι0 loc_x) as [Heq | Hneq].
-      -- (* Case: ι = lx (the updated object) *)
-        subst ι0.
-        unfold wf_obj.
-        simpl.
-        specialize (Hheap loc_x).
-        rewrite update_length in Hdom.
-        specialize (Hheap Hdom).
-        unfold wf_obj in Hheap.
-        rewrite Hobj in Hheap.
-        destruct Hheap as [Hrtypeuse [Hlen_fields Hwf_fields]].
-        unfold runtime_getObj.
-        rewrite update_same.
-        ++ exact Hdom.
-        ++ repeat split.
-          ** exact Hrtypeuse.
-          ** simpl. rewrite update_length. 
-          exists Hlen_fields.
-          destruct Hwf_fields as [Hcollect [Hlen_eq Hforall2]].
-          split.
-          --- exact Hcollect.
-          --- split.
-            +++ exact Hlen_eq.
-            +++ 
-            {
-              apply Forall2_update.
-              eapply Forall2_impl; [|exact Hforall2].
-              intros v fdef Hv_fdef.
-              destruct v as [|loc]; [trivial|].
-              destruct (runtime_getObj h loc) as [obj_at_loc|] eqn:Hobj_at_loc; [|contradiction Hv_fdef].
-              destruct Hv_fdef as [rqt [Hrtype Hsubtype]].
-              destruct (Nat.eq_dec loc loc_x) as [Heq_loc | Hneq_loc].
-              (* Case: loc = lx *)
-              subst loc.
-              unfold update_field.
-              simpl.
-              rewrite update_same.
-              apply runtime_getObj_dom in Hobj_at_loc.
-              exact Hobj_at_loc.
-              exists rqt.
-              split.
-              unfold r_type.
-              simpl.
-              rewrite runtime_getObj_update_same.
-              simpl.
-              apply runtime_getObj_dom in Hobj_at_loc.
-              exact Hobj_at_loc.
-              simpl.
-              unfold r_type in Hrtype.
-              rewrite Hobj_at_loc in Hrtype.
-              injection Hrtype as Hrqt_eq.
-              rewrite Hobj in Hobj_at_loc.
-              injection Hobj_at_loc as Heq_objs.
-              subst obj_at_loc.
-              rewrite Hrqt_eq.
-              reflexivity.
-              exact Hsubtype.
-
-              (* Case: loc ≠ lx *)
-              rewrite update_diff; [symmetry; exact Hneq_loc |].
-              unfold runtime_getObj in Hobj_at_loc.
-              rewrite Hobj_at_loc.
-              exists rqt.
-              split.
-              unfold r_type.
-                rewrite runtime_getObj_update_diff; [symmetry; exact Hneq_loc|].
-                unfold r_type in Hrtype.
-                exact Hrtype.
-              exact Hsubtype.
-              assert (Hf_valid : f < dom (fields_map o_x)).
-              {
-                injection Hgetobj as Ho_eq. subst o_x.
-                apply getVal_dom in Hgetf. exact Hgetf.
-              }
-              rewrite <- Hlen_eq. exact Hf_valid.
-
-              intros b Hnth_b.
-              destruct val_y as [|loc_y]; [trivial|].
-
-              assert (Hx_dom : x < dom sΓ').
-              {
-                apply static_getType_dom in Hget_x. exact Hget_x.
-              }
-
-              assert (Hy_dom : y < dom sΓ').
-              {
-                apply static_getType_dom in Hget_y. exact Hget_y.
-              }
-              have Hcorrcopy := Hcorr.
-              assert (Hthis_exists : exists ι, get_this_var_mapping (vars rΓ) = Some ι).
-              {
-                eapply get_this_exists_from_wf_r_config; eauto.
-              }
-              destruct Hthis_exists as [ι HreceiverAddr].
-              assert (Hqcontext_exists : exists qcontext, r_muttype h ι = Some qcontext).
-              {
-                eapply receiver_mutability_exists_wf_renv; eauto.
-              }
-              destruct Hqcontext_exists as [qcontext Hreceivermut].
-              have Hcorropy := Hcorr.
-              specialize (Hcorr ι qcontext HreceiverAddr Hreceivermut x Hx_dom Tx Hget_x).
-              destruct (runtime_getVal rΓ x) as [val_x|] eqn:Hx_val; [|contradiction].
-              injection Hgetx as H_val_eq.
-              subst val_x.
-              unfold update_field.
-              destruct (runtime_getObj h loc_x) as [o_lx|] eqn:Hobj_lx; [|easy].
-              destruct (Nat.eq_dec loc_y loc_x) as [Heq_loc2_lx | Hneq_loc2_lx].
-              specialize (Hcorrcopy ι qcontext HreceiverAddr Hreceivermut y Hy_dom Ty Hget_y).
-              destruct (runtime_getVal rΓ y) as [val_y|] eqn:Hy_val; [|contradiction].
-              injection Hgety as H_val_eq.
-              subst val_y.
-              unfold update_field.
-              (* subst loc_y. *)
-              destruct (runtime_getObj h loc_y) as [o_ly|] eqn:Hobj_ly.
-              2:{
-                subst loc_y.
-                rewrite Hobj_lx in Hobj_ly.
-                easy.
-              }
-                (* Case: loc_y = loc_x *)
-                subst loc_y.
-                unfold runtime_getObj.
-                rewrite update_same; [exact Hdom|].
-                unfold wf_r_typable in Hcorr.
-                destruct (r_type h loc_x) as [rqt_x|] eqn:Hrtype_x; [|contradiction Hcorr].
-                destruct Hcorr as [Hbase_sub Hqual_typable].
-                exists rqt_x.
-                split.
-                  unfold r_type.
-                  unfold runtime_getObj.
-                  rewrite update_same; [exact Hdom|].
-                  simpl.
-                  unfold r_type in Hrtype_x.
-                  rewrite Hobj_lx in Hrtype_x.
-                  injection Hobj as Ho_eq.
-                  injection Hgetobj as Ho_eq2.
-                  subst o_lx o_x.
-                  exact Hrtype_x.
-                  injection Hobj as Ho_lx_eq.
-                  injection Hgetobj as Ho_x_eq.
-                  subst o_lx o_x.
-                  assert (Hrt_type_eq : rt_type o = rqt_x).
-                  {
-                    unfold r_type in Hrtype_x.
-                    rewrite Hobj_lx in Hrtype_x.
-                    injection Hrtype_x as Heq.
-                    exact Heq.
-                  }
-
-                  rewrite Hrt_type_eq in Hcollect.
-                  assert (fieldT = b). {
-                    unfold sf_def_rel in Hfld_def.
-                    inversion Hfld_def; subst.
-                    symmetry.
-                    eapply collect_fields_consistent_through_runtime_static with (C:=(rctype (rt_type o)))(fields1:=Hlen_fields)(fields2:=fields)(fdef1:=b)(fdef2:=fieldT); eauto.
-                  }
-
-                  subst b.
-                  (* Case: loc2 ≠ lx *)
-                  rewrite Hobj_lx in Hobj_ly.
-                  inversion Hobj_ly.
-                  subst o_ly.
-                  unfold wf_r_typable in Hcorrcopy.
-                  rewrite Hrtype_x in Hcorrcopy.
-                  destruct Hcorrcopy as [Hxybase Hxyqualifer].
-                  {
-                  constructor.
-                  (* Base type *)
-                  apply qualified_type_subtype_base_subtype in Hsub.
-                  (* apply vpa_preserve_basetype_subtype in H11. *)
-                  simpl in Hsub.
-                  eapply base_trans; eauto.
-
-                  (* Qualifier *)
-                  apply get_this_qualified_type_nth_error in Hthis.
-                  unfold wf_senv in Hsenv;
-                  destruct Hsenv as [Hsenvdom _];
-                  apply qualified_type_subtype_q_subtype in Hsub.
-                  simpl in Hsub.
-                  unfold qualifier_typable_heap.
-                  move Hsub at bottom.
-                  move Hqual_typable at bottom.
-                  unfold vpa_mutability_rec_fld; unfold vpa_mutability_stype_fld_abs_imm in Hsub.
-                  subst rqt_x.
-
-                  clear - Hsub Hqual_typable Hxyqualifer.
-                  all: destruct (rqtype (rt_type o)) eqn: rq;
-                  destruct (mutability (ftype fieldT)) eqn: HfieldMut;
-                  simpl;
-                  simpl in Hsub; try trivial.
-                  all: 
-                  destruct (sqtype Tx) eqn: qx;
-                  destruct (sqtype Ty) eqn: qy;
-                  simpl in Hsub;
-                  try solve_q_subtype_wrong.
-                  all:
-                  destruct qcontext eqn: Hqcontext;
-                  try solve_qualifier_typable_wrong_concrete.
-            }
-
-            have H11copy := Hsub.
-            apply qualified_type_subtype_q_subtype in Hsub. 
-            destruct (nth_error h loc_y) as [obj_y|] eqn:Hnth_y.
-            - (* loc_y exists in original heap *)
-              assert (Hnth_updated : nth_error (update loc_x (set_fields_map o_x (update f (Iot loc_y) (fields_map o_x))) h) loc_y = Some obj_y).
-              {
-                rewrite nth_error_update_neq; [symmetry; exact Hneq_loc2_lx | exact Hnth_y].
-              }
-              rewrite Hnth_updated.
-              specialize (Hcorrcopy ι qcontext HreceiverAddr Hreceivermut y Hy_dom Ty Hget_y).
-              rewrite Hgety in Hcorrcopy.
-              unfold wf_r_typable in Hcorrcopy.
-              destruct (r_type h loc_y) as [rqt_y|] eqn:Hrtype_y; [|contradiction].
-              destruct Hcorrcopy as [Hbase_y Hqual_y].
-
-              exists rqt_y.
-              split.
-
-              unfold r_type.
-              unfold runtime_getObj.
-              rewrite Hnth_updated.
-              unfold r_type in Hrtype_y.
-              unfold runtime_getObj in Hrtype_y.
-              rewrite Hnth_y in Hrtype_y.
-              exact Hrtype_y.
-              assert (fieldT = b). {
-                unfold sf_def_rel in Hfld_def.
-                inversion Hfld_def; subst.
-                symmetry.
-                eapply collect_fields_consistent_through_runtime_static with (C:=(rctype (rt_type o_x)))(fields1:=Hlen_fields)(fields2:=fields)(fdef1:=b)(fdef2:=fieldT); eauto.
-                apply qualified_type_subtype_base_subtype in H11copy.
-                simpl in H11copy.
-                unfold wf_r_typable in Hcorr.
-                unfold r_type in Hcorr.
-                rewrite Hobj_lx in Hcorr.
-                destruct Hcorr as [Hbase_sub Hqual_typable].
-                inversion Hobj.
-                subst o_lx.
-                exact Hbase_sub.
-              }
-              subst b.
-              split.
-              + (* Base type equality *)
-                apply qualified_type_subtype_base_subtype in H11copy.
-                (* apply vpa_preserve_basetype_subtype in H11copy. *)
-                simpl in H11copy.
-                eapply base_trans; eauto.
-              + (* Qualifier typable *)
-                apply get_this_qualified_type_nth_error in Hthis.
-                unfold wf_senv in Hsenv;
-                destruct Hsenv as [Hsenvdom _];
-                move Hsub at bottom.
-                inversion Hlen.
-                inversion Hobj.
-                subst.
-                unfold qualifier_typable_heap.
-                unfold qualifier_typable_context in Hqual_y.
-                unfold wf_r_typable in Hcorr.
-                unfold r_type in Hcorr.
-                rewrite Hobj_lx in Hcorr.
-                destruct Hcorr as [_ Hqualifiertypablex].
-                inversion Hgetobj; subst o.
-                unfold vpa_mutability_stype_fld_abs_imm in Hsub.
-                unfold vpa_mutability_rec_fld.
-                unfold vpa_mutability_rs in Hqual_y.
-                clear - Hqual_y Hsub Hqualifiertypablex.
-                all:
-                destruct (rqtype rqt_y) eqn: Hrqy;
-                destruct (rqtype (rt_type o_x)) eqn: Hrqx;
-                destruct (mutability (ftype fieldT)) eqn: Hfield;
-                try trivial.
-
-                all:
-                destruct (sqtype Ty) eqn: Hsqy;
-                destruct qcontext eqn: Hqcontext;
-                simpl in Hqual_y;
-                try solve_q_subtype_wrong.
-
-                all:
-                destruct (sqtype Tx) eqn: Hsqx;
-                simpl in Hsub;
-                try solve_q_subtype_wrong;
-                try solve_qualifier_typable_wrong_concrete.
-
-                all: try easy.
-            - (* loc_y doesn't exist - contradiction *)
-              assert (Hnth_updated : nth_error (update loc_x (set_fields_map o_x (update f (Iot loc_y) (fields_map o_x))) h) loc_y = None).
-              {
-                rewrite nth_error_update_neq; [symmetry; exact Hneq_loc2_lx | exact Hnth_y].
-              }
-              rewrite Hnth_updated.
-              exfalso.
-              specialize (Hcorrcopy ι qcontext HreceiverAddr Hreceivermut y Hy_dom Ty Hget_y).
-              rewrite Hgety in Hcorrcopy.
-              unfold wf_r_typable in Hcorrcopy.
-              unfold r_type in Hcorrcopy.
-              unfold runtime_getObj in Hcorrcopy.
-              rewrite Hnth_y in Hcorrcopy.
-              easy.
-            }
-        -- unfold wf_obj, runtime_getObj.
-           rewrite update_diff.
-        ** rewrite update_length in Hdom.
-           symmetry. exact Hneq.
-        **
-        rewrite update_length in Hdom.
-        destruct (nth_error h ι0) eqn:Htest.
-        2:{
-          exfalso.
-          apply nth_error_None in Htest.
-          lia.
-        }
-        split.
-        specialize (Hheap ι0 Hdom).
-        unfold wf_obj in Hheap.
-        destruct (runtime_getObj h ι0) as [objl|] eqn: Hobjl; [| easy].
-        destruct Hheap as [Hwfobjtypeuse _].
-        unfold runtime_getObj in Hobjl.
-        rewrite Htest in Hobjl.
-        inversion Hobjl.
-        subst.
-        exact Hwfobjtypeuse.
-
-        specialize (Hheap ι0 Hdom).
-        unfold wf_obj in Hheap.
-        destruct (runtime_getObj h ι0) as [objl|] eqn: Hobjl; [| easy].
-        destruct Hheap as [Hwfobjtypeuse Hwfobjfields].
-        unfold runtime_getObj in Hobjl.
-        rewrite Htest in Hobjl.
-        inversion Hobjl.
-        subst.
-        destruct Hwfobjfields as [field_defs [Hcollect [Hlen_eq Hforall2]]].
-
-        exists field_defs.
-        {
-          split.
-          exact Hcollect.
-          split.
-          exact Hlen_eq.
-          eapply Forall2_impl; [|exact Hforall2].
-          intros v fdef Hv_fdef.
-          destruct v as [|loc]; [trivial|].
-          (* First check if the object exists in the updated heap *)
-          unfold update_field.
-          destruct (runtime_getObj h loc_x) as [o_lx|] eqn:Hobj_lx.
-          destruct (Nat.eq_dec loc loc_x) as [Heq | Hneq_loc].
-          subst loc.
-          rewrite Hobj_lx in Hv_fdef.
-          destruct Hv_fdef as [rqt [Hrtype_loc Hsubtype]].
-          unfold runtime_getObj.
-          rewrite update_same.
-          unfold r_type in Hrtype_loc.
-          unfold r_type in Hrtype_loc.
-          destruct (runtime_getObj h loc_x) as [oxx|] eqn:Hobj_lxx; [|discriminate Hrtype_loc].
-          apply runtime_getObj_dom in Hobj_lxx.
-          exact Hobj_lxx.
-          exists rqt.
-          split.
-            unfold r_type.
-            rewrite runtime_getObj_update_same.
-            apply runtime_getObj_dom in Hobj_lx. exact Hobj_lx.
-            simpl.
-            unfold r_type in Hrtype_loc.
-            rewrite Hobj_lx in Hrtype_loc.
-            injection Hobj as Ho_new_eq.
-            subst o_x.
-            injection Hrtype_loc as Hrqt_eq.
-            subst rqt.
-            reflexivity.
-            exact Hsubtype.
-
-            destruct (runtime_getObj h loc) as [obj_loc|] eqn:Hobj_loc; [|contradiction Hv_fdef].
-            destruct Hv_fdef as [rqt [Hrtype_loc Hsubtype]].
-            unfold runtime_getObj.
-            rewrite update_diff.
-            symmetry. exact Hneq_loc.
-            unfold runtime_getObj in Hobj_loc.
-            destruct (nth_error h loc) as [obj|] eqn:Hnth_loc; [|discriminate Hobj_loc].
-            injection Hobj_loc as Hobj_eq.
-            subst obj.
-            exists rqt.
-            split.
-            unfold r_type.
-            rewrite runtime_getObj_update_diff.
-            symmetry. exact Hneq_loc.
-            exact Hrtype_loc.
-            exact Hsubtype.
-            exfalso.
-            discriminate Hobj.
-        }
-        * exfalso.
-          discriminate Hgetobj.
-    + destruct Hrenv as [HrEnvLen [Hreceiver Hallvals]]. exact HrEnvLen.
-    + destruct Hrenv as [HrEnvLen [Hreceiver Hallvals]]. destruct Hreceiver as [Hreceiverval Hreceivervaldom].
-      exists Hreceiverval.
-      split.
-      * exact (proj1 Hreceivervaldom).
-      * rewrite update_field_length.
-        exact (proj2 Hreceivervaldom).
-    + 
-      destruct Hrenv as [HrEnvLen [Hreceiverval Hallvals]].
-      eapply Forall_impl; [| exact Hallvals].
-      intros v Hv.
-      destruct v as [|loc]; [trivial|].
-      unfold update_field in Hv |- *.
-      destruct (runtime_getObj h loc_x) as [o'|] eqn:Hobj'; [| exact Hv].
-      destruct (Nat.eq_dec loc loc_x) as [Heq | Hneq].
-      * subst loc. rewrite runtime_getObj_update_same; [trivial | ].
-        apply runtime_getObj_dom in Hobj'. exact Hobj'. trivial.
-      * 
-      unfold runtime_getObj.
-      rewrite update_diff.
-      -- symmetry. exact Hneq.
-      -- auto.
-    + destruct Hsenv as [HsenvLength HsenvWellTyped]. exact HsenvLength.
-    + destruct Hsenv as [HsenvLength HsenvWellTyped]. exact HsenvWellTyped.
-    + exact Hlen.
-    + 
-    intros ι qcontext HreceiverAddr Hreceivermut i Hi sqt Hnth.
-      assert (r_muttype h ι = Some qcontext) as Hreceivermut_orig.
-      {
-        rewrite (r_muttype_update_field_preserve h loc_x f val_y ι) in Hreceivermut.
-        exact Hreceivermut.
-      }
-      assert (Hcorr_orig := Hcorr ι qcontext HreceiverAddr Hreceivermut_orig i Hi sqt Hnth).
-      destruct (runtime_getVal rΓ i) as [v|] eqn:Hval; [|exact Hcorr_orig].
-      destruct v as [|loc]; [trivial|].
-      unfold wf_r_typable in Hcorr_orig |- *.
-      destruct (r_type h loc) as [rqt|] eqn:Hrtype; [|contradiction].
-      assert (Hrtype_preserved : r_type (update_field h loc_x f val_y) loc = Some rqt).
-      {
-        unfold r_type.
-        unfold update_field.
-        remember (runtime_getObj h loc_x) as obj_result eqn:Hobj_eq.
-        destruct obj_result as [o'|].
-        - destruct (Nat.eq_dec loc loc_x) as [Heq | Hneq].
-          + subst loc. 
-            rewrite runtime_getObj_update_same.
-            * simpl. unfold r_type in Hrtype.
-              destruct (runtime_getObj h loc_x) as [o_lx|] eqn:Hobj_lx; [|discriminate Hrtype].
-              apply runtime_getObj_dom in Hobj_lx.
-              exact Hobj_lx.
-            * 
-            have Hobj_eq_copy := Hobj_eq.
-            symmetry in Hobj_eq.
-            apply runtime_getObj_dom in Hobj_eq.
-            simpl.
-            unfold r_type in Hrtype.
-            destruct (runtime_getObj h loc_x) as [o_lx|] eqn:Hobj_lx; [|discriminate Hrtype].
-            injection Hrtype as Hrtype_eq.
-            rewrite <- Hrtype_eq.
-            f_equal.
-            injection Hobj_eq_copy as Ho_eq.
-            rewrite Ho_eq.
-            reflexivity.
-          + rewrite runtime_getObj_update_diff.
-            * symmetry. exact Hneq.
-            * exact Hrtype.
-        - exact Hrtype.
-      }
-      rewrite Hrtype_preserved.
-      exact Hcorr_orig.
-Qed.
 
 Lemma preservation_fldwrite_ok :
   forall CT sΓ mt rΓ h x f y h' sΓ'
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt (SFldWrite x f y) sΓ')
-    (Heval : eval_stmt OK CT rΓ h (SFldWrite x f y) OK rΓ h'),
+    (Heval : eval_stmt CT rΓ h (SFldWrite x f y) OK rΓ h'),
     wf_r_config CT sΓ' rΓ h'.
 Proof.
     intros.
     inversion Htyping; subst.
-    - eapply preservation_fldwrite_ok_abs_imm; eauto.
-    - eapply preservation_fldwrite_ok_abs_imm; eauto.
+    - eapply preservation_fldwrite_ok_abstract_state; eauto.
+    - eapply preservation_fldwrite_ok_abstract_state; eauto.
       econstructor; eauto.
       eapply concrete_assignable_implies_assignable; eauto.
-    - eapply preservation_fldwrite_ok_safe_ro; eauto.
-    - eapply preservation_fldwrite_ok_concrete_imm; eauto.
+    - eapply preservation_fldwrite_ok_readonly_state; eauto.
+    - eapply preservation_fldwrite_ok_readonly_state; eauto.
+      econstructor; eauto.
+      eapply concrete_assignable_implies_assignable; eauto.
 Qed.
 
 Lemma r_muttype_app_preserve_old :
@@ -3188,7 +2686,7 @@ Lemma preservation_new_ok :
   forall CT sΓ mt rΓ h x q_c c ys rΓ' h' sΓ'
     (Hwf                    : wf_r_config CT sΓ rΓ h)
     (Htyping                : stmt_typing CT sΓ mt (SNew x q_c c ys) sΓ')
-    (Heval                  : eval_stmt OK CT rΓ h (SNew x q_c c ys) OK rΓ' h'),
+    (Heval                  : eval_stmt CT rΓ h (SNew x q_c c ys) OK rΓ' h'),
     wf_r_config CT sΓ' rΓ' h'.
 Proof.
   intros CT sΓ mt rΓ h x q_c c ys rΓ' h' sΓ' Hwf Htyping Heval.
@@ -3705,9 +3203,9 @@ qthisr q_c; rctype := c |}; fields_map := vals |}]) = dom h + 1).
               subst qthisr.
               unfold qualifier_typable_context in *.
               unfold vpa_mutability_object_creation in *.
-	              unfold vpa_mutability_rs in *;
+	              unfold vpa_mutability_runtime in *;
 	              unfold qc2q in *;
-	              unfold vpa_mutability_tt_abs_imm in *.
+	              unfold vpa_mutability_tt_abstract_state in *.
 	              unfold vpa_mutability_bound in Hqc.
 	              destruct q_c eqn:Hnewq;
 	              destruct (cqualifier consig) eqn: Hcbound;
@@ -3760,28 +3258,6 @@ q_c; rctype := c |}; fields_map := vals |}]) loc = Some rqt).
           exact Hcorr_orig.
           + contradiction Hcorr_orig.
           }
-Qed.
-
-Lemma vpa_mutability_tt_sctype_abs_imm :
-  forall Tthis T : qualified_type,
-    sctype (vpa_mutability_tt_abs_imm Tthis T) = sctype T.
-Proof.
-  intros Tthis [q c].
-  unfold vpa_mutability_tt_abs_imm.
-  simpl.
-  destruct (sqtype Tthis); simpl; try reflexivity.
-  all: destruct q; simpl; reflexivity.
-Qed.
-
-Lemma vpa_mutability_tt_sctype_safe_ro :
-  forall Tthis T : qualified_type,
-    sctype (vpa_mutability_tt_safe_ro Tthis T) = sctype T.
-Proof.
-  intros Tthis [q c].
-  unfold vpa_mutability_tt_safe_ro.
-  simpl.
-  destruct (sqtype Tthis); simpl; try reflexivity.
-  all: destruct q; simpl; reflexivity.
 Qed.
 
 Lemma receiver_mutability_exists_from_bound :

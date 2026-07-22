@@ -29,7 +29,7 @@ Lemma safe_call_callee_zone_env :
     vals ly cy runtime_mdef,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     zone_env_safe Z sGamma rGamma ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -54,7 +54,7 @@ Proof.
       have Hactual_safe := Henv y ly Ty Hget_y Hval_y HinZ.
       destruct Hrcv_sub as [Hordinary | [_ [Hformal_rdm _]]].
       * eapply adapted_subtype_safe_implies_safe; eauto.
-      * rewrite Hformal_rdm. unfold is_safe_mode. auto.
+      * rewrite Hformal_rdm. unfold is_nonmutable_qualifier. auto.
     + simpl in Htype, Hval.
       assert (Hi : i < length (mparams (msignature mdef))).
       { have Htype_dom := Htype. apply static_getType_dom in Htype_dom.
@@ -112,7 +112,7 @@ Lemma safe_call_callee_mut_variable_origin :
     vals ly cy runtime_mdef z T l,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m runtime_mdef ->
@@ -137,7 +137,7 @@ Proof.
     + simpl in Htype, Hval. injection Htype as <-. injection Hval as <-.
       destruct Hrcv_sub as [Hordinary | [_ [Hformal_rdm _]]].
       * apply qualified_type_subtype_q_subtype in Hordinary.
-        unfold vpa_mutability_tt_safe_ro in Hordinary.
+        unfold vpa_mutability_tt_readonly_state in Hordinary.
         rewrite Hmut in Hordinary. simpl in Hordinary.
         have Hnotbot := wf_config_nonnull_variable_not_bot
           CT _ rGamma h y Ty ly Hwf Hget_y Hval_y.
@@ -162,7 +162,7 @@ Proof.
         Hargs Hval) as [arg' [Harg'_index Harg_val]].
       rewrite Harg_index in Harg'_index. injection Harg'_index as <-.
       apply qualified_type_subtype_q_subtype in Hsub_i.
-      unfold vpa_mutability_tt_safe_ro in Hsub_i.
+      unfold vpa_mutability_tt_readonly_state in Hsub_i.
       rewrite Hmut in Hsub_i. simpl in Hsub_i.
       have Hnotbot := wf_config_nonnull_variable_not_bot
         CT _ rGamma h arg Targ l Hwf Harg_type Harg_val.
@@ -178,7 +178,7 @@ Lemma safe_call_callee_mut_root_origin :
     vals ly cy runtime_mdef root,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m runtime_mdef ->
@@ -226,9 +226,9 @@ Qed.
 Lemma mut_expression_result_has_mutable_root :
   forall CT sGamma mt rGamma h e l T,
     wf_r_config CT sGamma rGamma h ->
-    eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
+    eval_expr CT rGamma h e (Iot l) OK rGamma h ->
     expr_has_type CT sGamma mt e T ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     sqtype T = Mut ->
     exists root,
       typed_root Mut sGamma rGamma root /\
@@ -262,9 +262,9 @@ Qed.
 Lemma rdm_expression_result_has_rdm_root :
   forall CT sGamma mt rGamma h e l T,
     wf_r_config CT sGamma rGamma h ->
-    eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
+    eval_expr CT rGamma h e (Iot l) OK rGamma h ->
     expr_has_type CT sGamma mt e T ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     sqtype T = RDM ->
     exists root,
       typed_root RDM sGamma rGamma root /\
@@ -303,13 +303,13 @@ Proof.
 Qed.
 
 Lemma nonnull_subtype_to_rdm_is_rdm :
-  forall CT rGamma h l T1 T2 qcontext,
-    wf_r_typable CT rGamma h l T1 qcontext ->
+  forall CT h l T1 T2 qcontext,
+    wf_r_typable CT h l T1 qcontext ->
     qualified_type_subtype CT T1 T2 ->
     sqtype T2 = RDM ->
     sqtype T1 = RDM.
 Proof.
-  intros CT rGamma h l T1 T2 qcontext Htyp Hsub Hrdm.
+  intros CT h l T1 T2 qcontext Htyp Hsub Hrdm.
   apply qualified_type_subtype_q_subtype in Hsub.
   rewrite Hrdm in Hsub.
   inversion Hsub; subst; auto.
@@ -487,46 +487,6 @@ Proof.
   - eapply mutable_edge_preserves_runtime_mutability; eauto.
 Qed.
 
-Definition in_mutable_component
-  (CT : class_table) (h : heap) (sGamma : s_env) (rGamma : r_env)
-  (l : Loc) : Prop :=
-  exists root,
-    typed_root Mut sGamma rGamma root /\
-    mutable_reachable CT h root l.
-
-Definition in_rdm_component
-  (CT : class_table) (h : heap) (sGamma : s_env) (rGamma : r_env)
-  (l : Loc) : Prop :=
-  exists root,
-    typed_root RDM sGamma rGamma root /\
-    mutable_reachable CT h root l.
-
-Definition in_qualified_component
-  (qualifier : q) (CT : class_table) (h : heap)
-  (sGamma : s_env) (rGamma : r_env) (l : Loc) : Prop :=
-  exists root,
-    typed_root qualifier sGamma rGamma root /\
-    mutable_reachable CT h root l.
-
-Lemma mutable_reachable_from_old_after_append :
-  forall CT h newobj root target,
-    wf_heap CT h ->
-    root < dom h ->
-    mutable_reachable CT (h ++ [newobj]) root target ->
-    target < dom h /\ mutable_reachable CT h root target.
-Proof.
-  intros CT h newobj root target Hwf Hroot Hreach.
-  induction Hreach as [root|root middle target Hprefix IH Hedge].
-  - split; [exact Hroot|constructor].
-  - destruct (IH Hroot) as [Hmiddle Holdprefix].
-    destruct (mutable_edge_after_append CT h newobj middle target Hedge)
-      as [Holdedge | [Hfresh _]].
-    + split.
-      * eapply mutable_edge_target_dom; eauto.
-      * eapply mr_step; eauto.
-    + lia.
-Qed.
-
 Lemma new_typed_root_origin :
   forall CT sGamma mt rGamma h x qc C args sGamma' qualifier root,
     wf_r_config CT sGamma rGamma h ->
@@ -644,13 +604,13 @@ Proof.
   specialize (Hcorr this qcontext Hrthis Hqcontext arg Harg_index_dom argT
     Harg_static).
   rewrite Harg_runtime in Hcorr.
-  have Hnotbot := typable_nonnull_not_bot CT rGamma h target argT qcontext Hcorr.
+  have Hnotbot := typable_nonnull_not_bot CT h target argT qcontext Hcorr.
   apply qualified_type_subtype_q_subtype in HArgSubtype.
   apply qualified_type_subtype_q_subtype in HParamField.
   simpl in HArgSubtype, HParamField.
   rewrite Hrdm in HParamField. simpl in HParamField.
   assert (Hargcreation : sqtype argT = qc2q qc).
-  { unfold vpa_mutability_constructor_param, vpa_mutability_qq_abs_imm
+  { unfold vpa_mutability_constructor_param, vpa_mutability_qq_abstract_state
       in HArgSubtype.
     unfold vpa_mutability_constructor_fld in HParamField.
     unfold vpa_mutability_bound, qc2q in Hqc.
@@ -723,13 +683,13 @@ Proof.
   specialize (Hcorr this qcontext Hrthis Hqcontext arg Harg_index_dom argT
     Harg_static).
   rewrite Harg_runtime in Hcorr.
-  have Hnotbot := typable_nonnull_not_bot CT rGamma h target argT qcontext Hcorr.
+  have Hnotbot := typable_nonnull_not_bot CT h target argT qcontext Hcorr.
   apply qualified_type_subtype_q_subtype in HArgSubtype.
   apply qualified_type_subtype_q_subtype in HParamField.
   simpl in HArgSubtype, HParamField.
   rewrite Hmut in HParamField. simpl in HParamField.
   assert (Hargmut : sqtype argT = Mut).
-  { unfold vpa_mutability_constructor_param, vpa_mutability_qq_abs_imm
+  { unfold vpa_mutability_constructor_param, vpa_mutability_qq_abstract_state
       in HArgSubtype.
     unfold vpa_mutability_constructor_fld in HParamField.
     unfold vpa_mutability_bound, qc2q in Hqc.
@@ -740,77 +700,6 @@ Proof.
       try solve_q_subtype_wrong; try contradiction; try discriminate;
       reflexivity. }
   exists arg, argT. repeat split; assumption.
-Qed.
-
-Lemma fresh_creation_reachable_has_old_ancestor :
-  forall CT sGamma mt rGamma h x qc C args sGamma' vals freshrt target,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    mutable_reachable CT
-      (h ++ [mkObj (mkruntime_type freshrt C) vals]) (dom h) target ->
-    target = dom h \/
-      in_qualified_component (qc2q qc) CT h sGamma rGamma target.
-Proof.
-  intros CT sGamma mt rGamma h x qc C args sGamma' vals freshrt target
-    Hwf Htyping Hvals Hreach.
-  remember (dom h) as fresh eqn:Hfresh in Hreach.
-  induction Hreach as [fresh|fresh middle target Hprefix IH Hedge].
-  - left. exact Hfresh.
-  - destruct (mutable_edge_after_append CT h
-      (mkObj (mkruntime_type freshrt C) vals) middle target Hedge)
-      as [Holdedge | [Hmiddle [field [D [fd
-        [Hfield [Hsub [Hfd Hrdm]]]]]]]].
-    + destruct (IH Hfresh) as [Hmiddle|[old_root [Holdroot Holdpath]]].
-      * exfalso. subst middle.
-        inversion Holdedge as [? ? oldobj ? ? ? Hobj]; subst.
-        apply runtime_getObj_dom in Hobj.
-        exact (Nat.lt_irrefl (dom h) Hobj).
-      * right. exists old_root. split; [exact Holdroot|].
-        eapply mr_step; eauto.
-    + subst middle. right.
-      assert (HfdC : sf_def_rel CT C field fd).
-      { eapply field_inheritance_subtyping; eauto. }
-      exists target. split.
-      * eapply new_creation_rdm_field_target_has_creation_root; eauto.
-      * constructor.
-Qed.
-
-Lemma fresh_mutable_reachable_has_old_ancestor :
-  forall CT sGamma mt rGamma h x qc C args sGamma' vals freshrt target,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    qc2q qc = Mut ->
-    mutable_reachable CT
-      (h ++ [mkObj (mkruntime_type freshrt C) vals]) (dom h) target ->
-    target = dom h \/ in_mutable_component CT h sGamma rGamma target.
-Proof.
-  intros CT sGamma mt rGamma h x qc C args sGamma' vals freshrt target
-    Hwf Htyping Hvals Hqcmut Hreach.
-  remember (dom h) as fresh eqn:Hfresh in Hreach.
-  induction Hreach as [fresh|fresh middle target Hprefix IH Hedge].
-  - left. exact Hfresh.
-  - destruct (mutable_edge_after_append CT h
-      (mkObj (mkruntime_type freshrt C) vals) middle target Hedge)
-      as [Holdedge | [Hmiddle [field [D [fd
-        [Hfield [Hsub [Hfd Hrdm]]]]]]]].
-    + destruct (IH Hfresh) as [Hmiddle|[old_root [Holdroot Holdpath]]].
-      * exfalso. subst middle.
-        inversion Holdedge as [? ? oldobj ? ? ? Hobj]; subst.
-        apply runtime_getObj_dom in Hobj.
-        exact (Nat.lt_irrefl (dom h) Hobj).
-      * right. exists old_root. split; [exact Holdroot|].
-        eapply mr_step; eauto.
-    + subst middle. right.
-      assert (HfdC : sf_def_rel CT C field fd).
-      { eapply field_inheritance_subtyping; eauto. }
-      exists target. split.
-      * have Hroot := new_creation_rdm_field_target_has_creation_root
-          CT sGamma mt rGamma h x qc C args sGamma' vals field fd target
-          Hwf Htyping Hvals Hfield HfdC Hrdm.
-        rewrite Hqcmut in Hroot. exact Hroot.
-      * constructor.
 Qed.
 
 Lemma fresh_retained_reachable_has_old_mut_ancestor :
@@ -904,38 +793,6 @@ Proof.
       * constructor.
 Qed.
 
-Lemma new_mutable_component_origin :
-  forall CT sGamma mt rGamma h x qc C args sGamma' vals freshrt root target,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    typed_root Mut sGamma'
-      (update_r_env_value rGamma x (Iot (dom h))) root ->
-    mutable_reachable CT
-      (h ++ [mkObj (mkruntime_type freshrt C) vals]) root target ->
-    target = dom h \/ in_mutable_component CT h sGamma rGamma target.
-Proof.
-  intros CT sGamma mt rGamma h x qc C args sGamma' vals freshrt root target
-    Hwf Htyping Hvals Hroot Hreach.
-  destruct (new_typed_root_origin CT sGamma mt rGamma h x qc C args sGamma'
-    Mut root Hwf Htyping Hroot)
-    as [Holdroot | [Hfresh [Tx [Hgetx Hmut]]]].
-  - assert (Hrootdom : root < dom h).
-    { destruct Holdroot as [z [T [Htype [Hval Hq]]]].
-      eapply wf_config_value_dom; eauto. }
-    destruct (mutable_reachable_from_old_after_append CT h
-      (mkObj (mkruntime_type freshrt C) vals) root target
-      (ltac:(unfold wf_r_config in Hwf; tauto)) Hrootdom Hreach)
-      as [Htargetdom Holdreach].
-    right. exists root. split; assumption.
-  - subst root.
-    assert (HsGamma : sGamma' = sGamma) by (inversion Htyping; reflexivity).
-    assert (Hgetx' : static_getType sGamma' x = Some Tx).
-    { rewrite HsGamma. exact Hgetx. }
-    have Hqcmut := new_mut_result_requires_mut_creation CT sGamma mt x qc C
-      args sGamma' Tx Htyping Hgetx' Hmut.
-    eapply fresh_mutable_reachable_has_old_ancestor; eauto.
-Qed.
 
 Lemma new_retained_mutable_origin :
   forall CT sGamma mt rGamma h x qc C args sGamma' vals freshrt root target,
@@ -973,51 +830,14 @@ Proof.
     eapply fresh_retained_reachable_has_old_mut_ancestor; eauto.
 Qed.
 
-Lemma new_rdm_component_origin :
-  forall CT sGamma mt rGamma h x qc C args sGamma' vals freshrt root target,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    typed_root RDM sGamma'
-      (update_r_env_value rGamma x (Iot (dom h))) root ->
-    mutable_reachable CT
-      (h ++ [mkObj (mkruntime_type freshrt C) vals]) root target ->
-    target = dom h \/ in_rdm_component CT h sGamma rGamma target.
-Proof.
-  intros CT sGamma mt rGamma h x qc C args sGamma' vals freshrt root target
-    Hwf Htyping Hvals Hroot Hreach.
-  destruct (new_typed_root_origin CT sGamma mt rGamma h x qc C args sGamma'
-    RDM root Hwf Htyping Hroot)
-    as [Holdroot | [Hfresh [Tx [Hgetx Hrdm]]]].
-  - assert (Hrootdom : root < dom h).
-    { destruct Holdroot as [z [T [Htype [Hval Hq]]]].
-      eapply wf_config_value_dom; eauto. }
-    destruct (mutable_reachable_from_old_after_append CT h
-      (mkObj (mkruntime_type freshrt C) vals) root target
-      (ltac:(unfold wf_r_config in Hwf; tauto)) Hrootdom Hreach)
-      as [Htargetdom Holdreach].
-    right. exists root. split; assumption.
-  - subst root.
-    assert (HsGamma : sGamma' = sGamma) by (inversion Htyping; reflexivity).
-    assert (Hgetx' : static_getType sGamma' x = Some Tx).
-    { rewrite HsGamma. exact Hgetx. }
-    have Hqcrdm := new_rdm_result_requires_rdm_creation CT sGamma mt x qc C
-      args sGamma' Tx Htyping Hgetx' Hrdm.
-    destruct (fresh_creation_reachable_has_old_ancestor CT sGamma mt rGamma h
-      x qc C args sGamma' vals freshrt target Hwf Htyping Hvals Hreach)
-      as [->|Hold].
-    + left. reflexivity.
-    + right. unfold in_qualified_component in Hold.
-      rewrite Hqcrdm in Hold. exact Hold.
-Qed.
 
 Lemma assignment_mut_root_has_old_ancestor :
   forall CT sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK CT rGamma h e value OK rGamma h ->
+    eval_expr CT rGamma h e value OK rGamma h ->
     forall root,
       typed_root Mut sGamma (update_r_env_value rGamma x value) root ->
       exists old_root,
@@ -1043,7 +863,7 @@ Proof.
       have Htypable := expr_eval_preservation CT sGamma mt rGamma h e
         (Iot l) rGamma h Te this qcontext Hrthis Hqcontext Hwf Htype_e Heval.
       have Hmut_e := nonnull_subtype_to_mut_is_mut
-        CT rGamma h l Te Tx qcontext Htypable Hsub Hmut_z.
+        CT h l Te Tx qcontext Htypable Hsub Hmut_z.
       eapply mut_expression_result_has_mutable_root; eauto.
   - rewrite runtime_getVal_update_diff in Hval_z; auto.
     exists root. split.
@@ -1055,9 +875,9 @@ Lemma assignment_rdm_root_has_old_ancestor :
   forall CT sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK CT rGamma h e value OK rGamma h ->
+    eval_expr CT rGamma h e value OK rGamma h ->
     forall root,
       typed_root RDM sGamma (update_r_env_value rGamma x value) root ->
       exists old_root,
@@ -1083,7 +903,7 @@ Proof.
       have Htypable := expr_eval_preservation CT sGamma mt rGamma h e
         (Iot l) rGamma h Te this qcontext Hrthis Hqcontext Hwf Htype_e Heval.
       have Hrdm_e := nonnull_subtype_to_rdm_is_rdm
-        CT rGamma h l Te Tx qcontext Htypable Hsub Hrdm_z.
+        CT h l Te Tx qcontext Htypable Hsub Hrdm_z.
       eapply rdm_expression_result_has_rdm_root; eauto.
   - rewrite runtime_getVal_update_diff in Hval_z; auto.
     exists root. split.

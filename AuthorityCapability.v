@@ -12,13 +12,13 @@ Definition authority_context_sound
     r_muttype h this = Some Mut_r.
 
 Lemma nonnull_subtype_preserves_authority_capability :
-  forall CT rGamma h l T1 T2 qcontext authority,
-    wf_r_typable CT rGamma h l T1 qcontext ->
+  forall CT h l T1 T2 qcontext authority,
+    wf_r_typable CT h l T1 qcontext ->
     qualified_type_subtype CT T1 T2 ->
     capability_in_context authority (sqtype T2) ->
     capability_in_context authority (sqtype T1).
 Proof.
-  intros CT rGamma h l T1 T2 qcontext authority Htyp Hsub Hcap.
+  intros CT h l T1 T2 qcontext authority Htyp Hsub Hcap.
   apply qualified_type_subtype_q_subtype in Hsub.
   unfold capability_in_context in *.
   destruct Hcap as [Hmut | [Hrdm Hauthority]].

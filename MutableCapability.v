@@ -5,7 +5,7 @@ From Stdlib Require Import List.
 From Stdlib Require Import Sets.Ensembles.
 Import ListNotations.
 
-(** An RDM heap edge that preserves a mutable capability.  SafeRO viewpoint
+(** An RDM heap edge that preserves a mutable capability.  ReadonlyState viewpoint
     adaptation can also preserve [Mut] through an explicitly [Mut_f] field;
     [retained_mut_edge] below includes both cases.  The declaring class may be
     a supertype of the runtime class. *)
@@ -144,14 +144,6 @@ Definition retained_heap_closed
   (CT : class_table) (h : heap) (M : Ensemble Loc) : Prop :=
   forall l l', In Loc M l -> retained_mut_edge CT h l l' -> In Loc M l'.
 
-Lemma retained_heap_closed_implies_mutable_heap_closed :
-  forall CT h M,
-    retained_heap_closed CT h M ->
-    mutable_heap_closed CT h M.
-Proof.
-  intros CT h M Hclosed source target Hsource Hedge.
-  eapply Hclosed; [exact Hsource|]. constructor. exact Hedge.
-Qed.
 
 Definition mutable_members_runtime_mut
   (h : heap) (M : Ensemble Loc) : Prop :=
@@ -206,7 +198,7 @@ Proof.
   assert (Hsource_mut : r_muttype h l = Some Mut_r).
   { unfold r_muttype, r_type. rewrite Hobj. simpl.
     destruct (rqtype (rt_type o)); [reflexivity|].
-    unfold qualifier_typable_context, vpa_mutability_rs in Hqual.
+    unfold qualifier_typable_context, vpa_mutability_runtime in Hqual.
     rewrite Hreceiver in Hqual. destruct qcontext; contradiction. }
   eapply retained_edge_mut; eauto.
 Qed.
@@ -332,60 +324,7 @@ Proof.
   - exact Hrdm.
 Qed.
 
-Lemma written_capability_field_is_retained_edge :
-  forall CT h lx old f oldvalue target D fdef,
-    runtime_getObj h lx = Some old ->
-    r_muttype h lx = Some Mut_r ->
-    getVal old.(fields_map) f = Some oldvalue ->
-    base_subtype CT (rctype (rt_type old)) D ->
-    sf_def_rel CT D f fdef ->
-    (mutability (ftype fdef) = RDM_f \/
-     mutability (ftype fdef) = Mut_f) ->
-    retained_mut_edge CT (update_field h lx f (Iot target)) lx target.
-Proof.
-  intros CT h lx old f oldvalue target D fdef Hobj Hsource_mut Holdfield Hsub Hfd
-    [Hrdm | Hmut].
-  - constructor. eapply written_rdm_field_is_mutable_edge; eauto.
-  - eapply retained_edge_mut with
-      (o := set_fields_map old (update f (Iot target) (fields_map old)))
-      (f := f) (D := D) (fdef := fdef).
-    + unfold update_field. rewrite Hobj.
-      have Hlxdom := Hobj. apply runtime_getObj_dom in Hlxdom.
-      rewrite runtime_getObj_update_same; auto.
-    + rewrite r_muttype_update_field_preserve. exact Hsource_mut.
-    + have Hfdom := Holdfield. apply getVal_dom in Hfdom.
-      simpl. unfold getVal. rewrite update_same; auto.
-    + simpl. exact Hsub.
-    + exact Hfd.
-    + exact Hmut.
-Qed.
 
-Lemma mutable_reachable_after_field_update :
-  forall CT h lx old f value root target,
-    runtime_getObj h lx = Some old ->
-    mutable_reachable CT (update_field h lx f value) root target ->
-    mutable_reachable CT h root target \/
-    exists written,
-      value = Iot written /\
-      mutable_reachable CT h root lx /\
-      mutable_reachable CT h written target.
-Proof.
-  intros CT h lx old f value root target Hobj Hreach.
-  induction Hreach as [root|root middle target Hprefix IH Hedge].
-  - left. constructor.
-  - destruct (mutable_edge_after_field_update CT h lx old f value
-      middle target Hobj Hedge) as
-      [Holdedge | [Hmiddle [Hvalue Hnewedge]]].
-    + destruct IH as [Holdprefix | [written [Hwritten [Hto_source Hsuffix]]]].
-      * left. eapply mr_step; eauto.
-      * right. exists written. repeat split; try assumption.
-        eapply mr_step; eauto.
-    + subst middle.
-      destruct IH as [Holdprefix | [written [Hwritten [Hto_source Hsuffix]]]].
-      * right. exists target. repeat split; try assumption. constructor.
-      * rewrite Hvalue in Hwritten. injection Hwritten as <-.
-        right. exists target. repeat split; try assumption. constructor.
-Qed.
 
 Lemma retained_reachable_after_field_update :
   forall CT h lx old f value root target,
@@ -491,28 +430,28 @@ Proof.
 Qed.
 
 Lemma runtime_mut_typable_not_imm :
-  forall CT rGamma h l T qcontext,
+  forall CT h l T qcontext,
     r_muttype h l = Some Mut_r ->
-    wf_r_typable CT rGamma h l T qcontext ->
+    wf_r_typable CT h l T qcontext ->
     sqtype T <> Imm.
 Proof.
-  intros CT rGamma h l T qcontext Hrmut Htyp Himm.
+  intros CT h l T qcontext Hrmut Htyp Himm.
   unfold wf_r_typable in Htyp.
   unfold r_muttype, r_type in *.
   destruct (runtime_getObj h l) as [o|] eqn:Hobj; try discriminate.
   inversion Hrmut; subst.
   destruct Htyp as [_ Hqual].
-  unfold qualifier_typable_context, vpa_mutability_rs in Hqual.
+  unfold qualifier_typable_context, vpa_mutability_runtime in Hqual.
   rewrite Himm in Hqual. rewrite H0 in Hqual. destruct qcontext; exact Hqual.
 Qed.
 
 Lemma rdm_typable_runtime_matches_context :
-  forall CT rGamma h l T qcontext,
-    wf_r_typable CT rGamma h l T qcontext ->
+  forall CT h l T qcontext,
+    wf_r_typable CT h l T qcontext ->
     sqtype T = RDM ->
     r_muttype h l = Some qcontext.
 Proof.
-  intros CT rGamma h l T qcontext Htyp Hrdm.
+  intros CT h l T qcontext Htyp Hrdm.
   unfold wf_r_typable in Htyp.
   destruct (r_type h l) as [rt|] eqn:Hrt; try contradiction.
   destruct Htyp as [_ Hqual].
@@ -520,33 +459,33 @@ Proof.
   destruct (runtime_getObj h l) as [o|] eqn:Hobj; try discriminate.
   injection Hrt as <-.
   unfold r_muttype. rewrite Hobj. simpl.
-  unfold qualifier_typable_context, vpa_mutability_rs in Hqual.
+  unfold qualifier_typable_context, vpa_mutability_runtime in Hqual.
   rewrite Hrdm in Hqual.
   destruct (rqtype (rt_type o)), qcontext; try reflexivity; contradiction.
 Qed.
 
 Lemma typable_nonnull_not_bot :
-  forall CT rGamma h l T qcontext,
-    wf_r_typable CT rGamma h l T qcontext ->
+  forall CT h l T qcontext,
+    wf_r_typable CT h l T qcontext ->
     sqtype T <> Bot.
 Proof.
-  intros CT rGamma h l T qcontext Htyp Hbot.
+  intros CT h l T qcontext Htyp Hbot.
   unfold wf_r_typable in Htyp.
   destruct (r_type h l) as [rt|] eqn:Hrt; try contradiction.
   destruct Htyp as [_ Hqual].
-  unfold qualifier_typable_context, vpa_mutability_rs in Hqual.
+  unfold qualifier_typable_context, vpa_mutability_runtime in Hqual.
   rewrite Hbot in Hqual.
   destruct (rqtype rt); destruct qcontext; exact Hqual.
 Qed.
 
 Lemma nonnull_subtype_to_mut_is_mut :
-  forall CT rGamma h l T1 T2 qcontext,
-    wf_r_typable CT rGamma h l T1 qcontext ->
+  forall CT h l T1 T2 qcontext,
+    wf_r_typable CT h l T1 qcontext ->
     qualified_type_subtype CT T1 T2 ->
     sqtype T2 = Mut ->
     sqtype T1 = Mut.
 Proof.
-  intros CT rGamma h l T1 T2 qcontext Htyp Hsub Hmut.
+  intros CT h l T1 T2 qcontext Htyp Hsub Hmut.
   apply qualified_type_subtype_q_subtype in Hsub.
   rewrite Hmut in Hsub.
   inversion Hsub; subst; auto.

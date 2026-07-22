@@ -63,10 +63,10 @@ Lemma initial_authority_component_history :
   forall CT sGamma rGamma h,
     wf_r_config CT sGamma rGamma h ->
     env_respects_protected_set
-      (reachable_locations_from_initial_env CT h rGamma) sGamma rGamma ->
+      (reachable_locations_from_initial_env h rGamma) sGamma rGamma ->
     authority_component_history_state CT
-      (reachable_locations_from_initial_env CT h rGamma)
-      (reachable_locations_from_initial_env CT h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
+      (reachable_locations_from_initial_env h rGamma)
       (Empty_set Loc) (dom h) Imm_r sGamma rGamma h.
 Proof.
   intros CT sGamma rGamma h Hwf Henv.
@@ -92,9 +92,9 @@ Lemma authority_expression_capability_in_history :
     authority_component_history_state CT P Z M cutoff authority
       sGamma rGamma h ->
     retained_heap_closed CT h M ->
-    eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
+    eval_expr CT rGamma h e (Iot l) OK rGamma h ->
     expr_has_type CT sGamma mt e T ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     capability_in_context authority (sqtype T) ->
     In Loc M l.
 Proof.
@@ -138,9 +138,9 @@ Lemma authority_history_after_assignment :
       sGamma rGamma h ->
     retained_heap_closed CT h M ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some old ->
-    eval_expr OK CT rGamma h e value OK rGamma h ->
+    eval_expr CT rGamma h e value OK rGamma h ->
     authority_component_history_state CT P Z M cutoff authority sGamma
       (update_r_env_value rGamma x value) h.
 Proof.
@@ -166,7 +166,7 @@ Proof.
           (Iot result) rGamma h Te this qcontext Hrthis Hqcontext Hwf Htype_e
           Heval) as Htypable.
         have Hexprcap := nonnull_subtype_preserves_authority_capability
-          CT rGamma h result Te Tx qcontext authority Htypable Hsub Hcap.
+          CT h result Te Tx qcontext authority Htypable Hsub Hcap.
         eapply authority_expression_capability_in_history
           with (P := P) (Z := Z) (cutoff := cutoff) (CT := CT)
             (authority := authority) (sGamma := sGamma) (mt := mt)
@@ -216,8 +216,8 @@ Lemma authority_history_after_field_write :
     authority_component_history_state CT P Z M cutoff authority
       sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    safe_readonly_method_type mt ->
-    eval_stmt OK CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
+    readonly_state_method_scope mt ->
+    eval_stmt CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
     exists M',
       Included Loc M M' /\
       authority_component_history_state CT P Z M' cutoff authority
@@ -484,7 +484,7 @@ Lemma authority_history_after_new :
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     cutoff <= dom h ->
     ~ In Loc Z (dom h) ->
-    eval_stmt OK CT rGamma h (SNew x qc C args) OK rGamma' h' ->
+    eval_stmt CT rGamma h (SNew x qc C args) OK rGamma' h' ->
     exists M',
       Included Loc M M' /\
       authority_component_history_state CT P Z M' cutoff authority
@@ -562,7 +562,7 @@ Lemma safe_call_callee_authority_roots :
     authority_component_history_state CT P Z M cutoff caller_authority
       sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -616,7 +616,7 @@ Lemma safe_call_callee_authority_context :
     authority_component_history_state CT P Z M cutoff caller_authority
       sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
@@ -649,7 +649,7 @@ Lemma authority_history_enter_call :
     authority_component_history_state CT P Z M cutoff caller_authority
       sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->

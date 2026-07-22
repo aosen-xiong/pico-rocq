@@ -9,10 +9,10 @@ Import ListNotations.
 
 Definition protected_field_condition
   (CT : class_table) (C : class_name) (field : var)
-  (mt : method_type) : Prop :=
+  (mt : method_scope) : Prop :=
   sf_assignability_rel CT C field Final \/
   sf_assignability_rel CT C field RDA \/
-  concrete_assignability_method_type mt.
+  strict_assignability_method_scope mt.
 
 Lemma active_mut_root_cannot_be_protected :
   forall CT P Z cutoff h authority sGamma rGamma stack x T location,
@@ -45,8 +45,8 @@ Lemma safe_field_write_cannot_target_protected_slot :
       (mk_watched_frame authority sGamma rGamma) stack h ->
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SFldWrite x field y) sGamma' ->
-    safe_readonly_method_type mt ->
-    eval_stmt OK CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
+    readonly_state_method_scope mt ->
+    eval_stmt CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
     runtime_getVal rGamma x = Some (Iot source) ->
     runtime_getObj h source = Some (mkObj (mkruntime_type runtime_q C) fields) ->
     In Loc P source ->
@@ -58,8 +58,8 @@ Proof.
     Hstate Hwf Htyping Hsafe Heval
     Hvalue Hobj HinP Hprotected.
   inversion Htyping; subst.
-  - exact ((proj1 Hsafe) eq_refl).
-  - exact ((proj2 Hsafe) eq_refl).
+  - destruct Hsafe; discriminate.
+  - destruct Hsafe; discriminate.
   - destruct Hprotected as [Hfinal | [Hrda | Hconcrete]].
     + destruct (wf_config_variable_typable CT _ rGamma h x source Tx
         Hwf Hget_x Hvalue) as [qcontext Htypable].
@@ -80,7 +80,7 @@ Proof.
       eapply (active_mut_root_cannot_be_protected CT P Z cutoff h authority
         _ rGamma stack x Tx source); eauto.
     + destruct Hconcrete as [Hbad | Hbad]; discriminate.
-  - destruct (concrete_immutability_field_write_requires_mutable_receiver
+  - destruct (transitive_state_field_write_requires_mutable_receiver
       CT _ x field y _ Htyping) as [Tx0 [Hget Hmut]].
     eapply (active_mut_root_cannot_be_protected CT P Z cutoff h authority
       _ rGamma stack x Tx0 source); eauto.
@@ -91,13 +91,13 @@ Lemma safe_typed_call_preserves_protected_field_condition :
     receiver_location receiver_class runtime_mdef C field,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x method y args) sGamma' ->
-    safe_readonly_method_type mt ->
+    readonly_state_method_scope mt ->
     runtime_getVal rGamma y = Some (Iot receiver_location) ->
     r_basetype h receiver_location = Some receiver_class ->
     FindMethodWithName CT receiver_class method runtime_mdef ->
     protected_field_condition CT C field mt ->
     protected_field_condition CT C field
-      (mtype (msignature runtime_mdef)).
+      (mscope (msignature runtime_mdef)).
 Proof.
   intros CT sGamma mt rGamma h x method y args sGamma'
     receiver_location receiver_class runtime_mdef C field Hwf Htyping Hsafe
@@ -107,8 +107,8 @@ Proof.
   - right. left. exact Hrda.
   - right. right.
     inversion Htyping; subst.
-    + destruct Hsafe as [Hnot_abs Hnot_cs].
-      destruct Hscope as [-> | [-> _]]; contradiction.
+    + destruct Hsafe as [Hrs | Hts]; subst mt;
+        destruct Hscope as [Has | [Hcs _]]; discriminate.
     + have Hsignature : msignature runtime_mdef = msignature mdef.
       { eapply runtime_call_signature_agrees; eauto. }
       rewrite Hsignature.
@@ -117,12 +117,12 @@ Qed.
 
 Theorem successful_stmt_preserves_protected_field :
   forall P CT rGamma h statement rGamma' h',
-    eval_stmt OK CT rGamma h statement OK rGamma' h' ->
+    eval_stmt CT rGamma h statement OK rGamma' h' ->
     forall sGamma mt sGamma' authority stack Z cutoff,
       potential_live_history_state CT P Z cutoff
         (mk_watched_frame authority sGamma rGamma) stack h ->
       stmt_typing CT sGamma mt statement sGamma' ->
-      safe_readonly_method_type mt ->
+      readonly_state_method_scope mt ->
       forall location runtime_q C fields fields' field,
         In Loc P location ->
         runtime_getObj h location =
@@ -204,7 +204,7 @@ Proof.
       safe_typed_call_preserves_protected_field_condition CT sGamma mt rΓ h
         x m y zs sGamma ly cy mdef C protected_field Hcaller_wf Htyping Hsafe
         Hval_y Hbase Hfind_method Hprotected.
-    eapply (IHHeval eq_refl eq_refl Heval); eauto.
+    eapply (IHHeval eq_refl Heval); eauto.
   - inversion Htyping; subst.
     have Hmiddle_state := successful_stmt_preserves_potential_history
       P CT rΓ h s1 rΓ' h' Heval1 sGamma mt sΓ' authority stack Z cutoff
@@ -212,11 +212,11 @@ Proof.
     destruct (runtime_preserves_r_type_heap CT rΓ h location
       (mkruntime_type runtime_q C) h' fields s1 rΓ' Hobj_start Heval1) as
       [middle_fields Hobj_middle].
-    have Hfirst := IHHeval1 eq_refl eq_refl Heval1
+    have Hfirst := IHHeval1 eq_refl Heval1
       sGamma mt sΓ' authority stack Z cutoff Hstate Htype1 Hsafe
       location runtime_q C fields middle_fields protected_field HinP
       Hobj_start Hobj_middle Hprotected.
-    have Hsecond := IHHeval2 eq_refl eq_refl Heval2
+    have Hsecond := IHHeval2 eq_refl Heval2
       sΓ' mt sGamma' authority stack Z cutoff Hmiddle_state Htype2 Hsafe
       location runtime_q C middle_fields fields' protected_field HinP
       Hobj_middle Hobj_end Hprotected.

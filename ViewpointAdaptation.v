@@ -1,21 +1,19 @@
 Require Import Syntax.
 
-(* Abstract Immutability VPA *)
-Definition vpa_mutability_qq_abs_imm (q1: q)(q2 : q) : q :=
+(* AS/CS mutability viewpoint adaptation *)
+Definition vpa_mutability_qq_abstract_state (q1: q)(q2 : q) : q :=
   match q1, q2 with
     | RO, RDM => Lost
     | q1, RDM => q1
     | _, q2 => q2
   end.
 
-Definition vpa_mutability_tt_abs_imm (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
-  match (sqtype t1), (sqtype t2) with
-    | RO, RDM => Build_qualified_type Lost (sctype t2)
-    | q1, RDM => Build_qualified_type q1 (sctype t2)
-    | _, _ => t2
-  end.
+Definition vpa_mutability_tt_abstract_state (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
+  Build_qualified_type
+    (vpa_mutability_qq_abstract_state (sqtype t1) (sqtype t2))
+    (sctype t2).
 
-Definition vpa_mutability_stype_fld_abs_imm (q1: q)(q2 : q_f) : q :=
+Definition vpa_mutability_stype_fld_abstract_state (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
     | RO, RDM_f => Lost
     | q1, RDM_f => q1
@@ -24,9 +22,9 @@ Definition vpa_mutability_stype_fld_abs_imm (q1: q)(q2 : q_f) : q :=
     | _, RO_f => RO
     end.
 
-(* Safe Readonly VPA *)
+(* RS/TS mutability viewpoint adaptation *)
 
-Definition vpa_mutability_qq_safe_ro (q1: q)(q2 : q) : q :=
+Definition vpa_mutability_qq_readonly_state (q1: q)(q2 : q) : q :=
   match q1, q2 with
     | RO, RDM => Lost
     | q1, RDM => q1
@@ -35,27 +33,23 @@ Definition vpa_mutability_qq_safe_ro (q1: q)(q2 : q) : q :=
     | _, q2 => q2
   end.
 
-Definition vpa_mutability_tt_safe_ro (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
-  match (sqtype t1), (sqtype t2) with
-    | RO, RDM => Build_qualified_type Lost (sctype t2)
-    | q1, RDM => Build_qualified_type q1 (sctype t2)
-    | Mut, Mut => t2
-    | _, Mut => Build_qualified_type Lost (sctype t2)
-    | _, _ => t2
-  end.
+Definition vpa_mutability_tt_readonly_state (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
+  Build_qualified_type
+    (vpa_mutability_qq_readonly_state (sqtype t1) (sqtype t2))
+    (sctype t2).
 
-Example vpa_mutability_safe_ro_mut_mut :
-  vpa_mutability_qq_safe_ro Mut Mut = Mut.
+Example vpa_mutability_readonly_state_mut_mut :
+  vpa_mutability_qq_readonly_state Mut Mut = Mut.
 Proof. reflexivity. Qed.
 
-Example vpa_mutability_type_safe_ro_mut_mut :
+Example vpa_mutability_type_readonly_state_mut_mut :
   forall C,
-    vpa_mutability_tt_safe_ro
+    vpa_mutability_tt_readonly_state
       (Build_qualified_type Mut C) (Build_qualified_type Mut C) =
     Build_qualified_type Mut C.
 Proof. reflexivity. Qed.
 
-Definition vpa_mutability_stype_fld_safe_ro (q1: q)(q2 : q_f) : q :=
+Definition vpa_mutability_stype_fld_readonly_state (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
     | RO, RDM_f => Lost
     | q1, RDM_f => q1
@@ -65,8 +59,8 @@ Definition vpa_mutability_stype_fld_safe_ro (q1: q)(q2 : q_f) : q :=
     | _, RO_f => RO
     end.
 
-Example vpa_mutability_field_safe_ro_mut_mut :
-  vpa_mutability_stype_fld_safe_ro Mut Mut_f = Mut.
+Example vpa_mutability_field_readonly_state_mut_mut :
+  vpa_mutability_stype_fld_readonly_state Mut Mut_f = Mut.
 Proof. reflexivity. Qed.
 
 (* Viewpoint adaptation of assignability qualifiers *)
@@ -77,8 +71,8 @@ Definition vpa_assignability (q1: q) (a1: a) : a :=
     | _, _ => Final
   end.
 
-(* Concrete Immutability *)
-Definition vpa_assignability_concret_imm (q1: q) (a1: a) : a :=
+(* CS/TS assignability viewpoint adaptation *)
+Definition vpa_assignability_cs_ts (q1: q) (a1: a) : a :=
   match q1, a1 with
     | Mut, RDA => Assignable
     | Mut, Assignable => Assignable
@@ -86,7 +80,7 @@ Definition vpa_assignability_concret_imm (q1: q) (a1: a) : a :=
   end.
 
 Lemma concrete_assignable_implies_assignable : forall q1 a1,
-  vpa_assignability_concret_imm q1 a1 = Assignable ->
+  vpa_assignability_cs_ts q1 a1 = Assignable ->
   vpa_assignability q1 a1 = Assignable.
 Proof.
   intros q1 a1 H.
@@ -123,10 +117,10 @@ Definition vpa_mutability_rec_fld (q1: q_r)(q2 : q_f) : q :=
     | _, RO_f => RO
     end.
 
-(* Used to exam runtime typability based on its context, 
-for example, m(Imm C this, RDM C c), 
-the value of c is a Imm obj at runtime but is typable because Imm |> RDM = Imm *)
-Definition vpa_mutability_rs (q1: q_r)(q2 : q) : q :=
+(** Runtime viewpoint adaptation used by runtime typability.  For example, in
+    [m(Imm C this, RDM C c)], [c] may contain an immutable object because
+    adapting [RDM] through an immutable runtime context yields [Imm]. *)
+Definition vpa_mutability_runtime (q1: q_r)(q2 : q) : q :=
   match q1, q2 with
     | Imm_r, RDM => Imm
     | Mut_r, RDM => Mut
