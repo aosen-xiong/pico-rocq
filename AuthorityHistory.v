@@ -91,6 +91,7 @@ Lemma authority_expression_capability_in_history :
     wf_r_config CT sGamma rGamma h ->
     authority_component_history_state CT P Z M cutoff authority
       sGamma rGamma h ->
+    retained_heap_closed CT h M ->
     eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
     expr_has_type CT sGamma mt e T ->
     safe_readonly_method_type mt ->
@@ -98,7 +99,7 @@ Lemma authority_expression_capability_in_history :
     In Loc M l.
 Proof.
   intros P Z M cutoff CT authority sGamma mt rGamma h e l T Hwf
-    [Hcomponent [Hroots Hsound]] Heval Htyping Hscope Hcap.
+    [Hcomponent [Hroots Hsound]] Hretained Heval Htyping Hscope Hcap.
   destruct Hcomponent as
     [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
       [Hmutroots [Havoid Hseparated]]]]]]]
@@ -109,20 +110,25 @@ Proof.
   - inversion Htyping; subst.
     + exfalso. destruct Hmt; subst; destruct Hscope; congruence.
     + assert (Hshape :
-        mutability (ftype fDef) = RDM_f /\
-        capability_in_context authority (sqtype T0)).
+        (mutability (ftype fDef) = RDM_f /\
+         capability_in_context authority (sqtype T0)) \/
+        (mutability (ftype fDef) = Mut_f /\ sqtype T0 = Mut)).
       { destruct Hcap as [Hout | [Hout Hauth]];
         destruct authority;
         destruct (sqtype T0) eqn:Hreceiver;
         destruct (mutability (ftype fDef)) eqn:Hfieldqual;
-        simpl in Hout; try discriminate;
-        split; auto;
+        simpl in Hout; try discriminate; auto;
         unfold capability_in_context; auto. }
-      destruct Hshape as [Hrdm Hreceiver_cap].
-      have HreceiverM : In Loc M v.
-      { apply Hroots. exists x, T0. repeat split; assumption. }
-      eapply Hclosed; [exact HreceiverM|].
-      eapply runtime_static_rdm_edge; eauto.
+      destruct Hshape as [[Hrdm Hreceiver_cap] | [Hmut Hreceiver]].
+      * have HreceiverM : In Loc M v.
+        { apply Hroots. exists x, T0. repeat split; assumption. }
+        eapply Hclosed; [exact HreceiverM|].
+        eapply runtime_static_rdm_edge; eauto.
+      * have HreceiverM : In Loc M v.
+        { apply Hroots. exists x, T0. repeat split; try assumption.
+          unfold capability_in_context. left. exact Hreceiver. }
+        eapply Hretained; [exact HreceiverM|].
+        eapply runtime_static_mut_field_edge; eauto.
 Qed.
 
 Lemma authority_history_after_assignment :
@@ -130,6 +136,7 @@ Lemma authority_history_after_assignment :
     wf_r_config CT sGamma rGamma h ->
     authority_component_history_state CT P Z M cutoff authority
       sGamma rGamma h ->
+    retained_heap_closed CT h M ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
@@ -138,7 +145,7 @@ Lemma authority_history_after_assignment :
       (update_r_env_value rGamma x value) h.
 Proof.
   intros CT P Z M cutoff authority sGamma mt rGamma h x e old value Hwf
-    [Hcomponent [Hroots Hsound]] Htyping Hscope Hx Heval.
+    [Hcomponent [Hroots Hsound]] Hretained Htyping Hscope Hx Heval.
   split.
   - eapply component_forward_history_after_assignment; eauto.
   - split.
@@ -571,12 +578,14 @@ Proof.
     [Hcomponent [Hroots Hsound]] Htyping Hscope Hgety Hval Hbase Hfind
     Hargs root [z [T [Htype [Hrootval Hcap]]]].
   destruct Hcap as [Hmut | [Hrdm Hcallee_mut]].
-  - exfalso. eapply safe_call_callee_has_no_mut_root with
-      (CT := CT) (sGamma := sGamma) (mt := mt) (rGamma := rGamma)
-      (h := h) (x := x) (m := m) (y := y) (args := args)
-      (sGamma' := sGamma') (vals := vals) (ly := ly) (cy := cy)
-      (runtime_mdef := runtime_mdef) (root := root); eauto.
-    exists z, T. repeat split; assumption.
+  - apply Hroots.
+    destruct (safe_call_callee_mut_root_origin CT sGamma mt rGamma h x m y
+      args sGamma' vals ly cy runtime_mdef root Hwf Htyping Hscope Hval Hbase
+      Hfind Hargs) as [caller_z [caller_T
+        [Hcaller_type [Hcaller_val Hcaller_mut]]]].
+    + exists z, T. repeat split; assumption.
+    + exists caller_z, caller_T. repeat split; try assumption.
+      unfold capability_in_context. left. exact Hcaller_mut.
   - assert (Hrootrdm : typed_root RDM
       (mreceiver (msignature runtime_mdef) ::
         mparams (msignature runtime_mdef))

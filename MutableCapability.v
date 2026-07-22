@@ -1,12 +1,14 @@
 Require Import Syntax Notations Helpers Typing Subtyping Bigstep.
 Require Import ViewpointAdaptation Properties Preservation ReadonlyHelper.
+Require Import ExecutionConfinement.
 From Stdlib Require Import List.
 From Stdlib Require Import Sets.Ensembles.
 Import ListNotations.
 
-(** A heap edge that preserves a mutable capability.  Such an edge is the
-    only field access for which SafeRO viewpoint adaptation can produce
-    [Mut].  The declaring class may be a supertype of the runtime class. *)
+(** An RDM heap edge that preserves a mutable capability.  SafeRO viewpoint
+    adaptation can also preserve [Mut] through an explicitly [Mut_f] field;
+    [retained_mut_edge] below includes both cases.  The declaring class may be
+    a supertype of the runtime class. *)
 Inductive mutable_edge (CT : class_table) (h : heap) : Loc -> Loc -> Prop :=
 | mutable_edge_rdm : forall l l' o f D fdef,
     runtime_getObj h l = Some o ->
@@ -22,6 +24,49 @@ Inductive mutable_reachable (CT : class_table) (h : heap) : Loc -> Loc -> Prop :
     mutable_reachable CT h l1 l2 ->
     mutable_edge CT h l2 l3 ->
     mutable_reachable CT h l1 l3.
+
+(** Retained mutable authority follows the RDM component graph and also an
+    explicitly mutable field.  The latter edge is usable only from a [Mut]
+    static viewpoint; membership in the capability set records that fact. *)
+Inductive retained_mut_edge (CT : class_table) (h : heap) : Loc -> Loc -> Prop :=
+| retained_edge_rdm : forall l l',
+    mutable_edge CT h l l' ->
+    retained_mut_edge CT h l l'
+| retained_edge_mut : forall l l' o f D fdef,
+    runtime_getObj h l = Some o ->
+    r_muttype h l = Some Mut_r ->
+    getVal o.(fields_map) f = Some (Iot l') ->
+    base_subtype CT (rctype (rt_type o)) D ->
+    sf_def_rel CT D f fdef ->
+    mutability (ftype fdef) = Mut_f ->
+    retained_mut_edge CT h l l'.
+
+Inductive retained_mut_reachable
+  (CT : class_table) (h : heap) : Loc -> Loc -> Prop :=
+| rmr_refl : forall l, retained_mut_reachable CT h l l
+| rmr_step : forall l1 l2 l3,
+    retained_mut_reachable CT h l1 l2 ->
+    retained_mut_edge CT h l2 l3 ->
+    retained_mut_reachable CT h l1 l3.
+
+Lemma mutable_reachable_is_retained : forall CT h l l',
+  mutable_reachable CT h l l' -> retained_mut_reachable CT h l l'.
+Proof.
+  intros CT h l l' Hreach. induction Hreach.
+  - constructor.
+  - eapply rmr_step; [exact IHHreach|]. constructor. exact H.
+Qed.
+
+Lemma retained_mut_reachable_transitive : forall CT h l1 l2 l3,
+  retained_mut_reachable CT h l1 l2 ->
+  retained_mut_reachable CT h l2 l3 ->
+  retained_mut_reachable CT h l1 l3.
+Proof.
+  intros CT h l1 l2 l3 H12 H23.
+  induction H23 as [l | start middle finish Hprefix IH Hedge].
+  - exact H12.
+  - eapply rmr_step; [exact (IH H12)|exact Hedge].
+Qed.
 
 Lemma mutable_edge_target_dom :
   forall CT h l l',
@@ -45,6 +90,21 @@ Proof.
   simpl in Hvalues.
   destruct (runtime_getObj h l') eqn:Htarget; try contradiction.
   apply runtime_getObj_dom in Htarget. exact Htarget.
+Qed.
+
+Lemma retained_edge_target_dom :
+  forall CT h l l',
+    wf_heap CT h ->
+    retained_mut_edge CT h l l' ->
+    l' < dom h.
+Proof.
+  intros CT h l l' Hwf Hedge.
+  inversion Hedge as [source target Hrdm | source target o f D fdef
+    Hobj Hsource_mut Hfield Hsub Hfd Hmut]; subst.
+  - eapply mutable_edge_target_dom; eauto.
+  - eapply wf_raw_edge_target_dom.
+    + exact Hwf.
+    + exists o, f. split; [exact Hobj|exact Hfield].
 Qed.
 
 Definition capability_in_context (qcontext : q_r) (q0 : q) : Prop :=
@@ -80,6 +140,19 @@ Definition mutable_heap_closed
   (CT : class_table) (h : heap) (M : Ensemble Loc) : Prop :=
   forall l l', In Loc M l -> mutable_edge CT h l l' -> In Loc M l'.
 
+Definition retained_heap_closed
+  (CT : class_table) (h : heap) (M : Ensemble Loc) : Prop :=
+  forall l l', In Loc M l -> retained_mut_edge CT h l l' -> In Loc M l'.
+
+Lemma retained_heap_closed_implies_mutable_heap_closed :
+  forall CT h M,
+    retained_heap_closed CT h M ->
+    mutable_heap_closed CT h M.
+Proof.
+  intros CT h M Hclosed source target Hsource Hedge.
+  eapply Hclosed; [exact Hsource|]. constructor. exact Hedge.
+Qed.
+
 Definition mutable_members_runtime_mut
   (h : heap) (M : Ensemble Loc) : Prop :=
   forall l, In Loc M l -> r_muttype h l = Some Mut_r.
@@ -106,6 +179,36 @@ Proof.
   rewrite Hval in Hcorr.
   unfold wf_r_typable, r_type in Hcorr. rewrite Hobj in Hcorr.
   eapply mutable_edge_rdm; eauto. exact (proj1 Hcorr).
+Qed.
+
+Lemma runtime_static_mut_field_edge :
+  forall CT sGamma rGamma h x T l o f fdef l'
+    (Hwf : wf_r_config CT sGamma rGamma h)
+    (Htype : static_getType sGamma x = Some T)
+    (Hval : runtime_getVal rGamma x = Some (Iot l))
+    (Hobj : runtime_getObj h l = Some o)
+    (Hfield : getVal o.(fields_map) f = Some (Iot l'))
+    (Hfld : sf_def_rel CT (sctype T) f fdef)
+    (Hreceiver : sqtype T = Mut)
+    (Hmut : mutability (ftype fdef) = Mut_f),
+    retained_mut_edge CT h l l'.
+Proof.
+  intros.
+  destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
+    as [this [qcontext [Hthis [_ Hqcontext]]]].
+  unfold wf_r_config in Hwf.
+  destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
+  have Hxdom := Htype. apply static_getType_dom in Hxdom.
+  specialize (Hcorr this qcontext Hthis Hqcontext x Hxdom T Htype).
+  rewrite Hval in Hcorr.
+  unfold wf_r_typable, r_type in Hcorr. rewrite Hobj in Hcorr.
+  destruct Hcorr as [Hbase Hqual].
+  assert (Hsource_mut : r_muttype h l = Some Mut_r).
+  { unfold r_muttype, r_type. rewrite Hobj. simpl.
+    destruct (rqtype (rt_type o)); [reflexivity|].
+    unfold qualifier_typable_context, vpa_mutability_rs in Hqual.
+    rewrite Hreceiver in Hqual. destruct qcontext; contradiction. }
+  eapply retained_edge_mut; eauto.
 Qed.
 
 Lemma field_defs_agree_at_runtime_subtype :
@@ -158,6 +261,53 @@ Proof.
     eapply mutable_edge_rdm; eauto.
 Qed.
 
+Lemma retained_edge_after_field_update :
+  forall CT h lx old fnew value l l',
+    runtime_getObj h lx = Some old ->
+    retained_mut_edge CT (update_field h lx fnew value) l l' ->
+    retained_mut_edge CT h l l' \/
+    (l = lx /\ value = Iot l' /\
+      exists D fdef,
+        base_subtype CT (rctype (rt_type old)) D /\
+        sf_def_rel CT D fnew fdef /\
+        (mutability (ftype fdef) = RDM_f \/
+         mutability (ftype fdef) = Mut_f)).
+Proof.
+  intros CT h lx old fnew value l l' Hold Hedge.
+  inversion Hedge as [l0 l0' Hrdmedge | l0 l0' newobj f D fdef
+    Hnewobj Hsource_mut Hnewfield Hsub Hfd Hmut]; subst.
+  - destruct (mutable_edge_after_field_update CT h lx old fnew value l l'
+      Hold Hrdmedge) as [Holdedge | [Hsource [Hvalue
+        [D [fdef [Hsub [Hfd Hrdm]]]]]]].
+    + left. constructor. exact Holdedge.
+    + right. repeat split; try assumption. exists D, fdef.
+      repeat split; try assumption. left. exact Hrdm.
+  - destruct (Nat.eq_dec l lx) as [Heq|Hneq].
+    + subst l. unfold update_field in Hnewobj. rewrite Hold in Hnewobj.
+      have Hlxdom := Hold. apply runtime_getObj_dom in Hlxdom.
+      rewrite runtime_getObj_update_same in Hnewobj; auto.
+      injection Hnewobj as Hobj_eq. subst newobj.
+      simpl in Hnewfield, Hsub.
+      destruct (Nat.eq_dec f fnew) as [->|Hfdiff].
+      * unfold getVal in Hnewfield.
+        assert (Hfdom : fnew < dom (update fnew value (fields_map old))).
+        { apply nth_error_Some. rewrite Hnewfield. discriminate. }
+        rewrite update_length in Hfdom.
+        pose proof (@update_same Syntax.value fnew value (fields_map old) Hfdom)
+          as Hsame.
+        rewrite Hsame in Hnewfield. injection Hnewfield as <-.
+        right. repeat split; auto. exists D, fdef. repeat split; auto.
+      * unfold getVal in Hnewfield. rewrite update_diff in Hnewfield; auto.
+        left. eapply retained_edge_mut; eauto.
+        rewrite r_muttype_update_field_preserve in Hsource_mut.
+        exact Hsource_mut.
+    + left. unfold update_field in Hnewobj. rewrite Hold in Hnewobj.
+      rewrite runtime_getObj_update_diff in Hnewobj; auto.
+      eapply retained_edge_mut; eauto.
+      rewrite r_muttype_update_field_preserve in Hsource_mut.
+      exact Hsource_mut.
+Qed.
+
 Lemma written_rdm_field_is_mutable_edge :
   forall CT h lx old f oldvalue target D fdef,
     runtime_getObj h lx = Some old ->
@@ -180,6 +330,34 @@ Proof.
   - simpl. exact Hsub.
   - exact Hfd.
   - exact Hrdm.
+Qed.
+
+Lemma written_capability_field_is_retained_edge :
+  forall CT h lx old f oldvalue target D fdef,
+    runtime_getObj h lx = Some old ->
+    r_muttype h lx = Some Mut_r ->
+    getVal old.(fields_map) f = Some oldvalue ->
+    base_subtype CT (rctype (rt_type old)) D ->
+    sf_def_rel CT D f fdef ->
+    (mutability (ftype fdef) = RDM_f \/
+     mutability (ftype fdef) = Mut_f) ->
+    retained_mut_edge CT (update_field h lx f (Iot target)) lx target.
+Proof.
+  intros CT h lx old f oldvalue target D fdef Hobj Hsource_mut Holdfield Hsub Hfd
+    [Hrdm | Hmut].
+  - constructor. eapply written_rdm_field_is_mutable_edge; eauto.
+  - eapply retained_edge_mut with
+      (o := set_fields_map old (update f (Iot target) (fields_map old)))
+      (f := f) (D := D) (fdef := fdef).
+    + unfold update_field. rewrite Hobj.
+      have Hlxdom := Hobj. apply runtime_getObj_dom in Hlxdom.
+      rewrite runtime_getObj_update_same; auto.
+    + rewrite r_muttype_update_field_preserve. exact Hsource_mut.
+    + have Hfdom := Holdfield. apply getVal_dom in Hfdom.
+      simpl. unfold getVal. rewrite update_same; auto.
+    + simpl. exact Hsub.
+    + exact Hfd.
+    + exact Hmut.
 Qed.
 
 Lemma mutable_reachable_after_field_update :
@@ -209,6 +387,33 @@ Proof.
         right. exists target. repeat split; try assumption. constructor.
 Qed.
 
+Lemma retained_reachable_after_field_update :
+  forall CT h lx old f value root target,
+    runtime_getObj h lx = Some old ->
+    retained_mut_reachable CT (update_field h lx f value) root target ->
+    retained_mut_reachable CT h root target \/
+    exists written,
+      value = Iot written /\
+      retained_mut_reachable CT h root lx /\
+      retained_mut_reachable CT h written target.
+Proof.
+  intros CT h lx old f value root target Hobj Hreach.
+  induction Hreach as [root|root middle target Hprefix IH Hedge].
+  - left. constructor.
+  - destruct (retained_edge_after_field_update CT h lx old f value
+      middle target Hobj Hedge) as
+      [Holdedge | [Hmiddle [Hvalue Hnewedge]]].
+    + destruct IH as [Holdprefix | [written [Hwritten [Hto_source Hsuffix]]]].
+      * left. eapply rmr_step; eauto.
+      * right. exists written. repeat split; try assumption.
+        eapply rmr_step; eauto.
+    + subst middle.
+      destruct IH as [Holdprefix | [written [Hwritten [Hto_source Hsuffix]]]].
+      * right. exists target. repeat split; try assumption. constructor.
+      * rewrite Hvalue in Hwritten. injection Hwritten as <-.
+        right. exists target. repeat split; try assumption. constructor.
+Qed.
+
 Lemma mutable_edge_after_append :
   forall CT h newobj l l',
     mutable_edge CT (h ++ [ newobj ]) l l' ->
@@ -231,6 +436,58 @@ Proof.
   - assert (Hlold : l < dom h) by lia.
     left. rewrite runtime_getObj_last2 in Hobj; auto.
     eapply mutable_edge_rdm; eauto.
+Qed.
+
+Lemma retained_edge_after_append :
+  forall CT h newobj l l',
+    retained_mut_edge CT (h ++ [newobj]) l l' ->
+    retained_mut_edge CT h l l' \/
+    (l = dom h /\ exists f D fdef,
+      getVal newobj.(fields_map) f = Some (Iot l') /\
+      base_subtype CT (rctype (rt_type newobj)) D /\
+      sf_def_rel CT D f fdef /\
+      (mutability (ftype fdef) = RDM_f \/
+       mutability (ftype fdef) = Mut_f)).
+Proof.
+  intros CT h newobj l l' Hedge.
+  destruct newobj as [newrt newfields].
+  inversion Hedge as [source target Hrdm | source target o f D fdef
+    Hobj Hsource_mut Hfield Hsub Hfd Hmut]; subst.
+  - destruct (mutable_edge_after_append CT h
+      (mkObj newrt newfields) l l' Hrdm)
+      as [Hold | [Hfresh [f [D [fdef [Hfield [Hsub [Hfd Hrdm']]]]]]]].
+    + left. constructor. exact Hold.
+    + right. split; [exact Hfresh|]. exists f, D, fdef.
+      repeat split; try assumption. left. exact Hrdm'.
+  - have Hldom := Hobj. apply runtime_getObj_dom in Hldom.
+    rewrite length_app in Hldom. simpl in Hldom.
+    destruct (Nat.eq_dec l (dom h)) as [Heq|Hneq].
+    + subst l. right. split; [reflexivity|].
+      rewrite runtime_getObj_last in Hobj. injection Hobj as <-.
+      exists f, D, fdef. repeat split; try assumption. right. exact Hmut.
+    + assert (Hlold : l < dom h) by lia.
+      left. rewrite runtime_getObj_last2 in Hobj; auto.
+      eapply retained_edge_mut; eauto.
+      unfold r_muttype, r_type in *. rewrite runtime_getObj_last2 in Hsource_mut; auto.
+Qed.
+
+Lemma retained_reachable_from_old_after_append :
+  forall CT h newobj root target,
+    wf_heap CT h ->
+    root < dom h ->
+    retained_mut_reachable CT (h ++ [newobj]) root target ->
+    target < dom h /\ retained_mut_reachable CT h root target.
+Proof.
+  intros CT h newobj root target Hwf Hroot Hreach.
+  induction Hreach as [root|root middle target Hprefix IH Hedge].
+  - split; [exact Hroot|constructor].
+  - destruct (IH Hroot) as [Hmiddle Holdprefix].
+    destruct (retained_edge_after_append CT h newobj middle target Hedge)
+      as [Holdedge | [Hfresh Hnew]].
+    + split.
+      * eapply retained_edge_target_dom; eauto.
+      * eapply rmr_step; eauto.
+    + lia.
 Qed.
 
 Lemma runtime_mut_typable_not_imm :

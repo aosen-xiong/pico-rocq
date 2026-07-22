@@ -33,7 +33,7 @@ Definition live_capability_reachable
   (location : Loc) : Prop :=
   exists root,
     live_capability_root active stack root /\
-    mutable_reachable CT h root location.
+    retained_mut_reachable CT h root location.
 
 Definition live_frames_wf
   (CT : class_table) (h : heap)
@@ -103,13 +103,13 @@ Qed.
 Lemma live_capability_reachable_trans :
   forall CT h active stack root location,
     live_capability_reachable CT h active stack root ->
-    mutable_reachable CT h root location ->
+    retained_mut_reachable CT h root location ->
     live_capability_reachable CT h active stack location.
 Proof.
   intros CT h active stack root location
     [origin [Hlive Hreach1]] Hreach2.
   exists origin. split; [exact Hlive|].
-  eapply mutable_reachable_transitive; eauto.
+  eapply retained_mut_reachable_transitive; eauto.
 Qed.
 
 Lemma frame_capability_root_runtime_mutable :
@@ -172,14 +172,14 @@ Proof.
     [root [[Hactive_root | [boundary [Hin Hboundary_root]]] Hreach]].
   - have Hroot_runtime := frame_capability_root_runtime_mutable
       CT h active root Hactive_wf Hactive_sound Hactive_root.
-    eapply mutable_reachable_preserves_runtime_mutability; eauto.
+    eapply retained_reachable_preserves_runtime_mutability; eauto.
     exact (proj1 (proj2 Hactive_wf)).
   - apply Forall_forall with (x := boundary) in Hstack_wf; [|exact Hin].
     apply Forall_forall with (x := boundary) in Hstack_sound; [|exact Hin].
     have Hroot_runtime := frame_capability_root_runtime_mutable
       CT h boundary.(boundary_caller) root Hstack_wf Hstack_sound
       Hboundary_root.
-    eapply mutable_reachable_preserves_runtime_mutability; eauto.
+    eapply retained_reachable_preserves_runtime_mutability; eauto.
     exact (proj1 (proj2 Hactive_wf)).
 Qed.
 
@@ -189,7 +189,16 @@ Lemma live_capability_set_forward_closed :
 Proof.
   intros CT h active stack source target Hsource Hedge.
   eapply live_capability_reachable_trans; [exact Hsource|].
-  eapply mr_step; [constructor|exact Hedge].
+  eapply rmr_step; [constructor|]. constructor. exact Hedge.
+Qed.
+
+Lemma live_capability_set_retained_closed :
+  forall CT h active stack,
+    retained_heap_closed CT h (live_capability_set CT h active stack).
+Proof.
+  intros CT h active stack source target Hsource Hedge.
+  eapply live_capability_reachable_trans; [exact Hsource|].
+  eapply rmr_step; [constructor|exact Hedge].
 Qed.
 
 Lemma active_authority_roots_are_live :
@@ -538,12 +547,12 @@ Qed.
 Lemma live_capability_set_in_closed_superset :
   forall CT h h' active stack M,
     Included Loc (live_capability_set CT h active stack) M ->
-    mutable_heap_closed CT h' M ->
+    retained_heap_closed CT h' M ->
     Included Loc (live_capability_set CT h' active stack) M.
 Proof.
   intros CT h h' active stack M Hincluded Hclosed location
     [root [Hroot Hreach]].
-  eapply mutable_heap_closed_reachable; [exact Hclosed|exact Hreach|].
+  eapply retained_heap_closed_reachable; [exact Hclosed|exact Hreach|].
   apply Hincluded. exists root. split; [exact Hroot|constructor].
 Qed.
 
@@ -552,12 +561,12 @@ Lemma live_capability_set_after_active_change_in_superset :
     Included Loc (live_capability_set CT h old_active stack) M ->
     authority_env_roots_in new_active.(frame_authority) M
       new_active.(frame_senv) new_active.(frame_renv) ->
-    mutable_heap_closed CT h' M ->
+    retained_heap_closed CT h' M ->
     Included Loc (live_capability_set CT h' new_active stack) M.
 Proof.
   intros CT h h' old_active new_active stack M Hold Hactive Hclosed location
     [root [Hlive Hreach]].
-  eapply mutable_heap_closed_reachable; [exact Hclosed|exact Hreach|].
+  eapply retained_heap_closed_reachable; [exact Hclosed|exact Hreach|].
   destruct Hlive as [Hnew_root | [boundary [Hin Hboundary_root]]].
   - apply Hactive. exact Hnew_root.
   - apply Hold. exists root. split.
@@ -592,12 +601,13 @@ Proof.
     vals ly cy runtime_mdef Ty root Hwf Htyping Hscope Hgety Hval Hbase
     Hfind Hargs [z [T [Htype [Hrootval Hcap]]]].
   destruct Hcap as [Hmut | [Hrdm Hcallee_authority]].
-  - exfalso. eapply safe_call_callee_has_no_mut_root with
-      (CT := CT) (sGamma := sGamma) (mt := mt) (rGamma := rGamma)
-      (h := h) (x := x) (m := m) (y := y) (args := args)
-      (sGamma' := sGamma') (vals := vals) (ly := ly) (cy := cy)
-      (runtime_mdef := runtime_mdef) (root := root); eauto.
-    exists z, T. repeat split; assumption.
+  - destruct (safe_call_callee_mut_root_origin CT sGamma mt rGamma h x m y
+      args sGamma' vals ly cy runtime_mdef root Hwf Htyping Hscope Hval Hbase
+      Hfind Hargs) as [caller_z [caller_T
+        [Hcaller_type [Hcaller_val Hcaller_mut]]]].
+    + exists z, T. repeat split; assumption.
+    + exists caller_z, caller_T. repeat split; try assumption.
+      unfold capability_in_context. left. exact Hcaller_mut.
   - assert (Hrootrdm : typed_root RDM
       (mreceiver (msignature runtime_mdef) ::
         mparams (msignature runtime_mdef))
@@ -801,8 +811,8 @@ Proof.
 Qed.
 
 (** Returning a value into the caller preserves the caller's protected-zone
-    typing.  The only subtle qualifier case is an RDM return adapted through a
-    mutable receiver; that case would be a callee capability in [M], which the
+    typing.  A capability-bearing return (including RDM or Mut viewed through
+    a mutable receiver) belongs to the callee capability set [M], which the
     history proves cannot point into [Z]. *)
 Lemma call_return_preserves_zone_env_safe :
   forall CT P Z M cutoff caller_authority caller_senv caller_renv caller_h
@@ -1384,7 +1394,7 @@ Lemma assignment_capability_root_has_live_origin :
     exists old_root,
       live_capability_root
         (mk_watched_frame authority sGamma rGamma) stack old_root /\
-      mutable_reachable CT h old_root root.
+      retained_mut_reachable CT h old_root root.
 Proof.
   intros CT authority sGamma mt rGamma h stack x e old value root Hwf
     Htyping Hscope Hx Heval
@@ -1396,18 +1406,20 @@ Proof.
     destruct (assignment_mut_root_has_old_ancestor CT sGamma mt rGamma h
       x e old value Hwf Htyping Hscope Hx Heval root Hroot) as
       [old_root [[old_var [OldT [Holdtype [Holdvalue Holdmut]]]] Hreach]].
-    exists old_root. split; [left|exact Hreach].
-    exists old_var, OldT. repeat split; try assumption.
-    unfold capability_in_context. left. exact Holdmut.
+    exists old_root. split.
+    + left. exists old_var, OldT. repeat split; try assumption.
+      unfold capability_in_context. left. exact Holdmut.
+    + exact Hreach.
   - assert (Hroot : typed_root RDM sGamma
       (update_r_env_value rGamma x value) root).
     { exists z, T. repeat split; assumption. }
     destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
       x e old value Hwf Htyping Hscope Hx Heval root Hroot) as
       [old_root [[old_var [OldT [Holdtype [Holdvalue Holdrdm]]]] Hreach]].
-    exists old_root. split; [left|exact Hreach].
-    exists old_var, OldT. repeat split; try assumption.
-    unfold capability_in_context. right. split; assumption.
+    exists old_root. split.
+    + left. exists old_var, OldT. repeat split; try assumption.
+      unfold capability_in_context. right. split; assumption.
+    + apply mutable_reachable_is_retained. exact Hreach.
 Qed.
 
 Lemma assignment_live_reachability_is_old :
@@ -1429,7 +1441,7 @@ Proof.
       sGamma mt rGamma h stack x e old value root Hwf Htyping Hscope Hx
       Heval Hactive) as [old_root [Hlive Holdreach]].
     exists old_root. split; [exact Hlive|].
-    eapply mutable_reachable_transitive; eauto.
+    eapply retained_mut_reachable_transitive; eauto.
   - exists root. split; [right; exact Hsuspended|exact Hreach].
 Qed.
 
@@ -1489,20 +1501,111 @@ Lemma live_capability_reachable_after_field_update_if_written_live :
 Proof.
   intros CT h active stack lx old field value location Hobj Hwritten
     [root [Hroot Hreach]].
-  destruct (mutable_reachable_after_field_update CT h lx old field value
+  destruct (retained_reachable_after_field_update CT h lx old field value
     root location Hobj Hreach) as
     [Hold | [written [Hvalue [Hroot_source Hwritten_location]]]].
   - exists root. split; assumption.
   - destruct (Hwritten written Hvalue) as
       [written_root [Hwritten_root Hwritten_reach]].
     exists written_root. split; [exact Hwritten_root|].
-    eapply mutable_reachable_transitive; eauto.
+    eapply retained_mut_reachable_transitive; eauto.
 Qed.
 
 (** An allocation may introduce a fresh live root, but every old location
     reachable from that root has an old root of the same capability
     qualifier.  This is the allocation analogue of roDOT's backward mutable-
     reachability lemma. *)
+Lemma new_live_reachability_after_new_has_origin :
+  forall CT authority sGamma mt rGamma h stack x qc C args sGamma' vals
+    qruntime location,
+    wf_r_config CT sGamma rGamma h ->
+    live_frames_wf CT h
+      (mk_watched_frame authority sGamma rGamma) stack ->
+    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
+    runtime_lookup_list rGamma args = Some vals ->
+    live_capability_reachable CT
+      (h ++ [mkObj (mkruntime_type qruntime C) vals])
+      (mk_watched_frame authority sGamma'
+        (update_r_env_value rGamma x (Iot (dom h)))) stack location ->
+    location = dom h \/
+    live_capability_reachable CT h
+      (mk_watched_frame authority sGamma rGamma) stack location.
+Proof.
+  intros CT authority sGamma mt rGamma h stack x qc C args sGamma' vals
+    qruntime location Hwf [Hactive_wf Hstack_wf] Htyping Hvals
+    [root [[Hactive_root | [boundary [Hin Hboundary_root]]] Hreach]].
+  - destruct Hactive_root as
+      [variable [T [Htype [Hvalue Hcapability]]]].
+    destruct Hcapability as [Hmut | [Hrdm Hauthority]].
+    + assert (Hroot : typed_root Mut sGamma'
+        (update_r_env_value rGamma x (Iot (dom h))) root).
+      { exists variable, T. repeat split; assumption. }
+      destruct (new_retained_mutable_origin CT sGamma mt rGamma h x qc C
+        args sGamma' vals qruntime root location Hwf Htyping Hvals Hroot
+        Hreach) as [Hfresh | [old_root [Holdroot Holdreach]]].
+      * left. exact Hfresh.
+      * right. exists old_root. split.
+        -- left. destruct Holdroot as
+             [old_variable [OldT [Holdtype [Holdvalue Holdmut]]]].
+           exists old_variable, OldT. repeat split; try assumption.
+           unfold capability_in_context. left. exact Holdmut.
+        -- exact Holdreach.
+    + assert (Hroot : typed_root RDM sGamma'
+        (update_r_env_value rGamma x (Iot (dom h))) root).
+      { exists variable, T. repeat split; assumption. }
+      destruct (new_typed_root_origin CT sGamma mt rGamma h x qc C args
+        sGamma' RDM root Hwf Htyping Hroot) as
+        [Holdroot | [Hfresh [Tx [Hgetx Hrdm_result]]]].
+      * have Hrootdom : root < dom h.
+        { destruct Holdroot as [z [Tz [Htypez [Hvaluez Hqz]]]].
+          eapply wf_config_value_dom; eauto. }
+        destruct (retained_reachable_from_old_after_append CT h
+          (mkObj (mkruntime_type qruntime C) vals) root location
+          (ltac:(unfold wf_r_config in Hwf; tauto)) Hrootdom Hreach)
+          as [Hlocationdom Holdreach].
+        right. exists root. split.
+        -- left. destruct Holdroot as
+             [old_variable [OldT [Holdtype [Holdvalue Holdrdm]]]].
+           exists old_variable, OldT. repeat split; try assumption.
+           unfold capability_in_context. right. split; assumption.
+        -- exact Holdreach.
+      * subst root.
+        assert (HsGamma : sGamma' = sGamma)
+          by (inversion Htyping; reflexivity).
+        assert (Hgetx' : static_getType sGamma' x = Some Tx).
+        { rewrite HsGamma. exact Hgetx. }
+        have Hqcrdm := new_rdm_result_requires_rdm_creation CT sGamma mt x qc C
+          args sGamma' Tx Htyping Hgetx' Hrdm_result.
+        assert (Hqccap : capability_in_context authority (qc2q qc)).
+        { unfold capability_in_context. right. split; assumption. }
+        destruct (fresh_retained_reachable_has_old_authority_ancestor CT
+          sGamma mt rGamma h x qc C args sGamma' vals qruntime location
+          authority Hwf Htyping Hvals Hqccap Hreach) as
+          [Hlocationfresh | [old_root [Holdroot Holdreach]]].
+        -- left. exact Hlocationfresh.
+        -- right. exists old_root. split.
+           ++ left. destruct Holdroot as
+                [[Htyped Hcap] | Htyped].
+              ** destruct Htyped as
+                   [old_variable [OldT [Holdtype [Holdvalue Holdq]]]].
+                 exists old_variable, OldT. repeat split; try assumption.
+                 rewrite Holdq. exact Hcap.
+              ** destruct Htyped as
+                   [old_variable [OldT [Holdtype [Holdvalue Holdmut]]]].
+                 exists old_variable, OldT. repeat split; try assumption.
+                 unfold capability_in_context. left. exact Holdmut.
+           ++ exact Holdreach.
+  - apply Forall_forall with (x := boundary) in Hstack_wf; [|exact Hin].
+    have Hroot_old : root < dom h.
+    { eapply frame_capability_root_dom; eauto. }
+    destruct (retained_reachable_from_old_after_append CT h
+      (mkObj (mkruntime_type qruntime C) vals) root location
+      (proj1 (proj2 Hwf)) Hroot_old Hreach) as [_ Holdreach].
+    right. exists root. split.
+    + right. exists boundary. split; assumption.
+    + exact Holdreach.
+Qed.
+
 Lemma new_live_reachability_to_old_location_has_old_origin :
   forall CT authority sGamma mt rGamma h stack x qc C args sGamma' vals
     qruntime location,
@@ -1520,46 +1623,76 @@ Lemma new_live_reachability_to_old_location_has_old_origin :
       (mk_watched_frame authority sGamma rGamma) stack location.
 Proof.
   intros CT authority sGamma mt rGamma h stack x qc C args sGamma' vals
-    qruntime location Hwf [Hactive_wf Hstack_wf] Htyping Hvals Hlocation_old
-    [root [[Hactive_root | [boundary [Hin Hboundary_root]]] Hreach]].
-  - destruct Hactive_root as
-      [variable [T [Htype [Hvalue Hcapability]]]].
-    destruct Hcapability as [Hmut | [Hrdm Hauthority]].
-    + assert (Hroot : typed_root Mut sGamma'
+    qruntime location Hwf Hframes Htyping Hvals Hlocation Hlive.
+  destruct (new_live_reachability_after_new_has_origin CT authority sGamma mt
+    rGamma h stack x qc C args sGamma' vals qruntime location Hwf Hframes
+    Htyping Hvals Hlive) as [Hfresh | Hold].
+  - subst location. lia.
+  - exact Hold.
+Qed.
+
+Lemma live_capability_set_after_new_in_authority_superset :
+  forall CT authority sGamma mt rGamma h stack x qc C args sGamma'
+    rGamma' h' M,
+    wf_r_config CT sGamma rGamma h ->
+    live_frames_wf CT h
+      (mk_watched_frame authority sGamma rGamma) stack ->
+    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
+    eval_stmt OK CT rGamma h (SNew x qc C args) OK rGamma' h' ->
+    authority_env_roots_in authority M sGamma' rGamma' ->
+    Included Loc
+      (live_capability_set CT h
+        (mk_watched_frame authority sGamma rGamma) stack) M ->
+    Included Loc
+      (live_capability_set CT h'
+        (mk_watched_frame authority sGamma' rGamma') stack) M.
+Proof.
+  intros CT authority sGamma mt rGamma h stack x qc C args sGamma'
+    rGamma' h' M Hwf Hframes Htyping Heval Hroots Hcontains location
+    Hlocation.
+  inversion Heval; subst.
+  assert (Henv_eq :
+    set_vars rGamma (update x (Iot (dom h)) (vars rGamma)) =
+    update_r_env_value rGamma x (Iot (dom h))).
+  { destruct rGamma. reflexivity. }
+  rewrite Henv_eq in Hlocation, Hroots.
+  change (live_capability_reachable CT
+    (h ++ [mkObj
+      (mkruntime_type (vpa_mutability_object_creation qthisr qc) C) vals])
+    (mk_watched_frame authority sGamma'
+      (update_r_env_value rGamma x (Iot (dom h)))) stack location)
+    in Hlocation.
+  destruct (new_live_reachability_after_new_has_origin CT authority sGamma mt
+    rGamma h stack x qc C args sGamma' vals
+    (vpa_mutability_object_creation qthisr qc) location Hwf Hframes
+    Htyping Hargs Hlocation) as [Hfresh | Hold].
+  - subst location.
+    destruct Hlocation as [root [[Hactive | [boundary [Hin Hboundary]]]
+      Hreach]].
+    + destruct Hactive as [z [T [Htype [Hvalue Hcap]]]].
+      assert (Htyped : typed_root (sqtype T) sGamma'
         (update_r_env_value rGamma x (Iot (dom h))) root).
-      { exists variable, T. repeat split; assumption. }
-      destruct (new_mutable_component_origin CT sGamma mt rGamma h x qc C
-        args sGamma' vals qruntime root location Hwf Htyping Hvals Hroot
-        Hreach) as [Hfresh | [old_root [Holdroot Holdreach]]].
-      * subst location. lia.
-      * exists old_root. split.
-        -- left. destruct Holdroot as
-             [old_variable [OldT [Holdtype [Holdvalue Holdmut]]]].
-           exists old_variable, OldT. repeat split; try assumption.
-           unfold capability_in_context. left. exact Holdmut.
-        -- exact Holdreach.
-    + assert (Hroot : typed_root RDM sGamma'
-        (update_r_env_value rGamma x (Iot (dom h))) root).
-      { exists variable, T. repeat split; assumption. }
-      destruct (new_rdm_component_origin CT sGamma mt rGamma h x qc C args
-        sGamma' vals qruntime root location Hwf Htyping Hvals Hroot Hreach)
-        as [Hfresh | [old_root [Holdroot Holdreach]]].
-      * subst location. lia.
-      * exists old_root. split.
-        -- left. destruct Holdroot as
-             [old_variable [OldT [Holdtype [Holdvalue Holdrdm]]]].
-           exists old_variable, OldT. repeat split; try assumption.
-           unfold capability_in_context. right. split; assumption.
-        -- exact Holdreach.
-  - apply Forall_forall with (x := boundary) in Hstack_wf; [|exact Hin].
-    have Hroot_old : root < dom h.
-    { eapply frame_capability_root_dom; eauto. }
-    destruct (mutable_reachable_from_old_after_append CT h
-      (mkObj (mkruntime_type qruntime C) vals) root location
-      (proj1 (proj2 Hwf)) Hroot_old Hreach) as [_ Holdreach].
-    exists root. split.
-    + right. exists boundary. split; assumption.
-    + exact Holdreach.
+      { exists z, T. repeat split; assumption. }
+      destruct (new_typed_root_origin CT sGamma mt rGamma h x qc C args
+        sGamma' (sqtype T) root Hwf Htyping Htyped) as
+        [Holdroot | [Hrootfresh Hnew]].
+      * have Hrootdom : root < dom h.
+        { destruct Holdroot as [oldz [OldT [Holdtype [Holdvalue Holdq]]]].
+          eapply wf_config_value_dom; eauto. }
+        destruct (retained_reachable_from_old_after_append CT h
+          (mkObj (mkruntime_type
+            (vpa_mutability_object_creation qthisr qc) C) vals) root (dom h)
+          (proj1 (proj2 Hwf)) Hrootdom Hreach) as [Hbad _]. lia.
+      * subst root. apply Hroots. exists z, T. repeat split; assumption.
+    + destruct Hframes as [Hactive_wf Hstack_wf].
+      apply Forall_forall with (x := boundary) in Hstack_wf; [|exact Hin].
+      have Hrootdom := frame_capability_root_dom CT h
+        boundary.(boundary_caller) root Hstack_wf Hboundary.
+      destruct (retained_reachable_from_old_after_append CT h
+        (mkObj (mkruntime_type
+          (vpa_mutability_object_creation qthisr qc) C) vals) root (dom h)
+        (proj1 (proj2 Hwf)) Hrootdom Hreach) as [Hbad _]. lia.
+  - apply Hcontains. exact Hold.
 Qed.
 
 Lemma live_history_after_assignment :
@@ -1582,6 +1715,8 @@ Proof.
     (live_capability_set CT h
       (mk_watched_frame authority sGamma rGamma) stack)
     cutoff authority sGamma mt rGamma h x e old value Hwf Hhistory
+    (live_capability_set_retained_closed CT h
+      (mk_watched_frame authority sGamma rGamma) stack)
     Htyping Hscope Hx Heval.
   assert (Hupdate :
       set_vars rGamma (update x value (vars rGamma)) =
@@ -1708,6 +1843,11 @@ Lemma live_history_after_field_write :
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     safe_readonly_method_type mt ->
     eval_stmt OK CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
+    Included Loc
+      (live_capability_set CT h'
+        (mk_watched_frame authority sGamma' rGamma') stack)
+      (live_capability_set CT h
+        (mk_watched_frame authority sGamma rGamma) stack) ->
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma' rGamma') stack h'.
 Proof.
@@ -1715,7 +1855,7 @@ Proof.
     sGamma' rGamma' h'
     [Hhistory [[Hwf Hstack_wf]
       [[Hsound Hstack_sound] [Hcutoff [Hzone_bound Hauthority_chain]]]]]
-    Htyping Hscope Heval.
+    Htyping Hscope Heval Hlive_old.
   assert (HsGamma : sGamma' = sGamma) by
     (inversion Htyping; reflexivity).
   assert (HrGamma : rGamma' = rGamma) by
@@ -1738,9 +1878,8 @@ Proof.
   have Hincluded : Included Loc
       (live_capability_set CT h'
         (mk_watched_frame authority sGamma rGamma) stack) Mbig.
-  { eapply live_capability_set_in_closed_superset.
-    - exact Hcontains.
-    - exact (proj1 (proj2 (proj2 (proj2 (proj1 (proj1 Hbig)))))). }
+  { intros location Hlocation. apply Hcontains.
+    apply Hlive_old. exact Hlocation. }
   have Hclosed := live_capability_set_forward_closed CT h'
     (mk_watched_frame authority sGamma rGamma) stack.
   have Hruntime := live_capability_members_runtime_mutable CT h'
@@ -1801,15 +1940,18 @@ Proof.
   { split; assumption. }
   have Hroots_big : authority_env_roots_in authority Mbig
       sGamma' rGamma' := proj1 (proj2 Hbig).
-  have Hclosed_big : mutable_heap_closed CT h' Mbig :=
-    proj1 (proj2 (proj2 (proj2 (proj1 (proj1 Hbig))))).
   have Hincluded : Included Loc
       (live_capability_set CT h'
         (mk_watched_frame authority sGamma' rGamma') stack) Mbig.
-  { eapply live_capability_set_after_active_change_in_superset.
-    - exact Hcontains.
+  { eapply live_capability_set_after_new_in_authority_superset
+      with (h := h) (h' := h') (rGamma := rGamma)
+        (rGamma' := rGamma') (M := Mbig).
+    - exact Hwf.
+    - split; assumption.
+    - exact Htyping.
+    - exact Heval.
     - exact Hroots_big.
-    - exact Hclosed_big. }
+    - exact Hcontains. }
   have Hclosed := live_capability_set_forward_closed CT h'
     (mk_watched_frame authority sGamma' rGamma') stack.
   have Hruntime := live_capability_members_runtime_mutable CT h'

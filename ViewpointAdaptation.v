@@ -30,6 +30,7 @@ Definition vpa_mutability_qq_safe_ro (q1: q)(q2 : q) : q :=
   match q1, q2 with
     | RO, RDM => Lost
     | q1, RDM => q1
+    | Mut, Mut => Mut
     | _, Mut => Lost
     | _, q2 => q2
   end.
@@ -38,18 +39,35 @@ Definition vpa_mutability_tt_safe_ro (t1: qualified_type)(t2 : qualified_type) :
   match (sqtype t1), (sqtype t2) with
     | RO, RDM => Build_qualified_type Lost (sctype t2)
     | q1, RDM => Build_qualified_type q1 (sctype t2)
+    | Mut, Mut => t2
     | _, Mut => Build_qualified_type Lost (sctype t2)
     | _, _ => t2
   end.
+
+Example vpa_mutability_safe_ro_mut_mut :
+  vpa_mutability_qq_safe_ro Mut Mut = Mut.
+Proof. reflexivity. Qed.
+
+Example vpa_mutability_type_safe_ro_mut_mut :
+  forall C,
+    vpa_mutability_tt_safe_ro
+      (Build_qualified_type Mut C) (Build_qualified_type Mut C) =
+    Build_qualified_type Mut C.
+Proof. reflexivity. Qed.
 
 Definition vpa_mutability_stype_fld_safe_ro (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
     | RO, RDM_f => Lost
     | q1, RDM_f => q1
     | _, Imm_f => Imm
+    | Mut, Mut_f => Mut
     | _, Mut_f => Lost
     | _, RO_f => RO
     end.
+
+Example vpa_mutability_field_safe_ro_mut_mut :
+  vpa_mutability_stype_fld_safe_ro Mut Mut_f = Mut.
+Proof. reflexivity. Qed.
 
 (* Viewpoint adaptation of assignability qualifiers *)
 Definition vpa_assignability (q1: q) (a1: a) : a :=

@@ -116,17 +116,16 @@ Proof.
       [Hvalue [Hsourcem [Hsub [Hfd [Hrdm Hreach]]]]]]]]].
   - rewrite r_muttype_update_field_preserve. apply Hruntime. exact Hinold.
   - subst value.
+    have Hnewedge := written_rdm_field_is_mutable_edge CT h source old
+      field oldvalue target D fdef Hobj Holdfield Hsub Hfd Hrdm.
     have Hsource_runtime := Hruntime source Hsourcem.
-    have Hedge := written_rdm_field_is_mutable_edge CT h source old field
-      oldvalue target D fdef Hobj Holdfield Hsub Hfd Hrdm.
-    have Htarget_runtime := mutable_edge_preserves_runtime_mutability CT
-      (update_field h source field (Iot target)) source target Mut_r Hwf' Hedge.
-    rewrite r_muttype_update_field_preserve in Htarget_runtime.
-    specialize (Htarget_runtime Hsource_runtime).
-    rewrite r_muttype_update_field_preserve in Htarget_runtime.
-    eapply mutable_reachable_preserves_runtime_mutability
-      with (source := target) (qruntime := Mut_r); eauto.
-    rewrite r_muttype_update_field_preserve. exact Htarget_runtime.
+    assert (Hsource_runtime' :
+      r_muttype (update_field h source field (Iot target)) source = Some Mut_r).
+    { rewrite r_muttype_update_field_preserve. exact Hsource_runtime. }
+    have Htarget_runtime := mutable_edge_preserves_runtime_mutability
+      CT (update_field h source field (Iot target)) source target Mut_r Hwf'
+      Hnewedge Hsource_runtime'.
+    eapply mutable_reachable_preserves_runtime_mutability; eauto.
 Qed.
 
 Lemma mutable_heap_closed_reachable :
@@ -141,6 +140,18 @@ Proof.
   eapply Hclosed.
   - apply IHHreach. exact Hsource.
   - exact H.
+Qed.
+
+Lemma retained_heap_closed_reachable :
+  forall CT h M source target,
+    retained_heap_closed CT h M ->
+    retained_mut_reachable CT h source target ->
+    In Loc M source ->
+    In Loc M target.
+Proof.
+  intros CT h M source target Hclosed Hreach Hsource.
+  induction Hreach; [exact Hsource|].
+  eapply Hclosed; [apply IHHreach; exact Hsource|exact H].
 Qed.
 
 Lemma initial_forward_history :
@@ -459,8 +470,8 @@ Proof.
       (conj Hruntime (conj _ (conj Havoid _))))))).
     + eapply safe_call_callee_zone_env; eauto.
     + eapply call_callee_operationally_confined; eauto.
-    + intros root Hroot. exfalso.
-      eapply safe_call_callee_has_no_mut_root; eauto.
+    + intros root Hroot. apply Hmutroots.
+      eapply safe_call_callee_mut_root_origin; eauto.
     + intros capability_root zone_root
         [Hcaproot [capability [Hcapreach Hcapability]]]
         [Hzoneroot [protected [Hzonereach Hprotected]]].
@@ -479,6 +490,7 @@ Lemma forward_expression_into_zone_has_safe_type :
   forall P Z M cutoff CT sGamma mt rGamma h e l T,
     wf_r_config CT sGamma rGamma h ->
     forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    retained_heap_closed CT h M ->
     eval_expr OK CT rGamma h e (Iot l) OK rGamma h ->
     expr_has_type CT sGamma mt e T ->
     safe_readonly_method_type mt ->
@@ -487,7 +499,7 @@ Lemma forward_expression_into_zone_has_safe_type :
 Proof.
   intros P Z M cutoff CT sGamma mt rGamma h e l T Hwf
     [Hcontains [Henv [Hconfined [Hclosed [Hruntime
-      [Hmutroots [Havoid Hcolors]]]]]]] Heval Htyping Hscope HinZ.
+      [Hmutroots [Havoid Hcolors]]]]]]] Hretained Heval Htyping Hscope HinZ.
   inversion Heval; subst.
   - inversion Htyping; subst.
     destruct (sqtype T) eqn:Hq; unfold is_safe_mode; auto.
@@ -509,6 +521,13 @@ Proof.
         destruct (mutability (ftype fDef)) eqn:Hfieldq;
         simpl; unfold is_safe_mode; auto.
       * exfalso. apply (Havoid l).
+        -- eapply Hretained.
+          ++ apply Hmutroots. exists x, T0.
+             split; [exact Hget_x|]. split; [exact Hval|exact Hreceiver].
+          ++ eapply runtime_static_mut_field_edge; eauto.
+        -- exact HinZ.
+      * exfalso.
+        apply (Havoid l).
         -- eapply Hclosed.
           ++ apply Hmutroots. exists x, T0.
              split; [exact Hget_x|]. split; [exact Hval|exact Hreceiver].
@@ -670,6 +689,61 @@ Proof.
     rewrite Hruntime_rdm in Hsub. exact Hsub.
 Qed.
 
+Lemma typed_runtime_mut_field_write_subtyping :
+  forall CT sGamma mt rGamma h x f y lx old D runtime_fd sGamma',
+    wf_r_config CT sGamma rGamma h ->
+    stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
+    safe_readonly_method_type mt ->
+    runtime_getVal rGamma x = Some (Iot lx) ->
+    runtime_getObj h lx = Some old ->
+    base_subtype CT (rctype (rt_type old)) D ->
+    sf_def_rel CT D f runtime_fd ->
+    mutability (ftype runtime_fd) = Mut_f ->
+    exists Tx Ty,
+      static_getType sGamma x = Some Tx /\
+      static_getType sGamma y = Some Ty /\
+      qualified_type_subtype CT Ty
+        (Build_qualified_type
+          (vpa_mutability_stype_fld_safe_ro (sqtype Tx) Mut_f)
+          (f_base_type (ftype runtime_fd))).
+Proof.
+  intros CT sGamma mt rGamma h x f y lx old D runtime_fd sGamma' Hwf
+    Htyping Hscope Hvalx Hobj Hruntime_sub Hruntime_fd Hruntime_mut.
+  inversion Htyping; subst.
+  - exfalso. destruct Hscope; congruence.
+  - exfalso. destruct Hscope; congruence.
+  - assert (Hbase : base_subtype CT (rctype (rt_type old)) (sctype Tx)).
+    { destruct (extract_receiver_from_wf_config CT _ rGamma h Hwf)
+        as [thisloc [qcontext [Hrthis [_ Hrcontext]]]].
+      unfold wf_r_config in Hwf.
+      destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
+      have Hxdom := Hget_x. apply static_getType_dom in Hxdom.
+      specialize (Hcorr thisloc qcontext Hrthis Hrcontext x Hxdom Tx Hget_x).
+      rewrite Hvalx in Hcorr.
+      unfold wf_r_typable, r_type in Hcorr. rewrite Hobj in Hcorr.
+      exact (proj1 Hcorr). }
+    assert (runtime_fd = fieldT).
+    { eapply field_defs_agree_at_runtime_subtype with
+        (C := rctype (rt_type old)) (D1 := D) (D2 := sctype Tx); eauto. }
+    subst runtime_fd. exists Tx, Ty. repeat split; try assumption.
+    rewrite Hruntime_mut in Hsub. exact Hsub.
+  - assert (Hbase : base_subtype CT (rctype (rt_type old)) (sctype Tx)).
+    { destruct (extract_receiver_from_wf_config CT _ rGamma h Hwf)
+        as [thisloc [qcontext [Hrthis [_ Hrcontext]]]].
+      unfold wf_r_config in Hwf.
+      destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
+      have Hxdom := Hget_x. apply static_getType_dom in Hxdom.
+      specialize (Hcorr thisloc qcontext Hrthis Hrcontext x Hxdom Tx Hget_x).
+      rewrite Hvalx in Hcorr.
+      unfold wf_r_typable, r_type in Hcorr. rewrite Hobj in Hcorr.
+      exact (proj1 Hcorr). }
+    assert (runtime_fd = fieldT).
+    { eapply field_defs_agree_at_runtime_subtype with
+        (C := rctype (rt_type old)) (D1 := D) (D2 := sctype Tx); eauto. }
+    subst runtime_fd. exists Tx, Ty. repeat split; try assumption.
+    rewrite Hruntime_mut in Hsub. exact Hsub.
+Qed.
+
 (** A successful non-null write to an RDM field in a safe scope has one of
     three homogeneous endpoint shapes.  In particular, RO and Lost aliases
     cannot be used to manufacture an RDM edge: their adapted field type is
@@ -712,6 +786,41 @@ Proof.
   - left. split; reflexivity.
   - right. left. split; reflexivity.
   - right. right. split; reflexivity.
+Qed.
+
+Lemma safe_mut_write_endpoint_qualifiers :
+  forall CT sGamma rGamma h x y lx ly Tx Ty Ctarget,
+    wf_r_config CT sGamma rGamma h ->
+    static_getType sGamma x = Some Tx ->
+    static_getType sGamma y = Some Ty ->
+    runtime_getVal rGamma x = Some (Iot lx) ->
+    runtime_getVal rGamma y = Some (Iot ly) ->
+    qualified_type_subtype CT Ty
+      (Build_qualified_type
+        (vpa_mutability_stype_fld_safe_ro (sqtype Tx) Mut_f) Ctarget) ->
+    sqtype Tx = Mut /\ sqtype Ty = Mut.
+Proof.
+  intros CT sGamma rGamma h x y lx ly Tx Ty Ctarget Hwf Hgetx Hgety
+    Hvalx Hvaly Hsub.
+  destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
+    as [receiver [qcontext [Hreceiver [Hreceiver_dom Hcontext]]]].
+  unfold wf_r_config in Hwf.
+  destruct Hwf as [Hclasses [Hheap [Hrenv [Hsenv [Hlength Hcorr]]]]].
+  have Hxdom := Hgetx. apply static_getType_dom in Hxdom.
+  have Hydom := Hgety. apply static_getType_dom in Hydom.
+  have Hxtyp := Hcorr receiver qcontext Hreceiver Hcontext x Hxdom Tx Hgetx.
+  have Hytyp := Hcorr receiver qcontext Hreceiver Hcontext y Hydom Ty Hgety.
+  rewrite Hvalx in Hxtyp. rewrite Hvaly in Hytyp.
+  have Hxnotbot := typable_nonnull_not_bot CT rGamma h lx Tx qcontext Hxtyp.
+  have Hynotbot := typable_nonnull_not_bot CT rGamma h ly Ty qcontext Hytyp.
+  apply qualified_type_subtype_q_subtype in Hsub.
+  destruct (sqtype Tx) eqn:Hqx;
+    destruct (sqtype Ty) eqn:Hqy;
+    simpl in Hsub;
+    try solve_q_subtype_wrong;
+    try (exfalso; apply Hxnotbot; reflexivity);
+    try (exfalso; apply Hynotbot; reflexivity).
+  split; reflexivity.
 Qed.
 
 Lemma typed_field_write_runtime_field_agreement :
@@ -2005,6 +2114,7 @@ Lemma forward_history_after_assignment :
   forall CT P Z M cutoff sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
     forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    retained_heap_closed CT h M ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
@@ -2013,7 +2123,7 @@ Lemma forward_history_after_assignment :
       (update_r_env_value rGamma x value) h.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x e old value Hwf Hstate
-    Htyping Hscope Hx Heval.
+    Hretained Htyping Hscope Hx Heval.
   destruct Hstate as
     [Hcontains [Henv [[Hconfenv Hconfheap] [Hclosed [Hruntime
       [Hmutroots [Havoid Hcolors]]]]]]].
@@ -2036,7 +2146,7 @@ Proof.
           (conj Hcontains (conj Henv (conj (conj Hconfenv Hconfheap)
             (conj Hclosed (conj Hruntime
               (conj Hmutroots (conj Havoid Hcolors)))))))
-          Heval Htype_e Hscope HinZ.
+          Hretained Heval Htype_e Hscope HinZ.
         eapply subtype_safe_implies_safe; eauto.
     + rewrite runtime_getVal_update_diff in Hval_z; auto.
       eapply Henv; eauto.
@@ -2048,8 +2158,8 @@ Proof.
     destruct (assignment_mut_root_has_old_ancestor CT sGamma mt rGamma h
       x e old value Hwf Htyping Hscope Hx Heval root Hroot)
       as [old_root [Holdroot Holdreach]].
-    eapply mutable_heap_closed_reachable with (source := old_root).
-    + exact Hclosed.
+    eapply retained_heap_closed_reachable with (source := old_root).
+    + exact Hretained.
     + exact Holdreach.
     + apply Hmutroots. exact Holdroot.
   - intros capability_root zone_root
@@ -2124,6 +2234,7 @@ Lemma component_forward_history_after_assignment :
   forall CT P Z M cutoff sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    retained_heap_closed CT h M ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     safe_readonly_method_type mt ->
     runtime_getVal rGamma x = Some old ->
@@ -2132,7 +2243,7 @@ Lemma component_forward_history_after_assignment :
       (update_r_env_value rGamma x value) h.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x e old value Hwf
-    [Hforward [Hcomponents Hactive]] Htyping Hscope Hx Heval.
+    [Hforward [Hcomponents Hactive]] Hretained Htyping Hscope Hx Heval.
   split.
   - eapply forward_history_after_assignment; eauto.
   - split; [exact Hcomponents|].
