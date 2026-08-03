@@ -956,3 +956,89 @@ Proof.
   split; [eapply private_fresh_frozen_statement_after_local; eauto|].
   exact Hpolicies.
 Qed.
+
+(** Atomic case: variable assignment.  Again the heap and stack are
+    unchanged, so the join policies are carried through unmodified. *)
+Lemma private_call_pop_state_after_assignment :
+  forall CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
+    policies x expression old value,
+    private_call_pop_state CT P Z cutoff
+      (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
+      policies h ->
+    stmt_typing CT sGamma mt (SVarAss x expression) sGamma ->
+    readonly_state_method_scope mt ->
+    runtime_getVal rGamma x = Some old ->
+    eval_expr CT rGamma h expression value OK rGamma h ->
+    private_call_pop_state CT P Z cutoff
+      (mk_watched_frame authority sGamma
+        (update_r_env_value rGamma x value)) stack incoming
+      (advance_frozen_caller_snapshots CT h
+        (mk_watched_frame authority sGamma
+          (update_r_env_value rGamma x value)) snapshots)
+      policies h.
+Proof.
+  intros CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
+    policies x expression old value
+    [Hpotential [Hphased [Hfrozen Hpolicies]]] Htyping Hscope Hx Heval.
+  split; [eapply potential_history_after_assignment; eauto|].
+  split; [eapply principled_phased_authority_history_after_assignment; eauto|].
+  split; [eapply private_fresh_frozen_statement_after_assignment; eauto|].
+  exact Hpolicies.
+Qed.
+
+(** Atomic case: object creation.  The heap grows, so the join policies are
+    transported by [private_frame_join_policies_valid_heap_growth]. *)
+Lemma private_call_pop_state_after_new :
+  forall CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
+    policies x qc C args sGamma' rGamma' h',
+    private_call_pop_state CT P Z cutoff
+      (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
+      policies h ->
+    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
+    eval_stmt CT rGamma h (SNew x qc C args) OK rGamma' h' ->
+    private_call_pop_state CT P Z cutoff
+      (mk_watched_frame authority sGamma' rGamma') stack incoming
+      (advance_frozen_caller_snapshots CT h'
+        (mk_watched_frame authority sGamma' rGamma') snapshots)
+      policies h'.
+Proof.
+  intros CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
+    policies x qc C args sGamma' rGamma' h'
+    [Hpotential [Hphased [Hfrozen Hpolicies]]] Htyping Heval.
+  have Hgrowth := eval_stmt_preserves_heap_domain_simple CT rGamma h
+    (SNew x qc C args) rGamma' h' Heval.
+  split; [eapply potential_history_after_new; eauto|].
+  split; [eapply principled_phased_authority_history_after_new; eauto|].
+  split; [eapply private_fresh_frozen_statement_after_new; eauto|].
+  eapply private_frame_join_policies_valid_heap_growth;
+    [exact Hgrowth|exact Hpolicies].
+Qed.
+
+(** Atomic case: field write.  The heap changes in place, so again the join
+    policies are transported by heap growth. *)
+Lemma private_call_pop_state_after_field_write :
+  forall CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
+    policies x field y sGamma' rGamma' h',
+    private_call_pop_state CT P Z cutoff
+      (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
+      policies h ->
+    stmt_typing CT sGamma mt (SFldWrite x field y) sGamma' ->
+    readonly_state_method_scope mt ->
+    eval_stmt CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
+    private_call_pop_state CT P Z cutoff
+      (mk_watched_frame authority sGamma' rGamma') stack incoming
+      (advance_frozen_caller_snapshots CT h'
+        (mk_watched_frame authority sGamma' rGamma') snapshots)
+      policies h'.
+Proof.
+  intros CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
+    policies x field y sGamma' rGamma' h'
+    [Hpotential [Hphased [Hfrozen Hpolicies]]] Htyping Hscope Heval.
+  have Hgrowth := eval_stmt_preserves_heap_domain_simple CT rGamma h
+    (SFldWrite x field y) rGamma' h' Heval.
+  split; [eapply potential_history_after_field_write; eauto|].
+  split; [eapply principled_phased_authority_history_after_field_write; eauto|].
+  split; [eapply private_fresh_frozen_statement_after_field_write; eauto|].
+  eapply private_frame_join_policies_valid_heap_growth;
+    [exact Hgrowth|exact Hpolicies].
+Qed.
