@@ -33,6 +33,7 @@ PotentialCapabilityCore.v
 PotentialCapabilityAtomic.v
 PotentialCapabilityPrivate.v
 PotentialCapabilityResume.v
+PotentialCapabilityRDMPop.v
 PotentialCapabilityPolicy.v
 PotentialCapabilityStatement.v
 PotentialCapabilityPolicyPop.v

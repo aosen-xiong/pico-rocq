@@ -296,3 +296,31 @@ classifier remains useful for paths whose target is captured and for nested
 snapshot transport, but it is not a license to reintroduce an immutable
 old-authority-to-fresh-return join.  The public theorem statement remains
 unchanged and receives no policy, dispatch, or provenance premise.
+
+## Immutable RDM return: no heap-wide fresh-source rule
+
+Do not discharge the final immutable-authority call-pop branch by
+postulating a heap-wide rule saying that every non-join step into the fresh
+suffix has a fresh source.  **Legal allocation can create an edge between a
+fresh object and an old reference**, so that rule is not a semantic
+invariant of the language.  Concretely, do not instantiate
+`untracked_immutable_resumed_call_pop_safe_from_witness` that way.
+
+The required proof is target-directed instead.  Under immutable authority
+every frame-join target is one of the captured pre-call RDM roots.  The
+evolved policy witness classifies authority arriving at such a root by its
+current resume exposure, while its prospective-component partition prevents
+a callee-side fresh component from reaching an older protected resume root.
+That classification is proof-local and must be eliminated before the public
+preservation theorem.
+
+The surviving machinery for this lives in `PotentialCapabilityRDMPop.v`
+(salvaged from the retired `PotentialCapabilityRDMCall.v`).  Its combinator
+`classified_rdm_call_pop_merge_safe` reduces the whole RDM-destination pop
+obligation to exactly one residual case: `caller_authority = Imm_r` with a
+covariant `Mut` body return.  The other shapes are proved directionally --
+`mutable_rdm_call_pop_merge_safe` notes explicitly that no symmetry of
+`potential_connected` is used.  That residual case is the open obligation
+behind `PotentialCapability.v`'s call branch; it exists because flexible
+overriding admits covariant `Mut` returns, and per the note above it must
+not be dodged by forbidding them.
