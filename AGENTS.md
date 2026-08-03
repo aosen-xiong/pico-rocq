@@ -615,3 +615,44 @@ are proved; the call case has its untracked frozen entry, its policy entry
 onto the *same* boundary, and the inductive hypothesis on the body all
 working.  What remains inside it is exactly the return step, which is where
 the call-rule hypothesis has to enter.
+
+### C3: the induction must also carry the reflection summary
+
+Discharging `private_call_pop_call_rule` needs call-pop safety, and the only
+route to it is
+
+  executing_authority_call_pop_safe_from_old_colors_reflected_or_outside
+    (Private.v:14269)
+
+whose second premise is
+
+  executing_authority_old_colors_reflected_or_outside CT Z
+    caller_h caller caller_incoming callee_h caller_post caller_incoming
+
+This cannot be obtained from the post-state's own separation: that is exactly
+what the pop is trying to establish, so
+`executing_authority_colors_separated_implies_old_colors_reflected_or_outside`
+(Core.v:1066) is circular here.  The summary has to be *produced by the
+induction*, which is why the retired statement result was a conjunction --
+the private state together with the reflection summary -- rather than the
+state alone.
+
+So `private_call_pop_state_preserved_from_call_rule` needs its conclusion
+strengthened to also yield
+
+  executing_authority_old_colors_reflected_or_outside CT Z h
+    (mk_watched_frame authority sGamma  rGamma ) incoming
+    h' (mk_watched_frame authority sGamma' rGamma') incoming
+
+Support that survives:
+  - structural: `..._refl` (Core.v:1034), `..._trans` (Core.v:1044),
+    `executing_authority_old_colors_reflected_implies_or_outside`
+    (Core.v:1022);
+  - the sequencing case is exactly `..._trans`;
+  - the per-statement colour machinery is in `PotentialCapabilityAtomic.v`
+    (`phased_authority_colors_after_null_field_update`,
+    `..._after_non_rdm_field_update`, `phased_colors_after_*`,
+    `pending_call_colors_after_heap_change`, and neighbours).
+
+The per-case reflection lemmas themselves did not survive and must be
+re-proved from that machinery.  None of it needs an admit.
