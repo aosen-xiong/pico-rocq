@@ -776,3 +776,44 @@ Proof.
   - contradiction.
   - exact Hfresh.
 Qed.
+
+(** [potential_adjacent] is [authority_color_adjacent] plus
+    [potential_return_edge], so the converse of
+    [authority_color_connected_is_potential_connected] holds exactly when no
+    live boundary contributes a return edge.
+
+    This is the step that lets a potential-graph bridge be replayed in the
+    colour formalism, where authority provenance is tracked. *)
+Lemma potential_connected_is_authority_color_connected_without_return :
+  forall CT h active stack left right,
+    (forall l r, ~ potential_return_edge h active stack l r) ->
+    potential_connected CT h active stack left right ->
+    authority_color_connected CT h active stack left right.
+Proof.
+  intros CT h active stack left right Hno_return Hconnected.
+  induction Hconnected.
+  - apply rt_step. destruct H as [Hheap | [Hframe | Hreturn]].
+    + left. exact Hheap.
+    + right. exact Hframe.
+    + exfalso. exact (Hno_return x y Hreturn).
+  - apply rt_refl.
+  - eapply rt_trans; eauto.
+Qed.
+
+(** A boundary whose callee return qualifier is not [RDM] contributes no
+    return edge.  In the covariant [Mut] return branch
+    [sqtype body_return_type = Mut] together with
+    [body_return_type <= mret runtime_sig] forces
+    [sqtype (mret runtime_sig)] into [{Mut, RO}], so the head boundary of that
+    branch is always of this shape. *)
+Lemma no_return_edge_when_callee_return_not_rdm :
+  forall h active stack,
+    (forall callee boundary,
+      live_call_boundary active stack callee boundary ->
+      boundary.(boundary_callee_return_qualifier) <> RDM) ->
+    forall l r, ~ potential_return_edge h active stack l r.
+Proof.
+  intros h active stack Hnot_rdm l r
+    [callee [boundary [Hlive [_ [Hreturn_rdm _]]]]].
+  exact (Hnot_rdm callee boundary Hlive Hreturn_rdm).
+Qed.
