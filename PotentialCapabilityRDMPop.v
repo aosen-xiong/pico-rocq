@@ -887,28 +887,30 @@ Proof.
     (static_mdef := static_mdef); eauto.
 Qed.
 
-(** Combined private state threaded by the call-pop induction.
+(** Private state threaded by the call-pop induction.
 
-    The four components must travel together rather than in sequence: the
-    frozen layer's return case
-    ([private_fresh_frozen_statement_after_nonnull_return_parts]) needs the
-    phased invariant for the *caller post* frame, which is itself a
-    post-call fact. *)
+    Only two components are needed.  [private_fresh_frozen_statement_state]
+    already contains [principled_phased_authority_live_history_state] through
+    [principled_frozen_authority_history_state], so the phased layer needs no
+    separate thread; and [potential_live_history_state] is threaded by the
+    public theorem's own induction.
+
+    Keeping the state this small is what makes the call case work without
+    proof irrelevance: the boundary is produced by the single frozen entry
+    lemma, and the policy component is transported onto it by
+    [private_frame_join_policies_valid_origins_transfer]. *)
 Definition private_call_pop_state
   (CT : class_table) (P Z : Ensemble Loc) (cutoff : Loc)
   (active : watched_frame) (stack : list watched_boundary)
   (incoming : Ensemble authority_flow_state)
   (snapshots : list frozen_caller_snapshot_slot)
   (policies : private_frame_join_policies) (h : heap) : Prop :=
-  potential_live_history_state CT P Z cutoff active stack h /\
-  principled_phased_authority_live_history_state CT P Z cutoff active stack
-    incoming h /\
   private_fresh_frozen_statement_state CT P Z cutoff active stack incoming
     snapshots h /\
   private_frame_join_policies_valid h policies stack.
 
-(** Channel-free entry: the whole package is derived from the public
-    invariant, so none of it becomes a premise of the public theorem. *)
+(** The whole package is derived from the public invariant, so none of it
+    becomes a premise of the public theorem. *)
 Lemma potential_live_history_starts_private_call_pop_state :
   forall CT P Z cutoff active stack h,
     potential_live_history_state CT P Z cutoff active stack h ->
@@ -918,10 +920,6 @@ Lemma potential_live_history_starts_private_call_pop_state :
       (initial_private_frame_join_policies active stack) h.
 Proof.
   intros CT P Z cutoff active stack h Hstate.
-  split; [exact Hstate|].
-  split.
-  { apply potential_live_history_starts_principled_phased_authority.
-    exact Hstate. }
   split.
   { apply potential_live_history_starts_private_fresh_frozen_statement.
     exact Hstate. }
@@ -929,9 +927,6 @@ Proof.
   exact (proj1 (proj2 (proj1 Hstate))).
 Qed.
 
-(** Atomic case: local declaration.  The heap and stack are unchanged, so the
-    join policies travel verbatim; the other three layers each have their own
-    surviving [after_local] lemma. *)
 Lemma private_call_pop_state_after_local :
   forall CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
     policies T x sGamma',
@@ -949,16 +944,11 @@ Lemma private_call_pop_state_after_local :
       policies h.
 Proof.
   intros CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
-    policies T x sGamma' [Hpotential [Hphased [Hfrozen Hpolicies]]]
-    Htyping Hnone.
-  split; [eapply potential_history_after_local; eauto|].
-  split; [eapply principled_phased_authority_history_after_local; eauto|].
+    policies T x sGamma' [Hfrozen Hpolicies] Htyping Hnone.
   split; [eapply private_fresh_frozen_statement_after_local; eauto|].
   exact Hpolicies.
 Qed.
 
-(** Atomic case: variable assignment.  Again the heap and stack are
-    unchanged, so the join policies are carried through unmodified. *)
 Lemma private_call_pop_state_after_assignment :
   forall CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
     policies x expression old value,
@@ -978,16 +968,12 @@ Lemma private_call_pop_state_after_assignment :
       policies h.
 Proof.
   intros CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
-    policies x expression old value
-    [Hpotential [Hphased [Hfrozen Hpolicies]]] Htyping Hscope Hx Heval.
-  split; [eapply potential_history_after_assignment; eauto|].
-  split; [eapply principled_phased_authority_history_after_assignment; eauto|].
+    policies x expression old value [Hfrozen Hpolicies]
+    Htyping Hscope Hx Heval.
   split; [eapply private_fresh_frozen_statement_after_assignment; eauto|].
   exact Hpolicies.
 Qed.
 
-(** Atomic case: object creation.  The heap grows, so the join policies are
-    transported by [private_frame_join_policies_valid_heap_growth]. *)
 Lemma private_call_pop_state_after_new :
   forall CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
     policies x qc C args sGamma' rGamma' h',
@@ -1003,19 +989,15 @@ Lemma private_call_pop_state_after_new :
       policies h'.
 Proof.
   intros CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
-    policies x qc C args sGamma' rGamma' h'
-    [Hpotential [Hphased [Hfrozen Hpolicies]]] Htyping Heval.
+    policies x qc C args sGamma' rGamma' h' [Hfrozen Hpolicies]
+    Htyping Heval.
   have Hgrowth := eval_stmt_preserves_heap_domain_simple CT rGamma h
     (SNew x qc C args) rGamma' h' Heval.
-  split; [eapply potential_history_after_new; eauto|].
-  split; [eapply principled_phased_authority_history_after_new; eauto|].
   split; [eapply private_fresh_frozen_statement_after_new; eauto|].
   eapply private_frame_join_policies_valid_heap_growth;
     [exact Hgrowth|exact Hpolicies].
 Qed.
 
-(** Atomic case: field write.  The heap changes in place, so again the join
-    policies are transported by heap growth. *)
 Lemma private_call_pop_state_after_field_write :
   forall CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
     policies x field y sGamma' rGamma' h',
@@ -1032,12 +1014,10 @@ Lemma private_call_pop_state_after_field_write :
       policies h'.
 Proof.
   intros CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
-    policies x field y sGamma' rGamma' h'
-    [Hpotential [Hphased [Hfrozen Hpolicies]]] Htyping Hscope Heval.
+    policies x field y sGamma' rGamma' h' [Hfrozen Hpolicies]
+    Htyping Hscope Heval.
   have Hgrowth := eval_stmt_preserves_heap_domain_simple CT rGamma h
     (SFldWrite x field y) rGamma' h' Heval.
-  split; [eapply potential_history_after_field_write; eauto|].
-  split; [eapply principled_phased_authority_history_after_field_write; eauto|].
   split; [eapply private_fresh_frozen_statement_after_field_write; eauto|].
   eapply private_frame_join_policies_valid_heap_growth;
     [exact Hgrowth|exact Hpolicies].
@@ -1049,7 +1029,7 @@ Qed.
     [Forall2] is indexed by the boundary list, but destructing and rebuilding
     it suffices.
 
-    This is what lets the four private layers be combined over a *single*
+    This is what lets the private layers be combined over a *single*
     boundary without proof irrelevance.  The boundary, and hence its origins
     proof, is taken from the one call-entry lemma that produces it; every
     other layer is transported onto that boundary.  The retired chain instead
