@@ -1042,3 +1042,35 @@ Proof.
   eapply private_frame_join_policies_valid_heap_growth;
     [exact Hgrowth|exact Hpolicies].
 Qed.
+
+(** The join policies do not depend on which [call_boundary_origins] proof a
+    boundary carries: [private_frame_join_targets_before_boundary] projects
+    only [boundary_entry_cutoff].  Conversion alone cannot see this because
+    [Forall2] is indexed by the boundary list, but destructing and rebuilding
+    it suffices.
+
+    This is what lets the four private layers be combined over a *single*
+    boundary without proof irrelevance.  The boundary, and hence its origins
+    proof, is taken from the one call-entry lemma that produces it; every
+    other layer is transported onto that boundary.  The retired chain instead
+    identified two origins proofs with [proof_irrelevance], which is why
+    [private_statement_enter_call_channel_free] depends on
+    [Classical_Prop.classic] and could never satisfy
+    [check-public-assumptions.py]. *)
+Lemma private_frame_join_policies_valid_origins_transfer :
+  forall h policies caller esenv erenv view rv rq cq cf
+    origins1 origins2 stack,
+    private_frame_join_policies_valid h policies
+      (build_watched_boundary caller esenv erenv view rv rq cq cf origins1
+        :: stack) ->
+    private_frame_join_policies_valid h policies
+      (build_watched_boundary caller esenv erenv view rv rq cq cf origins2
+        :: stack).
+Proof.
+  intros h policies caller esenv erenv view rv rq cq cf origins1 origins2
+    stack [Hactive Hsuspended].
+  split; [exact Hactive|].
+  inversion Hsuspended as [|target targets bnd rest Hhead Htail Heq1 Heq2];
+    subst.
+  constructor; [exact Hhead|exact Htail].
+Qed.
