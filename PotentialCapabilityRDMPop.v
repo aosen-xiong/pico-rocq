@@ -2844,3 +2844,30 @@ Proof.
       destruct Hv_root as [xvar [T [Htype [Hvalue Hrdm]]]].
       eapply Hcallee_old. exact Hvalue.
 Qed.
+
+(** Step 3: the path form. *)
+Lemma rs_potential_path_from_old_mut_stays_old :
+  forall CT h0 h active boundary stack u w,
+    rs_mut_vars_fresh h0 active.(frame_senv) active.(frame_renv) h ->
+    rs_fresh_mut_fields_fresh CT h0 h ->
+    rs_old_mut_fields_old CT h0 h ->
+    wf_heap CT h ->
+    live_frames_wf CT h active (boundary :: stack) ->
+    boundary.(boundary_callee_return_qualifier) <> RDM ->
+    (forall b, List.In b (boundary :: stack) ->
+      forall x l,
+        runtime_getVal b.(boundary_caller).(frame_renv) x = Some (Iot l) ->
+        l < dom h0) ->
+    potential_connected CT h active (boundary :: stack) u w ->
+    u < dom h0 ->
+    r_muttype h u = Some Mut_r ->
+    w < dom h0 /\ r_muttype h w = Some Mut_r.
+Proof.
+  intros CT h0 h active boundary stack u w HJ HK HL Hheap Hframes Hhead
+    Hstack_old Hconn.
+  induction Hconn; intros Hold Hmut.
+  - eapply rs_potential_adjacent_from_old_mut_lands_old; eauto.
+  - split; assumption.
+  - destruct (IHHconn1 Hold Hmut) as [Hmid_old Hmid_mut].
+    exact (IHHconn2 Hmid_old Hmid_mut).
+Qed.
