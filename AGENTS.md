@@ -479,3 +479,33 @@ no return step.  `potential_return_edge` requires
 forces `sqtype (mret runtime_sig)` into `{Mut, RO}`.  So the head boundary
 contributes no return edge precisely in the case that needs the bridge.
 Return edges at deeper pre-existing boundaries are the remaining open part.
+
+### The real shape of the colour/graph gap
+
+Return edges are not the crux of the bridge.  The prior obstacle is join
+scoping:
+
+  * `potential_connected CT h active stack` closes frame joins over *every*
+    live frame, via `potential_frame_edge active stack`;
+  * `phased_authority_frame_step CT h frame` -- and hence
+    `executing_authority_color_set` -- is parameterised by a *single* frame.
+    Its heap steps are stack-independent, but its joins are frame-local.
+
+So a stack-wide potential path may traverse a caller-frame join that has no
+counterpart in the callee's colour closure.  Such colours can only enter the
+callee's set through `callee_incoming`.
+
+That is precisely what the frozen-snapshot/incoming discipline constructs,
+and what the retired statement-level chain existed to thread through the
+body.  Any bridge from `executing_resumed_authority_call_pop_safe` to
+`call_pop_merge_safe` therefore has to reconstruct that discipline; it is not
+a single lemma about return edges.
+
+Reusable results proved while establishing this:
+
+  boundary_caller_rdm_roots_are_connected
+  potential_local_mut_root_is_fresh
+  potential_connected_is_authority_color_connected_without_return
+  no_return_edge_when_callee_return_not_rdm
+
+All four are axiom-free and independent of which route is finally taken.
