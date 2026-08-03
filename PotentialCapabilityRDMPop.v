@@ -1154,6 +1154,76 @@ Proof.
   eapply executing_authority_colors_after_new_covered; eauto.
 Qed.
 
+(** Composition bridge for a call body.  The recursive summary first maps a
+    final callee color to the callee-entry phase; safe-call entry coverage
+    then maps that entry color to the suspended caller phase. *)
+Lemma call_body_old_color_reflects_to_caller_entry :
+  forall CT caller_h caller caller_incoming callee_entry callee_incoming
+    final_h callee_final mode location,
+    callee_incoming = executing_authority_color_set CT caller_h caller
+      caller_incoming ->
+    (forall entry_mode entry_location,
+      authority_mode_dangerous entry_mode ->
+      In authority_flow_state
+        (executing_authority_color_set CT caller_h callee_entry
+          callee_incoming) (entry_mode, entry_location) ->
+      exists caller_mode,
+        authority_mode_dangerous caller_mode /\
+        In authority_flow_state
+          (executing_authority_color_set CT caller_h caller caller_incoming)
+          (caller_mode, entry_location)) ->
+    executing_authority_old_colors_reflected CT caller_h callee_entry
+      callee_incoming final_h callee_final callee_incoming ->
+    authority_mode_dangerous mode ->
+    In authority_flow_state
+      (executing_authority_color_set CT final_h callee_final callee_incoming)
+      (mode, location) ->
+    location < dom caller_h ->
+    exists caller_mode,
+      authority_mode_dangerous caller_mode /\
+      In authority_flow_state
+        (executing_authority_color_set CT caller_h caller caller_incoming)
+        (caller_mode, location).
+Proof.
+  intros CT caller_h caller caller_incoming callee_entry callee_incoming
+    final_h callee_final mode location Hincoming Hentry Hbody Hmode Hcolor
+    Hold.
+  destruct (Hbody mode location Hmode Hcolor Hold) as
+    [entry_mode [Hentry_mode Hentry_color]].
+  eapply Hentry; eauto.
+Qed.
+
+(** If the whole call summary reflects a resumed caller color to the
+    pre-call caller, that representative is present in the completed callee:
+    caller colors are precisely the callee incoming colors and incoming
+    colors are seeds of the final callee closure. *)
+Lemma call_old_reflection_supplies_completed_callee_color :
+  forall CT caller_h caller caller_incoming final_h caller_post callee
+    callee_incoming mode location,
+    callee_incoming = executing_authority_color_set CT caller_h caller
+      caller_incoming ->
+    executing_authority_old_colors_reflected CT caller_h caller
+      caller_incoming final_h caller_post caller_incoming ->
+    authority_mode_dangerous mode ->
+    In authority_flow_state
+      (executing_authority_color_set CT final_h caller_post caller_incoming)
+      (mode, location) ->
+    location < dom caller_h ->
+    exists callee_mode,
+      authority_mode_dangerous callee_mode /\
+      In authority_flow_state
+        (executing_authority_color_set CT final_h callee callee_incoming)
+        (callee_mode, location).
+Proof.
+  intros CT caller_h caller caller_incoming final_h caller_post callee
+    callee_incoming mode location Hincoming Hreflect Hmode Hcolor Hold.
+  destruct (Hreflect mode location Hmode Hcolor Hold) as
+    [caller_mode [Hcaller_mode Hcaller_color]].
+  exists caller_mode. split; [exact Hcaller_mode|].
+  apply executing_authority_color_set_contains_incoming.
+  rewrite Hincoming. exact Hcaller_color.
+Qed.
+
 (** Well-formedness of the executing frame, projected out of the threaded
     state.  Used by the per-statement reflection lemmas. *)
 Lemma private_call_pop_state_wf :
