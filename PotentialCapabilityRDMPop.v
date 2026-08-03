@@ -2502,3 +2502,121 @@ Proof.
       { destruct (sqtype Ty); simpl in Hq; inversion Hq; subst; congruence. }
       eapply wf_config_nonnull_variable_not_bot with (x := z); eauto.
 Qed.
+
+(** The return-slot channel: if the adapted static return fits a [Mut]/[RDM]
+    destination, the receiver view and the static return are pinned. *)
+Lemma readonly_state_return_channel_inversion :
+  forall t m qx,
+    (qx = Mut \/ qx = RDM) ->
+    vpa_mutability_qq_readonly_state t m = qx ->
+    (t = Mut /\ (m = Mut \/ m = RDM)) \/ (t = RDM /\ m = RDM).
+Proof.
+  intros t m qx Hkind Heq.
+  destruct Hkind as [-> | ->]; destruct t; destruct m;
+    simpl in Heq; try discriminate; auto.
+Qed.
+
+(** J after binding a call's return value.  Unchanged variables transport
+    backwards through the body's heap extension; the destination slot routes
+    through the nested frame's final J via the covariant return channel. *)
+Lemma rs_mut_vars_fresh_call_return :
+  forall CT h0 sGamma rGamma h h' x Tx y Ty ly retval
+    runtime_mdef static_sig method_end rGamma'' body_return_type,
+    wf_r_config CT sGamma rGamma h ->
+    wf_r_config CT method_end rGamma'' h' ->
+    rs_mut_vars_fresh h0 sGamma rGamma h ->
+    rs_mut_vars_fresh h0 method_end rGamma'' h' ->
+    (forall loc q, r_muttype h loc = Some q -> r_muttype h' loc = Some q) ->
+    static_getType sGamma x = Some Tx ->
+    static_getType sGamma y = Some Ty ->
+    runtime_getVal rGamma y = Some (Iot ly) ->
+    static_getType method_end (mreturn (mbody runtime_mdef))
+      = Some body_return_type ->
+    runtime_getVal rGamma'' (mreturn (mbody runtime_mdef)) = Some retval ->
+    qualified_type_subtype CT body_return_type
+      (mret (msignature runtime_mdef)) ->
+    method_signature_refinement CT (msignature runtime_mdef) static_sig ->
+    qualified_type_subtype CT
+      (vpa_mutability_tt_readonly_state Ty (mret static_sig)) Tx ->
+    rs_mut_vars_fresh h0 sGamma
+      (update_r_env_value rGamma x retval) h'.
+Proof.
+  intros CT h0 sGamma rGamma h h' x Tx y Ty ly retval runtime_mdef
+    static_sig method_end rGamma'' body_return_type
+    Hcaller_wf Hcallee_wf HJ HJ'' Hpreserve Hget_x Hget_y Hval_y
+    Hret_type Hretval Hbody_sub Hrefine Hret_sub.
+  intros z T l Htype Hvalue Hkind Hmut.
+  destruct (Nat.eq_dec z x) as [-> | Hneq].
+  2:{ have Hxz : x <> z by congruence.
+      have Hold := runtime_getVal_update_diff rGamma x z retval Hxz.
+      rewrite Hold in Hvalue.
+      have Hldom : l < dom h.
+      { eapply wf_config_value_dom with (h := h); eauto. }
+      destruct (r_muttype h l) as [q0|] eqn:Hq0.
+      2:{ exfalso. unfold r_muttype in Hq0.
+          destruct (runtime_getObj h l) as [o0|] eqn:Ho0;
+            [discriminate|].
+          apply nth_error_None in Ho0. lia. }
+      have Hq0' := Hpreserve _ _ Hq0.
+      assert (q0 = Mut_r) by congruence. subst q0.
+      eapply HJ; eauto. }
+  (* the destination slot *)
+  assert (T = Tx) by congruence. subst T.
+  have Hxdom : x < dom (vars rGamma).
+  { have Hxs : x < length sGamma.
+    { apply nth_error_Some. unfold static_getType in Hget_x.
+      rewrite Hget_x. discriminate. }
+    have Hlength := proj1 (proj2 (proj2 (proj2 (proj2 Hcaller_wf)))).
+    lia. }
+  have Hsame := runtime_getVal_update_same rGamma x retval Hxdom.
+  rewrite Hsame in Hvalue. injection Hvalue as ->.
+  have Hq := qualified_type_subtype_q_subtype _ _ _ Hret_sub. simpl in Hq.
+  destruct (mutable_slot_subtype_inversion _ _ Hq Hkind) as [Heq | Hbot].
+  2:{ (* adapted return is Bot *)
+      exfalso.
+      assert (Hcases : sqtype (mret static_sig) = Bot \/ sqtype Ty = Bot).
+      { destruct (sqtype Ty); destruct (sqtype (mret static_sig));
+          simpl in Hbot; try discriminate; auto. }
+      destruct Hcases as [Hmb | Hyb].
+      - have Hdynb := method_signature_refinement_return_bot _ _ _
+          Hrefine Hmb.
+        have Hbq := qualified_type_subtype_q_subtype _ _ _ Hbody_sub.
+        rewrite Hdynb in Hbq.
+        assert (Hbrb : sqtype body_return_type = Bot).
+        { inversion Hbq; subst; congruence. }
+        exact (wf_config_nonnull_variable_not_bot CT method_end rGamma'' h'
+          (mreturn (mbody runtime_mdef)) body_return_type l
+          Hcallee_wf Hret_type Hretval Hbrb).
+      - exact (wf_config_nonnull_variable_not_bot CT sGamma rGamma h y Ty ly
+          Hcaller_wf Hget_y Hval_y Hyb). }
+  assert (Hm : sqtype (mret static_sig) = Mut \/
+               sqtype (mret static_sig) = RDM).
+  { destruct (readonly_state_return_channel_inversion _ _ _ Hkind Heq) as
+      [[_ Hm] | [_ Hm]]; [exact Hm | right; exact Hm]. }
+  have Hconc : is_concrete_or_rdm_or_bot (sqtype (mret static_sig)).
+  { unfold is_concrete_or_rdm_or_bot.
+    destruct Hm as [-> | ->]; auto. }
+  have Hdyn := method_signature_refinement_return_concrete_or_rdm_or_bot
+    _ _ _ Hrefine Hconc.
+  have Hbq := qualified_type_subtype_q_subtype _ _ _ Hbody_sub.
+  unfold is_concrete_or_rdm_or_bot in Hdyn.
+  assert (Hbody_cases : sqtype body_return_type = Mut \/
+      sqtype body_return_type = RDM \/
+      sqtype body_return_type = Imm \/
+      sqtype body_return_type = Bot).
+  { destruct Hdyn as [Hd | [Hd | [Hd | Hd]]]; rewrite Hd in Hbq;
+      inversion Hbq; subst; auto. }
+  destruct Hbody_cases as [Hb | [Hb | [Hb | Hb]]].
+  - eapply HJ'' with (x := mreturn (mbody runtime_mdef)); eauto.
+  - eapply HJ'' with (x := mreturn (mbody runtime_mdef)); eauto.
+  - exfalso.
+    have Himm : r_muttype h' l = Some Imm_r.
+    { eapply typed_imm_root_runtime_immutable_live; [exact Hcallee_wf|].
+      exists (mreturn (mbody runtime_mdef)), body_return_type.
+      repeat split; assumption. }
+    congruence.
+  - exfalso.
+    exact (wf_config_nonnull_variable_not_bot CT method_end rGamma'' h'
+      (mreturn (mbody runtime_mdef)) body_return_type l
+      Hcallee_wf Hret_type Hretval Hb).
+Qed.
