@@ -1628,3 +1628,45 @@ Proof.
   - intros Hrdm. apply (Hno_rdm l).
     exists x, T. repeat split; assumption.
 Qed.
+
+(** Preservation, field write.  The environment is unchanged and
+    [update_field] preserves the heap domain, so the invariant transports
+    verbatim. *)
+Lemma old_values_non_mutably_typed_after_field_write :
+  forall h sGamma rGamma lx f v,
+    old_values_non_mutably_typed h sGamma rGamma ->
+    old_values_non_mutably_typed (update_field h lx f v) sGamma rGamma.
+Proof.
+  intros h sGamma rGamma lx f v Hinv x T l Htype Hvalue Hold.
+  rewrite update_field_length in Hold.
+  exact (Hinv x T l Htype Hvalue Hold).
+Qed.
+
+(** Preservation, local declaration.  The appended slot holds [Null_a], so it
+    contributes no location; every older slot keeps both its type and its
+    value. *)
+Lemma old_values_non_mutably_typed_after_local :
+  forall h sGamma rGamma T,
+    old_values_non_mutably_typed h sGamma rGamma ->
+    length sGamma = length (vars rGamma) ->
+    old_values_non_mutably_typed h (sGamma ++ [T])
+      (set_vars rGamma (vars rGamma ++ [Null_a])).
+Proof.
+  intros h sGamma rGamma T Hinv Hlen x T' l Htype Hvalue Hold.
+  unfold static_getType in Htype. unfold runtime_getVal in Hvalue.
+  simpl in Hvalue.
+  destruct (lt_dec x (length (vars rGamma))) as [Hlt | Hge].
+  - assert (Hts : nth_error (sGamma ++ [T]) x = nth_error sGamma x).
+    { apply nth_error_app1. lia. }
+    assert (Hvs : nth_error (vars rGamma ++ [Null_a]) x
+                  = nth_error (vars rGamma) x).
+    { apply nth_error_app1. lia. }
+    rewrite Hts in Htype. rewrite Hvs in Hvalue.
+    exact (Hinv x T' l Htype Hvalue Hold).
+  - assert (Hvs : nth_error (vars rGamma ++ [Null_a]) x
+                  = nth_error [Null_a] (x - length (vars rGamma))).
+    { apply nth_error_app2. lia. }
+    rewrite Hvs in Hvalue.
+    destruct (x - length (vars rGamma)) as [|k]; simpl in Hvalue;
+      [discriminate | destruct k; simpl in Hvalue; discriminate].
+Qed.
