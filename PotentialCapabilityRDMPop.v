@@ -1705,3 +1705,154 @@ Proof.
   intros qe qx Hnot_mut Hnot_rdm Hnot_bot Hsub.
   inversion Hsub; subst; split; try congruence.
 Qed.
+
+(** * The RS mutable-freshness invariant
+
+    The residual's refutation characterises what a readonly-state body can
+    publish.  Three conjuncts, all relative to the entry heap [h0]:
+
+    - J ([rs_mut_vars_fresh]): a [Mut]- or [RDM]-typed variable holding a
+      runtime-mutable object holds a fresh one;
+    - K ([rs_fresh_mut_fields_fresh]): mutable fields of fresh [Mut_r]
+      objects hold fresh values whenever those values are runtime-mutable;
+    - L ([rs_old_mut_fields_old]): mutable fields of old [Mut_r] objects
+      still hold old values -- the body cannot write them at all. *)
+
+Definition rs_mut_vars_fresh
+  (h0 : heap) (sGamma : s_env) (rGamma : r_env) (h : heap) : Prop :=
+  forall x T l,
+    static_getType sGamma x = Some T ->
+    runtime_getVal rGamma x = Some (Iot l) ->
+    (sqtype T = Mut \/ sqtype T = RDM) ->
+    r_muttype h l = Some Mut_r ->
+    dom h0 <= l.
+
+Definition rs_fresh_mut_fields_fresh
+  (CT : class_table) (h0 h : heap) : Prop :=
+  forall v o f l D fdef,
+    dom h0 <= v ->
+    runtime_getObj h v = Some o ->
+    r_muttype h v = Some Mut_r ->
+    getVal o.(fields_map) f = Some (Iot l) ->
+    base_subtype CT (rctype (rt_type o)) D ->
+    sf_def_rel CT D f fdef ->
+    (mutability (ftype fdef) = RDM_f \/ mutability (ftype fdef) = Mut_f) ->
+    r_muttype h l = Some Mut_r ->
+    dom h0 <= l.
+
+Definition rs_old_mut_fields_old
+  (CT : class_table) (h0 h : heap) : Prop :=
+  forall v o f l D fdef,
+    v < dom h0 ->
+    runtime_getObj h v = Some o ->
+    r_muttype h v = Some Mut_r ->
+    getVal o.(fields_map) f = Some (Iot l) ->
+    base_subtype CT (rctype (rt_type o)) D ->
+    sf_def_rel CT D f fdef ->
+    (mutability (ftype fdef) = RDM_f \/ mutability (ftype fdef) = Mut_f) ->
+    l < dom h0.
+
+(** A [Mut]-typed variable of a well-formed configuration denotes a
+    runtime-mutable object.  Mirror of [typed_imm_root_runtime_immutable_live]:
+    [vpa_mutability_runtime ctx Mut = Mut], and [qualifier_typable_context]
+    rejects [Mut] under an [Imm_r] runtime type. *)
+Lemma typed_mut_root_runtime_mutable_live :
+  forall CT sGamma rGamma h root,
+    wf_r_config CT sGamma rGamma h ->
+    typed_root Mut sGamma rGamma root ->
+    r_muttype h root = Some Mut_r.
+Proof.
+  intros CT sGamma rGamma h root Hwf
+    [variable [T [Htype [Hvalue Hmut]]]].
+  destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf) as
+    [receiver [context [Hreceiver [_ Hcontext]]]].
+  unfold wf_r_config in Hwf.
+  destruct Hwf as [_ [_ [_ [_ [_ Hcorrespondence]]]]].
+  have Hvariable_dom := Htype. apply static_getType_dom in Hvariable_dom.
+  specialize (Hcorrespondence receiver context Hreceiver Hcontext variable
+    Hvariable_dom T Htype).
+  rewrite Hvalue in Hcorrespondence.
+  unfold wf_r_typable, r_type in Hcorrespondence.
+  destruct (runtime_getObj h root) as [object|] eqn:Hobject;
+    try contradiction.
+  destruct Hcorrespondence as [_ Hqualifier].
+  unfold qualifier_typable_context, vpa_mutability_runtime in Hqualifier.
+  rewrite Hmut in Hqualifier.
+  unfold r_muttype. rewrite Hobject. simpl.
+  destruct (rqtype (rt_type object)).
+  - reflexivity.
+  - destruct context; contradiction.
+Qed.
+
+(** Field values of a well-formed heap lie in its domain. *)
+Lemma wf_heap_field_value_dom :
+  forall CT h v o f l,
+    wf_heap CT h ->
+    runtime_getObj h v = Some o ->
+    getVal o.(fields_map) f = Some (Iot l) ->
+    l < dom h.
+Proof.
+  intros CT h v o f l Hheap Hobj Hval.
+  have Hvdom : v < dom h.
+  { eapply runtime_getObj_dom. exact Hobj. }
+  specialize (Hheap v Hvdom). unfold wf_obj in Hheap.
+  rewrite Hobj in Hheap.
+  destruct Hheap as [_ [field_defs [_ [Hlen Hfields]]]].
+  unfold getVal in Hval.
+  destruct (nth_error field_defs f) as [fdef|] eqn:Hfdef.
+  - have Hpair := Forall2_nth_error _ _ _ _ _ _ Hfields Hval Hfdef.
+    simpl in Hpair.
+    destruct (runtime_getObj h l) as [lobj|] eqn:Hlobj; [|contradiction].
+    eapply runtime_getObj_dom. exact Hlobj.
+  - exfalso.
+    have Hlt : f < length o.(fields_map).
+    { apply nth_error_Some. rewrite Hval. discriminate. }
+    rewrite Hlen in Hlt.
+    apply nth_error_Some in Hlt. congruence.
+Qed.
+
+(** Entry forms of the three conjuncts, at [h0 = h]. *)
+Lemma rs_mut_vars_fresh_channel_free_entry :
+  forall h0 h msig rGamma,
+    signature_has_no_mutable_roots msig ->
+    (forall root,
+      ~ typed_root RDM (mreceiver msig :: mparams msig) rGamma root) ->
+    rs_mut_vars_fresh h0 (mreceiver msig :: mparams msig) rGamma h.
+Proof.
+  intros h0 h msig rGamma [Hreceiver_safe Hparams_safe] Hno_rdm x T l
+    Htype Hvalue Hkind Hruntime.
+  exfalso. destruct Hkind as [Hmut | Hrdm].
+  - destruct x as [|parameter].
+    + simpl in Htype. injection Htype as <-.
+      unfold is_nonmutable_qualifier in Hreceiver_safe.
+      rewrite Hmut in Hreceiver_safe.
+      destruct Hreceiver_safe as [Hbad | [Hbad | [Hbad | Hbad]]];
+        discriminate.
+    + simpl in Htype. unfold static_getType in Htype.
+      have Hsafe : is_nonmutable_qualifier (sqtype T) :=
+        Forall_nth_error _ _ _ _ Hparams_safe Htype.
+      unfold is_nonmutable_qualifier in Hsafe.
+      rewrite Hmut in Hsafe.
+      destruct Hsafe as [Hbad | [Hbad | [Hbad | Hbad]]]; discriminate.
+  - apply (Hno_rdm l). exists x, T. repeat split; assumption.
+Qed.
+
+Lemma rs_fresh_mut_fields_fresh_entry :
+  forall CT h,
+    rs_fresh_mut_fields_fresh CT h h.
+Proof.
+  intros CT h v o f l D fdef Hfresh Hobj Hmut Hval Hsub Hfd Hfm Hlmut.
+  exfalso.
+  have Hvdom : v < dom h.
+  { eapply runtime_getObj_dom. exact Hobj. }
+  lia.
+Qed.
+
+Lemma rs_old_mut_fields_old_entry :
+  forall CT h,
+    wf_heap CT h ->
+    rs_old_mut_fields_old CT h h.
+Proof.
+  intros CT h Hheap v o f l D fdef Hold Hobj Hmut Hval Hsub Hfd Hfm.
+  eapply wf_heap_field_value_dom; eauto.
+Qed.
