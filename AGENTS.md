@@ -682,3 +682,43 @@ admits joins from every live frame, or a segment-wise argument that splits a
 potential path at frame boundaries and applies the phased and resumed
 closures to alternating segments.  Neither exists in the development.  This
 is the one remaining piece of the residual with no located strategy.
+
+### The Imm_r residual: the RS publication argument
+
+The strategy that works is not to replay a potential path in the colour
+formalism (see the join-scoping note above -- that cannot work).  It is to
+characterise what a readonly-state body can publish.
+
+`mut_into_readonly_state_field_is_ro_or_mut_receiver` (proved): if a `Mut`
+value fits a field under readonly-state adaptation then either the field is
+`RO_f` or the receiver variable is `Mut`.  Those are the two disjuncts:
+
+  * `RO_f` -- the slot adapts to `RO`, so the value fits, but the stored
+    reference is readonly and `retained_mut_edge` follows only `RDM_f` and
+    `Mut_f`.  The write adds no mutable connectivity at all.
+  * otherwise -- the receiver is `Mut`-typed, and
+    `potential_local_mut_root_is_fresh` shows every `Mut`-typed variable of
+    this callee denotes a freshly allocated object.
+
+So every mutable *predecessor* of the `Mut` return is fresh.  Note this does
+not say the callee creates no old-to-fresh edges: it does, via ordinary
+`RDM_f` writes, and that is legal and harmless.  What it cannot do is put a
+`Mut`-authority value anywhere an old object can mutably reach.
+
+The remaining formal step is the induction that lifts the single-edge fact to
+a path:
+
+  forall CT sGamma rGamma h stmt rGamma' h' return_location source,
+    eval_stmt CT rGamma h stmt OK rGamma' h' ->
+    <return_location is a Mut root of the final frame> ->
+    dom h <= return_location ->
+    mutable_connected CT h' source return_location ->
+    dom h <= source.
+
+Backward along the path, each edge into a `Mut`-authority-carrying location
+was written through a `Mut` receiver, hence from a fresh source.  With it, the
+first conjunct of `call_pop_bridge` dies: `capability` is old and cannot
+mutably reach the return.  The existing component lemmas run forward
+(`principled_local_mut_result_component_is_fresh`) and do not give this;
+`potential_connected_to_fresh_is_fresh` is about `dom h` exactly, not about
+freshness across a call.
