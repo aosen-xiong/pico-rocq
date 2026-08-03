@@ -2172,3 +2172,215 @@ Proof.
       { eapply HJ with (x := x); eauto. }
       lia.
 Qed.
+
+(** Preservation, local declaration: the appended slot holds [Null_a] and
+    the heap is unchanged. *)
+Lemma rs_mutable_freshness_after_local :
+  forall CT h0 sGamma rGamma h T,
+    length sGamma = length (vars rGamma) ->
+    rs_mutable_freshness CT h0 sGamma rGamma h ->
+    rs_mutable_freshness CT h0 (sGamma ++ [T])
+      (set_vars rGamma (vars rGamma ++ [Null_a])) h.
+Proof.
+  intros CT h0 sGamma rGamma h T Hlen [HJ [HK HL]].
+  split; [|split; [exact HK|exact HL]].
+  intros x T' l Htype Hvalue Hkind Hmut.
+  unfold static_getType in Htype. unfold runtime_getVal in Hvalue.
+  simpl in Hvalue.
+  destruct (lt_dec x (length (vars rGamma))) as [Hlt | Hge].
+  - assert (Hts : nth_error (sGamma ++ [T]) x = nth_error sGamma x).
+    { apply nth_error_app1. lia. }
+    assert (Hvs : nth_error (vars rGamma ++ [Null_a]) x
+                  = nth_error (vars rGamma) x).
+    { apply nth_error_app1. lia. }
+    rewrite Hts in Htype. rewrite Hvs in Hvalue.
+    eapply HJ; eauto.
+  - assert (Hvs : nth_error (vars rGamma ++ [Null_a]) x
+                  = nth_error [Null_a] (x - length (vars rGamma))).
+    { apply nth_error_app2. lia. }
+    rewrite Hvs in Hvalue.
+    destruct (x - length (vars rGamma)) as [|k]; simpl in Hvalue;
+      [discriminate | destruct k; simpl in Hvalue; discriminate].
+Qed.
+
+(** [r_muttype] is stable on the left of a heap append. *)
+Lemma r_muttype_app_left :
+  forall h ext l,
+    l < dom h ->
+    r_muttype (h ++ [ext]) l = r_muttype h l.
+Proof.
+  intros h ext l Hl.
+  unfold r_muttype, runtime_getObj.
+  rewrite nth_error_app1; [exact Hl | reflexivity].
+Qed.
+
+(** Constructor micro-lemmas for the [SNew] case.  A mutable field's
+    corresponding constructor parameter is [Mut], [RDM], [Imm] or [Bot]... *)
+Lemma constructor_mut_field_param_shape :
+  forall cq p fm,
+    (fm = RDM_f \/ fm = Mut_f) ->
+    q_subtype (vpa_mutability_qq_abstract_state (qc2q cq) p)
+      (vpa_mutability_constructor_fld cq fm) ->
+    p = Mut \/ p = RDM \/ p = Imm \/ p = Bot.
+Proof.
+  intros cq p fm Hfm Hsub.
+  destruct Hfm as [-> | ->]; destruct cq; destruct p; simpl in Hsub;
+    inversion Hsub; subst; try congruence; auto.
+Qed.
+
+(** ...and the call-site adaptation of such a parameter admits only [Bot],
+    [Imm], [Mut] or [RDM] argument qualifiers. *)
+Lemma constructor_param_site_channel :
+  forall qc p qa,
+    (p = Mut \/ p = RDM \/ p = Imm \/ p = Bot) ->
+    q_subtype qa (vpa_mutability_qq_abstract_state (qc2q qc) p) ->
+    qa = Bot \/ qa = Imm \/ qa = Mut \/ qa = RDM.
+Proof.
+  intros qc p qa Hp Hsub.
+  destruct Hp as [-> | [-> | [-> | ->]]]; destruct qc; simpl in Hsub;
+    inversion Hsub; subst; try congruence; auto.
+Qed.
+
+(** Preservation, object creation.  The new slot is fresh; old objects are
+    untouched by the append; the new object's mutable fields are constructor
+    arguments whose static channel admits only [Mut]/[RDM] (J applies),
+    [Imm] (the value is runtime-immutable, contradicting K's premise) or
+    [Bot] (no location fits). *)
+Lemma rs_mutable_freshness_after_new :
+  forall CT h0 sGamma mt rGamma h x qc C args sGamma' rGamma' h',
+    wf_r_config CT sGamma rGamma h ->
+    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
+    eval_stmt CT rGamma h (SNew x qc C args) OK rGamma' h' ->
+    dom h0 <= dom h ->
+    rs_mutable_freshness CT h0 sGamma rGamma h ->
+    rs_mutable_freshness CT h0 sGamma' rGamma' h'.
+Proof.
+  intros CT h0 sGamma mt rGamma h x qc C args sGamma' rGamma' h' Hwf
+    Htyping Heval Hgrow [HJ [HK HL]].
+  inversion Heval; subst.
+  inversion Htyping; subst.
+  have Hheap : wf_heap CT h := proj1 (proj2 Hwf).
+  split; [|split].
+  - (* J *)
+    intros z T l Htype Hvalue Hkind Hzmut.
+    assert (Henv_eq : set_vars rGamma (update x (Iot (dom h)) (vars rGamma))
+        = update_r_env_value rGamma x (Iot (dom h))).
+    { destruct rGamma. reflexivity. }
+    rewrite Henv_eq in Hvalue.
+    destruct (Nat.eq_dec z x) as [-> | Hneq].
+    + have Hxs : x < length sGamma'.
+      { apply nth_error_Some. unfold static_getType in Htype.
+        rewrite Htype. discriminate. }
+      have Hlength := proj1 (proj2 (proj2 (proj2 (proj2 Hwf)))).
+      have Hxdom : x < dom (vars rGamma).
+      { lia. }
+      have Hsame := runtime_getVal_update_same rGamma x (Iot (dom h)) Hxdom.
+      rewrite Hsame in Hvalue. injection Hvalue as <-.
+      lia.
+    + have Hxz : x <> z by congruence.
+      have Hold_value := runtime_getVal_update_diff rGamma x z
+        (Iot (dom h)) Hxz.
+      rewrite Hold_value in Hvalue.
+      have Hldom : l < dom h.
+      { eapply wf_config_value_dom; eauto. }
+      rewrite r_muttype_app_left in Hzmut; [exact Hldom|].
+      eapply HJ; eauto.
+  - (* K *)
+    intros v ov f l D fdef Hfresh Hobj' Hvmut Hval' Hbase Hfd Hfm Hlmut.
+    destruct (lt_dec v (dom h)) as [Hvold | Hvnew].
+    + (* an object of h: untouched *)
+      unfold runtime_getObj in Hobj'.
+      rewrite nth_error_app1 in Hobj'; [exact Hvold|].
+      have Hldom : l < dom h.
+      { eapply wf_heap_field_value_dom with (h := h); eauto. }
+      rewrite r_muttype_app_left in Hvmut; [exact Hvold|].
+      rewrite r_muttype_app_left in Hlmut; [exact Hldom|].
+      eapply HK; eauto.
+    + (* the new object *)
+      have Hveq : v = dom h.
+      { have Hvdom := runtime_getObj_dom _ _ _ Hobj'.
+        rewrite length_app in Hvdom. simpl in Hvdom. lia. }
+      subst v.
+      unfold runtime_getObj in Hobj'.
+      rewrite nth_error_app2 in Hobj'; [lia|].
+      rewrite Nat.sub_diag in Hobj'. simpl in Hobj'.
+      injection Hobj' as <-.
+      simpl in Hval', Hbase.
+      (* locate the argument variable feeding slot f *)
+      destruct (runtime_lookup_list_nth_zs _ _ _ _ _ Hargs Hval') as
+        [z [Hzs Hzval]].
+      (* fdef is the f-th collected field *)
+      have Hfl : FieldLookup CT C f fdef.
+      { eapply field_inheritance_subtyping; [exact Hbase | exact Hfd]. }
+      (* constructor well-formedness *)
+      have HCdom : C < dom CT.
+      { unfold constructor_sig_lookup, constructor_def_lookup in Hconsig.
+        destruct (find_class CT C) as [cdef|] eqn:Hfind; [|discriminate].
+        eapply find_class_dom. exact Hfind. }
+      have Hwf_ct : wf_class_table CT := proj1 Hwf.
+      have Hctor := constructor_lookup_wf CT C consig Hwf_ct HCdom Hconsig.
+      unfold wf_constructor in Hctor.
+      destruct Hctor as [Hbound [Hparams_wf [field_defs
+        [Hcollect [Hlen_pf Hcompat]]]]].
+      (* the two field collections coincide *)
+      inversion Hfl; subst.
+      have Hfields_eq : fields = field_defs.
+      { eapply collect_fields_deterministic_rel; eauto. }
+      subst fields.
+      (* the f-th constructor parameter exists *)
+      have Hf_lt : f < length field_defs.
+      { apply nth_error_Some. unfold gget in Hget. rewrite Hget.
+        discriminate. }
+      have Hcp : exists cp, nth_error (cparams consig) f = Some cp.
+      { destruct (nth_error (cparams consig) f) as [cp|] eqn:Hcp_eq.
+        - exists cp. reflexivity.
+        - exfalso. apply nth_error_None in Hcp_eq. lia. }
+      destruct Hcp as [cp Hcp].
+      (* wf side: the parameter fits the field *)
+      have Hwf_pair := Forall2_nth_error _ _ _ _ _ _ Hcompat Hcp Hget.
+      (* site side: the argument fits the adapted parameter *)
+      have Hlen_at : length argtypes = length (cparams consig).
+      { have Hl1 := Forall2_length Harg_sub.
+        rewrite length_map in Hl1. exact Hl1. }
+      have Hat : exists T_arg, nth_error argtypes f = Some T_arg.
+      { destruct (nth_error argtypes f) as [T_arg|] eqn:Hat_eq.
+        - exists T_arg. reflexivity.
+        - exfalso. apply nth_error_None in Hat_eq. lia. }
+      destruct Hat as [T_arg Hat].
+      have Hmap_nth : nth_error
+          (map (vpa_mutability_constructor_param qc) (cparams consig)) f
+        = Some (vpa_mutability_constructor_param qc cp).
+      { eapply map_nth_error. exact Hcp. }
+      have Hsite_pair := Forall2_nth_error _ _ _ _ _ _ Harg_sub Hat Hmap_nth.
+      have Hz_type : static_getType sGamma' z = Some T_arg.
+      { eapply static_getType_list_index_strong; eauto. }
+      (* q-level analysis *)
+      have Hwf_q := qualified_type_subtype_q_subtype _ _ _ Hwf_pair.
+      simpl in Hwf_q.
+      have Hsite_q := qualified_type_subtype_q_subtype _ _ _ Hsite_pair.
+      simpl in Hsite_q.
+      have Hp_shape : sqtype cp = Mut \/ sqtype cp = RDM \/
+          sqtype cp = Imm \/ sqtype cp = Bot.
+      { eapply constructor_mut_field_param_shape with
+          (cq := cqualifier consig); eauto. }
+      have Hqa_shape := constructor_param_site_channel _ _ _ Hp_shape Hsite_q.
+      have Hldom : l < dom h.
+      { eapply wf_config_value_dom; eauto. }
+      rewrite r_muttype_app_left in Hlmut; [exact Hldom|].
+      destruct Hqa_shape as [Hbot | [Himm | Hkind]].
+      * exfalso. eapply wf_config_nonnull_variable_not_bot with (x := z);
+          eauto.
+      * exfalso.
+        have Hlimm : r_muttype h l = Some Imm_r.
+        { eapply typed_imm_root_runtime_immutable_live; eauto.
+          exists z, T_arg. repeat split; assumption. }
+        congruence.
+      * eapply HJ with (x := z); eauto.
+  - (* L *)
+    intros v ov f l D fdef Hold Hobj' Hvmut Hval' Hbase Hfd Hfm.
+    have Hvold : v < dom h by lia.
+    unfold runtime_getObj in Hobj'.
+    rewrite nth_error_app1 in Hobj'; [exact Hvold|].
+    rewrite r_muttype_app_left in Hvmut; [exact Hvold|].
+    eapply HL; eauto.
+Qed.
