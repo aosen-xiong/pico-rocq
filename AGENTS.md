@@ -440,3 +440,42 @@ The two lemmas salvaged from these attempts --
 `boundary_caller_rdm_roots_are_connected` and
 `potential_local_mut_root_is_fresh` -- are sound and reusable in either
 route.
+
+### Route C: the colour-to-graph bridge
+
+The per-case machinery for both private layers survives in the kept files and
+is axiom-free: `private_fresh_frozen_statement_after_{assignment,local,new,
+field_write}`, `..._enter_call_channel_free`, `..._after_{nonnull,null}_
+return_parts`, and on the policy side `initial_/enter_/leave_private_frame_
+join_policies_valid` plus `private_policy_statement_after_{tracked,untracked}_
+pop_from_parts`.  What the retired chain contributed was the induction that
+threaded them, not the mathematics.  Rebuilding that thread needs no admit.
+
+The one genuinely new obligation is the bridge
+
+  executing_resumed_authority_call_pop_safe  ->  call_pop_merge_safe
+
+Sketch, refuting the hard orientation `capability ->* return` with
+`receiver ->* protected`:
+
+1. `capability` is a capability root of the post frame, hence
+   `frame_owned_location`, hence `FlowPowered` in the resumed caller colour
+   set -- this is the `Howned` premise of
+   `immutable_rdm_evolved_policy_head_pop_safe`.
+2. propagate that colour along `capability ->* return_location`;
+3. cross the pop join `return_location -- receiver`, whose target lies in the
+   saved pre-call RDM roots (`eligible`);
+4. propagate along `receiver ->* protected`;
+5. pop safety then forces reflection into the callee colour set, and the
+   callee's own `executing_authority_colors_separated` contradicts
+   `protected` being in Z.
+
+Steps 2 and 4 need the converse of
+`authority_color_connected_is_potential_connected`.  That converse's only gap
+is `potential_return_edge`: the colour relation has heap and frame steps and
+no return step.  `potential_return_edge` requires
+`boundary_callee_return_qualifier = RDM`, and in this branch
+`sqtype body_return_type = Mut` with `body_return_type <= mret runtime_sig`
+forces `sqtype (mret runtime_sig)` into `{Mut, RO}`.  So the head boundary
+contributes no return edge precisely in the case that needs the bridge.
+Return edges at deeper pre-existing boundaries are the remaining open part.
