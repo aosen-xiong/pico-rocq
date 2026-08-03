@@ -885,3 +885,45 @@ Proof.
     (receiver_type := receiver_type) (runtime_mdef := runtime_mdef)
     (static_mdef := static_mdef); eauto.
 Qed.
+
+(** Combined private state threaded by the call-pop induction.
+
+    The four components must travel together rather than in sequence: the
+    frozen layer's return case
+    ([private_fresh_frozen_statement_after_nonnull_return_parts]) needs the
+    phased invariant for the *caller post* frame, which is itself a
+    post-call fact. *)
+Definition private_call_pop_state
+  (CT : class_table) (P Z : Ensemble Loc) (cutoff : Loc)
+  (active : watched_frame) (stack : list watched_boundary)
+  (incoming : Ensemble authority_flow_state)
+  (snapshots : list frozen_caller_snapshot_slot)
+  (policies : private_frame_join_policies) (h : heap) : Prop :=
+  potential_live_history_state CT P Z cutoff active stack h /\
+  principled_phased_authority_live_history_state CT P Z cutoff active stack
+    incoming h /\
+  private_fresh_frozen_statement_state CT P Z cutoff active stack incoming
+    snapshots h /\
+  private_frame_join_policies_valid h policies stack.
+
+(** Channel-free entry: the whole package is derived from the public
+    invariant, so none of it becomes a premise of the public theorem. *)
+Lemma potential_live_history_starts_private_call_pop_state :
+  forall CT P Z cutoff active stack h,
+    potential_live_history_state CT P Z cutoff active stack h ->
+    private_call_pop_state CT P Z cutoff active stack
+      (Empty_set authority_flow_state)
+      (repeat None (length stack))
+      (initial_private_frame_join_policies active stack) h.
+Proof.
+  intros CT P Z cutoff active stack h Hstate.
+  split; [exact Hstate|].
+  split.
+  { apply potential_live_history_starts_principled_phased_authority.
+    exact Hstate. }
+  split.
+  { apply potential_live_history_starts_private_fresh_frozen_statement.
+    exact Hstate. }
+  eapply initial_private_frame_join_policies_valid.
+  exact (proj1 (proj2 (proj1 Hstate))).
+Qed.
