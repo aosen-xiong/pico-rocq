@@ -1583,3 +1583,48 @@ Proof.
     try (exfalso; congruence);
     simpl in Hq; inversion Hq; subst; auto; congruence.
 Qed.
+
+(** The invariant the residual's induction carries: a frame never names a
+    pre-existing object at [Mut] or [RDM] type.
+
+    It is what makes the two write-level facts apply at *every* write in the
+    body rather than only the first -- writing through a variable that holds
+    an old object is always a write through an [RO], [Imm] or [Lost]
+    viewpoint, so by
+    [mut_edge_write_through_non_mutable_receiver_is_immutable] it can only
+    publish immutable values, and the fresh [Mut] result is never among
+    them. *)
+Definition old_values_non_mutably_typed
+  (h : heap) (sGamma : s_env) (rGamma : r_env) : Prop :=
+  forall x T l,
+    static_getType sGamma x = Some T ->
+    runtime_getVal rGamma x = Some (Iot l) ->
+    l < dom h ->
+    sqtype T <> Mut /\ sqtype T <> RDM.
+
+(** It holds at a channel-free entry.  [signature_has_no_mutable_roots]
+    excludes [Mut], and channel-freeness -- no [RDM] root at all -- excludes
+    [RDM].  Both are supplied for this call by
+    [refined_mut_return_call_has_channel_free_entry_shape]. *)
+Lemma channel_free_entry_old_values_non_mutably_typed :
+  forall h msig rGamma,
+    signature_has_no_mutable_roots msig ->
+    (forall root,
+      ~ typed_root RDM (mreceiver msig :: mparams msig) rGamma root) ->
+    old_values_non_mutably_typed h (mreceiver msig :: mparams msig) rGamma.
+Proof.
+  intros h msig rGamma [Hreceiver_safe Hparams_safe] Hno_rdm x T l
+    Htype Hvalue Hold.
+  split.
+  - destruct x as [|parameter].
+    + simpl in Htype. injection Htype as <-.
+      unfold is_nonmutable_qualifier in Hreceiver_safe.
+      destruct Hreceiver_safe as [-> | [-> | [-> | ->]]]; discriminate.
+    + simpl in Htype. unfold static_getType in Htype.
+      have Hsafe : is_nonmutable_qualifier (sqtype T) :=
+        Forall_nth_error _ _ _ _ Hparams_safe Htype.
+      unfold is_nonmutable_qualifier in Hsafe.
+      destruct Hsafe as [-> | [-> | [-> | ->]]]; discriminate.
+  - intros Hrdm. apply (Hno_rdm l).
+    exists x, T. repeat split; assumption.
+Qed.
