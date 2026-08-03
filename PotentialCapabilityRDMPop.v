@@ -1402,3 +1402,100 @@ Proof.
     eapply eval_stmt_preserves_heap_domain_simple. exact Heval1.
 Qed.
 
+
+(** Induction over the development's own policy statement state.
+
+    This supersedes the hand-rolled [private_call_pop_state] induction above.
+    [private_policy_statement_state] is the state the call-pop lemmas are
+    actually stated against, and the whole per-case suite already exists for
+    it: [potential_live_history_starts_private_policy_statement] for entry,
+    [private_policy_statement_after_*] for the atomic statements,
+    [private_policy_statement_result_{refl,trans}] for skip and sequencing,
+    and [private_policy_statement_after_{tracked,untracked}_pop_from_parts]
+    for the pops.  Its result package already bundles the phased state, so no
+    separate reflection thread is needed. *)
+Definition private_policy_call_rule : Prop :=
+  forall CT P Z cutoff rGamma h x m y zs vals ly cy mdef retval h' rGamma''
+    sGamma mt sGamma' authority stack incoming snapshots policies,
+    runtime_getVal rGamma y = Some (Iot ly) ->
+    r_basetype h ly = Some cy ->
+    FindMethodWithName CT cy m mdef ->
+    runtime_lookup_list rGamma zs = Some vals ->
+    eval_stmt CT (mkr_env (Iot ly :: vals)) h
+      (mbody_stmt (mbody mdef)) OK rGamma'' h' ->
+    runtime_getVal rGamma'' (mreturn (mbody mdef)) = Some retval ->
+    (forall entry_senv entry_scope final_senv callee_authority callee_stack
+       callee_incoming callee_snapshots callee_policies,
+       principled_phased_authority_live_history_state CT P Z cutoff
+         (mk_watched_frame callee_authority entry_senv
+           (mkr_env (Iot ly :: vals))) callee_stack callee_incoming h ->
+       private_policy_statement_state CT P Z cutoff
+         (mk_watched_frame callee_authority entry_senv
+           (mkr_env (Iot ly :: vals))) callee_stack callee_incoming
+         callee_snapshots callee_policies h ->
+       stmt_typing CT entry_senv entry_scope
+         (mbody_stmt (mbody mdef)) final_senv ->
+       readonly_state_method_scope entry_scope ->
+       exists final_snapshots,
+         private_policy_statement_result CT P Z cutoff callee_authority
+           final_senv rGamma'' callee_stack callee_incoming callee_snapshots
+           final_snapshots callee_policies h') ->
+    principled_phased_authority_live_history_state CT P Z cutoff
+      (mk_watched_frame authority sGamma rGamma) stack incoming h ->
+    private_policy_statement_state CT P Z cutoff
+      (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
+      policies h ->
+    stmt_typing CT sGamma mt (SCall x m y zs) sGamma' ->
+    readonly_state_method_scope mt ->
+    exists final_snapshots,
+      private_policy_statement_result CT P Z cutoff authority sGamma'
+        (set_vars rGamma (update x retval (vars rGamma))) stack incoming
+        snapshots final_snapshots policies h'.
+
+Lemma private_policy_statement_preserved_from_call_rule :
+  private_policy_call_rule ->
+  forall CT P Z cutoff rGamma h statement rGamma' h',
+    eval_stmt CT rGamma h statement OK rGamma' h' ->
+    forall sGamma mt sGamma' authority stack incoming snapshots policies,
+      principled_phased_authority_live_history_state CT P Z cutoff
+        (mk_watched_frame authority sGamma rGamma) stack incoming h ->
+      private_policy_statement_state CT P Z cutoff
+        (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
+        policies h ->
+      stmt_typing CT sGamma mt statement sGamma' ->
+      readonly_state_method_scope mt ->
+      exists final_snapshots,
+        private_policy_statement_result CT P Z cutoff authority sGamma'
+          rGamma' stack incoming snapshots final_snapshots policies h'.
+Proof.
+  intros Hrule CT P Z cutoff rGamma h statement rGamma' h' Heval.
+  have Heval_copy := Heval.
+  dependent induction Heval;
+    intros sGamma mt sGamma' authority stack incoming snapshots policies
+      Hphased Hstate Htyping Hscope.
+  - inversion Htyping; subst. exists snapshots.
+    eapply private_policy_statement_result_refl; eauto.
+  - eexists. eapply private_policy_statement_after_local; eauto.
+  - inversion Htyping; subst.
+    assert (Hupdate : set_vars rΓ (update x v2 (vars rΓ)) =
+        update_r_env_value rΓ x v2).
+    { destruct rΓ. reflexivity. }
+    rewrite Hupdate.
+    eexists. eapply private_policy_statement_after_assignment; eauto.
+  - eexists. eapply private_policy_statement_after_field_write; eauto.
+  - eexists. eapply private_policy_statement_after_new; eauto.
+  - destruct Hfind as [Hfind_method Hbody_definition].
+    subst mbody mstmt mret. subst.
+    eapply Hrule; eauto.
+  - inversion Htyping; subst.
+    destruct (IHHeval1 eq_refl Heval1 sGamma mt sΓ' authority stack incoming
+      snapshots policies Hphased Hstate Htype1 Hscope) as [middle Hmiddle].
+    have Hmiddle_phased := proj1 (proj1 (proj1 Hmiddle)).
+    have Hmiddle_state := private_policy_statement_result_is_state
+      _ _ _ _ _ _ _ _ _ _ _ _ _ Hmiddle.
+    destruct (IHHeval2 eq_refl Heval2 sΓ' mt sGamma' authority stack incoming
+      middle policies Hmiddle_phased Hmiddle_state Htype2 Hscope)
+      as [final Hfinal].
+    exists final.
+    eapply private_policy_statement_result_trans; eauto.
+Qed.
