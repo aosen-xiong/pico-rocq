@@ -1670,3 +1670,38 @@ Proof.
     destruct (x - length (vars rGamma)) as [|k]; simpl in Hvalue;
       [discriminate | destruct k; simpl in Hvalue; discriminate].
 Qed.
+
+(** Read side of the invariant.  A field read through a receiver that is
+    neither [Mut] nor [RDM] never yields a [Mut] or [RDM] type: [RO] and
+    [Lost] collapse [RDM_f] and [Mut_f] to [Lost], [Imm] sends [RDM_f] to
+    [Imm] and [Mut_f] to [Lost], [Imm_f] always gives [Imm], and [RO_f]
+    always gives [RO].
+
+    So a frame that starts without [Mut]- or [RDM]-typed access to old
+    objects cannot acquire it by reading: this is what keeps
+    [old_values_non_mutably_typed] true across assignments. *)
+Lemma readonly_state_field_read_through_non_mutable_is_non_mutable :
+  forall q1 fm,
+    q1 <> Mut ->
+    q1 <> RDM ->
+    vpa_mutability_stype_fld_readonly_state q1 fm <> Mut /\
+    vpa_mutability_stype_fld_readonly_state q1 fm <> RDM.
+Proof.
+  intros q1 fm Hnot_mut Hnot_rdm.
+  destruct q1; try (exfalso; congruence);
+    destruct fm; simpl; split; discriminate.
+Qed.
+
+(** Subtyping side: a value whose own type is neither [Mut] nor [RDM], and
+    which is not [Bot], can only be stored in a variable whose type is also
+    neither.  [Bot] is excluded for a variable holding a location by
+    [wf_config_nonnull_variable_not_bot]. *)
+Lemma non_mutable_value_needs_non_mutable_slot :
+  forall qe qx,
+    qe <> Mut -> qe <> RDM -> qe <> Bot ->
+    q_subtype qe qx ->
+    qx <> Mut /\ qx <> RDM.
+Proof.
+  intros qe qx Hnot_mut Hnot_rdm Hnot_bot Hsub.
+  inversion Hsub; subst; split; try congruence.
+Qed.
