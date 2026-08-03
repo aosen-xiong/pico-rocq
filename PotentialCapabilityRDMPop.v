@@ -2384,3 +2384,121 @@ Proof.
     rewrite r_muttype_app_left in Hvmut; [exact Hvold|].
     eapply HL; eauto.
 Qed.
+
+(** J at a nested call entry, over the DYNAMIC callee signature.  A dynamic
+    [Mut] position is excluded by [signature_has_no_mutable_roots]; a dynamic
+    [RDM] position reflects to an [RDM]-or-[Bot] static position
+    (refinement), whose readonly-state call channel admits only [Bot]
+    (killed by non-nullity), [Imm]-typed arguments (the value is
+    runtime-immutable) or [Mut]/[RDM]-typed arguments (J applies in the
+    caller). *)
+Lemma rs_mut_vars_fresh_call_entry :
+  forall CT h0 sGamma rGamma h y Ty ly args vals argtypes runtime_mdef
+    static_sig,
+    wf_r_config CT sGamma rGamma h ->
+    rs_mut_vars_fresh h0 sGamma rGamma h ->
+    static_getType sGamma y = Some Ty ->
+    runtime_getVal rGamma y = Some (Iot ly) ->
+    runtime_lookup_list rGamma args = Some vals ->
+    static_getType_list sGamma args = Some argtypes ->
+    method_signature_refinement CT (msignature runtime_mdef) static_sig ->
+    signature_has_no_mutable_roots (msignature runtime_mdef) ->
+    qualified_type_subtype CT Ty
+      (vpa_mutability_tt_readonly_state Ty (mreceiver static_sig)) ->
+    Forall2 (fun arg T => qualified_type_subtype CT arg
+        (vpa_mutability_tt_readonly_state Ty T))
+      argtypes (mparams static_sig) ->
+    rs_mut_vars_fresh h0
+      (mreceiver (msignature runtime_mdef)
+        :: mparams (msignature runtime_mdef))
+      (mkr_env (Iot ly :: vals)) h.
+Proof.
+  intros CT h0 sGamma rGamma h y Ty ly args vals argtypes runtime_mdef
+    static_sig Hwf HJ Hget_y Hval_y Hargs Hget_args Hrefine
+    [Hrec_safe Hparams_safe] Hrcv_sub Harg_sub.
+  intros pos T l Htype Hvalue Hkind Hmut.
+  destruct pos as [|i].
+  - (* receiver *)
+    simpl in Htype. injection Htype as <-.
+    simpl in Hvalue. injection Hvalue as <-.
+    destruct Hkind as [Hkmut | Hkrdm].
+    { exfalso. unfold is_nonmutable_qualifier in Hrec_safe.
+      rewrite Hkmut in Hrec_safe.
+      destruct Hrec_safe as [Hb | [Hb | [Hb | Hb]]]; discriminate. }
+    have Hstatic_rdm : is_rdm_or_bot (sqtype (mreceiver static_sig)).
+    { eapply method_signature_refinement_receiver_rdm_or_bot; eauto.
+      left. exact Hkrdm. }
+    have Hq := qualified_type_subtype_q_subtype _ _ _ Hrcv_sub.
+    simpl in Hq.
+    destruct Hstatic_rdm as [Hsr | Hsr]; rewrite Hsr in Hq.
+    + (* static receiver RDM *)
+      destruct (readonly_state_call_channel_inversion _ _ _
+          (or_intror eq_refl) Hq) as
+        [Hbot | [[Ht [_ Hqa]] | [_ Hqa]]].
+      * exfalso.
+        eapply wf_config_nonnull_variable_not_bot with (x := y); eauto.
+      * exfalso.
+        have Himm : r_muttype h ly = Some Imm_r.
+        { eapply typed_imm_root_runtime_immutable_live; eauto.
+          exists y, Ty. repeat split; assumption. }
+        congruence.
+      * eapply HJ with (x := y); eauto.
+    + (* static receiver Bot *)
+      exfalso.
+      assert (Hybot : sqtype Ty = Bot).
+      { destruct (sqtype Ty); simpl in Hq; inversion Hq; subst;
+          congruence. }
+      eapply wf_config_nonnull_variable_not_bot with (x := y); eauto.
+  - (* parameter i *)
+    simpl in Htype. unfold static_getType in Htype.
+    simpl in Hvalue.
+    destruct Hkind as [Hkmut | Hkrdm].
+    { exfalso.
+      have Hsafe : is_nonmutable_qualifier (sqtype T) :=
+        Forall_nth_error _ _ _ _ Hparams_safe Htype.
+      unfold is_nonmutable_qualifier in Hsafe.
+      rewrite Hkmut in Hsafe.
+      destruct Hsafe as [Hb | [Hb | [Hb | Hb]]]; discriminate. }
+    (* static parameter exists and is RDM-or-Bot *)
+    have Hlen := method_signature_refinement_params_length _ _ _ Hrefine.
+    have Hi : i < length (mparams static_sig).
+    { rewrite <- Hlen. apply nth_error_Some. rewrite Htype. discriminate. }
+    have Hsp : exists P, nth_error (mparams static_sig) i = Some P.
+    { destruct (nth_error (mparams static_sig) i) as [P|] eqn:HP.
+      - exists P. reflexivity.
+      - exfalso. apply nth_error_None in HP. lia. }
+    destruct Hsp as [P HP].
+    have Hstatic_rdm : is_rdm_or_bot (sqtype P).
+    { eapply method_signature_refinement_parameter_rdm_or_bot; eauto.
+      left. exact Hkrdm. }
+    (* the argument variable *)
+    destruct (runtime_lookup_list_nth_zs _ _ _ _ _ Hargs Hvalue) as
+      [z [Hzi Hzval]].
+    have Hlen_at : length argtypes = length (mparams static_sig).
+    { have Hl := Forall2_length Harg_sub. exact Hl. }
+    have Hat : exists A, nth_error argtypes i = Some A.
+    { destruct (nth_error argtypes i) as [A|] eqn:HA.
+      - exists A. reflexivity.
+      - exfalso. apply nth_error_None in HA. lia. }
+    destruct Hat as [A HA].
+    have Hz_type : static_getType sGamma z = Some A.
+    { eapply static_getType_list_index_strong; eauto. }
+    have Hpair := Forall2_nth_error _ _ _ _ _ _ Harg_sub HA HP.
+    have Hq := qualified_type_subtype_q_subtype _ _ _ Hpair. simpl in Hq.
+    destruct Hstatic_rdm as [Hsr | Hsr]; rewrite Hsr in Hq.
+    + destruct (readonly_state_call_channel_inversion _ _ _
+          (or_intror eq_refl) Hq) as
+        [Hbot | [[Ht [_ Hqa]] | [_ Hqa]]].
+      * exfalso.
+        eapply wf_config_nonnull_variable_not_bot with (x := z); eauto.
+      * exfalso.
+        have Himm : r_muttype h l = Some Imm_r.
+        { eapply typed_imm_root_runtime_immutable_live; eauto.
+          exists z, A. repeat split; assumption. }
+        congruence.
+      * eapply HJ with (x := z); eauto.
+    + exfalso.
+      assert (Hzbot : sqtype A = Bot).
+      { destruct (sqtype Ty); simpl in Hq; inversion Hq; subst; congruence. }
+      eapply wf_config_nonnull_variable_not_bot with (x := z); eauto.
+Qed.
