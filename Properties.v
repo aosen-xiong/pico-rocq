@@ -3465,7 +3465,536 @@ Proof.
   exact (proj1 Hcorr).
 Qed.
 
-Lemma runtime_call_signature_agrees :
+(** Class-bound receiver adaptation preserves runtime qualifier typability.
+    This is the semantic form needed when an override specializes an [RDM]
+    formal using the overriding class bound. *)
+Lemma runtime_qualifier_agrees_with_super_bound :
+  forall CT runtime_class declaring_class qr qc,
+    wf_class_table CT ->
+    base_subtype CT runtime_class declaring_class ->
+    wf_rtypeuse CT qr runtime_class ->
+    bound CT declaring_class = Some qc ->
+    vpa_mutability_runtime_bound_agree qr qc = true.
+Proof.
+  intros CT runtime_class declaring_class qr qc Hwf Hsub.
+  revert qr qc.
+  induction Hsub; intros qr qc Hrt Hbound.
+  - unfold wf_rtypeuse in Hrt. rewrite Hbound in Hrt. tauto.
+  - unfold wf_rtypeuse in Hrt.
+    destruct (bound CT C) as [qC|] eqn:HC; [|contradiction].
+    destruct Hrt as [HCdom Hagree].
+    destruct (bound CT D) as [qD|] eqn:HD.
+    + eapply IHHsub2; eauto.
+      unfold wf_rtypeuse. rewrite HD.
+      split.
+      * eapply base_subtype_domain with (C := C); eauto.
+      * eapply IHHsub1; eauto.
+        unfold wf_rtypeuse. rewrite HC. auto.
+    + exfalso.
+      have HDdom : D < dom CT.
+      { eapply base_subtype_domain with (C := C); eauto. }
+      apply find_class_Some in HDdom.
+      destruct HDdom as [ddef HfindD].
+      unfold bound in HD. rewrite HfindD in HD. discriminate.
+  - unfold wf_rtypeuse in Hrt.
+    destruct (bound CT C) as [qC|] eqn:HC; [|contradiction].
+    destruct Hrt as [_ Hagree].
+    unfold parent_lookup in Hparent.
+    destruct (find_class CT C) as [cdef|] eqn:HfindC; [|discriminate].
+    have Hwf_class : wf_class CT cdef.
+    { unfold wf_class_table in Hwf.
+      destruct Hwf as [Hall _].
+      eapply Forall_nth_error; eauto. }
+    inversion Hwf_class; subst.
+    + rewrite Hno_super in Hparent. discriminate.
+    + assert (D = superC) by congruence. subst D.
+      unfold bound in HC. rewrite HfindC in HC. simpl in HC.
+      injection HC as <-.
+      destruct H as [_ [_ [_ Hbounds]]].
+      rewrite Hbound in Hbounds.
+      destruct Hbounds as [fs [_ [[Heq | Heq] _]]].
+      * rewrite <- Heq. exact Hagree.
+      * subst qc. destruct qr; reflexivity.
+Qed.
+
+Lemma override_parameter_qualifier_typable :
+  forall qr qcontext qc parent_q child_q,
+    vpa_mutability_runtime_bound_agree qcontext qc = true ->
+    qualifier_typable_context qr parent_q qcontext ->
+    q_subtype
+      (vpa_mutability_qq_abstract_state (qc2q qc) parent_q)
+      child_q ->
+    qualifier_typable_context qr child_q qcontext.
+Proof.
+  intros qr qcontext qc parent_q child_q Hagree Hparent Hsub.
+  destruct qr, qcontext, qc, parent_q, child_q;
+    simpl in *; try discriminate; try contradiction;
+    try solve [inversion Hsub; subst; simpl; auto].
+Qed.
+
+Lemma wf_r_typable_override_parameter :
+  forall CT h loc parent_type child_type qcontext qc,
+    vpa_mutability_runtime_bound_agree qcontext qc = true ->
+    wf_r_typable CT h loc parent_type qcontext ->
+    qualified_type_subtype CT
+      (vpa_mutability_override qc parent_type) child_type ->
+    wf_r_typable CT h loc child_type qcontext.
+Proof.
+  intros CT h loc parent_type child_type qcontext qc
+    Hagree Hparent Hsub.
+  unfold wf_r_typable in *.
+  destruct (r_type h loc) as [rt|] eqn:Hrt; [|contradiction].
+  destruct Hparent as [Hbase Hqual].
+  split.
+  - eapply base_trans; [exact Hbase|].
+    apply qualified_type_subtype_base_subtype in Hsub.
+    unfold vpa_mutability_override in Hsub. simpl in Hsub.
+    exact Hsub.
+  - eapply override_parameter_qualifier_typable; eauto.
+    apply qualified_type_subtype_q_subtype in Hsub.
+    unfold vpa_mutability_override in Hsub. simpl in Hsub.
+    exact Hsub.
+Qed.
+
+(** Covariant results move in the opposite direction from parameters: a
+    value valid at the overriding result type is valid at the overridden
+    result type when the runtime receiver agrees with the overriding class
+    bound. *)
+Lemma override_return_qualifier_typable :
+  forall qr qcontext qc child_q parent_q,
+    vpa_mutability_runtime_bound_agree qcontext qc = true ->
+    qualifier_typable_context qr child_q qcontext ->
+    q_subtype child_q
+      (vpa_mutability_qq_abstract_state (qc2q qc) parent_q) ->
+    qualifier_typable_context qr parent_q qcontext.
+Proof.
+  intros qr qcontext qc child_q parent_q Hagree Hchild Hsub.
+  destruct qr, qcontext, qc, child_q, parent_q;
+    simpl in *; try discriminate; try contradiction;
+    try solve [inversion Hsub; subst; simpl; auto].
+Qed.
+
+Lemma wf_r_typable_override_return :
+  forall CT h loc child_type parent_type qcontext qc,
+    vpa_mutability_runtime_bound_agree qcontext qc = true ->
+    wf_r_typable CT h loc child_type qcontext ->
+    qualified_type_subtype CT child_type
+      (vpa_mutability_override qc parent_type) ->
+    wf_r_typable CT h loc parent_type qcontext.
+Proof.
+  intros CT h loc child_type parent_type qcontext qc
+    Hagree Hchild Hsub.
+  unfold wf_r_typable in *.
+  destruct (r_type h loc) as [rt|] eqn:Hrt; [|contradiction].
+  destruct Hchild as [Hbase Hqual].
+  split.
+  - eapply base_trans; [exact Hbase|].
+    apply qualified_type_subtype_base_subtype in Hsub.
+    unfold vpa_mutability_override in Hsub. simpl in Hsub.
+    exact Hsub.
+  - eapply override_return_qualifier_typable; eauto.
+    apply qualified_type_subtype_q_subtype in Hsub.
+    unfold vpa_mutability_override in Hsub. simpl in Hsub.
+    exact Hsub.
+Qed.
+
+(** The two call-site adaptations preserve runtime result typability across
+    the target receiver's runtime context and the caller's context. *)
+Lemma call_return_qualifier_typable_abstract :
+  forall qresult qtarget qcaller receiver_q return_q result_q,
+    qualifier_typable_context qtarget receiver_q qcaller ->
+    qualifier_typable_context qresult return_q qtarget ->
+    q_subtype
+      (vpa_mutability_qq_abstract_state receiver_q return_q)
+      result_q ->
+    qualifier_typable_context qresult result_q qcaller.
+Proof.
+  intros qresult qtarget qcaller receiver_q return_q result_q
+    Htarget Hreturn Hsub.
+  destruct qresult, qtarget, qcaller, receiver_q, return_q, result_q;
+    simpl in *; try contradiction;
+    try solve [inversion Hsub; subst; simpl; auto].
+Qed.
+
+Lemma call_return_qualifier_typable_readonly :
+  forall qresult qtarget qcaller receiver_q return_q result_q,
+    qualifier_typable_context qtarget receiver_q qcaller ->
+    qualifier_typable_context qresult return_q qtarget ->
+    q_subtype
+      (vpa_mutability_qq_readonly_state receiver_q return_q)
+      result_q ->
+    qualifier_typable_context qresult result_q qcaller.
+Proof.
+  intros qresult qtarget qcaller receiver_q return_q result_q
+    Htarget Hreturn Hsub.
+  destruct qresult, qtarget, qcaller, receiver_q, return_q, result_q;
+    simpl in *; try contradiction;
+    try solve [inversion Hsub; subst; simpl; auto].
+Qed.
+
+Lemma wf_r_typable_call_return_abstract :
+  forall CT h target_loc result_loc caller_context target_type return_type result_type
+    target_context,
+    r_muttype h target_loc = Some target_context ->
+    wf_r_typable CT h target_loc target_type caller_context ->
+    wf_r_typable CT h result_loc return_type target_context ->
+    qualified_type_subtype CT
+      (vpa_mutability_tt_abstract_state target_type return_type)
+      result_type ->
+    wf_r_typable CT h result_loc result_type caller_context.
+Proof.
+  intros CT h target_loc result_loc caller_context target_type return_type
+    result_type target_context Htarget_context Htarget Hreturn Hsub.
+  unfold wf_r_typable in Htarget, Hreturn |- *.
+  destruct (r_type h target_loc) as [target_rt|] eqn:Htarget_rt;
+    [|contradiction].
+  destruct (r_type h result_loc) as [result_rt|] eqn:Hresult_rt;
+    [|contradiction].
+  unfold r_muttype, r_type in Htarget_context.
+  destruct (runtime_getObj h target_loc) as [target_obj|] eqn:Htarget_obj;
+    [|discriminate].
+  unfold r_type in Htarget_rt.
+  rewrite Htarget_obj in Htarget_rt.
+  injection Htarget_rt as <-.
+  simpl in Htarget_context.
+  injection Htarget_context as <-.
+  destruct Htarget as [_ Htarget_qual].
+  destruct Hreturn as [Hreturn_base Hreturn_qual].
+  split.
+  - eapply base_trans; [exact Hreturn_base|].
+    apply qualified_type_subtype_base_subtype in Hsub.
+    unfold vpa_mutability_tt_abstract_state in Hsub. simpl in Hsub.
+    exact Hsub.
+  - eapply call_return_qualifier_typable_abstract; eauto.
+    apply qualified_type_subtype_q_subtype in Hsub.
+    unfold vpa_mutability_tt_abstract_state in Hsub. simpl in Hsub.
+    exact Hsub.
+Qed.
+
+Lemma wf_r_typable_call_return_readonly :
+  forall CT h target_loc result_loc caller_context target_type return_type result_type
+    target_context,
+    r_muttype h target_loc = Some target_context ->
+    wf_r_typable CT h target_loc target_type caller_context ->
+    wf_r_typable CT h result_loc return_type target_context ->
+    qualified_type_subtype CT
+      (vpa_mutability_tt_readonly_state target_type return_type)
+      result_type ->
+    wf_r_typable CT h result_loc result_type caller_context.
+Proof.
+  intros CT h target_loc result_loc caller_context target_type return_type
+    result_type target_context Htarget_context Htarget Hreturn Hsub.
+  unfold wf_r_typable in Htarget, Hreturn |- *.
+  destruct (r_type h target_loc) as [target_rt|] eqn:Htarget_rt;
+    [|contradiction].
+  destruct (r_type h result_loc) as [result_rt|] eqn:Hresult_rt;
+    [|contradiction].
+  unfold r_muttype, r_type in Htarget_context.
+  destruct (runtime_getObj h target_loc) as [target_obj|] eqn:Htarget_obj;
+    [|discriminate].
+  unfold r_type in Htarget_rt.
+  rewrite Htarget_obj in Htarget_rt.
+  injection Htarget_rt as <-.
+  simpl in Htarget_context.
+  injection Htarget_context as <-.
+  destruct Htarget as [_ Htarget_qual].
+  destruct Hreturn as [Hreturn_base Hreturn_qual].
+  split.
+  - eapply base_trans; [exact Hreturn_base|].
+    apply qualified_type_subtype_base_subtype in Hsub.
+    unfold vpa_mutability_tt_readonly_state in Hsub. simpl in Hsub.
+    exact Hsub.
+  - eapply call_return_qualifier_typable_readonly; eauto.
+    apply qualified_type_subtype_q_subtype in Hsub.
+    unfold vpa_mutability_tt_readonly_state in Hsub. simpl in Hsub.
+    exact Hsub.
+Qed.
+
+Lemma override_preserves_callee_frame :
+  forall CT h ly vals cy qc child parent,
+    wf_r_config CT
+      (mreceiver parent :: mparams parent)
+      (mkr_env (Iot ly :: vals)) h ->
+    r_basetype h ly = Some cy ->
+    base_subtype CT cy (sctype (mreceiver child)) ->
+    bound CT (sctype (mreceiver child)) = Some qc ->
+    base_subtype CT
+      (sctype (mreceiver child))
+      (sctype (mreceiver parent)) ->
+    wf_senv CT (mreceiver child :: mparams child) ->
+    method_override_compatible CT qc child parent ->
+    wf_r_config CT
+      (mreceiver child :: mparams child)
+      (mkr_env (Iot ly :: vals)) h.
+Proof.
+  intros CT h ly vals cy qc child parent Hwf Hbase Hruntime_sub
+    Hbound Hreceiver_base Hchild_senv Hoverride.
+  unfold method_override_compatible in Hoverride.
+  destruct Hoverride as
+    [_ [_ [_ [Hparams Hreceiver_qual]]]].
+  unfold wf_r_config in Hwf.
+  destruct Hwf as
+    [Hclass [Hheap [Hrenv [Hparent_senv [Hlength Hcorr]]]]].
+  split; [exact Hclass|].
+  split; [exact Hheap|].
+  split; [exact Hrenv|].
+  split; [exact Hchild_senv|].
+  split.
+  - simpl in Hlength |- *.
+    have Hparams_length := Forall2_length Hparams.
+    simpl. lia.
+  - intros receiver qcontext Hget_receiver Hget_context i Hi child_type Hchild_nth.
+    simpl in Hget_receiver.
+    injection Hget_receiver as <-.
+    have Hly_dom : ly < dom h.
+    { unfold wf_renv in Hrenv.
+      destruct Hrenv as [_ [[receiver [Hget Hdom]] _]].
+      simpl in Hget. injection Hget as <-. exact Hdom. }
+    have Hwf_obj := Hheap ly Hly_dom.
+    unfold wf_obj in Hwf_obj.
+    unfold r_basetype in Hbase.
+    destruct (runtime_getObj h ly) as [receiver_obj|] eqn:Hobj;
+      [|discriminate].
+    unfold r_muttype in Hget_context.
+    rewrite Hobj in Hget_context.
+    destruct receiver_obj as [[receiver_q receiver_class] receiver_fields].
+    simpl in Hget_context, Hbase, Hwf_obj.
+    injection Hget_context as Hqeq. subst receiver_q.
+    have Hcontext : r_muttype h ly = Some qcontext.
+    { unfold r_muttype. rewrite Hobj. reflexivity. }
+    destruct Hwf_obj as [Hruntime_type _].
+    injection Hbase as Hclass_eq.
+    subst cy.
+    have Hagree :
+      vpa_mutability_runtime_bound_agree qcontext qc = true.
+    { eapply runtime_qualifier_agrees_with_super_bound.
+      - exact Hclass.
+      - exact Hruntime_sub.
+      - exact Hruntime_type.
+      - exact Hbound. }
+    destruct i as [|i'].
+    + simpl in Hchild_nth.
+      injection Hchild_nth as <-.
+      simpl.
+      have Hparent_receiver :
+        wf_r_typable CT h ly (mreceiver parent) qcontext.
+      { specialize (Hcorr ly qcontext eq_refl Hcontext 0).
+        simpl in Hcorr. exact (Hcorr ltac:(lia) (mreceiver parent) eq_refl). }
+      unfold wf_r_typable in Hparent_receiver |- *.
+      unfold r_type in Hparent_receiver |- *.
+      rewrite Hobj in Hparent_receiver |- *.
+      simpl in Hparent_receiver |- *.
+      destruct Hparent_receiver as [_ Hparent_qual].
+      split; [exact Hruntime_sub|].
+      eapply override_parameter_qualifier_typable; eauto.
+    + simpl in Hchild_nth, Hi |- *.
+      have Hchild_index : i' < length (mparams child).
+      { apply nth_error_Some. rewrite Hchild_nth. discriminate. }
+      have Hparams_length := Forall2_length Hparams.
+      have Hparent_index : i' < length (mparams parent) by lia.
+      destruct (nth_error (mparams parent) i') as [parent_type|]
+        eqn:Hparent_nth.
+      2:{ apply nth_error_None in Hparent_nth. lia. }
+      have Hparam_sub :
+        qualified_type_subtype CT
+          (vpa_mutability_override qc parent_type) child_type.
+      { eapply Forall2_nth_error in Hparams; eauto. }
+      specialize (Hcorr ly qcontext eq_refl Hcontext (S i')).
+      simpl in Hcorr.
+      have Hparent_value :=
+        Hcorr ltac:(lia) parent_type Hparent_nth.
+      unfold runtime_getVal in Hparent_value |- *.
+      simpl in Hparent_value |- *.
+      destruct (nth_error vals i') as [value|] eqn:Hvalue;
+        [|exact Hparent_value].
+      destruct value as [|loc]; [trivial|].
+      eapply wf_r_typable_override_parameter; eauto.
+Qed.
+
+Lemma refinement_preserves_callee_frame :
+  forall CT h ly vals cy child parent,
+    method_signature_refinement CT child parent ->
+    wf_r_config CT
+      (mreceiver parent :: mparams parent)
+      (mkr_env (Iot ly :: vals)) h ->
+    r_basetype h ly = Some cy ->
+    base_subtype CT cy (sctype (mreceiver child)) ->
+    wf_r_config CT
+      (mreceiver child :: mparams child)
+      (mkr_env (Iot ly :: vals)) h.
+Proof.
+  intros CT h ly vals cy child parent Hrefine.
+  induction Hrefine; intros Hwf Hbase Hruntime_sub.
+  - exact Hwf.
+  - eapply override_preserves_callee_frame; eauto.
+  - have Hchild_dom : sctype (mreceiver child) < dom CT.
+    { eapply base_subtype_domain; exact Hruntime_sub. }
+    have Hchild_middle :
+      base_subtype CT
+        (sctype (mreceiver child))
+        (sctype (mreceiver middle)).
+    { eapply method_signature_refinement_receiver_base; eauto. }
+    have Hruntime_middle :
+      base_subtype CT cy (sctype (mreceiver middle)).
+    { eapply base_trans; eauto. }
+    have Hmiddle_frame :
+      wf_r_config CT
+        (mreceiver middle :: mparams middle)
+        (mkr_env (Iot ly :: vals)) h.
+    { eapply IHHrefine2; eauto. }
+    eapply IHHrefine1; eauto.
+Qed.
+
+Lemma refinement_preserves_return_typability :
+  forall CT h loc cy qcontext child parent,
+    method_signature_refinement CT child parent ->
+    (forall C qc,
+      base_subtype CT cy C ->
+      bound CT C = Some qc ->
+      vpa_mutability_runtime_bound_agree qcontext qc = true) ->
+    base_subtype CT cy (sctype (mreceiver child)) ->
+    wf_r_typable CT h loc (mret child) qcontext ->
+    wf_r_typable CT h loc (mret parent) qcontext.
+Proof.
+  intros CT h loc cy qcontext child parent Hrefine.
+  induction Hrefine; intros Hagree Hruntime_sub Hvalue.
+  - exact Hvalue.
+  - match goal with
+    | Hbound : bound CT (sctype (mreceiver overrider)) = Some qc,
+      Hcompat : method_override_compatible CT qc overrider overridden |- _ =>
+        unfold method_override_compatible in Hcompat;
+        destruct Hcompat as [_ [_ [Hreturn _]]];
+        eapply wf_r_typable_override_return;
+        [eapply Hagree; eauto | exact Hvalue | exact Hreturn]
+    end.
+  - have Hchild_dom : sctype (mreceiver child) < dom CT.
+    { eapply base_subtype_domain; exact Hruntime_sub. }
+    have Hchild_middle :
+      base_subtype CT
+        (sctype (mreceiver child))
+        (sctype (mreceiver middle)).
+    { eapply method_signature_refinement_receiver_base; eauto. }
+    have Hruntime_middle :
+      base_subtype CT cy (sctype (mreceiver middle)).
+    { eapply base_trans; eauto. }
+    have Hmiddle_value :
+      wf_r_typable CT h loc (mret middle) qcontext.
+    { eapply IHHrefine1; eauto. }
+    eapply IHHrefine2; eauto.
+Qed.
+
+(** A result produced by the dynamically selected implementation can be
+    transported back to the statically selected signature, and then through
+    the call-site viewpoint adaptation.  This is the semantic counterpart of
+    class-bound adapted behavioral subtyping; dispatch itself needs no
+    compatibility premise. *)
+Lemma refinement_preserves_call_result_abstract :
+  forall CT h target_loc result_loc cy qtarget qcaller
+    target_type result_type child parent,
+    wf_class_table CT ->
+    wf_heap CT h ->
+    r_basetype h target_loc = Some cy ->
+    r_muttype h target_loc = Some qtarget ->
+    wf_r_typable CT h target_loc target_type qcaller ->
+    method_signature_refinement CT child parent ->
+    base_subtype CT cy (sctype (mreceiver child)) ->
+    wf_r_typable CT h result_loc (mret child) qtarget ->
+    qualified_type_subtype CT
+      (vpa_mutability_tt_abstract_state target_type (mret parent))
+      result_type ->
+    wf_r_typable CT h result_loc result_type qcaller.
+Proof.
+  intros CT h target_loc result_loc cy qtarget qcaller
+    target_type result_type child parent Hclass Hheap Hbase
+    Htarget_context Htarget Hrefine Hruntime_sub Hresult Hcall_sub.
+  have Htarget_dom : target_loc < dom h.
+  {
+    unfold r_basetype in Hbase.
+    destruct (runtime_getObj h target_loc) as [target_obj|] eqn:Hobj;
+      [eapply runtime_getObj_dom; eauto | discriminate].
+  }
+  have Hwf_target := Hheap target_loc Htarget_dom.
+  unfold wf_obj in Hwf_target.
+  unfold r_basetype, r_muttype in Hbase, Htarget_context.
+  destruct (runtime_getObj h target_loc) as
+      [[[runtime_q runtime_c] target_fields]|] eqn:Htarget_obj;
+    [|discriminate].
+  simpl in Hbase, Htarget_context, Hwf_target.
+  injection Hbase as <-.
+  injection Htarget_context as <-.
+  destruct Hwf_target as [Hruntime_type _].
+  have Hagree :
+    forall C qc,
+      base_subtype CT runtime_c C ->
+      bound CT C = Some qc ->
+      vpa_mutability_runtime_bound_agree runtime_q qc = true.
+  {
+    intros C qc Hsub Hbound.
+    eapply runtime_qualifier_agrees_with_super_bound; eauto.
+  }
+  have Hstatic_result :
+    wf_r_typable CT h result_loc (mret parent) runtime_q.
+  {
+    eapply refinement_preserves_return_typability; eauto.
+  }
+  eapply wf_r_typable_call_return_abstract; eauto.
+  unfold r_muttype. rewrite Htarget_obj. reflexivity.
+Qed.
+
+Lemma refinement_preserves_call_result_readonly :
+  forall CT h target_loc result_loc cy qtarget qcaller
+    target_type result_type child parent,
+    wf_class_table CT ->
+    wf_heap CT h ->
+    r_basetype h target_loc = Some cy ->
+    r_muttype h target_loc = Some qtarget ->
+    wf_r_typable CT h target_loc target_type qcaller ->
+    method_signature_refinement CT child parent ->
+    base_subtype CT cy (sctype (mreceiver child)) ->
+    wf_r_typable CT h result_loc (mret child) qtarget ->
+    qualified_type_subtype CT
+      (vpa_mutability_tt_readonly_state target_type (mret parent))
+      result_type ->
+    wf_r_typable CT h result_loc result_type qcaller.
+Proof.
+  intros CT h target_loc result_loc cy qtarget qcaller
+    target_type result_type child parent Hclass Hheap Hbase
+    Htarget_context Htarget Hrefine Hruntime_sub Hresult Hcall_sub.
+  have Htarget_dom : target_loc < dom h.
+  {
+    unfold r_basetype in Hbase.
+    destruct (runtime_getObj h target_loc) as [target_obj|] eqn:Hobj;
+      [eapply runtime_getObj_dom; eauto | discriminate].
+  }
+  have Hwf_target := Hheap target_loc Htarget_dom.
+  unfold wf_obj in Hwf_target.
+  unfold r_basetype, r_muttype in Hbase, Htarget_context.
+  destruct (runtime_getObj h target_loc) as
+      [[[runtime_q runtime_c] target_fields]|] eqn:Htarget_obj;
+    [|discriminate].
+  simpl in Hbase, Htarget_context, Hwf_target.
+  injection Hbase as <-.
+  injection Htarget_context as <-.
+  destruct Hwf_target as [Hruntime_type _].
+  have Hagree :
+    forall C qc,
+      base_subtype CT runtime_c C ->
+      bound CT C = Some qc ->
+      vpa_mutability_runtime_bound_agree runtime_q qc = true.
+  {
+    intros C qc Hsub Hbound.
+    eapply runtime_qualifier_agrees_with_super_bound; eauto.
+  }
+  have Hstatic_result :
+    wf_r_typable CT h result_loc (mret parent) runtime_q.
+  {
+    eapply refinement_preserves_return_typability; eauto.
+  }
+  eapply wf_r_typable_call_return_readonly; eauto.
+  unfold r_muttype. rewrite Htarget_obj. reflexivity.
+Qed.
+
+Lemma runtime_call_signature_refines :
   forall CT sΓ rΓ h y Ty ly cy m mdef_runtime mdef_static
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Hget_y : static_getType sΓ y = Some Ty)
@@ -3473,10 +4002,25 @@ Lemma runtime_call_signature_agrees :
     (Hbase : r_basetype h ly = Some cy)
     (Hfind_runtime : FindMethodWithName CT cy m mdef_runtime)
     (Hfind_static : FindMethodWithName CT (sctype Ty) m mdef_static),
-    msignature mdef_runtime = msignature mdef_static.
+    method_signature_refinement CT
+      (msignature mdef_runtime) (msignature mdef_static).
 Proof.
   intros.
-  eapply method_signature_consistent_subtype; eauto.
+  eapply method_signature_refines_subtype; eauto.
   - unfold wf_r_config in Hwf. exact (proj1 Hwf).
   - eapply runtime_value_base_subtype; eauto.
+Qed.
+
+Lemma runtime_call_scope_eq :
+  forall CT sΓ rΓ h y Ty ly cy m mdef_runtime mdef_static,
+    wf_r_config CT sΓ rΓ h ->
+    static_getType sΓ y = Some Ty ->
+    runtime_getVal rΓ y = Some (Iot ly) ->
+    r_basetype h ly = Some cy ->
+    FindMethodWithName CT cy m mdef_runtime ->
+    FindMethodWithName CT (sctype Ty) m mdef_static ->
+    mscope (msignature mdef_runtime) = mscope (msignature mdef_static).
+Proof.
+  intros. eapply method_signature_refinement_scope_eq.
+  eapply runtime_call_signature_refines; eauto.
 Qed.

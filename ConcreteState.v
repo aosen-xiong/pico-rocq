@@ -135,9 +135,9 @@ Proof.
   right. reflexivity.
 Qed.
 
-(** Runtime and static method lookup agree because well-formedness relates the
+(** Runtime lookup refines static lookup because well-formedness relates the
     runtime receiver class to its static base type. *)
-Lemma runtime_and_static_method_signatures_agree :
+Lemma runtime_and_static_method_signatures_refine :
   forall CT sΓ rΓ h y loc Ty runtimeClass m mdefRuntime mdefStatic,
     wf_r_config CT sΓ rΓ h ->
     static_getType sΓ y = Some Ty ->
@@ -145,7 +145,8 @@ Lemma runtime_and_static_method_signatures_agree :
     r_basetype h loc = Some runtimeClass ->
     FindMethodWithName CT runtimeClass m mdefRuntime ->
     FindMethodWithName CT (sctype Ty) m mdefStatic ->
-    msignature mdefRuntime = msignature mdefStatic.
+    method_signature_refinement CT
+      (msignature mdefRuntime) (msignature mdefStatic).
 Proof.
   intros CT sΓ rΓ h y loc Ty runtimeClass m mdefRuntime mdefStatic
     Hwf Hget_y Hval_y Hbase Hfind_runtime Hfind_static.
@@ -161,5 +162,5 @@ Proof.
   simpl in Hbase_sub.
   unfold wf_r_config in Hwf_copy.
   destruct Hwf_copy as [Hclass _].
-  eapply method_signature_consistent_subtype; eauto.
+  eapply method_signature_refines_subtype; eauto.
 Qed.

@@ -140,6 +140,7 @@ Proof.
   reflexivity.
   - (* Call *) (* Similar to other non-mutating cases *)
   intros.
+  have Htyping_call := Htyping.
   inversion Htyping.
   --
   revert Hget_y.
@@ -151,8 +152,9 @@ Proof.
   apply method_body_well_typed_by_find in mdeflookup; auto.
   destruct mdeflookup as [sΓmethodend Htyping_method].
   remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
-  assert (Hsigeq_scope : msignature mdef = msignature mdef0).
-  { eapply runtime_and_static_method_signatures_agree; eauto. }
+  assert (Hscope_eq :
+    mscope (msignature mdef) = mscope (msignature mdef0)).
+  { eapply runtime_call_scope_eq; eauto. }
   assert (Hfield_callee : sf_assignability_rel CT C f Final \/
                           sf_assignability_rel CT C f RDA \/
                           strict_assignability_method_scope (mscope (msignature mdef))).
@@ -163,7 +165,7 @@ Proof.
     - right; right.
       destruct Hscope as [Habs | [Hcs Hsub]].
       + subst mt. destruct Hconcrete as [Hbad | Hbad]; discriminate.
-      + subst mt. rewrite Hsigeq_scope. eapply concrete_assignability_submethod; eauto.
+      + subst mt. rewrite Hscope_eq. eapply concrete_assignability_submethod; eauto.
   }
   apply IHHeval with (mt:=(mscope (msignature mdef)))(sΓ' := sΓmethodend)(sΓ := sΓmethodinit). 1-5: auto.
   remember {| vars := Iot ly :: vals |} as rΓmethodinit.
@@ -179,8 +181,11 @@ Proof.
   {
     rewrite HeqsΓmethodinit.
     rewrite HeqrΓmethodinit.
-    eapply callee_frame_wf_abs; eauto.
-    all: rewrite Hsigeq_scope; eauto.
+    destruct (typed_call_has_wf_callee_frame
+      CT _ _ rΓ h x m y zs _ vals ly cy mdef
+      Hwf Htyping_call Hval_y Hbase mdeflookupcopy Hargs)
+      as [sΓbody' [_ Hframe]].
+    exact Hframe.
   }
     exact Hwf_method_frame.
     rewrite getmbody.
@@ -218,8 +223,9 @@ Proof.
   apply method_body_well_typed_by_find in mdeflookup; auto.
   destruct mdeflookup as [sΓmethodend Htyping_method].
   remember (mreceiver (msignature mdef) :: mparams (msignature mdef)) as sΓmethodinit.
-  assert (Hsigeq_scope : msignature mdef = msignature mdef0).
-  { eapply runtime_and_static_method_signatures_agree; eauto. }
+  assert (Hscope_eq :
+    mscope (msignature mdef) = mscope (msignature mdef0)).
+  { eapply runtime_call_scope_eq; eauto. }
   assert (Hfield_callee : sf_assignability_rel CT C f Final \/
                           sf_assignability_rel CT C f RDA \/
                           strict_assignability_method_scope (mscope (msignature mdef))).
@@ -227,7 +233,7 @@ Proof.
     destruct Hfield_imm as [Hfinal | [Hrda | Hconcrete]].
     - left; exact Hfinal.
     - right; left; exact Hrda.
-    - right; right. rewrite Hsigeq_scope.
+    - right; right. rewrite Hscope_eq.
       eapply concrete_assignability_submethod; eauto.
   }
   apply IHHeval with (mt:=(mscope (msignature mdef)))(sΓ' := sΓmethodend)(sΓ := sΓmethodinit). 1-5: auto.
@@ -244,8 +250,11 @@ Proof.
   {
     rewrite HeqsΓmethodinit.
     rewrite HeqrΓmethodinit.
-    eapply callee_frame_wf_rs_ts; eauto.
-    all: rewrite Hsigeq_scope; eauto.
+    destruct (typed_call_has_wf_callee_frame
+      CT _ _ rΓ h x m y zs _ vals ly cy mdef
+      Hwf Htyping_call Hval_y Hbase mdeflookupcopy Hargs)
+      as [sΓbody' [_ Hframe]].
+    exact Hframe.
   }
     exact Hwf_method_frame.
     rewrite getmbody.

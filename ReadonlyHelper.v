@@ -3,10 +3,6 @@ From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
 
-(** Qualifiers that do not grant direct mutable authority. *)
-Definition is_nonmutable_qualifier (qualifier : q) : Prop :=
-  qualifier = RO \/ qualifier = Lost \/ qualifier = RDM \/ qualifier = Imm.
-
 Ltac solve_nonmutable_qualifier :=
   match goal with
   (* Recursively select a disjunct. *)

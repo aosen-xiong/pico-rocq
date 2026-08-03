@@ -46,19 +46,18 @@ Lemma transitive_state_preservation_with_end :
     (Hget_zs : runtime_lookup_list rΓ zs = Some vals)
     (HinP: Ensembles.In Loc (reachable_locations_from_vals h (Iot ly :: vals)) loc_arg)
     (Harg_obj : runtime_getObj h loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg))
-    (Harg_obj' : runtime_getObj h' loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg'))
-    (Hall_readonly : signature_has_no_mutable_roots (msignature mdef)),
+    (Harg_obj' : runtime_getObj h' loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg')),
     nth_error vals_arg f = nth_error vals_arg' f.
 Proof.
   intros CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
     loc_arg C anyrq vals_arg vals_arg' f Hstmt Hstatic_type Hmethod_lookup
-    Hwf Htyping Heval Hget_y Hget_zs HinP Harg_obj Harg_obj' Hall_readonly.
+    Hwf Htyping Heval Hget_y Hget_zs HinP Harg_obj Harg_obj'.
   subst stmt.
   have Hcaller_scope : readonly_state_method_scope TransitiveState.
   { right. reflexivity. }
   destruct (successful_typed_safe_call_body CT sΓ TransitiveState rΓ h x
     mindex y zs sΓ' rΓ' h' Ty mdef vals ly Hstatic_type Hmethod_lookup
-    Hwf Htyping Heval Hget_y Hget_zs Hall_readonly Hcaller_scope)
+    Hwf Htyping Heval Hget_y Hget_zs Hcaller_scope)
     as [runtime_mdef [body_sΓ' [body_rΓ'
       [Hsignature [Hbody_typed [Hframe_wf
         [Hbody_eval [Hbody_safe [Hbody_scope Hbody_subscope]]]]]]]]].
@@ -94,15 +93,14 @@ Theorem transitive_state_preservation :
     (Hget_y : runtime_getVal rΓ y = Some (Iot ly))
     (Hget_zs : runtime_lookup_list rΓ zs = Some vals)
     (HinP: Ensembles.In Loc (reachable_locations_from_vals h (Iot ly :: vals)) loc_arg)
-    (Harg_obj : runtime_getObj h loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg))
-    (Hall_readonly : signature_has_no_mutable_roots (msignature mdef)),
+    (Harg_obj : runtime_getObj h loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg)),
     exists vals_arg',
       runtime_getObj h' loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg') /\
       nth_error vals_arg f = nth_error vals_arg' f.
 Proof.
   intros CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
     loc_arg C anyrq vals_arg f Hstmt Hstatic_type Hmethod_lookup Hwf Htyping
-    Heval Hget_y Hget_zs HinP Harg_obj Hall_readonly.
+    Heval Hget_y Hget_zs HinP Harg_obj.
   destruct (runtime_preserves_r_type_heap CT rΓ h loc_arg
     (mkruntime_type anyrq C) h' vals_arg stmt rΓ' Harg_obj Heval)
     as [vals_arg' Harg_obj'].

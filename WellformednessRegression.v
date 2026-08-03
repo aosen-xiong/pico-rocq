@@ -72,6 +72,120 @@ Proof.
   - lia.
 Qed.
 
+(** Flexible receiver overriding follows the overriding class bound. *)
+Definition base_touch_signature : method_sig :=
+  {| mname := 0;
+     mscope := AbstractState;
+     mreceiver := Build_qualified_type RDM 0;
+     mparams := [];
+     mret := Build_qualified_type RO 0 |}.
+
+Definition mutable_touch_signature : method_sig :=
+  {| mname := 0;
+     mscope := AbstractState;
+     mreceiver := Build_qualified_type Mut 0;
+     mparams := [];
+     mret := Build_qualified_type RO 0 |}.
+
+(** In a [Mut]-bounded subclass, the inherited [RDM] receiver adapts to
+    [Mut], so a [Mut] receiver override is valid. *)
+Example mutable_bound_allows_mutable_receiver_override :
+  method_override_compatible witness_CT Mut_c
+    mutable_touch_signature base_touch_signature.
+Proof.
+  unfold method_override_compatible, mutable_touch_signature,
+    base_touch_signature, vpa_mutability_override, qc2q,
+    vpa_mutability_qq_abstract_state.
+  simpl.
+  repeat split; try reflexivity.
+  - apply qtype_refl; simpl; try lia; discriminate.
+  - constructor.
+  - constructor. discriminate.
+Qed.
+
+(** Returns and ordinary parameters follow behavioral subtyping: the
+    overriding return is covariant, while the overriding parameter is
+    contravariant, after adapting the inherited signature by the class bound. *)
+Definition behavioral_base_signature : method_sig :=
+  {| mname := 1;
+     mscope := AbstractState;
+     mreceiver := Build_qualified_type RDM 0;
+     mparams := [Build_qualified_type Imm 0];
+     mret := Build_qualified_type RO 0 |}.
+
+Definition behavioral_override_signature : method_sig :=
+  {| mname := 1;
+     mscope := AbstractState;
+     mreceiver := Build_qualified_type Mut 0;
+     mparams := [Build_qualified_type RO 0];
+     mret := Build_qualified_type Imm 0 |}.
+
+Example behavioral_return_and_parameter_variance :
+  method_override_compatible witness_CT Mut_c
+    behavioral_override_signature behavioral_base_signature.
+Proof.
+  unfold method_override_compatible, behavioral_override_signature,
+    behavioral_base_signature, vpa_mutability_override, qc2q,
+    vpa_mutability_qq_abstract_state.
+  simpl.
+  repeat split; try reflexivity.
+  - eapply qtype_sub; simpl; try lia.
+    + apply q_rd.
+    + apply base_refl. simpl. lia.
+  - constructor.
+    + eapply qtype_sub; simpl; try lia.
+      * apply q_rd.
+      * apply base_refl. simpl. lia.
+    + constructor.
+  - constructor. discriminate.
+Qed.
+
+(** The call-return proof must preserve this intended flexible case.  Under a
+    mutable class bound, an inherited [RDM] receiver and [RDM] return both
+    adapt to [Mut].  The override may widen its receiver to [RO] while
+    covariantly refining its return to [Mut]. *)
+Definition flexible_return_base_signature : method_sig :=
+  {| mname := 2;
+     mscope := ReadonlyState;
+     mreceiver := Build_qualified_type RDM 0;
+     mparams := [];
+     mret := Build_qualified_type RDM 0 |}.
+
+Definition flexible_return_override_signature : method_sig :=
+  {| mname := 2;
+     mscope := ReadonlyState;
+     mreceiver := Build_qualified_type RO 0;
+     mparams := [];
+     mret := Build_qualified_type Mut 0 |}.
+
+Example mutable_bound_allows_mutable_return_through_rdm_contract :
+  method_override_compatible witness_CT Mut_c
+    flexible_return_override_signature flexible_return_base_signature.
+Proof.
+  unfold method_override_compatible, flexible_return_override_signature,
+    flexible_return_base_signature, vpa_mutability_override, qc2q,
+    vpa_mutability_qq_abstract_state.
+  simpl.
+  repeat split; try reflexivity.
+  - apply qtype_refl; simpl; try lia; discriminate.
+  - constructor.
+  - apply q_rd.
+Qed.
+
+(** In an [RDM]-bounded subclass, the same override would narrow [RDM] to
+    [Mut] and is therefore rejected. *)
+Example rdm_bound_rejects_mutable_receiver_override :
+  ~ method_override_compatible witness_CT RDM_c
+      mutable_touch_signature base_touch_signature.
+Proof.
+  unfold method_override_compatible, mutable_touch_signature,
+    base_touch_signature, vpa_mutability_override, qc2q,
+    vpa_mutability_qq_abstract_state.
+  simpl.
+  intros [_ [_ [_ [_ Hbad]]]].
+  inversion Hbad; subst; congruence.
+Qed.
+
 (** Regression for WF-Cons: both the constructor parameter and its
     corresponding field type are adapted by the constructor qualifier before
     subtyping is checked. *)

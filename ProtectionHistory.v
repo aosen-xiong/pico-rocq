@@ -42,36 +42,15 @@ Lemma safe_call_callee_zone_env :
 Proof.
   intros CT Z sGamma mt rGamma h x m y args sGamma' vals ly cy runtime_mdef
     Hwf Htyping Hsafe_scope Henv Hval_y Hbase Hfind_runtime Hargs.
-  inversion Htyping; subst.
-  - exfalso. destruct Hscope as [-> | [-> _]];
-      destruct Hsafe_scope; congruence.
-  - assert (Hsignature : msignature runtime_mdef = msignature mdef).
-    { eapply runtime_call_signature_agrees; eauto. }
-    rewrite Hsignature.
-    intros z l T Htype Hval HinZ.
-    destruct z as [|i].
-    + simpl in Htype, Hval. injection Htype as <-. injection Hval as <-.
-      have Hactual_safe := Henv y ly Ty Hget_y Hval_y HinZ.
-      destruct Hrcv_sub as [Hordinary | [_ [Hformal_rdm _]]].
-      * eapply adapted_subtype_safe_implies_safe; eauto.
-      * rewrite Hformal_rdm. unfold is_nonmutable_qualifier. auto.
-    + simpl in Htype, Hval.
-      assert (Hi : i < length (mparams (msignature mdef))).
-      { have Htype_dom := Htype. apply static_getType_dom in Htype_dom.
-        exact Htype_dom. }
-      have Harg_lengths := Forall2_length Harg_sub.
-      assert (Hi_args : i < length argtypes) by lia.
-      destruct (nth_error_Some_exists argtypes i Hi_args) as [Targ HTarg].
-      have Hsub_i := Harg_sub.
-      eapply Forall2_nth_error with (i := i) (a := Targ) (b := T) in Hsub_i;
-        [|exact HTarg|exact Htype].
-      destruct (static_getType_list_nth_zs _ args argtypes i Targ
-        Hget_args HTarg) as [arg [Harg_index Harg_type]].
-      destruct (runtime_lookup_list_nth_zs rGamma args vals i (Iot l)
-        Hargs Hval) as [arg' [Harg'_index Harg_val]].
-      rewrite Harg_index in Harg'_index. injection Harg'_index as <-.
-      have Hactual_safe := Henv arg l Targ Harg_type Harg_val HinZ.
-      eapply adapted_subtype_safe_implies_safe; eauto.
+  have Hroots :
+    signature_has_no_mutable_roots (msignature runtime_mdef).
+  { eapply typed_safe_call_runtime_no_mutable_roots; eauto. }
+  destruct Hroots as [Hreceiver_root Hparameter_roots].
+  intros z l T Htype Hval HinZ.
+  destruct z as [|i].
+  - simpl in Htype. injection Htype as <-. exact Hreceiver_root.
+  - simpl in Htype.
+    eapply Forall_nth_error in Hparameter_roots; eauto.
 Qed.
 
 Lemma call_callee_operationally_confined :
@@ -127,50 +106,18 @@ Proof.
   intros CT sGamma mt rGamma h x m y args sGamma' vals ly cy runtime_mdef
     z T l Hwf Htyping Hsafe_scope Hval_y Hbase Hfind_runtime Hargs
     Htype Hval Hmut.
-  inversion Htyping; subst.
-  - exfalso. destruct Hscope as [-> | [-> _]];
-      destruct Hsafe_scope; congruence.
-  - assert (Hsignature : msignature runtime_mdef = msignature mdef).
-    { eapply runtime_call_signature_agrees; eauto. }
-    rewrite Hsignature in Htype. clear Hsignature.
-    destruct z as [|i].
-    + simpl in Htype, Hval. injection Htype as <-. injection Hval as <-.
-      destruct Hrcv_sub as [Hordinary | [_ [Hformal_rdm _]]].
-      * apply qualified_type_subtype_q_subtype in Hordinary.
-        unfold vpa_mutability_tt_readonly_state in Hordinary.
-        rewrite Hmut in Hordinary. simpl in Hordinary.
-        have Hnotbot := wf_config_nonnull_variable_not_bot
-          CT _ rGamma h y Ty ly Hwf Hget_y Hval_y.
-        destruct (sqtype Ty) eqn:Hq; simpl in Hordinary;
-          try solve [inversion Hordinary; subst; congruence];
-          try solve [exists y, Ty; repeat split; assumption];
-          exfalso; apply Hnotbot; exact Hq.
-      * rewrite Hformal_rdm in Hmut. discriminate.
-    + simpl in Htype, Hval.
-      assert (Hi : i < length (mparams (msignature mdef))).
-      { have Htype_dom := Htype. apply static_getType_dom in Htype_dom.
-        exact Htype_dom. }
-      have Harg_lengths := Forall2_length Harg_sub.
-      assert (Hi_args : i < length argtypes) by lia.
-      destruct (nth_error_Some_exists argtypes i Hi_args) as [Targ HTarg].
-      have Hsub_i := Harg_sub.
-      eapply Forall2_nth_error with (i := i) (a := Targ) (b := T) in Hsub_i;
-        [|exact HTarg|exact Htype].
-      destruct (static_getType_list_nth_zs _ args argtypes i Targ
-        Hget_args HTarg) as [arg [Harg_index Harg_type]].
-      destruct (runtime_lookup_list_nth_zs rGamma args vals i (Iot l)
-        Hargs Hval) as [arg' [Harg'_index Harg_val]].
-      rewrite Harg_index in Harg'_index. injection Harg'_index as <-.
-      apply qualified_type_subtype_q_subtype in Hsub_i.
-      unfold vpa_mutability_tt_readonly_state in Hsub_i.
-      rewrite Hmut in Hsub_i. simpl in Hsub_i.
-      have Hnotbot := wf_config_nonnull_variable_not_bot
-        CT _ rGamma h arg Targ l Hwf Harg_type Harg_val.
-      destruct (sqtype Ty); simpl in Hsub_i;
-      destruct (sqtype Targ) eqn:Hq;
-        try solve [inversion Hsub_i; subst; congruence];
-        try solve [exists arg, Targ; repeat split; assumption];
-        exfalso; apply Hnotbot; exact Hq.
+  have Hroots :
+    signature_has_no_mutable_roots (msignature runtime_mdef).
+  { eapply typed_safe_call_runtime_no_mutable_roots; eauto. }
+  destruct Hroots as [Hreceiver_root Hparameter_roots].
+  destruct z as [|i].
+  - simpl in Htype. injection Htype as <-.
+    unfold is_nonmutable_qualifier in Hreceiver_root.
+    destruct Hreceiver_root as [Hq | [Hq | [Hq | Hq]]]; congruence.
+  - simpl in Htype.
+    eapply Forall_nth_error in Hparameter_roots; eauto.
+    unfold is_nonmutable_qualifier in Hparameter_roots.
+    destruct Hparameter_roots as [Hq | [Hq | [Hq | Hq]]]; congruence.
 Qed.
 
 Lemma safe_call_callee_mut_root_origin :

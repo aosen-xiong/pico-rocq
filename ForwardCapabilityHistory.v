@@ -202,13 +202,10 @@ Lemma safe_call_callee_rdm_root_origin :
       (mreceiver (msignature runtime_mdef) ::
         mparams (msignature runtime_mdef))
       (mkr_env (Iot ly :: vals)) root ->
-    (exists Ty,
+    exists Ty,
       static_getType sGamma y = Some Ty /\
       (sqtype Ty = Mut \/ sqtype Ty = Imm \/ sqtype Ty = RDM) /\
-      typed_root (sqtype Ty) sGamma rGamma root) \/
-    (exists Ty,
-      static_getType sGamma y = Some Ty /\
-      sqtype Ty = RO /\ root = ly).
+      typed_root (sqtype Ty) sGamma rGamma root.
 Proof.
   intros CT sGamma mt rGamma h x m y args sGamma' vals ly cy runtime_mdef
     root Hwf Htyping Hsafe_scope Hval_y Hbase Hfind Hargs
@@ -216,43 +213,83 @@ Proof.
   inversion Htyping; subst.
   - exfalso. destruct Hscope as [-> | [-> _]];
       destruct Hsafe_scope; congruence.
-  - assert (Hsignature : msignature runtime_mdef = msignature mdef).
-    { eapply runtime_call_signature_agrees; eauto. }
-    rewrite Hsignature in Htype. clear Hsignature.
+  - have Hrefine :
+      method_signature_refinement CT
+        (msignature runtime_mdef) (msignature mdef).
+    { eapply runtime_call_signature_refines; eauto. }
     destruct z as [|i].
     + simpl in Htype, Hval. injection Htype as <-. injection Hval as <-.
-      destruct Hrcv_sub as [Hordinary | [Hreadonly [Hformal_rdm Hbase_sub]]].
-      * left. exists Ty. split; [exact Hget_y|]. split.
-        -- apply qualified_type_subtype_q_subtype in Hordinary.
-           unfold vpa_mutability_tt_readonly_state in Hordinary.
-           rewrite Hrdm in Hordinary. simpl in Hordinary.
-           have Hnotbot := wf_config_nonnull_variable_not_bot
-             CT _ rGamma h y Ty ly Hwf Hget_y Hval_y.
-           destruct (sqtype Ty) eqn:Hactual.
-           all: simpl in Hordinary; try solve_q_subtype_wrong; try auto.
-           all: try (inversion Hordinary; subst; congruence).
-        -- exists y, Ty. repeat split; assumption.
-      * right. exists Ty. repeat split; assumption.
+      have Hparent_receiver_rdm_or_bot :
+        is_rdm_or_bot (sqtype (mreceiver (msignature mdef))).
+      {
+        eapply method_signature_refinement_receiver_rdm_or_bot; eauto.
+        unfold is_rdm_or_bot. auto.
+      }
+      destruct Hparent_receiver_rdm_or_bot as
+        [Hparent_receiver_rdm | Hparent_receiver_bot].
+      2:{
+        apply qualified_type_subtype_q_subtype in Hrcv_sub.
+        unfold vpa_mutability_tt_readonly_state in Hrcv_sub.
+        rewrite Hparent_receiver_bot in Hrcv_sub. simpl in Hrcv_sub.
+        have Hnotbot := wf_config_nonnull_variable_not_bot
+          CT _ rGamma h y Ty ly Hwf Hget_y Hval_y.
+        destruct (sqtype Ty) eqn:Hty; simpl in Hrcv_sub;
+          inversion Hrcv_sub; subst; try congruence.
+      }
+      exists Ty. split; [exact Hget_y|]. split.
+      * apply qualified_type_subtype_q_subtype in Hrcv_sub.
+        unfold vpa_mutability_tt_readonly_state in Hrcv_sub.
+        rewrite Hparent_receiver_rdm in Hrcv_sub. simpl in Hrcv_sub.
+        have Hnotbot := wf_config_nonnull_variable_not_bot
+          CT _ rGamma h y Ty ly Hwf Hget_y Hval_y.
+        destruct (sqtype Ty) eqn:Hactual.
+        all: simpl in Hrcv_sub; try solve_q_subtype_wrong; try auto.
+        all: try (inversion Hrcv_sub; subst; congruence).
+      * exists y, Ty. repeat split; assumption.
     + simpl in Htype, Hval.
-      assert (Hi : i < length (mparams (msignature mdef))).
-      { have Htype_dom := Htype. apply static_getType_dom in Htype_dom.
-        exact Htype_dom. }
+      unfold static_getType in Htype.
+      assert (Hi_runtime : i < length (mparams (msignature runtime_mdef))).
+      { apply nth_error_Some. rewrite Htype. discriminate. }
+      have Hrefine_lengths :=
+        method_signature_refinement_params_length CT
+          (msignature runtime_mdef) (msignature mdef) Hrefine.
+      assert (Hi_static : i < length (mparams (msignature mdef))) by lia.
+      destruct (nth_error_Some_exists (mparams (msignature mdef)) i
+        Hi_static) as [Tstatic HTstatic].
+      have Hstatic_rdm_or_bot :
+        is_rdm_or_bot (sqtype Tstatic).
+      {
+        eapply method_signature_refinement_parameter_rdm_or_bot; eauto.
+        unfold is_rdm_or_bot. auto.
+      }
       have Harg_lengths := Forall2_length Harg_sub.
       assert (Hi_args : i < length argtypes) by lia.
       destruct (nth_error_Some_exists argtypes i Hi_args) as [Targ HTarg].
       have Hsub_i := Harg_sub.
-      eapply Forall2_nth_error with (i := i) (a := Targ) (b := T) in Hsub_i;
-        [|exact HTarg|exact Htype].
+      eapply Forall2_nth_error with
+        (i := i) (a := Targ) (b := Tstatic) in Hsub_i;
+        [|exact HTarg|exact HTstatic].
       destruct (static_getType_list_nth_zs _ args argtypes i Targ
         Hget_args HTarg) as [arg [Harg_index Harg_type]].
       destruct (runtime_lookup_list_nth_zs rGamma args vals i (Iot root)
         Hargs Hval) as [arg' [Harg'_index Harg_val]].
       rewrite Harg_index in Harg'_index. injection Harg'_index as <-.
-      left. exists Ty. split; [exact Hget_y|]. split.
+      destruct Hstatic_rdm_or_bot as [Hstatic_rdm | Hstatic_bot].
+      2:{
+        apply qualified_type_subtype_q_subtype in Hsub_i.
+        unfold vpa_mutability_tt_readonly_state in Hsub_i.
+        rewrite Hstatic_bot in Hsub_i. simpl in Hsub_i.
+        have Hnotbot := wf_config_nonnull_variable_not_bot
+          CT _ rGamma h arg Targ root Hwf Harg_type Harg_val.
+        destruct (sqtype Ty); simpl in Hsub_i;
+        destruct (sqtype Targ) eqn:Hactual; inversion Hsub_i; subst;
+          try congruence.
+      }
+      exists Ty. split; [exact Hget_y|]. split.
       2: { exists arg, Targ. repeat split; try assumption.
            apply qualified_type_subtype_q_subtype in Hsub_i.
            unfold vpa_mutability_tt_readonly_state in Hsub_i.
-           rewrite Hrdm in Hsub_i. simpl in Hsub_i.
+           rewrite Hstatic_rdm in Hsub_i. simpl in Hsub_i.
            have Hnotbot := wf_config_nonnull_variable_not_bot
              CT _ rGamma h arg Targ root Hwf Harg_type Harg_val.
            destruct (sqtype Ty) eqn:Hreceiver; simpl in Hsub_i;
@@ -262,7 +299,7 @@ Proof.
              inversion Hsub_i; subst; congruence. }
       apply qualified_type_subtype_q_subtype in Hsub_i.
       unfold vpa_mutability_tt_readonly_state in Hsub_i.
-      rewrite Hrdm in Hsub_i. simpl in Hsub_i.
+      rewrite Hstatic_rdm in Hsub_i. simpl in Hsub_i.
       have Hnotbot := wf_config_nonnull_variable_not_bot
         CT _ rGamma h arg Targ root Hwf Harg_type Harg_val.
       destruct (sqtype Ty) eqn:Hreceiver; simpl in Hsub_i;
@@ -370,6 +407,7 @@ Lemma safe_call_callee_active_component_colors :
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
     readonly_state_method_scope mt ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m runtime_mdef ->
@@ -383,48 +421,34 @@ Proof.
     runtime_mdef Hwf Htyping Hscope
     [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
       [Hmutroots [Havoid Holdcolors]]]]]]]
-      [Hcomponents Hactive]]
+      [Hcomponents Hactive_stored]]
+    Hactive
     Hval_y Hbase Hfind Hargs capability_root zone_root Hcaproot Hcapability
     Hzoneroot Hzone.
   destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x m y
     args sGamma' vals ly cy runtime_mdef capability_root Hwf Htyping Hscope
     Hval_y Hbase Hfind Hargs Hcaproot) as
-    [[Tcap [Hreceiver_cap [Hcapqual Hcaporigin]]] |
-     [Tcap [Hreceiver_cap [Hcapro Hcaproot_eq]]]].
-  - destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x m y
-      args sGamma' vals ly cy runtime_mdef zone_root Hwf Htyping Hscope
-      Hval_y Hbase Hfind Hargs Hzoneroot) as
-      [[Tzone [Hreceiver_zone [Hzonequal Hzoneorigin]]] |
-       [Tzone [Hreceiver_zone [Hzonero Hzoneroot_eq]]]].
-    + rewrite Hreceiver_cap in Hreceiver_zone. injection Hreceiver_zone as <-.
-      destruct Hcapqual as [Hmut | [Himm | Hrdm]].
-      * rewrite Hmut in Hzoneorigin.
-        eapply separated_components_cannot_touch_both with (root := zone_root).
-        -- exact Hcomponents.
-        -- destruct Hzoneorigin as [z [T [Htype [Hval Hqual]]]].
-           exists zone_root. split.
-           ++ apply Hmutroots. exists z, T. repeat split; assumption.
-           ++ apply mutable_connected_refl.
-        -- exact Hzone.
-      * rewrite Himm in Hcaporigin.
-        eapply immutable_root_cannot_touch_capability_component
-          with (root := capability_root); eauto.
-      * rewrite Hrdm in Hcaporigin, Hzoneorigin.
-        eapply Hactive with (capability_root := capability_root)
-          (zone_root := zone_root); eauto.
-    + rewrite Hreceiver_cap in Hreceiver_zone. injection Hreceiver_zone as <-.
-      rewrite Hzonero in Hcapqual.
-      destruct Hcapqual as [Hbad | [Hbad | Hbad]]; discriminate.
-  - destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x m y
-      args sGamma' vals ly cy runtime_mdef zone_root Hwf Htyping Hscope
-      Hval_y Hbase Hfind Hargs Hzoneroot) as
-      [[Tzone [Hreceiver_zone [Hzonequal Hzoneorigin]]] |
-       [Tzone [Hreceiver_zone [Hzonero Hzoneroot_eq]]]].
-    + rewrite Hreceiver_cap in Hreceiver_zone. injection Hreceiver_zone as <-.
-      rewrite Hcapro in Hzonequal.
-      destruct Hzonequal as [Hbad | [Hbad | Hbad]]; discriminate.
-    + subst capability_root zone_root.
-      eapply separated_components_cannot_touch_both with (root := ly); eauto.
+    [Tcap [Hreceiver_cap [Hcapqual Hcaporigin]]].
+  destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x m y
+    args sGamma' vals ly cy runtime_mdef zone_root Hwf Htyping Hscope
+    Hval_y Hbase Hfind Hargs Hzoneroot) as
+    [Tzone [Hreceiver_zone [Hzonequal Hzoneorigin]]].
+  rewrite Hreceiver_cap in Hreceiver_zone. injection Hreceiver_zone as <-.
+  destruct Hcapqual as [Hmut | [Himm | Hrdm]].
+  - rewrite Hmut in Hzoneorigin.
+    eapply separated_components_cannot_touch_both with (root := zone_root).
+    + exact Hcomponents.
+    + destruct Hzoneorigin as [z [T [Htype [Hval Hqual]]]].
+      exists zone_root. split.
+      * apply Hmutroots. exists z, T. repeat split; assumption.
+      * apply mutable_connected_refl.
+    + exact Hzone.
+  - rewrite Himm in Hcaporigin.
+    eapply immutable_root_cannot_touch_capability_component
+      with (root := capability_root); eauto.
+  - rewrite Hrdm in Hcaporigin, Hzoneorigin.
+    eapply Hactive with (capability_root := capability_root)
+      (zone_root := zone_root); eauto.
 Qed.
 
 Lemma safe_call_callee_component_forward_history :
@@ -434,6 +458,7 @@ Lemma safe_call_callee_component_forward_history :
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
     readonly_state_method_scope mt ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m runtime_mdef ->
@@ -444,14 +469,14 @@ Lemma safe_call_callee_component_forward_history :
       (mkr_env (Iot ly :: vals)) h.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x m y args sGamma' vals ly cy
-    runtime_mdef Hwf Htyping Hscope Hstate Hval_y Hbase Hfind Hargs.
+    runtime_mdef Hwf Htyping Hscope Hstate Hactive Hval_y Hbase Hfind Hargs.
   have Hactive' := safe_call_callee_active_component_colors CT P Z M cutoff
     sGamma mt rGamma h x m y args sGamma' vals ly cy runtime_mdef Hwf
-    Htyping Hscope Hstate Hval_y Hbase Hfind Hargs.
+    Htyping Hscope Hstate Hactive Hval_y Hbase Hfind Hargs.
   destruct Hstate as
     [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
       [Hmutroots [Havoid Holdcolors]]]]]]]
-      [Hcomponents Hactive]].
+      [Hcomponents Hactive_stored]].
   split.
   - refine (conj Hcontains (conj _ (conj _ (conj Hclosed
       (conj Hruntime (conj _ (conj Havoid _))))))).
@@ -535,6 +560,7 @@ Lemma safe_rdm_write_component_colors_cannot_cross :
   forall CT P Z M cutoff h sGamma rGamma x y lx ly Tx Ty Ctarget,
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     static_getType sGamma x = Some Tx ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma x = Some (Iot lx) ->
@@ -550,7 +576,8 @@ Proof.
   intros CT P Z M cutoff h sGamma rGamma x y lx ly Tx Ty Ctarget Hwf
     [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
       [Hmutroots [Havoid Holdcolors]]]]]]]
-      [Hcomponents Hactivecolors]]
+      [Hcomponents Hactive_stored]]
+    Hactivecolors
     Hgetx Hgety Hvalx Hvaly Hsub.
   destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
     as [this [qcontext [Hthis [_ Hqcontext]]]].
@@ -840,6 +867,7 @@ Lemma component_colors_after_typed_rdm_field_update_existing_set :
     D runtime_fd sGamma',
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
@@ -851,13 +879,13 @@ Lemma component_colors_after_typed_rdm_field_update_existing_set :
     component_colors_separated CT (update_field h lx f value) M Z.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x f y lx old value D
-    runtime_fd sGamma' Hwf Hstate Htyping Hscope Hvalx Hvaly Hobj
+    runtime_fd sGamma' Hwf Hstate Hactive Htyping Hscope Hvalx Hvaly Hobj
     Hruntime_sub Hruntime_fd Hruntime_rdm.
   destruct (typed_runtime_rdm_field_write_subtyping CT sGamma mt rGamma h
     x f y lx old D runtime_fd sGamma' Hwf Htyping Hscope Hvalx Hobj
     Hruntime_sub Hruntime_fd Hruntime_rdm) as
     [Tx [Ty [Hgetx [Hgety Hsub]]]].
-  destruct Hstate as [Hforward [Hcomponents Hactive]].
+  destruct Hstate as [Hforward [Hcomponents Hactive_stored]].
   eapply component_colors_after_field_update_existing_sets.
   - exact Hobj.
   - exact Hcomponents.
@@ -866,7 +894,7 @@ Proof.
     have Hcross := safe_rdm_write_component_colors_cannot_cross
       CT P Z M cutoff h sGamma rGamma x y lx written Tx Ty
       (f_base_type (ftype runtime_fd)) Hwf
-      (conj Hforward (conj Hcomponents Hactive)) Hgetx Hgety Hvalx
+      (conj Hforward (conj Hcomponents Hactive_stored)) Hactive Hgetx Hgety Hvalx
       Hvaly_written Hsub.
     exact (proj1 Hcross HlxM HwrittenZ).
   - intros written Hvalue HlxZ HwrittenM.
@@ -874,7 +902,7 @@ Proof.
     have Hcross := safe_rdm_write_component_colors_cannot_cross
       CT P Z M cutoff h sGamma rGamma x y lx written Tx Ty
       (f_base_type (ftype runtime_fd)) Hwf
-      (conj Hforward (conj Hcomponents Hactive)) Hgetx Hgety Hvalx
+      (conj Hforward (conj Hcomponents Hactive_stored)) Hactive Hgetx Hgety Hvalx
       Hvaly_written Hsub.
     exact (proj2 Hcross HlxZ HwrittenM).
 Qed.
@@ -883,6 +911,7 @@ Lemma component_colors_after_typed_field_update_existing_set :
   forall CT P Z M cutoff sGamma mt rGamma h x f y lx old value sGamma',
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
@@ -891,7 +920,7 @@ Lemma component_colors_after_typed_field_update_existing_set :
     component_colors_separated CT (update_field h lx f value) M Z.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x f y lx old value sGamma'
-    Hwf Hstate Htyping Hscope Hvalx Hvaly Hobj.
+    Hwf Hstate Hactive Htyping Hscope Hvalx Hvaly Hobj.
   destruct (typed_field_write_runtime_field_agreement CT sGamma mt rGamma h
     x f y lx old sGamma' Hwf Htyping Hvalx Hobj) as
     [Tx [fieldT [Hgetx [Hfield Hbase]]]].
@@ -925,6 +954,7 @@ Lemma capability_extension_after_typed_write_avoids_zone :
   forall CT P Z M cutoff sGamma mt rGamma h x f y lx old oldvalue value sGamma',
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
@@ -937,7 +967,7 @@ Lemma capability_extension_after_typed_write_avoids_zone :
       ~ In Loc Z protected.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x f y lx old oldvalue value
-    sGamma' Hwf Hstate Htyping Hscope Hvalx Hvaly Hobj Holdfield protected
+    sGamma' Hwf Hstate Hactive Htyping Hscope Hvalx Hvaly Hobj Holdfield protected
     [HinM | [ly [D [runtime_fd [Hvalue [HsourceM
       [Hruntime_sub [Hruntime_fd [Hruntime_rdm Hreach]]]]]]]]] HinZ.
   - destruct Hstate as
@@ -946,7 +976,7 @@ Proof.
     eapply Havoid; eauto.
   - have Hcomponents := component_colors_after_typed_rdm_field_update_existing_set
       CT P Z M cutoff sGamma mt rGamma h x f y lx old value D runtime_fd
-      sGamma' Hwf Hstate Htyping Hscope Hvalx Hvaly Hobj Hruntime_sub
+      sGamma' Hwf Hstate Hactive Htyping Hscope Hvalx Hvaly Hobj Hruntime_sub
       Hruntime_fd Hruntime_rdm.
     subst value.
     have Hnewedge := written_rdm_field_is_mutable_edge CT h lx old f
@@ -963,6 +993,7 @@ Lemma component_colors_after_typed_field_write_extension :
     sGamma',
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
@@ -973,10 +1004,10 @@ Lemma component_colors_after_typed_field_write_extension :
       (extend_capability_after_write CT h M lx old f value) Z.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x f y lx old oldvalue value
-    sGamma' Hwf Hstate Htyping Hscope Hvalx Hvaly Hobj Holdfield.
+    sGamma' Hwf Hstate Hactive Htyping Hscope Hvalx Hvaly Hobj Holdfield.
   have Hexisting := component_colors_after_typed_field_update_existing_set
     CT P Z M cutoff sGamma mt rGamma h x f y lx old value sGamma'
-    Hwf Hstate Htyping Hscope Hvalx Hvaly Hobj.
+    Hwf Hstate Hactive Htyping Hscope Hvalx Hvaly Hobj.
   intros capability protected
     [Hcapability | [target [D [runtime_fd [Hvalue [HsourceM
       [Hruntime_sub [Hruntime_fd [Hruntime_rdm Hreach]]]]]]]]]
@@ -1041,6 +1072,7 @@ Lemma active_rdm_colors_after_typed_non_rdm_field_write :
     Tx fieldT,
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getObj h lx = Some old ->
@@ -1053,7 +1085,7 @@ Lemma active_rdm_colors_after_typed_non_rdm_field_write :
       sGamma' rGamma.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x f y lx old value sGamma'
-    Tx fieldT Hwf [Hforward [Hcomponents Hactive]] Htyping Hvalx Hobj
+    Tx fieldT Hwf [Hforward [Hcomponents Hactive_stored]] Hactive Htyping Hvalx Hobj
     Hgetx Hfield Hbase Hnotrdm.
   assert (HsGamma : sGamma' = sGamma) by (inversion Htyping; reflexivity).
   subst sGamma'.
@@ -1084,6 +1116,7 @@ Qed.
 Lemma active_rdm_colors_after_null_field_write :
   forall CT P Z M cutoff sGamma rGamma h lx old f sGamma',
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     sGamma' = sGamma ->
     runtime_getObj h lx = Some old ->
     active_rdm_component_colors_separated CT
@@ -1092,7 +1125,7 @@ Lemma active_rdm_colors_after_null_field_write :
       sGamma' rGamma.
 Proof.
   intros CT P Z M cutoff sGamma rGamma h lx old f sGamma'
-    [Hforward [Hcomponents Hactive]] -> Hobj.
+    [Hforward [Hcomponents Hactive_stored]] Hactive -> Hobj.
   intros capability_root zone_root Hcaproot
     [capability [Hcapability Hcapconnected]] Hzoneroot
     [protected [Hprotected Hzoneconnected]].
@@ -1111,6 +1144,7 @@ Lemma old_active_capability_blocks_new_zone_bridge :
     capability_root zone_root,
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     static_getType sGamma x = Some Tx ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma x = Some (Iot lx) ->
@@ -1131,7 +1165,8 @@ Proof.
     capability_root zone_root Hwf
     [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
       [Hmutroots [Havoid Holdcolors]]]]]]]
-      [Hcomponents Hactive]]
+      [Hcomponents Hactive_stored]]
+    Hactive
     Hgetx Hgety Hvalx Hvaly Hsub Hcaproot HcapM Hzoneroot Hbridge.
   destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
     as [this [qcontext [Hthis [_ Hqcontext]]]].
@@ -1193,6 +1228,7 @@ Lemma new_capability_bridge_blocks_old_active_zone :
     capability_root zone_root,
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     static_getType sGamma x = Some Tx ->
     static_getType sGamma y = Some Ty ->
     runtime_getVal rGamma x = Some (Iot lx) ->
@@ -1213,7 +1249,8 @@ Proof.
     capability_root zone_root Hwf
     [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
       [Hmutroots [Havoid Holdcolors]]]]]]]
-      [Hcomponents Hactive]]
+      [Hcomponents Hactive_stored]]
+    Hactive
     Hgetx Hgety Hvalx Hvaly Hsub Hcaproot Hzoneroot HzoneZ Hbridge.
   destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
     as [this [qcontext [Hthis [_ Hqcontext]]]].
@@ -1284,6 +1321,7 @@ Lemma active_rdm_colors_after_typed_rdm_field_write :
     D runtime_fd sGamma',
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
@@ -1299,7 +1337,7 @@ Lemma active_rdm_colors_after_typed_rdm_field_write :
       sGamma' rGamma.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x f y lx ly old oldvalue
-    D runtime_fd sGamma' Hwf Hstate Htyping Hscope Hvalx Hvaly Hobj
+    D runtime_fd sGamma' Hwf Hstate Hactive Htyping Hscope Hvalx Hvaly Hobj
     Holdfield Hruntime_sub Hruntime_field Hruntime_rdm.
   assert (HsGamma : sGamma' = sGamma) by (inversion Htyping; reflexivity).
   subst sGamma'.
@@ -1308,10 +1346,10 @@ Proof.
     Hruntime_sub Hruntime_field Hruntime_rdm) as
     [Tx [Ty [Hgetx [Hgety Hsub]]]].
   have Hcomponents := proj1 (proj2 Hstate).
-  have Hactive := proj2 (proj2 Hstate).
   have Hcross := safe_rdm_write_component_colors_cannot_cross
     CT P Z M cutoff h sGamma rGamma x y lx ly Tx Ty
-    (f_base_type (ftype runtime_fd)) Hwf Hstate Hgetx Hgety Hvalx Hvaly Hsub.
+    (f_base_type (ftype runtime_fd)) Hwf Hstate Hactive Hgetx Hgety Hvalx
+    Hvaly Hsub.
   intros capability_root zone_root Hcaproot Hcapability Hzoneroot Hzone.
   have Hcapability_old :=
     component_touch_extension_reduces_to_old_capability_set CT h M lx old
@@ -1331,6 +1369,7 @@ Proof.
           (Ctarget := f_base_type (ftype runtime_fd)).
       * exact Hwf.
       * exact Hstate.
+      * exact Hactive.
       * exact Hgetx.
       * exact Hgety.
       * exact Hvalx.
@@ -1350,6 +1389,7 @@ Proof.
           (Ctarget := f_base_type (ftype runtime_fd)).
       * exact Hwf.
       * exact Hstate.
+      * exact Hactive.
       * exact Hgetx.
       * exact Hgety.
       * exact Hvalx.
@@ -1375,6 +1415,7 @@ Lemma active_rdm_colors_after_typed_field_write :
     sGamma',
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
@@ -1387,10 +1428,11 @@ Lemma active_rdm_colors_after_typed_field_write :
       sGamma' rGamma.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x f y lx old oldvalue value
-    sGamma' Hwf Hstate Htyping Hscope Hvalx Hvaly Hobj Holdfield.
+    sGamma' Hwf Hstate Hactive Htyping Hscope Hvalx Hvaly Hobj Holdfield.
   destruct value as [|ly].
   - eapply active_rdm_colors_after_null_field_write.
     + exact Hstate.
+    + exact Hactive.
     + inversion Htyping; reflexivity.
     + exact Hobj.
   - destruct (typed_field_write_runtime_field_agreement CT sGamma mt rGamma
@@ -1429,6 +1471,7 @@ Lemma component_forward_history_after_field_write :
   forall CT P Z M cutoff sGamma mt rGamma h x f y rGamma' h' sGamma',
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     readonly_state_method_scope mt ->
     eval_stmt CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
@@ -1437,7 +1480,7 @@ Lemma component_forward_history_after_field_write :
       component_forward_history_state CT P Z M' cutoff sGamma' rGamma' h'.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x f y rGamma' h' sGamma'
-    Hwf Hstate Htyping Hscope Heval.
+    Hwf Hstate Hactive Htyping Hscope Heval.
   assert (HrGamma : rGamma' = rGamma) by (inversion Heval; reflexivity).
   subst rGamma'.
   have Hwf' := preservation_fldwrite_ok CT sGamma mt rGamma h x f y h'
@@ -1449,17 +1492,17 @@ Proof.
   subst sGamma'.
   have Hcomponents' := component_colors_after_typed_field_write_extension
     CT P Z M cutoff sGamma mt rGamma h x f y loc_x o vf val_y sGamma
-    Hwf Hstate Htyping Hscope Hval_x Hval_y Hobj Hfield.
+    Hwf Hstate Hactive Htyping Hscope Hval_x Hval_y Hobj Hfield.
   have Hactive' := active_rdm_colors_after_typed_field_write
     CT P Z M cutoff sGamma mt rGamma h x f y loc_x o vf val_y sGamma
-    Hwf Hstate Htyping Hscope Hval_x Hval_y Hobj Hfield.
+    Hwf Hstate Hactive Htyping Hscope Hval_x Hval_y Hobj Hfield.
   have Havoid' := capability_extension_after_typed_write_avoids_zone
     CT P Z M cutoff sGamma mt rGamma h x f y loc_x o vf val_y sGamma
-    Hwf Hstate Htyping Hscope Hval_x Hval_y Hobj Hfield.
+    Hwf Hstate Hactive Htyping Hscope Hval_x Hval_y Hobj Hfield.
   destruct Hstate as
     [[Hcontains [Henv [[Hconfenv Hconfheap] [Hclosed [Hruntime
       [Hmutroots [Havoid Holdcolors]]]]]]]
-      [Hcomponents Hactive]].
+      [Hcomponents Hactive_stored]].
   have Hwf_old := Hwf.
   unfold wf_r_config in Hwf.
   destruct Hwf as [_ [Hwfheap _]].
@@ -1484,7 +1527,7 @@ Proof.
       * rewrite Hnewvalue in Hval_y. eapply Hconfenv; eauto.
     + intros root Hroot. apply capability_extension_contains_old.
       apply Hmutroots. exact Hroot.
-  - split; assumption.
+  - split; [exact Hcomponents'|exact Hactive'].
 Qed.
 
 Lemma fresh_attachment_has_creation_root :
@@ -1514,6 +1557,7 @@ Lemma component_colors_after_new_existing_sets :
     qruntime,
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     runtime_lookup_list rGamma args = Some vals ->
     ~ In Loc Z (dom h) ->
@@ -1521,12 +1565,12 @@ Lemma component_colors_after_new_existing_sets :
       (h ++ [mkObj (mkruntime_type qruntime C) vals]) M Z.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x qc C args sGamma' vals
-    qruntime Hwf Hstate Htyping Hvals HfreshZ capability protected
+    qruntime Hwf Hstate Hactive Htyping Hvals HfreshZ capability protected
     Hcapability Hprotected Hconnected.
   destruct Hstate as
     [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
       [Hmutroots [Havoid Holdcolors]]]]]]]
-      [Hcomponents Hactive]].
+      [Hcomponents Hactive_stored]].
   have Hwfheap : wf_heap CT h.
   { unfold wf_r_config in Hwf. tauto. }
   destruct (mutable_connected_after_append_components CT h
@@ -1570,6 +1614,7 @@ Lemma component_colors_after_new_extension :
     qruntime,
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     runtime_lookup_list rGamma args = Some vals ->
     ~ In Loc Z (dom h) ->
@@ -1578,11 +1623,11 @@ Lemma component_colors_after_new_extension :
       (extend_capability_after_new M qc (dom h)) Z.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x qc C args sGamma' vals
-    qruntime Hwf Hstate Htyping Hvals HfreshZ capability protected
+    qruntime Hwf Hstate Hactive Htyping Hvals HfreshZ capability protected
     [Hcapability | [Hmutcreation Hcapfresh]] Hprotected Hconnected.
   - have Hexisting := component_colors_after_new_existing_sets CT P Z M
       cutoff sGamma mt rGamma h x qc C args sGamma' vals qruntime Hwf
-      Hstate Htyping Hvals HfreshZ.
+      Hstate Hactive Htyping Hvals HfreshZ.
     exact (Hexisting capability protected Hcapability Hprotected Hconnected).
   - subst qc capability. simpl in *.
     have Hwfheap : wf_heap CT h.
@@ -1601,7 +1646,7 @@ Proof.
         destruct Hstate as
           [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
             [Hmutroots [Havoid Holdcolors]]]]]]]
-            [Hcomponents Hactive]].
+            [Hcomponents Hactive_stored]].
         apply (Hcomponents zoneroot protected).
         -- apply Hmutroots. exact Hzoneroot.
         -- exact Hprotected.
@@ -1858,7 +1903,7 @@ Proof.
     + destruct Hstate as
         [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
           [Hmutroots [Havoid Holdcolors]]]]]]]
-          [Hcomponents Hactive]].
+          [Hcomponents Hactive_stored]].
       destruct qc.
       * simpl in Hroot_target, Hmember_target.
         destruct (new_active_rdm_root_origin CT sGamma mt rGamma h x Mut_c C
@@ -1956,7 +2001,7 @@ Proof.
   - destruct Hstate as
       [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
         [Hmutroots [Havoid Holdcolors]]]]]]]
-        [Hcomponents Hactive]].
+        [Hcomponents Hactive_stored]].
     destruct qc.
     + simpl in Hroot_target, Hmember_target.
       exfalso. eapply separated_components_cannot_touch_both
@@ -1990,6 +2035,7 @@ Lemma active_rdm_colors_after_new :
     qruntime,
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     runtime_lookup_list rGamma args = Some vals ->
     ~ In Loc Z (dom h) ->
@@ -1999,7 +2045,7 @@ Lemma active_rdm_colors_after_new :
       (update_r_env_value rGamma x (Iot (dom h))).
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x qc C args sGamma' vals
-    qruntime Hwf Hstate Htyping Hvals HfreshZ capability_root zone_root
+    qruntime Hwf Hstate Hactive Htyping Hvals HfreshZ capability_root zone_root
     Hcaproot Hcapability Hzoneroot Hzone.
   destruct (active_rdm_capability_after_new_has_old_origin CT P Z M cutoff
     sGamma mt rGamma h x qc C args sGamma' vals qruntime capability_root
@@ -2009,7 +2055,7 @@ Proof.
     mt rGamma h x qc C args sGamma' vals qruntime old_capability zone_root
     Hwf Hstate Htyping Hvals HfreshZ Holdcaproot Holdcapability Hzoneroot
     Hzone) as [old_zone [Holdzoneroot Holdzone]].
-  exact (proj2 (proj2 Hstate) old_capability old_zone Holdcaproot
+  exact (Hactive old_capability old_zone Holdcaproot
     Holdcapability Holdzoneroot Holdzone).
 Qed.
 
@@ -2018,6 +2064,7 @@ Lemma component_forward_history_after_new :
     sGamma',
     wf_r_config CT sGamma rGamma h ->
     component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     cutoff <= dom h ->
     ~ In Loc Z (dom h) ->
@@ -2027,7 +2074,7 @@ Lemma component_forward_history_after_new :
       component_forward_history_state CT P Z M' cutoff sGamma' rGamma' h'.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x qc C args rGamma' h'
-    sGamma' Hwf Hstate Htyping Hcutoff HfreshZ Heval.
+    sGamma' Hwf Hstate Hactive Htyping Hcutoff HfreshZ Heval.
   have Hwf' := preservation_new_ok CT sGamma mt rGamma h x qc C args
     rGamma' h' sGamma' Hwf Htyping Heval.
   inversion Heval; subst.
@@ -2047,17 +2094,17 @@ Proof.
   exists (extend_capability_after_new M qc (dom h)).
   split; [apply capability_new_extension_contains_old|].
   have Hcomponents' := component_colors_after_new_extension CT P Z M cutoff
-    sGamma mt rGamma h x qc C args sGamma vals qruntime Hwf Hstate Htyping
-    Hargs HfreshZ.
+    sGamma mt rGamma h x qc C args sGamma vals qruntime Hwf Hstate Hactive
+    Htyping Hargs HfreshZ.
   have Hactive' := active_rdm_colors_after_new CT P Z M cutoff sGamma mt
-    rGamma h x qc C args sGamma vals qruntime Hwf Hstate Htyping Hargs
+    rGamma h x qc C args sGamma vals qruntime Hwf Hstate Hactive Htyping Hargs
     HfreshZ.
   have Hclosed' := capability_new_extension_closed CT P Z M cutoff sGamma mt
     rGamma h x qc C args sGamma vals qruntime Hwf Hstate Htyping Hargs.
   destruct Hstate as
     [[Hcontains [Hzone [[Hconfenv Hconfheap] [Hclosed [Hruntime
       [Hmutroots [Havoid Holdcolors]]]]]]]
-      [Hcomponents Hactive]].
+      [Hcomponents Hactive_stored]].
   have Hruntime' := capability_new_extension_runtime_mutable h M rGamma qc C
     vals qthisr qruntime l1 Hruntime Hthis Hmut
       (ltac:(unfold qruntime; reflexivity)).
@@ -2065,7 +2112,8 @@ Proof.
     sGamma mt rGamma h x qc C args sGamma Hwf
     (conj (conj Hcontains (conj Hzone (conj (conj Hconfenv Hconfheap)
       (conj Hclosed (conj Hruntime (conj Hmutroots
-        (conj Havoid Holdcolors))))))) (conj Hcomponents Hactive)) Htyping.
+        (conj Havoid Holdcolors)))))))
+      (conj Hcomponents Hactive_stored)) Htyping.
   have Havoid' := capability_new_extension_avoids_zone M Z qc (dom h)
     Havoid HfreshZ.
   have Hcolors' := active_component_colors_imply_rdm_separation CT
@@ -2094,7 +2142,7 @@ Proof.
         -- subst source. unfold newobj in Hfield. simpl in Hfield.
            exact (env_confined_lookup_list P cutoff rGamma args vals Hconfenv
              Hargs field target Hfield).
-  - split; assumption.
+  - split; [exact Hcomponents'|exact Hactive'].
 Qed.
 
 Lemma forward_history_after_assignment :
@@ -2217,6 +2265,71 @@ Proof.
       * exists zone_target. split; assumption.
 Qed.
 
+Lemma active_rdm_colors_after_assignment_preserved :
+  forall CT M Z sGamma mt rGamma h x e old value,
+    wf_r_config CT sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
+    stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
+    readonly_state_method_scope mt ->
+    runtime_getVal rGamma x = Some old ->
+    eval_expr CT rGamma h e value OK rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma
+      (update_r_env_value rGamma x value).
+Proof.
+  intros CT M Z sGamma mt rGamma h x e old value Hwf Hactive Htyping
+    Hscope Hx Heval capability_root zone_root Hcaproot Hcapcomponent
+    Hzoneroot Hzonecomponent.
+  destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
+    x e old value Hwf Htyping Hscope Hx Heval capability_root Hcaproot)
+    as [old_capability [Holdcapability Hcapability_prefix]].
+  destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
+    x e old value Hwf Htyping Hscope Hx Heval zone_root Hzoneroot)
+    as [old_zone [Holdzone Hzone_prefix]].
+  eapply Hactive with (capability_root := old_capability)
+    (zone_root := old_zone).
+  - exact Holdcapability.
+  - destruct Hcapcomponent as [member [HinM Hcapability_member]].
+    exists member. split; [exact HinM|].
+    eapply mutable_connected_trans.
+    + eapply mutable_reachable_connected; exact Hcapability_prefix.
+    + exact Hcapability_member.
+  - exact Holdzone.
+  - destruct Hzonecomponent as [member [HinZ Hzone_member]].
+    exists member. split; [exact HinZ|].
+    eapply mutable_connected_trans.
+    + eapply mutable_reachable_connected; exact Hzone_prefix.
+    + exact Hzone_member.
+Qed.
+
+Lemma active_rdm_colors_after_local_preserved :
+  forall CT M Z sGamma mt rGamma h T x sGamma',
+    wf_r_config CT sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
+    stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
+    runtime_getVal rGamma x = None ->
+    active_rdm_component_colors_separated CT h M Z sGamma'
+      (set_vars rGamma (vars rGamma ++ [Null_a])).
+Proof.
+  intros CT M Z sGamma mt rGamma h T x sGamma' Hwf Hactive Htyping
+    Hnone.
+  inversion Htyping; subst.
+  unfold wf_r_config in Hwf.
+  destruct Hwf as [_ [_ [_ [_ [Hlength _]]]]].
+  intros capability_root zone_root
+    [yc [Tc [Htypec [Hvalc Hrdmc]]]] Hcapcomponent
+    [yz [Tz [Htypez [Hvalz Hrdmz]]]] Hzonecomponent.
+  destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T yc Tc
+    capability_root Hlength Htypec Hvalc) as [Holdtypec Holdvalc].
+  destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T yz Tz
+    zone_root Hlength Htypez Hvalz) as [Holdtypez Holdvalz].
+  eapply Hactive with (capability_root := capability_root)
+    (zone_root := zone_root).
+  - exists yc, Tc. repeat split; assumption.
+  - exact Hcapcomponent.
+  - exists yz, Tz. repeat split; assumption.
+  - exact Hzonecomponent.
+Qed.
+
 Lemma component_forward_history_after_assignment :
   forall CT P Z M cutoff sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
@@ -2230,32 +2343,11 @@ Lemma component_forward_history_after_assignment :
       (update_r_env_value rGamma x value) h.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h x e old value Hwf
-    [Hforward [Hcomponents Hactive]] Hretained Htyping Hscope Hx Heval.
+    [Hforward [Hcomponents Hactive_stored]] Hretained Htyping Hscope Hx Heval.
   split.
   - eapply forward_history_after_assignment; eauto.
   - split; [exact Hcomponents|].
-    intros capability_root zone_root Hcaproot Hcapcomponent
-      Hzoneroot Hzonecomponent.
-    destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
-      x e old value Hwf Htyping Hscope Hx Heval capability_root Hcaproot)
-      as [old_capability [Holdcapability Hcapability_prefix]].
-    destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
-      x e old value Hwf Htyping Hscope Hx Heval zone_root Hzoneroot)
-      as [old_zone [Holdzone Hzone_prefix]].
-    eapply Hactive with (capability_root := old_capability)
-      (zone_root := old_zone).
-    + exact Holdcapability.
-    + destruct Hcapcomponent as [member [HinM Hcapability_member]].
-      exists member. split; [exact HinM|].
-      eapply mutable_connected_trans.
-      * eapply mutable_reachable_connected; exact Hcapability_prefix.
-      * exact Hcapability_member.
-    + exact Holdzone.
-    + destruct Hzonecomponent as [member [HinZ Hzone_member]].
-      exists member. split; [exact HinZ|].
-      eapply mutable_connected_trans.
-      * eapply mutable_reachable_connected; exact Hzone_prefix.
-      * exact Hzone_member.
+    eapply active_rdm_colors_after_assignment_preserved; eauto.
 Qed.
 
 Lemma component_forward_history_after_local :
@@ -2268,24 +2360,74 @@ Lemma component_forward_history_after_local :
       (set_vars rGamma (vars rGamma ++ [Null_a])) h.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h T x sGamma' Hwf
-    [Hforward [Hcomponents Hactive]] Htyping Hrnone.
+    [Hforward [Hcomponents Hactive_stored]] Htyping Hrnone.
   split.
   - eapply forward_history_after_local; eauto.
   - split; [exact Hcomponents|].
-    inversion Htyping; subst.
-    unfold wf_r_config in Hwf.
-    destruct Hwf as [_ [_ [_ [_ [Hlength _]]]]].
-    intros capability_root zone_root
-      [yc [Tc [Htypec [Hvalc Hrdmc]]]] Hcapcomponent
-      [yz [Tz [Htypez [Hvalz Hrdmz]]]] Hzonecomponent.
-    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T yc Tc
-      capability_root Hlength Htypec Hvalc) as [Holdtypec Holdvalc].
-    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T yz Tz
-      zone_root Hlength Htypez Hvalz) as [Holdtypez Holdvalz].
-    eapply Hactive with (capability_root := capability_root)
-      (zone_root := zone_root).
-    + exists yc, Tc. repeat split; assumption.
-    + exact Hcapcomponent.
-    + exists yz, Tz. repeat split; assumption.
-    + exact Hzonecomponent.
+    eapply active_rdm_colors_after_local_preserved; eauto.
+Qed.
+
+Lemma active_rdm_colors_after_assignment :
+  forall CT M Z sGamma mt rGamma h x e old value,
+    wf_r_config CT sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
+    stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
+    readonly_state_method_scope mt ->
+    runtime_getVal rGamma x = Some old ->
+    eval_expr CT rGamma h e value OK rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma
+      (update_r_env_value rGamma x value).
+Proof.
+  intros CT M Z sGamma mt rGamma h x e old value Hwf Hactive Htyping
+    Hscope Hx Heval capability_root zone_root Hcaproot Hcapcomponent
+    Hzoneroot Hzonecomponent.
+  destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
+    x e old value Hwf Htyping Hscope Hx Heval capability_root Hcaproot)
+    as [old_capability [Holdcapability Hcapability_prefix]].
+  destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h
+    x e old value Hwf Htyping Hscope Hx Heval zone_root Hzoneroot)
+    as [old_zone [Holdzone Hzone_prefix]].
+  eapply Hactive with (capability_root := old_capability)
+    (zone_root := old_zone).
+  - exact Holdcapability.
+  - destruct Hcapcomponent as [member [HinM Hcapability_member]].
+    exists member. split; [exact HinM|].
+    eapply mutable_connected_trans.
+    + eapply mutable_reachable_connected; exact Hcapability_prefix.
+    + exact Hcapability_member.
+  - exact Holdzone.
+  - destruct Hzonecomponent as [member [HinZ Hzone_member]].
+    exists member. split; [exact HinZ|].
+    eapply mutable_connected_trans.
+    + eapply mutable_reachable_connected; exact Hzone_prefix.
+    + exact Hzone_member.
+Qed.
+
+Lemma active_rdm_colors_after_local :
+  forall CT M Z sGamma mt rGamma h T x sGamma',
+    wf_r_config CT sGamma rGamma h ->
+    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
+    stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
+    runtime_getVal rGamma x = None ->
+    active_rdm_component_colors_separated CT h M Z sGamma'
+      (set_vars rGamma (vars rGamma ++ [Null_a])).
+Proof.
+  intros CT M Z sGamma mt rGamma h T x sGamma' Hwf Hactive Htyping
+    Hnone.
+  inversion Htyping; subst.
+  unfold wf_r_config in Hwf.
+  destruct Hwf as [_ [_ [_ [_ [Hlength _]]]]].
+  intros capability_root zone_root
+    [yc [Tc [Htypec [Hvalc Hrdmc]]]] Hcapcomponent
+    [yz [Tz [Htypez [Hvalz Hrdmz]]]] Hzonecomponent.
+  destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T yc Tc
+    capability_root Hlength Htypec Hvalc) as [Holdtypec Holdvalc].
+  destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T yz Tz
+    zone_root Hlength Htypez Hvalz) as [Holdtypez Holdvalz].
+  eapply Hactive with (capability_root := capability_root)
+    (zone_root := zone_root).
+  - exists yc, Tc. repeat split; assumption.
+  - exact Hcapcomponent.
+  - exists yz, Tz. repeat split; assumption.
+  - exact Hzonecomponent.
 Qed.
