@@ -17,7 +17,8 @@ Require Import Syntax Helpers Typing Subtyping Bigstep ViewpointAdaptation Reado
   ExecutionConfinement MutableCapability AuthorityCapability
   PotentialCapabilityCore LiveCapabilityStack.
 Require Export PotentialCapabilityResume.
-From Stdlib Require Import Sets.Ensembles Relations.Relation_Operators.
+From Stdlib Require Import List Sets.Ensembles Relations.Relation_Operators.
+Import ListNotations.
 
 (** Immutable [RDM] return note.
 
@@ -926,4 +927,32 @@ Proof.
     exact Hstate. }
   eapply initial_private_frame_join_policies_valid.
   exact (proj1 (proj2 (proj1 Hstate))).
+Qed.
+
+(** Atomic case: local declaration.  The heap and stack are unchanged, so the
+    join policies travel verbatim; the other three layers each have their own
+    surviving [after_local] lemma. *)
+Lemma private_call_pop_state_after_local :
+  forall CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
+    policies T x sGamma',
+    private_call_pop_state CT P Z cutoff
+      (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
+      policies h ->
+    stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
+    runtime_getVal rGamma x = None ->
+    private_call_pop_state CT P Z cutoff
+      (mk_watched_frame authority sGamma'
+        (set_vars rGamma (vars rGamma ++ [Null_a]))) stack incoming
+      (advance_frozen_caller_snapshots CT h
+        (mk_watched_frame authority sGamma'
+          (set_vars rGamma (vars rGamma ++ [Null_a]))) snapshots)
+      policies h.
+Proof.
+  intros CT P Z cutoff authority sGamma mt rGamma h stack incoming snapshots
+    policies T x sGamma' [Hpotential [Hphased [Hfrozen Hpolicies]]]
+    Htyping Hnone.
+  split; [eapply potential_history_after_local; eauto|].
+  split; [eapply principled_phased_authority_history_after_local; eauto|].
+  split; [eapply private_fresh_frozen_statement_after_local; eauto|].
+  exact Hpolicies.
 Qed.
