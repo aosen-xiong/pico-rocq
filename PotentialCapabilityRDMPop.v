@@ -1499,3 +1499,26 @@ Proof.
     exists final.
     eapply private_policy_statement_result_trans; eauto.
 Qed.
+
+(** Readonly-state field adaptation admits a [Mut] value in exactly two ways.
+
+    - Through an [RO_f] field: the slot adapts to [RO], so the value fits, but
+      the reference stored is readonly and carries no mutable authority.
+    - Otherwise the receiver must itself be [Mut]: [Mut_f] adapts to [Mut] only
+      under a [Mut] receiver and to [Lost] otherwise, [RDM_f] adapts to the
+      receiver's own qualifier and collapses to [Lost] under [RO], and [Imm_f]
+      adapts to [Imm].
+
+    This is the dichotomy an RS body faces whenever it tries to publish a
+    mutable value: either the connection it makes is not a mutable one, or it
+    is making it through a [Mut] variable -- and in the flexible-call callee
+    every [Mut] variable denotes a freshly allocated object. *)
+Lemma mut_into_readonly_state_field_is_ro_or_mut_receiver :
+  forall q1 fm,
+    q_subtype Mut (vpa_mutability_stype_fld_readonly_state q1 fm) ->
+    fm = RO_f \/ q1 = Mut.
+Proof.
+  intros q1 fm Hq.
+  destruct fm; [| | |left; reflexivity];
+    destruct q1; simpl in Hq; try (right; reflexivity); inversion Hq.
+Qed.
