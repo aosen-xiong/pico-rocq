@@ -17,7 +17,8 @@ Require Import Syntax Helpers Typing Subtyping Bigstep ViewpointAdaptation Reado
   ExecutionConfinement MutableCapability AuthorityCapability
   PotentialCapabilityCore LiveCapabilityStack.
 Require Export PotentialCapabilityResume.
-From Stdlib Require Import List Sets.Ensembles Relations.Relation_Operators.
+From Stdlib Require Import List Sets.Ensembles Relations.Relation_Operators
+  Program.Equality.
 Import ListNotations.
 
 (** Immutable [RDM] return note.
@@ -1053,4 +1054,83 @@ Proof.
   inversion Hsuspended as [|target targets bnd rest Hhead Htail Heq1 Heq2];
     subst.
   constructor; [exact Hhead|exact Htail].
+Qed.
+
+(** The call case of the threading induction, isolated as a contract exactly
+    as the retired development isolated
+    [private_advancing_policy_successful_call_rule].  The induction below is
+    parameterised by it; discharging it is independent work. *)
+Definition private_call_pop_call_rule : Prop :=
+  forall CT P Z cutoff rGamma h x m y zs vals ly cy mdef retval h' rGamma''
+    sGamma mt sGamma' authority stack incoming snapshots policies,
+    runtime_getVal rGamma y = Some (Iot ly) ->
+    r_basetype h ly = Some cy ->
+    FindMethodWithName CT cy m mdef ->
+    runtime_lookup_list rGamma zs = Some vals ->
+    eval_stmt CT (mkr_env (Iot ly :: vals)) h
+      (mbody_stmt (mbody mdef)) OK rGamma'' h' ->
+    runtime_getVal rGamma'' (mreturn (mbody mdef)) = Some retval ->
+    (forall entry_senv entry_scope final_senv callee_authority callee_stack
+       callee_incoming callee_snapshots callee_policies,
+       private_call_pop_state CT P Z cutoff
+         (mk_watched_frame callee_authority entry_senv
+           (mkr_env (Iot ly :: vals)))
+         callee_stack callee_incoming callee_snapshots callee_policies h ->
+       stmt_typing CT entry_senv entry_scope
+         (mbody_stmt (mbody mdef)) final_senv ->
+       readonly_state_method_scope entry_scope ->
+       exists final_snapshots,
+         private_call_pop_state CT P Z cutoff
+           (mk_watched_frame callee_authority final_senv rGamma'')
+           callee_stack callee_incoming final_snapshots callee_policies h') ->
+    private_call_pop_state CT P Z cutoff
+      (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
+      policies h ->
+    stmt_typing CT sGamma mt (SCall x m y zs) sGamma' ->
+    readonly_state_method_scope mt ->
+    exists final_snapshots,
+      private_call_pop_state CT P Z cutoff
+        (mk_watched_frame authority sGamma'
+          (set_vars rGamma (update x retval (vars rGamma))))
+        stack incoming final_snapshots policies h'.
+
+Lemma private_call_pop_state_preserved_from_call_rule :
+  private_call_pop_call_rule ->
+  forall CT P Z cutoff rGamma h statement rGamma' h',
+    eval_stmt CT rGamma h statement OK rGamma' h' ->
+    forall sGamma mt sGamma' authority stack incoming snapshots policies,
+      private_call_pop_state CT P Z cutoff
+        (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
+        policies h ->
+      stmt_typing CT sGamma mt statement sGamma' ->
+      readonly_state_method_scope mt ->
+      exists final_snapshots,
+        private_call_pop_state CT P Z cutoff
+          (mk_watched_frame authority sGamma' rGamma') stack incoming
+          final_snapshots policies h'.
+Proof.
+  intros Hrule CT P Z cutoff rGamma h statement rGamma' h' Heval.
+  have Heval_copy := Heval.
+  dependent induction Heval;
+    intros sGamma mt sGamma' authority stack incoming snapshots policies
+      Hstate Htyping Hscope.
+  - inversion Htyping; subst. exists snapshots. exact Hstate.
+  - eexists. eapply private_call_pop_state_after_local; eauto.
+  - inversion Htyping; subst.
+    assert (Hupdate : set_vars rΓ (update x v2 (vars rΓ)) =
+        update_r_env_value rΓ x v2).
+    { destruct rΓ. reflexivity. }
+    rewrite Hupdate.
+    eexists. eapply private_call_pop_state_after_assignment; eauto.
+  - eexists. eapply private_call_pop_state_after_field_write; eauto.
+  - eexists. eapply private_call_pop_state_after_new; eauto.
+  - destruct Hfind as [Hfind_method Hbody_definition].
+    subst mbody mstmt mret rΓ' rΓ'''.
+    eapply Hrule; eauto.
+  - inversion Htyping; subst.
+    destruct (IHHeval1 eq_refl Heval1 sGamma mt sΓ' authority stack incoming
+      snapshots policies Hstate Htype1 Hscope) as [middle Hmiddle].
+    destruct (IHHeval2 eq_refl Heval2 sΓ' mt sGamma' authority stack incoming
+      middle policies Hmiddle Htype2 Hscope) as [final Hfinal].
+    exists final. exact Hfinal.
 Qed.
