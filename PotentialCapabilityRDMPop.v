@@ -740,3 +740,39 @@ Proof.
   apply rt_step.
   eapply boundary_caller_rdm_roots_are_adjacent; eauto.
 Qed.
+
+(** Every [Mut]-typed root of a frame whose protected zone coincides with its
+    confinement set lies above the cutoff.
+
+    Instantiating the statement induction a second time with
+    [P = Z = body_initial_reachable] and [cutoff = dom h] therefore shows that
+    every [Mut]-typed variable of a readonly-state callee holds a freshly
+    allocated location.  This is the fact behind the [Mut_f] row of the
+    old-to-fresh crossing analysis: a [Mut_f] write needs a [Mut]-typed
+    receiver variable, and such a variable never denotes an old object.
+
+    Deriving it here avoids [principled_phased_local_mut_root_is_fresh], whose
+    [principled_phased_authority_live_history_state] premise has no bridge
+    from [potential_live_history_state] in this development. *)
+Lemma potential_local_mut_root_is_fresh :
+  forall CT P cutoff active stack h variable T root,
+    potential_live_history_state CT P P cutoff active stack h ->
+    static_getType active.(frame_senv) variable = Some T ->
+    runtime_getVal active.(frame_renv) variable = Some (Iot root) ->
+    sqtype T = Mut ->
+    cutoff <= root.
+Proof.
+  intros CT P cutoff active stack h variable T root Hstate Htype Hvalue Hmut.
+  have Hcapability : In Loc (live_capability_set CT h active stack) root.
+  { eapply typed_mut_root_is_active_live_capability.
+    exists variable, T. repeat split; assumption. }
+  have Hseparated := proj1 (proj2 Hstate).
+  have Hnot_protected : ~ In Loc P root.
+  { intros Hin.
+    exact (Hseparated root root Hcapability Hin (rt_refl _ _ _)). }
+  have Henv : env_is_confined P cutoff active.(frame_renv) :=
+    proj1 (proj1 (proj2 (proj2 (proj1 (proj1 (proj1 Hstate)))))).
+  destruct (Henv variable root Hvalue) as [HinP | Hfresh].
+  - contradiction.
+  - exact Hfresh.
+Qed.
