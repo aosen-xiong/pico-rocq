@@ -12,7 +12,7 @@
       [classified_rdm_call_pop_merge_safe] reduces the whole RDM-destination
       pop obligation to the single [Imm_r] / covariant-[Mut] return case. *)
 
-Require Import Syntax Helpers Typing Bigstep ReadonlyHelper Properties
+Require Import Syntax Helpers Typing Subtyping Bigstep ViewpointAdaptation ReadonlyHelper Properties
   Preservation ForwardCapabilityHistory ProtectionHistory WatchedFrames
   ExecutionConfinement MutableCapability AuthorityCapability
   PotentialCapabilityCore LiveCapabilityStack.
@@ -816,4 +816,72 @@ Proof.
   intros h active stack Hnot_rdm l r
     [callee [boundary [Hlive [_ [Hreturn_rdm _]]]]].
   exact (Hnot_rdm callee boundary Hlive Hreturn_rdm).
+Qed.
+
+(** Recovered from the retired [PotentialCapabilityCall] development.
+    In the covariant [Mut] return branch the callee receiver is forced to
+    [RO] and the callee entry frame has no RDM roots at all, so the tracked
+    channel-free call entry applies. *)
+Lemma refined_mut_return_call_has_channel_free_entry_shape :
+  forall CT sGamma mt rGamma h x method receiver args vals
+    receiver_location receiver_type destination_type body_return_type
+    runtime_mdef static_mdef,
+    wf_r_config CT sGamma rGamma h ->
+    stmt_typing CT sGamma mt (SCall x method receiver args) sGamma ->
+    readonly_state_method_scope mt ->
+    static_getType sGamma receiver = Some receiver_type ->
+    runtime_getVal rGamma receiver = Some (Iot receiver_location) ->
+    runtime_lookup_list rGamma args = Some vals ->
+    FindMethodWithName CT (sctype receiver_type) method static_mdef ->
+    qualified_type_subtype CT body_return_type
+      (mret (msignature runtime_mdef)) ->
+    method_signature_refinement CT
+      (msignature runtime_mdef) (msignature static_mdef) ->
+    qualified_type_subtype CT
+      (vpa_mutability_tt_readonly_state receiver_type
+        (mret (msignature static_mdef)))
+      destination_type ->
+    sqtype receiver_type <> Bot ->
+    sqtype destination_type = RDM ->
+    sqtype body_return_type = Mut ->
+    qualified_type_subtype CT receiver_type
+      (vpa_mutability_tt_readonly_state receiver_type
+        (mreceiver (msignature static_mdef))) ->
+    signature_has_no_mutable_roots (msignature runtime_mdef) ->
+    sqtype (mreceiver (msignature runtime_mdef)) = RO /\
+    (forall root,
+      ~ typed_root RDM
+          (mreceiver (msignature runtime_mdef) ::
+            mparams (msignature runtime_mdef))
+          (mkr_env (Iot receiver_location :: vals)) root).
+Proof.
+  intros CT sGamma mt rGamma h x method receiver args vals
+    receiver_location receiver_type destination_type body_return_type
+    runtime_mdef static_mdef
+    Hwf Htyping Hscope Hreceiver_type Hreceiver_value Hargs Hfind_static
+    Hbody_sub Hrefine Hresult_sub Hreceiver_nonbottom
+    Hdestination_rdm Hbody_mut Hreceiver_sub Hsignature_safe.
+  destruct (refined_call_rdm_result_classifies_body_return CT receiver_type
+    body_return_type (msignature runtime_mdef) (msignature static_mdef)
+    destination_type Hbody_sub Hrefine Hresult_sub Hreceiver_nonbottom
+    (ltac:(rewrite Hbody_mut; discriminate)) Hdestination_rdm) as
+    [Hreceiver_rdm _].
+  destruct (refined_call_rdm_mut_body_signature_shape CT receiver_type
+    body_return_type (msignature runtime_mdef) (msignature static_mdef)
+    destination_type Hbody_sub Hrefine Hresult_sub Hreceiver_nonbottom
+    Hdestination_rdm Hbody_mut) as [Hstatic_return Hruntime_return].
+  have Hstatic_receiver :
+      sqtype (mreceiver (msignature static_mdef)) = RDM \/
+      sqtype (mreceiver (msignature static_mdef)) = RO.
+  { eapply readonly_rdm_call_receiver_signature.
+    - exact Hreceiver_rdm.
+    - exact Hreceiver_sub. }
+  have Hruntime_receiver :
+      sqtype (mreceiver (msignature runtime_mdef)) = RO.
+  { eapply method_signature_refinement_mut_from_rdm_has_ro_receiver; eauto. }
+  split; [exact Hruntime_receiver|].
+  intros root.
+  eapply refined_mut_return_call_entry_has_no_rdm_roots with
+    (receiver_type := receiver_type) (runtime_mdef := runtime_mdef)
+    (static_mdef := static_mdef); eauto.
 Qed.
