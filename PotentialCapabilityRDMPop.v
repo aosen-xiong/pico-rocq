@@ -14,7 +14,7 @@
 
 Require Import Syntax Helpers Typing Subtyping Bigstep ViewpointAdaptation ReadonlyHelper Properties
   Preservation ForwardCapabilityHistory ProtectionHistory WatchedFrames
-  ExecutionConfinement MutableCapability AuthorityCapability
+  ExecutionConfinement MutableCapability AuthorityCapability ComponentColoring
   PotentialCapabilityCore LiveCapabilityStack.
 Require Export PotentialCapabilityResume.
 From Stdlib Require Import List Sets.Ensembles Relations.Relation_Operators
@@ -1521,4 +1521,37 @@ Proof.
   intros q1 fm Hq.
   destruct fm; [| | |left; reflexivity];
     destruct q1; simpl in Hq; try (right; reflexivity); inversion Hq.
+Qed.
+
+(** Backward form of the local result-component bound.  [mutable_connected] is
+    the reflexive-transitive closure of a *symmetric* adjacency
+    ([mutable_adjacent_symmetric]), so it relates components rather than
+    directed reachability, and the forward bound transports.
+
+    Read together with
+    [mut_into_readonly_state_field_is_ro_or_mut_receiver]: a readonly-state
+    body can only put a [Mut] value behind an [RO_f] slot, which carries no
+    mutable edge, or through a [Mut] receiver, which is fresh.  So nothing old
+    ends up in the [Mut] result's mutable component -- which is what this
+    states. *)
+Lemma principled_local_mut_result_component_source_is_fresh :
+  forall CT sGamma rGamma h statement rGamma' h' active stack incoming
+    return_var return_type return_location source,
+    wf_r_config CT sGamma rGamma h ->
+    eval_stmt CT rGamma h statement OK rGamma' h' ->
+    principled_phased_authority_live_history_state CT
+      (reachable_locations_from_initial_env h rGamma)
+      (reachable_locations_from_initial_env h rGamma) (dom h)
+      active stack incoming h' ->
+    static_getType active.(frame_senv) return_var = Some return_type ->
+    runtime_getVal active.(frame_renv) return_var = Some (Iot return_location) ->
+    sqtype return_type = Mut ->
+    mutable_connected CT h' source return_location ->
+    dom h <= source.
+Proof.
+  intros CT sGamma rGamma h statement rGamma' h' active stack incoming
+    return_var return_type return_location source Hwf Heval Hstate Htype
+    Hvalue Hmut Hconnected.
+  eapply principled_local_mut_result_component_is_fresh; eauto.
+  apply mutable_connected_sym. exact Hconnected.
 Qed.
