@@ -324,3 +324,52 @@ covariant `Mut` body return.  The other shapes are proved directionally --
 behind `PotentialCapability.v`'s call branch; it exists because flexible
 overriding admits covariant `Mut` returns, and per the note above it must
 not be dodged by forbidding them.
+
+## Closing the Imm_r / covariant-Mut call-pop residual
+
+`call_pop_bridge` has two orientations.  The one whose protected endpoint
+hangs off the return dies immediately: a covariant `Mut` body return is a
+`Mut` root of the completed callee, hence one of its live capabilities
+(`typed_mut_root_is_active_live_capability`), and `potential_colors_separated`
+finishes it.  That orientation is proved.
+
+The other orientation -- `capability ->* return` together with
+`receiver ->* protected` -- is the real obligation.  Two routes are dead ends
+and must not be retried:
+
+1. `potential_connected_sym`.  The relation is not symmetric: `potential_adjacent`
+   follows retained mut edges forward but only current mutable edges backward,
+   and a legal overwrite severs the latter.
+2. "Nothing entry-reachable can reach the fresh return."  This is **false**.
+   `potential_frame_edge` joins *any two* RDM roots of a live frame with no
+   authority condition, so an old RDM root and a freshly allocated RDM local
+   of the callee are adjacent, and the fresh region is reachable.
+
+The correct argument is a collapse into the receiver case, forward-only.
+Under `Imm_r` with `signature_has_no_mutable_roots` the callee can never
+obtain `Mut` authority on an old object: both `RDM |> Mut_f` and
+`RO |> Mut_f` are `Lost`.  Hence it creates no old-to-fresh retained mut
+edge, and *every* crossing into the fresh region is a frame edge at an RDM
+root.  Every such root is frame-joined to the receiver:
+
+  - callee RDM roots, when the callee receiver is RDM-typed: the receiver is
+    then itself a callee RDM root, so the frame edge exists in the callee
+    frame;
+  - an RDM parameter: `ST_Call_readonly_state`'s `Harg_sub` forces the
+    argument type below `vpa_mutability_tt_readonly_state Ty T`, which for an
+    RDM receiver and RDM parameter is `RDM`.  So the argument object is a
+    *caller* RDM root and is frame-joined to the receiver in the caller
+    frame, which is a live frame member across the boundary;
+  - an `RO` receiver derives no RDM roots at all, since `RO |> RDM_f = Lost`
+    and `Lost` is unusable.
+
+So `capability ->* return` forces `capability ->* receiver`, which is the
+third `Hpropagate` case and is discharged against the callee's own
+separation invariant.  The counterexample refutes itself: the very frame
+edge that reaches the fresh return also reaches the receiver.
+
+Do not close this by gating `potential_frame_edge` under `Imm_r`.  That would
+leave the public theorem's text unchanged while shrinking
+`potential_connected`, and therefore weaken what
+`successful_stmt_preserves_potential_history` asserts.  The statement is a
+fixed interface.
