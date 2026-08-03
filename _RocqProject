@@ -34,15 +34,6 @@ PotentialCapabilityAtomic.v
 PotentialCapabilityPrivate.v
 PotentialCapabilityResume.v
 PotentialCapabilityRDMPop.v
-PotentialCapabilityPolicy.v
-PotentialCapabilityStatement.v
-PotentialCapabilityPolicyPop.v
-PotentialCapabilityTargetPop.v
-PotentialCapabilityTargetEntry.v
-PotentialCapabilityCall.v
-PotentialCapabilityNonNullCall.v
-PotentialCapabilityRDMCall.v
-PotentialCapabilityCallRule.v
 PotentialCapability.v
 ProtectedFieldPreservation.v
 ReadonlyNoMutation.v
