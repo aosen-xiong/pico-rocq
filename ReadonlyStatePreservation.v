@@ -378,7 +378,7 @@ Proof.
     readonly_state_method_scope (mscope (msignature mdef)).
   { eapply safe_typed_call_target_method_safe; eauto. }
   have Hruntime_dom : cy < dom CT.
-  { eapply base_subtype_domain; exact Hruntime_sub. }
+  { exact (proj1 (base_subtype_domain CT cy (sctype Ty) Hruntime_sub)). }
   destruct (method_lookup_in_wellformed_inherited CT cy method mdef
     (proj1 Hwf) Hruntime_dom Hfind_runtime) as
     [declaring_class [declaring_def
