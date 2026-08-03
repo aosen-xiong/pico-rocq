@@ -509,3 +509,44 @@ Reusable results proved while establishing this:
   no_return_edge_when_callee_return_not_rdm
 
 All four are axiom-free and independent of which route is finally taken.
+
+### Route C1: the combined threading induction
+
+Every invariant route C needs is constructible from `potential_live_history_state`;
+the entry bridges all survive in `PotentialCapabilityCore.v`:
+
+  potential_live_history_starts_principled_phased_authority     :6372
+  potential_live_history_starts_principled_frozen_authority     :6406
+  potential_live_history_starts_private_fresh_frozen_statement  :6549
+
+The remaining work is one induction over `eval_stmt` threading four
+invariants *simultaneously*:
+
+  potential_live_history_state                     (already the main theorem)
+  principled_phased_authority_live_history_state
+  private_fresh_frozen_statement_state
+  private_frame_join_policies_valid
+
+They must be threaded together, not in sequence: the return case of the
+frozen layer (`private_fresh_frozen_statement_after_nonnull_return_parts`)
+requires `principled_phased_authority_live_history_state` for the *caller
+post* frame, which is itself a post-call fact.  This mutual dependency at the
+call case is why the retired `Statement.v` threaded them jointly.
+
+Per-case pieces, all surviving and axiom-free:
+
+  atomic   private_fresh_frozen_statement_after_{local,assignment,new,field_write}
+  entry    private_fresh_frozen_statement_enter_call_{channel_free,untracked}
+           principled_phased_authority_history_enter_call
+  return   private_fresh_frozen_statement_after_{nonnull,null}_return_parts
+           private_policy_statement_after_{tracked,untracked}_pop_from_parts
+  policy   initial_/enter_/leave_private_frame_join_policies_valid
+
+The covariant `Mut` return branch takes the *channel-free* entry: by
+`refined_mut_return_call_has_channel_free_entry_shape` the callee receiver
+qualifier is forced to `RO` and the callee entry frame has no RDM roots, so
+`private_fresh_frozen_statement_enter_call_channel_free` applies and yields
+the `Some`-headed snapshot list that
+`immutable_rdm_evolved_policy_head_pop_safe` requires.
+
+No step of this needs an admit: every piece it builds on is `Qed`.
