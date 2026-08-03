@@ -2620,3 +2620,117 @@ Proof.
       (mreturn (mbody runtime_mdef)) body_return_type l
       Hcallee_wf Hret_type Hretval Hb).
 Qed.
+
+(** The master preservation induction: the freshness triple survives any
+    successful readonly-state statement, including nested calls. *)
+Lemma rs_mutable_freshness_preserved :
+  forall CT rGamma h statement rGamma' h',
+    eval_stmt CT rGamma h statement OK rGamma' h' ->
+    forall sGamma mt sGamma' h0,
+      stmt_typing CT sGamma mt statement sGamma' ->
+      readonly_state_method_scope mt ->
+      wf_r_config CT sGamma rGamma h ->
+      dom h0 <= dom h ->
+      rs_mutable_freshness CT h0 sGamma rGamma h ->
+      rs_mutable_freshness CT h0 sGamma' rGamma' h'.
+Proof.
+  intros CT rGamma h statement rGamma' h' Heval.
+  have Heval_copy := Heval.
+  dependent induction Heval;
+    intros sGamma mt sGamma' h0 Htyping Hscope Hwf Hgrow Htriple.
+  - (* skip *) inversion Htyping; subst. exact Htriple.
+  - (* local *) inversion Htyping; subst.
+    eapply rs_mutable_freshness_after_local; [|exact Htriple].
+    exact (proj1 (proj2 (proj2 (proj2 (proj2 Hwf))))).
+  - (* var assignment *) inversion Htyping; subst.
+    assert (Hupdate : set_vars rΓ (update x v2 (vars rΓ)) =
+        update_r_env_value rΓ x v2).
+    { destruct rΓ. reflexivity. }
+    rewrite Hupdate.
+    eapply rs_mutable_freshness_after_assignment; eauto.
+  - (* field write *)
+    eapply rs_mutable_freshness_after_field_write; eauto.
+  - (* new *)
+    eapply rs_mutable_freshness_after_new; eauto.
+  - (* call *)
+    destruct Hfind as [Hfind_method Hbody_definition].
+    subst mbody mstmt mret. subst.
+    destruct (safe_typed_call_static_result CT sGamma mt rΓ h x m y zs
+      sGamma' ly cy mdef Hwf Htyping Hscope Hval_y Hbase Hfind_method)
+      as [destination_type [receiver_type [static_mdef
+        [HsGamma [Hx_nonzero [Hdestination_type [Hreceiver_type
+          [Hfind_static [Hrefine [Hret_sub Hrcv_sub]]]]]]]]]].
+    subst sGamma'.
+    have Hcallee_scope := safe_typed_call_target_method_safe CT sGamma mt rΓ
+      h x m y zs sGamma ly cy mdef Hwf Htyping Hscope Hval_y Hbase
+      Hfind_method.
+    destruct (typed_call_target CT sGamma mt rΓ h x m y zs sGamma vals ly
+      cy mdef Hwf Htyping Hval_y Hbase Hfind_method Hargs) as
+      [declaring_class [declaring_def [body_end
+        [Hruntime_sub [Hdeclaring_class [Hmethod_member
+          [Hmethod_wf [Hbody_typing Hcallee_initial_wf]]]]]]]].
+    unfold wf_method in Hmethod_wf. simpl in Hmethod_wf.
+    destruct Hmethod_wf as
+      [_ [method_end [body_return_type
+        [Hmethod_body_typing [Hreturn_dom
+          [Hreturn_type [Hbody_sub Hoverriding]]]]]]].
+    have Hsig_safe : signature_has_no_mutable_roots (msignature mdef).
+    { exact ((proj2 (proj2 Hoverriding)) Hcallee_scope). }
+    (* argument channel facts, from the typing rule directly *)
+    assert (Hcall_args : exists argtypes,
+        static_getType_list sGamma zs = Some argtypes /\
+        Forall2 (fun arg T => qualified_type_subtype CT arg
+            (vpa_mutability_tt_readonly_state receiver_type T))
+          argtypes (mparams (msignature static_mdef))).
+    { inversion Htyping; subst.
+      - destruct Hscope as [Hbad | Hbad]; destruct Hscope0 as
+          [Habs | [Hcs _]]; congruence.
+      - assert (Ty = receiver_type) by congruence. subst Ty.
+        assert (mdef0 = static_mdef).
+        { eapply find_method_with_name_deterministic; eauto. }
+        subst mdef0.
+        exists argtypes. split; assumption. }
+    destruct Hcall_args as [argtypes [Hget_args Harg_sub]].
+    destruct Htriple as [HJ [HK HL]].
+    have Hentry_J := rs_mut_vars_fresh_call_entry CT h0 sGamma rΓ h y
+      receiver_type ly zs vals argtypes mdef (msignature static_mdef)
+      Hwf HJ Hreceiver_type Hval_y Hargs Hget_args Hrefine Hsig_safe
+      Hrcv_sub Harg_sub.
+    (* run the body *)
+    have Hbody_triple := IHHeval eq_refl Heval
+      (mreceiver (msignature mdef) :: mparams (msignature mdef))
+      (mscope (msignature mdef)) method_end h0
+      Hmethod_body_typing Hcallee_scope Hcallee_initial_wf Hgrow
+      (conj Hentry_J (conj HK HL)).
+    destruct Hbody_triple as [HJ'' [HK'' HL'']].
+    have Hcallee_final_wf := preservation_pico CT
+      (mreceiver (msignature mdef) :: mparams (msignature mdef))
+      (mscope (msignature mdef)) (mkr_env (Iot ly :: vals)) h
+      (mbody_stmt (Syntax.mbody mdef)) rΓ'' h' method_end
+      Hcallee_initial_wf Hmethod_body_typing Heval.
+    assert (Hupdate : set_vars rΓ (update x retval (vars rΓ)) =
+        update_r_env_value rΓ x retval).
+    { destruct rΓ. reflexivity. }
+    rewrite Hupdate.
+    have Hpreserve : forall loc q, r_muttype h loc = Some q ->
+        r_muttype h' loc = Some q.
+    { intros loc q Hq.
+      eapply eval_stmt_preserves_r_muttype; eauto.
+      unfold r_muttype in Hq.
+      destruct (runtime_getObj h loc) as [o0|] eqn:Ho0; [|discriminate].
+      eapply runtime_getObj_dom. exact Ho0. }
+    split; [|split; [exact HK''|exact HL'']].
+    eapply rs_mut_vars_fresh_call_return with
+      (y := y) (Ty := receiver_type) (ly := ly)
+      (runtime_mdef := mdef) (static_sig := msignature static_mdef)
+      (method_end := method_end) (rGamma'' := rΓ'')
+      (body_return_type := body_return_type); eauto.
+  - (* seq *)
+    inversion Htyping; subst.
+    have Hmid_wf := preservation_pico CT sGamma mt rΓ h s1 rΓ' h' sΓ'
+      Hwf Htype1 Heval1.
+    have Hmid_grow : dom h0 <= dom h'.
+    { have Hg := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h'
+        Heval1. lia. }
+    eapply IHHeval2 with (sGamma := sΓ') (mt := mt) (h0 := h0); eauto.
+Qed.
