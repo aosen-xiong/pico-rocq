@@ -312,11 +312,171 @@ Proof.
            [Hcap_return Hreceiver_protected]].
         -- exact (Hseparated return_location protected Hreturn_capability
              Hprotected Hreturn_protected).
-        -- admit.
+        -- (* Orientation B: an old caller capability would have to reach
+              the fresh [Mut] return.  The RS freshness triple makes every
+              potential step from an old runtime-mutable node land on an old
+              node, so the return would be old -- contradicting its
+              freshness. *)
+           exfalso.
+           (* the callee entry is channel-free *)
+           destruct (refined_mut_return_call_has_channel_free_entry_shape CT
+             sGamma mt rΓ h x m y zs vals ly receiver_type destination_type
+             body_return_type mdef static_mdef Hcaller_wf Htyping Hsafe
+             Hreceiver_type Hval_y Hargs Hfind_static Hbody_sub
+             Hsignature_refinement Hresult_sub Hreceiver_nonbottom
+             Hdestination_rdm Hbody_mut Hstatic_receiver_sub Hsignature_safe)
+             as [Hreceiver_ro Hno_rdm_roots].
+           (* the freshness triple holds after the body *)
+           have Hentry_J : rs_mut_vars_fresh h
+               (mreceiver (msignature mdef) :: mparams (msignature mdef))
+               (mkr_env (Iot ly :: vals)) h.
+           { eapply rs_mut_vars_fresh_channel_free_entry; eauto. }
+           have Hentry_K := rs_fresh_mut_fields_fresh_entry CT h.
+           have Hentry_L : rs_old_mut_fields_old CT h h.
+           { eapply rs_old_mut_fields_old_entry.
+             exact (proj1 (proj2 Hcaller_wf)). }
+           have Htriple := rs_mutable_freshness_preserved CT
+             (mkr_env (Iot ly :: vals)) h (mbody_stmt (Syntax.mbody mdef))
+             rΓ'' h' Heval
+             (mreceiver (msignature mdef) :: mparams (msignature mdef))
+             (mscope (msignature mdef)) method_end h
+             Hmethod_body_typing Hcallee_safe Hcallee_initial_wf
+             (le_n (dom h))
+             (conj Hentry_J (conj Hentry_K Hentry_L)).
+           destruct Htriple as [HJf [HKf HLf]].
+           (* the head boundary's callee return qualifier is Mut, not RDM *)
+           have Hshape := refined_call_rdm_mut_body_signature_shape CT
+             receiver_type body_return_type (msignature mdef)
+             (msignature static_mdef) destination_type Hbody_sub
+             Hsignature_refinement Hresult_sub Hreceiver_nonbottom
+             Hdestination_rdm Hbody_mut.
+           destruct Hshape as [_ Hmret_mut].
+           (* stored caller frames hold only old values *)
+           have Hframes_h : live_frames_wf CT h
+               (mk_watched_frame authority sGamma rΓ) stack.
+           { exact (proj1 (proj2 (proj1 Hstate))). }
+           have Hstack_old : forall b,
+               List.In b
+                 (mk_watched_call_boundary
+                   (mk_watched_frame authority sGamma rΓ)
+                   (mreceiver (msignature mdef) :: mparams (msignature mdef))
+                   (mkr_env (Iot ly :: vals)) (sqtype receiver_type)
+                   (mreturn (mbody mdef)) (sqtype destination_type)
+                   (sqtype (mret (msignature mdef))) (dom h) origins
+                  :: stack) ->
+               forall xv l,
+                 runtime_getVal b.(boundary_caller).(frame_renv) xv
+                   = Some (Iot l) ->
+                 l < dom h.
+           { intros b Hin xv l Hv.
+             destruct Hin as [<- | Hin].
+             - simpl in Hv.
+               eapply wf_config_value_dom; [exact Hcaller_wf | exact Hv].
+             - have Hb_wf : wf_r_config CT
+                   b.(boundary_caller).(frame_senv)
+                   b.(boundary_caller).(frame_renv) h.
+               { have Hall := proj2 Hframes_h.
+                 rewrite Forall_forall in Hall. exact (Hall b Hin). }
+               eapply wf_config_value_dom; [exact Hb_wf | exact Hv]. }
+           (* the capability's live root is old and runtime-mutable *)
+           destruct Hcapability as [root [Hroot Hreach]].
+           have Hcaller_post_frames : live_frames_wf CT h'
+               (mk_watched_frame authority sGamma
+                 (update_r_env_value rΓ x (Iot return_location))) stack.
+           { split; [exact Hcaller_final_wf|].
+             exact (Forall_inv_tail (proj2 Hbody_frames)). }
+           have Hcaller_post_sound : live_frames_authority_sound h'
+               (mk_watched_frame authority sGamma
+                 (update_r_env_value rΓ x (Iot return_location))) stack.
+           { split.
+             - simpl. rewrite Hauthority_imm. intros Hbad. discriminate.
+             - exact (Forall_inv_tail (proj2 Hbody_sounds)). }
+           have Hroot_in_set : In Loc
+               (live_capability_set CT h'
+                 (mk_watched_frame authority sGamma
+                   (update_r_env_value rΓ x (Iot return_location))) stack)
+               root.
+           { exists root. split; [exact Hroot | constructor]. }
+           have Hroot_mut : r_muttype h' root = Some Mut_r.
+           { eapply live_capability_members_runtime_mutable;
+               [exact Hcaller_post_frames | exact Hcaller_post_sound
+               | exact Hroot_in_set]. }
+           have Hroot_old : root < dom h.
+           { destruct Hroot as [Hactive | [b [Hin_b Hb_root]]].
+             - destruct Hactive as [xv [T [Htype [Hvalue Hcap]]]].
+               simpl in Htype, Hvalue.
+               unfold capability_in_context in Hcap.
+               rewrite Hauthority_imm in Hcap.
+               destruct Hcap as [Hmutq | [_ Hbad]]; [|discriminate].
+               destruct (Nat.eq_dec xv x) as [-> | Hneq].
+               { rewrite Hdestination_type in Htype.
+                 injection Htype as <-.
+                 rewrite Hdestination_rdm in Hmutq. discriminate. }
+               have Hxv : x <> xv by congruence.
+               have Hd := runtime_getVal_update_diff rΓ x xv
+                 (Iot return_location) Hxv.
+               rewrite Hd in Hvalue.
+               eapply wf_config_value_dom; [exact Hcaller_wf | exact Hvalue].
+             - destruct Hb_root as [xv [T [Htype [Hvalue Hcap]]]].
+               eapply Hstack_old with (b := b);
+                 [right; exact Hin_b | exact Hvalue]. }
+           (* compose: root reaches the return through the potential graph *)
+           have Hroot_to_cap := retained_reachable_is_potential_connected CT
+             h' (mk_watched_frame
+                  (call_authority authority (sqtype receiver_type))
+                  method_end rΓ'')
+             (mk_watched_call_boundary
+               (mk_watched_frame authority sGamma rΓ)
+               (mreceiver (msignature mdef) :: mparams (msignature mdef))
+               (mkr_env (Iot ly :: vals)) (sqtype receiver_type)
+               (mreturn (mbody mdef)) (sqtype destination_type)
+               (sqtype (mret (msignature mdef))) (dom h) origins :: stack)
+             root capability Hreach.
+           have Hheap' : wf_heap CT h'.
+           { exact (proj1 (proj2 Hcallee_final_wf)). }
+           have Hhead_not_rdm :
+               sqtype (mret (msignature mdef)) <> RDM.
+           { rewrite Hmret_mut. discriminate. }
+           have Hcap_old := rs_potential_path_from_old_mut_stays_old CT h h'
+             (mk_watched_frame
+               (call_authority authority (sqtype receiver_type))
+               method_end rΓ'')
+             (mk_watched_call_boundary
+               (mk_watched_frame authority sGamma rΓ)
+               (mreceiver (msignature mdef) :: mparams (msignature mdef))
+               (mkr_env (Iot ly :: vals)) (sqtype receiver_type)
+               (mreturn (mbody mdef)) (sqtype destination_type)
+               (sqtype (mret (msignature mdef))) (dom h) origins)
+             stack root capability HJf HKf HLf Hheap' Hbody_frames
+             Hhead_not_rdm Hstack_old Hroot_to_cap Hroot_old Hroot_mut.
+           destruct Hcap_old as [Hcap_old Hcap_mut].
+           have Hret_old := rs_potential_path_from_old_mut_stays_old CT h h'
+             (mk_watched_frame
+               (call_authority authority (sqtype receiver_type))
+               method_end rΓ'')
+             (mk_watched_call_boundary
+               (mk_watched_frame authority sGamma rΓ)
+               (mreceiver (msignature mdef) :: mparams (msignature mdef))
+               (mkr_env (Iot ly :: vals)) (sqtype receiver_type)
+               (mreturn (mbody mdef)) (sqtype destination_type)
+               (sqtype (mret (msignature mdef))) (dom h) origins)
+             stack capability return_location HJf HKf HLf Hheap'
+             Hbody_frames Hhead_not_rdm Hstack_old Hcap_return Hcap_old
+             Hcap_mut.
+           destruct Hret_old as [Hret_old _].
+           (* but the return is fresh *)
+           have Hret_fresh : dom h <= return_location.
+           { eapply potential_local_mut_root_is_fresh with
+               (P := body_initial_reachable) (cutoff := dom h)
+               (active := mk_watched_frame Imm_r method_end rΓ'')
+               (stack := []) (h := h');
+               [exact Hbody_local_post | exact Hreturn_type
+               | exact Hretval | exact Hbody_mut]. }
+           lia.
   - inversion Htyping; subst.
     eapply (IHHeval2 eq_refl Heval2 P).
     + eapply (IHHeval1 eq_refl Heval1 P); eauto.
     + exact Htype2.
     + exact Hsafe.
 }
-Admitted.
+Qed.
