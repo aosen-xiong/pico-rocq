@@ -298,3 +298,30 @@ Proof.
   - apply runtime_getObj_dom in Hbefore. exact Hbefore.
   - exact Hnotin.
 Qed.
+
+(** Membership in a body's entry-reachable set is decidable: the variable list
+    is finite and [reachable_dec] settles each root.  This lets the
+    confinement lemmas below be proved without [Classical_Prop.classic],
+    which the artifact's public-assumption audit forbids. *)
+Lemma reachable_locations_from_initial_env_dec :
+  forall h rGamma l,
+    {Ensembles.In Loc (reachable_locations_from_initial_env h rGamma) l} +
+    {~ Ensembles.In Loc (reachable_locations_from_initial_env h rGamma) l}.
+Proof.
+  intros h rGamma l.
+  destruct (List.Exists_dec (fun v => exists r, v = Iot r /\ reachable h r l)
+    (vars rGamma)) as [Hex | Hnex].
+  - intros v. destruct v as [|r].
+    + right. intros [r [Hcontra _]]. discriminate.
+    + destruct (reachable_dec h r l) as [Hr | Hr].
+      * left. exists r. split; [reflexivity | exact Hr].
+      * right. intros [r' [Heq Hreach]]. injection Heq as <-. contradiction.
+  - left. apply List.Exists_exists in Hex.
+    destruct Hex as [v [Hin [r [Heq Hreach]]]]. subst v.
+    apply List.In_nth_error in Hin. destruct Hin as [x Hnth].
+    exists x, r. split; [exact Hnth | exact Hreach].
+  - right. intros [x [r [Hnth Hreach]]].
+    apply Hnex. apply List.Exists_exists. exists (Iot r). split.
+    + eapply List.nth_error_In. exact Hnth.
+    + exists r. split; [reflexivity | exact Hreach].
+Qed.

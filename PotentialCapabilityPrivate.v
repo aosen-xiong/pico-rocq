@@ -3758,8 +3758,7 @@ Proof.
     + left. exact Hnext_fresh.
   - destruct (le_lt_dec (dom h) next) as [Hnext_fresh | Hnext_old].
     + left. exact Hnext_fresh.
-    + destruct (classic
-        (In Loc (reachable_locations_from_initial_env h rGamma) next))
+    + destruct (reachable_locations_from_initial_env_dec h rGamma next)
         as [Hnext_protected | Hnext_outside].
       * right. exact Hnext_protected.
       * exfalso.
@@ -3928,8 +3927,7 @@ Lemma eval_old_retained_edge_to_fresh_source_is_reachable :
 Proof.
   intros CT sGamma rGamma h stmt rGamma' h' source target Hwf Heval
     Hsource_old Htarget_fresh Hedge.
-  destruct (classic
-    (In Loc (reachable_locations_from_initial_env h rGamma) source))
+  destruct (reachable_locations_from_initial_env_dec h rGamma source)
     as [Hreachable | Hunreachable]; [exact Hreachable|].
   exfalso.
   have Hraw_final := retained_mut_edge_is_raw CT h' source target Hedge.
