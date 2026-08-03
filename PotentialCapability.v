@@ -281,9 +281,38 @@ Proof.
             [exact Hcallee_final_wf|].
           exists (mreturn (mbody mdef)), body_return_type.
           repeat split; [exact Hreturn_type|exact Hretval|exact Hbody_imm].
-      * (* Residual: Imm_r caller authority with a covariant Mut body return. *)
+      * (* Residual under immutable caller authority with a covariant [Mut]
+           body return.  The return value is a [Mut] root of the completed
+           callee, hence one of its live capabilities, which settles the
+           orientation whose protected endpoint hangs off the return.  The
+           opposite orientation is the one genuine remaining obligation. *)
         intros Hauthority_imm Hbody_mut.
-        admit.
+        intros capability protected Hcapability Hprotected Hbridge.
+        have Hseparated := proj1 (proj2 Hbody_post).
+        have Hreturn_capability :
+            In Loc
+              (live_capability_set CT h'
+                (mk_watched_frame
+                  (call_authority authority (sqtype receiver_type))
+                  method_end rΓ'')
+                (mk_watched_call_boundary
+                  (mk_watched_frame authority sGamma rΓ)
+                  (mreceiver (msignature mdef) :: mparams (msignature mdef))
+                  (mkr_env (Iot ly :: vals)) (sqtype receiver_type)
+                  (mreturn (mbody mdef)) (sqtype destination_type)
+                  (sqtype (mret (msignature mdef))) (dom h) origins ::
+                  stack))
+              return_location.
+        { eapply typed_mut_root_is_active_live_capability.
+          exists (mreturn (mbody mdef)), body_return_type.
+          repeat split;
+            [exact Hreturn_type|exact Hretval|exact Hbody_mut]. }
+        destruct Hbridge as
+          [[Hcap_receiver Hreturn_protected] |
+           [Hcap_return Hreceiver_protected]].
+        -- exact (Hseparated return_location protected Hreturn_capability
+             Hprotected Hreturn_protected).
+        -- admit.
   - inversion Htyping; subst.
     eapply (IHHeval2 eq_refl Heval2 P).
     + eapply (IHHeval1 eq_refl Heval1 P); eauto.
