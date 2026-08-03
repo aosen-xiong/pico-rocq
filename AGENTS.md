@@ -373,3 +373,33 @@ leave the public theorem's text unchanged while shrinking
 `potential_connected`, and therefore weaken what
 `successful_stmt_preserves_potential_history` asserts.  The statement is a
 fixed interface.
+
+### Correction: old-to-fresh heap crossings do exist
+
+Do not try to prove that a readonly-state callee creates no old-to-fresh
+retained mut edge.  That is false.  `retained_mut_edge` has two
+constructors, and `retained_edge_rdm` goes through `mutable_edge` on an
+`RDM_f` field.  Since `RDM |> RDM_f = RDM`, the callee may legitimately store
+a fresh RDM object into an `RDM_f` field of an old runtime-mutable object.
+
+Only the `Mut_f` route is blocked, and only because `Mut |> Mut_f = Mut` is
+the single non-`Lost` entry, so a `Mut_f` write needs a `Mut`-typed receiver
+variable -- and every `Mut`-typed variable of this callee holds a fresh
+location.
+
+Derive that freshness from the local induction instance, not from the phased
+formalism.  `principled_phased_local_mut_root_is_fresh` needs
+`principled_phased_authority_live_history_state`, and no bridge to it exists
+in the kept files.  Instead instantiate the statement IH a second time with
+`P = Z = body_initial_reachable` and `cutoff = dom h`; then `env_is_confined`
+puts every value of the callee env in `body_initial_reachable` or above the
+cutoff, and applying the local separation reflexively to a `Mut` root
+excludes the first.
+
+The uniform statement to prove is therefore not "no old-to-fresh edge" but:
+
+  every old-to-fresh crossing, whether a frame edge or an `RDM_f` heap edge,
+  occurs at an RDM root,
+
+which `boundary_caller_rdm_roots_are_connected` then joins to the receiver,
+collapsing into the already-discharged receiver case.
