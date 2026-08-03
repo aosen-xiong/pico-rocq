@@ -2734,3 +2734,113 @@ Proof.
         Heval1. lia. }
     eapply IHHeval2 with (sGamma := sΓ') (mt := mt) (h0 := h0); eauto.
 Qed.
+
+(** Stack-shape auxiliaries for the per-edge lemma. *)
+Lemma live_call_boundary_in :
+  forall active stack callee bd,
+    live_call_boundary active stack callee bd ->
+    List.In bd stack.
+Proof.
+  intros active stack callee bd Hlive.
+  induction Hlive; [left; reflexivity | right; exact IHHlive].
+Qed.
+
+Lemma live_call_boundary_callee_shape :
+  forall active stack callee bd,
+    live_call_boundary active stack callee bd ->
+    callee = active \/
+    exists b, List.In b stack /\ callee = b.(boundary_caller).
+Proof.
+  intros active stack callee bd Hlive.
+  induction Hlive.
+  - left. reflexivity.
+  - right.
+    destruct IHHlive as [-> | [b [Hin ->]]].
+    + exists head. split; [left; reflexivity | reflexivity].
+    + exists b. split; [right; exact Hin | reflexivity].
+Qed.
+
+(** Step 2: from an old runtime-mutable node, every potential-adjacent step
+    lands on an old node (and stays runtime-mutable).  L kills forward heap
+    edges, K kills backward ones, J kills active-frame joins, the stored
+    frames are old by hypothesis, and the head boundary contributes no return
+    edge because its callee return qualifier is not RDM. *)
+Lemma rs_potential_adjacent_from_old_mut_lands_old :
+  forall CT h0 h active boundary stack u v,
+    rs_mut_vars_fresh h0 active.(frame_senv) active.(frame_renv) h ->
+    rs_fresh_mut_fields_fresh CT h0 h ->
+    rs_old_mut_fields_old CT h0 h ->
+    wf_heap CT h ->
+    live_frames_wf CT h active (boundary :: stack) ->
+    boundary.(boundary_callee_return_qualifier) <> RDM ->
+    (forall b, List.In b (boundary :: stack) ->
+      forall x l,
+        runtime_getVal b.(boundary_caller).(frame_renv) x = Some (Iot l) ->
+        l < dom h0) ->
+    potential_adjacent CT h active (boundary :: stack) u v ->
+    u < dom h0 ->
+    r_muttype h u = Some Mut_r ->
+    v < dom h0 /\ r_muttype h v = Some Mut_r.
+Proof.
+  intros CT h0 h active boundary stack u v HJ HK HL Hheap Hframes
+    Hhead_not_rdm Hstack_old Hadj Hold Hmut.
+  have Hv_mut : r_muttype h v = Some Mut_r.
+  { eapply potential_adjacent_preserves_runtime_mutability; eauto. }
+  split; [|exact Hv_mut].
+  destruct Hadj as [[Hforward | Hbackward] | [Hframe | Hreturn]].
+  - (* forward retained edge out of old Mut_r u: L *)
+    inversion Hforward; subst.
+    + (* RDM_f *)
+      inversion H; subst.
+      eapply HL; eauto.
+    + (* Mut_f *)
+      eapply HL; eauto.
+  - (* backward RDM_f edge: v's field holds u *)
+    inversion Hbackward; subst.
+    destruct (lt_dec v (dom h0)) as [Hvold | Hvfresh]; [exact Hvold|].
+    exfalso.
+    have Hu_fresh : dom h0 <= u.
+    { eapply HK with (v := v) (l := u); eauto; try lia. }
+    lia.
+  - (* frame join *)
+    destruct Hframe as [frame [Hmember [Hu_root Hv_root]]].
+    inversion Hmember; subst.
+    + (* the active frame: contradicts J *)
+      exfalso.
+      destruct Hu_root as [xvar [T [Htype [Hvalue Hrdm]]]].
+      have Hu_fresh : dom h0 <= u.
+      { eapply HJ; eauto. }
+      lia.
+    + (* a stored caller frame *)
+      destruct Hv_root as [xvar [T [Htype [Hvalue Hrdm]]]].
+      eapply Hstack_old; eauto.
+  - (* return edge *)
+    destruct Hreturn as [callee' [boundary' [Hlive [Hview [Hretq Hrest]]]]].
+    have Hbd_in := live_call_boundary_in _ _ _ _ Hlive.
+    (* every frame the edge touches is a stored caller frame, or the head
+       boundary itself is the edge's boundary and the qualifier kills it *)
+    inversion Hlive; subst.
+    { exfalso. exact (Hhead_not_rdm Hretq). }
+    match goal with
+    | Hdeep : live_call_boundary (boundary_caller boundary) stack
+        callee' boundary' |- _ =>
+        have Hbd_in' := live_call_boundary_in _ _ _ _ Hdeep;
+        have Hshape := live_call_boundary_callee_shape _ _ _ _ Hdeep
+    end.
+    have Hcallee_old : forall x l,
+        runtime_getVal callee'.(frame_renv) x = Some (Iot l) ->
+        l < dom h0.
+    { destruct Hshape as [-> | [b [Hb_in ->]]].
+      - intros x l Hv. eapply Hstack_old with (b := boundary);
+          [left; reflexivity | exact Hv].
+      - intros x l Hv. eapply Hstack_old with (b := b);
+          [right; exact Hb_in | exact Hv]. }
+    destruct Hrest as [Hmutty [[Hu_root Hv_root] | [Hu_root Hv_root]]].
+    + (* v is a root of boundary'.(boundary_caller) *)
+      destruct Hv_root as [xvar [T [Htype [Hvalue Hrdm]]]].
+      eapply Hstack_old with (b := boundary');
+        [right; exact Hbd_in' | exact Hvalue].
+    + (* v is a root of the deeper callee, itself a stored caller frame *)
+      destruct Hv_root as [xvar [T [Htype [Hvalue Hrdm]]]].
+      eapply Hcallee_old. exact Hvalue.
+Qed.
