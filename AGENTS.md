@@ -587,3 +587,31 @@ Three ways out, in increasing order of blast radius:
    core definition change in `WatchedFrames.v`.
 
 Option 1 is the smallest and keeps every existing proof intact.
+
+### C1 must be parameterised by the call rule, not sequenced with it
+
+The threading induction's call case cannot be completed before the pop-safety
+results.  Every layer's leave lemma consumes a pop-safety certificate:
+`principled_phased_authority_history_leave_call_null` and `..._nonnull`
+require `executing_authority_call_pop_safe`, and the frozen return-parts
+lemmas require `private_frozen_snapshot_return_safety` together with the
+phased state for the caller-post frame.
+
+So C1 and the bridge are mutually dependent, and neither "C4 first" nor "C1
+first" is right.  This is exactly why the retired development stated
+
+  private_advancing_policy_eval_preserves_from_call_rule :
+    private_advancing_policy_successful_call_rule ->
+    private_advancing_policy_eval_preserves
+
+taking the call rule as a *hypothesis*, with `CallRule.v` discharging it from
+the null and non-null cases separately.  Any reconstruction must adopt the
+same shape: state the induction parameterised by the call rule, prove it, and
+discharge the call rule independently.
+
+Progress so far on the induction (scratch, not committed because the call
+case is incomplete): skip, local, var-assign, field-write, new and sequencing
+are proved; the call case has its untracked frozen entry, its policy entry
+onto the *same* boundary, and the inductive hypothesis on the body all
+working.  What remains inside it is exactly the return step, which is where
+the call-rule hypothesis has to enter.
