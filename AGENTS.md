@@ -403,3 +403,40 @@ The uniform statement to prove is therefore not "no old-to-fresh edge" but:
 
 which `boundary_caller_rdm_roots_are_connected` then joins to the receiver,
 collapsing into the already-discharged receiver case.
+
+### Why the graph formalism cannot close the Imm_r residual
+
+Four strategies have been tried and all four fail at the same constructor:
+
+1. `potential_connected_sym` -- false: `potential_adjacent` follows retained
+   mut edges forward but only current mutable edges backward.
+2. "nothing entry-reachable reaches the fresh return" -- false:
+   `potential_frame_edge` joins any two RDM roots with no authority
+   condition.
+3. "a readonly-state callee creates no old-to-fresh retained mut edge" --
+   false: `retained_edge_rdm` goes through `mutable_edge` on an `RDM_f`
+   field and `RDM |> RDM_f = RDM`.
+4. "every old-to-fresh crossing occurs at an RDM root" -- true for
+   `potential_frame_edge` and `potential_return_edge`, false for the heap
+   constructors.
+
+The frame and return constructors are fine every time; the `RDM_f` heap
+crossing kills every attempt.  The obstruction is structural rather than
+tactical: `retained_mut_edge` and `mutable_edge` are relations on the final
+heap and record no provenance.  They do not say which variable or viewpoint
+performed the write, and that variable may be dead by the end of the body,
+so no property of the *final* frame can be recovered from the edge.
+
+The collapse argument therefore cannot be completed in the potential-graph
+formalism.  Provenance is what `executing_authority_color_set` and the
+frozen-snapshot machinery exist to track, which is why the immutable branch
+is stated against `executing_resumed_authority_color_set` and the saved
+target policy.  Closing this residual requires either a color-to-graph
+bridge or reinstating enough policy infrastructure to apply
+`immutable_rdm_evolved_policy_head_pop_safe`; both are recoverable from tag
+`wip-snapshot-2026-08-03`.
+
+The two lemmas salvaged from these attempts --
+`boundary_caller_rdm_roots_are_connected` and
+`potential_local_mut_root_is_fresh` -- are sound and reusable in either
+route.
