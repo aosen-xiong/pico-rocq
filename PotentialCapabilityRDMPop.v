@@ -1555,3 +1555,31 @@ Proof.
   eapply principled_local_mut_result_component_is_fresh; eauto.
   apply mutable_connected_sym. exact Hconnected.
 Qed.
+
+(** Companion to [mut_into_readonly_state_field_is_ro_or_mut_receiver], for
+    the receivers a channel-free [RO]-receiver callee can actually hold.
+
+    Such a callee never names an old object at [Mut] or [RDM] type: its
+    receiver is [RO], reading through [RO] gives [Lost] on [RDM_f] and
+    [Mut_f] and [Imm]/[RO] otherwise, and channel-freeness rules out [RDM]
+    parameters.  Writing through any such variable into a slot that could
+    carry a mutable edge therefore admits only immutable values -- through
+    [RO] and [Lost] the slot adapts to [Lost] and admits nothing but [Bot],
+    and through [Imm] an [RDM_f] slot adapts to [Imm].
+
+    So every mutable edge this callee creates out of an old object points at
+    an immutable value, and the fresh [Mut] result can never sit on the far
+    side of one. *)
+Lemma mut_edge_write_through_non_mutable_receiver_is_immutable :
+  forall q1 fm qv,
+    (fm = RDM_f \/ fm = Mut_f) ->
+    q1 <> Mut ->
+    q1 <> RDM ->
+    q_subtype qv (vpa_mutability_stype_fld_readonly_state q1 fm) ->
+    qv = Imm \/ qv = Bot.
+Proof.
+  intros q1 fm qv Hfm Hnot_mut Hnot_rdm Hq.
+  destruct Hfm as [-> | ->]; destruct q1;
+    try (exfalso; congruence);
+    simpl in Hq; inversion Hq; subst; auto; congruence.
+Qed.
