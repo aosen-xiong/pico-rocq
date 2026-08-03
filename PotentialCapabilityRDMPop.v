@@ -1856,3 +1856,193 @@ Proof.
   intros CT h Hheap v o f l D fdef Hold Hobj Hmut Hval Hsub Hfd Hfm.
   eapply wf_heap_field_value_dom; eauto.
 Qed.
+
+(** ** Table micro-lemmas for the preservation induction *)
+
+(** Subtyping into a [Mut]/[RDM] slot admits only the same qualifier or
+    [Bot]. *)
+Lemma mutable_slot_subtype_inversion :
+  forall qe qx,
+    q_subtype qe qx ->
+    (qx = Mut \/ qx = RDM) ->
+    qe = qx \/ qe = Bot.
+Proof.
+  intros qe qx Hsub Hkind.
+  inversion Hsub; subst; auto.
+  destruct Hkind; discriminate.
+Qed.
+
+(** The readonly-state field-read table yields [Mut]/[RDM] only from a
+    [Mut]/[RDM] receiver on a mutable field. *)
+Lemma readonly_state_field_read_mutable_inversion :
+  forall t fm,
+    (vpa_mutability_stype_fld_readonly_state t fm = Mut \/
+     vpa_mutability_stype_fld_readonly_state t fm = RDM) ->
+    (t = Mut /\ (fm = RDM_f \/ fm = Mut_f)) \/
+    (t = RDM /\ fm = RDM_f).
+Proof.
+  intros t fm Hread.
+  destruct t; destruct fm; simpl in Hread;
+    destruct Hread as [Hread | Hread]; try discriminate; auto.
+Qed.
+
+(** Writing a location into a mutable field slot: the receiver is [Imm]
+    (and the value [Imm]), or the receiver and value are both mutable. *)
+Lemma readonly_state_mut_field_write_inversion :
+  forall t fm qy,
+    (fm = RDM_f \/ fm = Mut_f) ->
+    q_subtype qy (vpa_mutability_stype_fld_readonly_state t fm) ->
+    qy = Bot \/
+    (t = Imm /\ qy = Imm) \/
+    ((t = Mut \/ t = RDM) /\ (qy = Mut \/ qy = RDM)).
+Proof.
+  intros t fm qy Hfm Hsub.
+  destruct Hfm as [-> | ->]; destruct t; simpl in Hsub;
+    inversion Hsub; subst; try congruence; auto 7.
+Qed.
+
+(** The readonly-state call channel: a [Mut]/[RDM] parameter receives only
+    [Mut]/[RDM]-typed (or [Bot]) arguments, except that an [Imm] receiver
+    view feeds an [RDM] parameter with [Imm]-typed arguments. *)
+Lemma readonly_state_call_channel_inversion :
+  forall t p qa,
+    (p = Mut \/ p = RDM) ->
+    q_subtype qa (vpa_mutability_qq_readonly_state t p) ->
+    qa = Bot \/
+    (t = Imm /\ p = RDM /\ qa = Imm) \/
+    ((t = Mut \/ t = RDM) /\ (qa = Mut \/ qa = RDM)).
+Proof.
+  intros t p qa Hp Hsub.
+  destruct Hp as [-> | ->]; destruct t; simpl in Hsub;
+    inversion Hsub; subst; try congruence; auto 8.
+Qed.
+
+(** Base-subtype extraction for a variable's heap object. *)
+Lemma typed_var_object_base_subtype :
+  forall CT sGamma rGamma h y T w o,
+    wf_r_config CT sGamma rGamma h ->
+    static_getType sGamma y = Some T ->
+    runtime_getVal rGamma y = Some (Iot w) ->
+    runtime_getObj h w = Some o ->
+    base_subtype CT (rctype (rt_type o)) (sctype T).
+Proof.
+  intros CT sGamma rGamma h y T w o Hwf Htype Hvalue Hobj.
+  destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf) as
+    [receiver [context [Hreceiver [_ Hcontext]]]].
+  unfold wf_r_config in Hwf.
+  destruct Hwf as [_ [_ [_ [_ [_ Hcorrespondence]]]]].
+  have Hdom := Htype. apply static_getType_dom in Hdom.
+  specialize (Hcorrespondence receiver context Hreceiver Hcontext y Hdom
+    T Htype).
+  rewrite Hvalue in Hcorrespondence.
+  unfold wf_r_typable, r_type in Hcorrespondence.
+  rewrite Hobj in Hcorrespondence.
+  exact (proj1 Hcorrespondence).
+Qed.
+
+(** ** The combined invariant and its per-statement preservation *)
+
+Definition rs_mutable_freshness
+  (CT : class_table) (h0 : heap) (sGamma : s_env) (rGamma : r_env)
+  (h : heap) : Prop :=
+  rs_mut_vars_fresh h0 sGamma rGamma h /\
+  rs_fresh_mut_fields_fresh CT h0 h /\
+  rs_old_mut_fields_old CT h0 h.
+
+(** Preservation, variable assignment.  The heap is unchanged, so K and L
+    transport verbatim; only the [x] slot of J changes.  A location can be
+    assigned at [Mut]/[RDM] type only from a variable of the same qualifier
+    (J applies directly) or by reading a mutable field of a [Mut]/[RDM]
+    receiver -- in which case the receiver's object is runtime-mutable
+    (per-edge runtime preservation), hence fresh by J, and K bounds the
+    field's value. *)
+Lemma rs_mutable_freshness_after_assignment :
+  forall CT h0 sGamma mt rGamma h x e old value,
+    wf_r_config CT sGamma rGamma h ->
+    readonly_state_method_scope mt ->
+    stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
+    runtime_getVal rGamma x = Some old ->
+    eval_expr CT rGamma h e value OK rGamma h ->
+    rs_mutable_freshness CT h0 sGamma rGamma h ->
+    rs_mutable_freshness CT h0 sGamma
+      (update_r_env_value rGamma x value) h.
+Proof.
+  intros CT h0 sGamma mt rGamma h x e old value Hwf Hscope Htyping Hx Heval
+    [HJ [HK HL]].
+  split; [|split; [exact HK|exact HL]].
+  intros y T l Htype Hvalue Hkind Hmut.
+  destruct (Nat.eq_dec y x) as [-> | Hneq].
+  2:{ have Hxy : x <> y by (intros ->; apply Hneq; reflexivity).
+      have Hold_value := runtime_getVal_update_diff rGamma x y value Hxy.
+      rewrite Hvalue in Hold_value.
+      eapply HJ; eauto. }
+  (* the updated slot *)
+  have Hxdom : x < dom (vars rGamma).
+  { unfold runtime_getVal in Hx. apply nth_error_Some. rewrite Hx.
+    discriminate. }
+  have Hsame := runtime_getVal_update_same rGamma x value Hxdom.
+  rewrite Hsame in Hvalue. injection Hvalue as ->.
+  inversion Htyping; subst.
+  assert (T = Tx) by congruence. subst T.
+  inversion Heval; subst.
+  - (* EVar z *)
+    inversion Htype_e; subst.
+    have Hq := qualified_type_subtype_q_subtype _ _ _ Hsub.
+    destruct (mutable_slot_subtype_inversion _ _ Hq Hkind) as [Heq | Hbot].
+    + eapply HJ; eauto. rewrite Heq. exact Hkind.
+    + exfalso.
+      eapply wf_config_nonnull_variable_not_bot; eauto.
+  - (* EField z f *)
+    inversion Htype_e; subst.
+    { destruct Hscope as [Hrs | Hts]; destruct Hmt as [Hmt | Hmt];
+        congruence. }
+    have Hq := qualified_type_subtype_q_subtype _ _ _ Hsub.
+    simpl in Hq.
+    destruct (mutable_slot_subtype_inversion _ _ Hq Hkind) as [Heq | Hbot].
+    2:{ exfalso.
+        assert (Hzbot : sqtype T = Bot).
+        { destruct (sqtype T); destruct (mutability (ftype fDef));
+            simpl in Hbot; try discriminate; reflexivity. }
+        eapply wf_config_nonnull_variable_not_bot with (x := x0); eauto. }
+    assert (Hkind' : vpa_mutability_stype_fld_readonly_state (sqtype T)
+        (mutability (ftype fDef)) = Mut \/
+      vpa_mutability_stype_fld_readonly_state (sqtype T)
+        (mutability (ftype fDef)) = RDM).
+    { rewrite Heq. exact Hkind. }
+    destruct (readonly_state_field_read_mutable_inversion _ _ Hkind') as
+      [[Hz_mut Hfm] | [Hz_rdm Hfm]].
+    + (* receiver variable typed Mut: its object is runtime-mutable *)
+      have Hw_mut : r_muttype h v = Some Mut_r.
+      { eapply typed_mut_root_runtime_mutable_live; eauto.
+        exists x0, T. repeat split; assumption. }
+      have Hw_fresh : dom h0 <= v.
+      { eapply HJ; eauto. }
+      eapply HK with (v := v) (o := o) (f := f) (D := sctype T)
+        (fdef := fDef); eauto.
+      eapply typed_var_object_base_subtype; eauto.
+    + (* receiver variable typed RDM on an RDM_f field *)
+      have Hbase : base_subtype CT (rctype (rt_type o)) (sctype T).
+      { eapply typed_var_object_base_subtype; eauto. }
+      have Hedge : mutable_edge CT h v l.
+      { eapply mutable_edge_rdm; eauto. }
+      have Hadj : potential_adjacent CT h
+          (mk_watched_frame Imm_r sGamma rGamma) [] v l.
+      { left. left. constructor. exact Hedge. }
+      have Hframes : live_frames_wf CT h
+          (mk_watched_frame Imm_r sGamma rGamma) [].
+      { split; [exact Hwf|constructor]. }
+      have Hheap : wf_heap CT h.
+      { exact (proj1 (proj2 Hwf)). }
+      have Hobj_v : runtime_getObj h v = Some o by assumption.
+      have Hw_runtime : exists qw, r_muttype h v = Some qw.
+      { unfold r_muttype. rewrite Hobj_v. eexists. reflexivity. }
+      destruct Hw_runtime as [qw Hqw].
+      have Hsame_runtime := potential_adjacent_preserves_runtime_mutability
+        CT h (mk_watched_frame Imm_r sGamma rGamma) [] v l qw
+        Hframes Hheap Hadj Hqw.
+      assert (qw = Mut_r) by congruence. subst qw.
+      have Hw_fresh : dom h0 <= v.
+      { eapply HJ; eauto. }
+      eapply HK with (v := v) (o := o) (f := f) (D := sctype T)
+        (fdef := fDef); eauto.
+Qed.
