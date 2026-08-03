@@ -1056,85 +1056,6 @@ Proof.
   constructor; [exact Hhead|exact Htail].
 Qed.
 
-(** The call case of the threading induction, isolated as a contract exactly
-    as the retired development isolated
-    [private_advancing_policy_successful_call_rule].  The induction below is
-    parameterised by it; discharging it is independent work. *)
-Definition private_call_pop_call_rule : Prop :=
-  forall CT P Z cutoff rGamma h x m y zs vals ly cy mdef retval h' rGamma''
-    sGamma mt sGamma' authority stack incoming snapshots policies,
-    runtime_getVal rGamma y = Some (Iot ly) ->
-    r_basetype h ly = Some cy ->
-    FindMethodWithName CT cy m mdef ->
-    runtime_lookup_list rGamma zs = Some vals ->
-    eval_stmt CT (mkr_env (Iot ly :: vals)) h
-      (mbody_stmt (mbody mdef)) OK rGamma'' h' ->
-    runtime_getVal rGamma'' (mreturn (mbody mdef)) = Some retval ->
-    (forall entry_senv entry_scope final_senv callee_authority callee_stack
-       callee_incoming callee_snapshots callee_policies,
-       private_call_pop_state CT P Z cutoff
-         (mk_watched_frame callee_authority entry_senv
-           (mkr_env (Iot ly :: vals)))
-         callee_stack callee_incoming callee_snapshots callee_policies h ->
-       stmt_typing CT entry_senv entry_scope
-         (mbody_stmt (mbody mdef)) final_senv ->
-       readonly_state_method_scope entry_scope ->
-       exists final_snapshots,
-         private_call_pop_state CT P Z cutoff
-           (mk_watched_frame callee_authority final_senv rGamma'')
-           callee_stack callee_incoming final_snapshots callee_policies h') ->
-    private_call_pop_state CT P Z cutoff
-      (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
-      policies h ->
-    stmt_typing CT sGamma mt (SCall x m y zs) sGamma' ->
-    readonly_state_method_scope mt ->
-    exists final_snapshots,
-      private_call_pop_state CT P Z cutoff
-        (mk_watched_frame authority sGamma'
-          (set_vars rGamma (update x retval (vars rGamma))))
-        stack incoming final_snapshots policies h'.
-
-Lemma private_call_pop_state_preserved_from_call_rule :
-  private_call_pop_call_rule ->
-  forall CT P Z cutoff rGamma h statement rGamma' h',
-    eval_stmt CT rGamma h statement OK rGamma' h' ->
-    forall sGamma mt sGamma' authority stack incoming snapshots policies,
-      private_call_pop_state CT P Z cutoff
-        (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
-        policies h ->
-      stmt_typing CT sGamma mt statement sGamma' ->
-      readonly_state_method_scope mt ->
-      exists final_snapshots,
-        private_call_pop_state CT P Z cutoff
-          (mk_watched_frame authority sGamma' rGamma') stack incoming
-          final_snapshots policies h'.
-Proof.
-  intros Hrule CT P Z cutoff rGamma h statement rGamma' h' Heval.
-  have Heval_copy := Heval.
-  dependent induction Heval;
-    intros sGamma mt sGamma' authority stack incoming snapshots policies
-      Hstate Htyping Hscope.
-  - inversion Htyping; subst. exists snapshots. exact Hstate.
-  - eexists. eapply private_call_pop_state_after_local; eauto.
-  - inversion Htyping; subst.
-    assert (Hupdate : set_vars rΓ (update x v2 (vars rΓ)) =
-        update_r_env_value rΓ x v2).
-    { destruct rΓ. reflexivity. }
-    rewrite Hupdate.
-    eexists. eapply private_call_pop_state_after_assignment; eauto.
-  - eexists. eapply private_call_pop_state_after_field_write; eauto.
-  - eexists. eapply private_call_pop_state_after_new; eauto.
-  - destruct Hfind as [Hfind_method Hbody_definition].
-    subst mbody mstmt mret rΓ' rΓ'''.
-    eapply Hrule; eauto.
-  - inversion Htyping; subst.
-    destruct (IHHeval1 eq_refl Heval1 sGamma mt sΓ' authority stack incoming
-      snapshots policies Hstate Htype1 Hscope) as [middle Hmiddle].
-    destruct (IHHeval2 eq_refl Heval2 sΓ' mt sGamma' authority stack incoming
-      middle policies Hmiddle Htype2 Hscope) as [final Hfinal].
-    exists final. exact Hfinal.
-Qed.
-
 (** Per-statement active-colour reflection summaries, recovered from the
     retired [PotentialCapabilityStatement] development.  They are the
     payload the threading induction must carry alongside the private
@@ -1232,3 +1153,182 @@ Proof.
   intros mode location Hmode Hcolor Hlocation.
   eapply executing_authority_colors_after_new_covered; eauto.
 Qed.
+
+(** Well-formedness of the executing frame, projected out of the threaded
+    state.  Used by the per-statement reflection lemmas. *)
+Lemma private_call_pop_state_wf :
+  forall CT P Z cutoff active stack incoming snapshots policies h,
+    private_call_pop_state CT P Z cutoff active stack incoming snapshots
+      policies h ->
+    wf_r_config CT active.(frame_senv) active.(frame_renv) h.
+Proof.
+  intros CT P Z cutoff active stack incoming snapshots policies h [Hfrozen _].
+  exact (proj1 (proj1 (proj2 (proj2 (proj2 (proj2
+    (proj1 (proj1 (proj1 Hfrozen))))))))).
+Qed.
+
+Lemma private_call_pop_state_sound :
+  forall CT P Z cutoff active stack incoming snapshots policies h,
+    private_call_pop_state CT P Z cutoff active stack incoming snapshots
+      policies h ->
+    authority_context_sound h active.(frame_renv) active.(frame_authority).
+Proof.
+  intros CT P Z cutoff active stack incoming snapshots policies h [Hfrozen _].
+  exact (proj1 (proj1 (proj2 (proj2 (proj2 (proj2 (proj2
+    (proj1 (proj1 (proj1 Hfrozen)))))))))).
+Qed.
+
+Lemma private_call_pop_state_incoming_runtime_mutable :
+  forall CT P Z cutoff active stack incoming snapshots policies h,
+    private_call_pop_state CT P Z cutoff active stack incoming snapshots
+      policies h ->
+    authority_colors_runtime_mutable h incoming.
+Proof.
+  intros CT P Z cutoff active stack incoming snapshots policies h [Hfrozen _].
+  exact (proj1 (proj2 (proj2 (proj1 (proj1 (proj1 Hfrozen)))))).
+Qed.
+
+(** The call case of the threading induction, isolated as a contract exactly
+    as the retired development isolated
+    [private_advancing_policy_successful_call_rule].  Both the contract and
+    the induction carry the active-colour reflection summary alongside the
+    private state, because call-pop safety is reached only through
+    [executing_authority_call_pop_safe_from_old_colors_reflected_or_outside]
+    and its reflection premise cannot come from the post-state's own
+    separation. *)
+Definition private_call_pop_call_rule : Prop :=
+  forall CT P Z cutoff rGamma h x m y zs vals ly cy mdef retval h' rGamma''
+    sGamma mt sGamma' authority stack incoming snapshots policies,
+    runtime_getVal rGamma y = Some (Iot ly) ->
+    r_basetype h ly = Some cy ->
+    FindMethodWithName CT cy m mdef ->
+    runtime_lookup_list rGamma zs = Some vals ->
+    eval_stmt CT (mkr_env (Iot ly :: vals)) h
+      (mbody_stmt (mbody mdef)) OK rGamma'' h' ->
+    runtime_getVal rGamma'' (mreturn (mbody mdef)) = Some retval ->
+    (forall entry_senv entry_scope final_senv callee_authority callee_stack
+       callee_incoming callee_snapshots callee_policies,
+       private_call_pop_state CT P Z cutoff
+         (mk_watched_frame callee_authority entry_senv
+           (mkr_env (Iot ly :: vals)))
+         callee_stack callee_incoming callee_snapshots callee_policies h ->
+       stmt_typing CT entry_senv entry_scope
+         (mbody_stmt (mbody mdef)) final_senv ->
+       readonly_state_method_scope entry_scope ->
+       exists final_snapshots,
+         private_call_pop_state CT P Z cutoff
+           (mk_watched_frame callee_authority final_senv rGamma'')
+           callee_stack callee_incoming final_snapshots callee_policies h' /\
+         executing_authority_old_colors_reflected_or_outside CT Z h
+           (mk_watched_frame callee_authority entry_senv
+             (mkr_env (Iot ly :: vals))) callee_incoming h'
+           (mk_watched_frame callee_authority final_senv rGamma'')
+           callee_incoming) ->
+    private_call_pop_state CT P Z cutoff
+      (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
+      policies h ->
+    stmt_typing CT sGamma mt (SCall x m y zs) sGamma' ->
+    readonly_state_method_scope mt ->
+    exists final_snapshots,
+      private_call_pop_state CT P Z cutoff
+        (mk_watched_frame authority sGamma'
+          (set_vars rGamma (update x retval (vars rGamma))))
+        stack incoming final_snapshots policies h' /\
+      executing_authority_old_colors_reflected_or_outside CT Z h
+        (mk_watched_frame authority sGamma rGamma) incoming h'
+        (mk_watched_frame authority sGamma'
+          (set_vars rGamma (update x retval (vars rGamma)))) incoming.
+
+Lemma private_call_pop_state_preserved_from_call_rule :
+  private_call_pop_call_rule ->
+  forall CT P Z cutoff rGamma h statement rGamma' h',
+    eval_stmt CT rGamma h statement OK rGamma' h' ->
+    forall sGamma mt sGamma' authority stack incoming snapshots policies,
+      private_call_pop_state CT P Z cutoff
+        (mk_watched_frame authority sGamma rGamma) stack incoming snapshots
+        policies h ->
+      stmt_typing CT sGamma mt statement sGamma' ->
+      readonly_state_method_scope mt ->
+      exists final_snapshots,
+        private_call_pop_state CT P Z cutoff
+          (mk_watched_frame authority sGamma' rGamma') stack incoming
+          final_snapshots policies h' /\
+        executing_authority_old_colors_reflected_or_outside CT Z h
+          (mk_watched_frame authority sGamma rGamma) incoming h'
+          (mk_watched_frame authority sGamma' rGamma') incoming.
+Proof.
+  intros Hrule CT P Z cutoff rGamma h statement rGamma' h' Heval.
+  have Heval_copy := Heval.
+  dependent induction Heval;
+    intros sGamma mt sGamma' authority stack incoming snapshots policies
+      Hstate Htyping Hscope.
+  - inversion Htyping; subst. exists snapshots. split; [exact Hstate|].
+    apply executing_authority_old_colors_reflected_or_outside_refl.
+  - have Hwf := private_call_pop_state_wf _ _ _ _ _ _ _ _ _ _ Hstate.
+    have Hsound := private_call_pop_state_sound _ _ _ _ _ _ _ _ _ _ Hstate.
+    have Hmutable :=
+      private_call_pop_state_incoming_runtime_mutable
+        _ _ _ _ _ _ _ _ _ _ Hstate.
+    simpl in Hwf, Hsound.
+    eexists. split; [eapply private_call_pop_state_after_local; eauto|].
+    apply executing_authority_old_colors_reflected_implies_or_outside.
+    eapply local_old_colors_reflected; eauto.
+  - have Hwf := private_call_pop_state_wf _ _ _ _ _ _ _ _ _ _ Hstate.
+    have Hsound := private_call_pop_state_sound _ _ _ _ _ _ _ _ _ _ Hstate.
+    have Hmutable :=
+      private_call_pop_state_incoming_runtime_mutable
+        _ _ _ _ _ _ _ _ _ _ Hstate.
+    simpl in Hwf, Hsound.
+    inversion Htyping; subst.
+    assert (Hupdate : set_vars rΓ (update x v2 (vars rΓ)) =
+        update_r_env_value rΓ x v2).
+    { destruct rΓ. reflexivity. }
+    rewrite Hupdate.
+    eexists. split.
+    + eapply private_call_pop_state_after_assignment; eauto.
+    + apply executing_authority_old_colors_reflected_implies_or_outside.
+      eapply assignment_old_colors_reflected; eauto.
+  - have Hwf := private_call_pop_state_wf _ _ _ _ _ _ _ _ _ _ Hstate.
+    have Hsound := private_call_pop_state_sound _ _ _ _ _ _ _ _ _ _ Hstate.
+    have Hmutable :=
+      private_call_pop_state_incoming_runtime_mutable
+        _ _ _ _ _ _ _ _ _ _ Hstate.
+    simpl in Hwf, Hsound.
+    eexists. split; [eapply private_call_pop_state_after_field_write; eauto|].
+    apply executing_authority_old_colors_reflected_implies_or_outside.
+    eapply field_write_old_colors_reflected; eauto.
+  - have Hwf := private_call_pop_state_wf _ _ _ _ _ _ _ _ _ _ Hstate.
+    have Hsound := private_call_pop_state_sound _ _ _ _ _ _ _ _ _ _ Hstate.
+    have Hmutable :=
+      private_call_pop_state_incoming_runtime_mutable
+        _ _ _ _ _ _ _ _ _ _ Hstate.
+    simpl in Hwf, Hsound.
+    assert (Hpost : private_call_pop_state CT P Z cutoff
+        (mk_watched_frame authority sGamma' rΓ') stack incoming
+        (advance_frozen_caller_snapshots CT h'
+          (mk_watched_frame authority sGamma' rΓ') snapshots)
+        policies h').
+    { eapply private_call_pop_state_after_new; eauto. }
+    have Hpost_wf := private_call_pop_state_wf _ _ _ _ _ _ _ _ _ _ Hpost.
+    have Hpost_sound :=
+      private_call_pop_state_sound _ _ _ _ _ _ _ _ _ _ Hpost.
+    simpl in Hpost_wf, Hpost_sound.
+    eexists. split; [exact Hpost|].
+    apply executing_authority_old_colors_reflected_implies_or_outside.
+    eapply new_old_colors_reflected; eauto.
+  - destruct Hfind as [Hfind_method Hbody_definition].
+    subst mbody mstmt mret. subst.
+    eapply Hrule; eauto.
+  - inversion Htyping; subst.
+    destruct (IHHeval1 eq_refl Heval1 sGamma mt sΓ' authority stack
+      incoming snapshots policies Hstate Htype1 Hscope)
+      as [middle [Hmiddle Hrefl1]].
+    destruct (IHHeval2 eq_refl Heval2 sΓ' mt sGamma' authority stack
+      incoming middle policies Hmiddle Htype2 Hscope)
+      as [final [Hfinal Hrefl2]].
+    exists final. split; [exact Hfinal|].
+    eapply executing_authority_old_colors_reflected_or_outside_trans;
+      [|exact Hrefl1|exact Hrefl2].
+    eapply eval_stmt_preserves_heap_domain_simple. exact Heval1.
+Qed.
+
