@@ -1134,3 +1134,101 @@ Proof.
       middle policies Hmiddle Htype2 Hscope) as [final Hfinal].
     exists final. exact Hfinal.
 Qed.
+
+(** Per-statement active-colour reflection summaries, recovered from the
+    retired [PotentialCapabilityStatement] development.  They are the
+    payload the threading induction must carry alongside the private
+    state, because call-pop safety is reached only through
+    [executing_authority_call_pop_safe_from_old_colors_reflected_or_outside],
+    whose reflection premise runs from caller entry to caller post. *)
+Lemma assignment_old_colors_reflected :
+  forall CT authority sGamma mt rGamma h incoming x expression old value,
+    wf_r_config CT sGamma rGamma h ->
+    stmt_typing CT sGamma mt (SVarAss x expression) sGamma ->
+    readonly_state_method_scope mt ->
+    runtime_getVal rGamma x = Some old ->
+    eval_expr CT rGamma h expression value OK rGamma h ->
+    executing_authority_old_colors_reflected CT h
+      (mk_watched_frame authority sGamma rGamma) incoming h
+      (mk_watched_frame authority sGamma
+        (update_r_env_value rGamma x value)) incoming.
+Proof.
+  intros CT authority sGamma mt rGamma h incoming x expression old value
+    Hwf Htyping Hscope Hvalue Heval mode location Hmode Hcolor Hlocation.
+  have Hdescend := rdm_roots_descend_after_assignment CT sGamma mt rGamma h
+    x expression old value Hwf Htyping Hscope Hvalue Heval.
+  eapply executing_authority_colors_after_active_descent_covered; eauto.
+  intros owned Howned.
+  apply frame_owned_location_iff_active_live.
+  eapply assignment_live_reachability_is_old with
+    (mt := mt) (x := x) (e := expression) (old := old) (value := value)
+    (stack := []); eauto.
+  apply frame_owned_location_iff_active_live. exact Howned.
+Qed.
+
+Lemma local_old_colors_reflected :
+  forall CT authority sGamma mt rGamma h incoming T x sGamma',
+    wf_r_config CT sGamma rGamma h ->
+    stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
+    runtime_getVal rGamma x = None ->
+    executing_authority_old_colors_reflected CT h
+      (mk_watched_frame authority sGamma rGamma) incoming h
+      (mk_watched_frame authority sGamma'
+        (set_vars rGamma (vars rGamma ++ [Null_a]))) incoming.
+Proof.
+  intros CT authority sGamma mt rGamma h incoming T x sGamma' Hwf Htyping
+    Hnone mode location Hmode Hcolor Hlocation.
+  have Hdescend := rdm_roots_descend_after_local CT sGamma mt rGamma h T x
+    sGamma' Hwf Htyping Hnone.
+  eapply executing_authority_colors_after_active_descent_covered; eauto.
+  intros owned Howned.
+  apply frame_owned_location_iff_active_live.
+  eapply local_live_reachability_is_old with (stack := []); eauto.
+  apply frame_owned_location_iff_active_live. exact Howned.
+Qed.
+
+Lemma field_write_old_colors_reflected :
+  forall CT authority sGamma mt rGamma h incoming x field y sGamma' rGamma'
+    h',
+    wf_r_config CT sGamma rGamma h ->
+    authority_context_sound h rGamma authority ->
+    authority_colors_runtime_mutable h incoming ->
+    stmt_typing CT sGamma mt (SFldWrite x field y) sGamma' ->
+    readonly_state_method_scope mt ->
+    eval_stmt CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
+    executing_authority_old_colors_reflected CT h
+      (mk_watched_frame authority sGamma rGamma) incoming h'
+      (mk_watched_frame authority sGamma' rGamma') incoming.
+Proof.
+  intros CT authority sGamma mt rGamma h incoming x field y sGamma' rGamma'
+    h' Hwf Hsound Hincoming Htyping Hscope Heval mode location Hmode Hcolor
+    Hlocation.
+  eapply executing_authority_colors_after_typed_field_write_covered; eauto.
+  eapply executing_authority_colors_runtime_mutable; eauto.
+Qed.
+
+Lemma new_old_colors_reflected :
+  forall CT authority sGamma mt rGamma h incoming x qc C args sGamma' rGamma'
+    h',
+    wf_r_config CT sGamma rGamma h ->
+    wf_r_config CT sGamma' rGamma' h' ->
+    authority_context_sound h rGamma authority ->
+    authority_context_sound h' rGamma' authority ->
+    authority_colors_runtime_mutable h incoming ->
+    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
+    eval_stmt CT rGamma h (SNew x qc C args) OK rGamma' h' ->
+    executing_authority_old_colors_reflected CT h
+      (mk_watched_frame authority sGamma rGamma) incoming h'
+      (mk_watched_frame authority sGamma' rGamma') incoming.
+Proof.
+  intros CT authority sGamma mt rGamma h incoming x qc C args sGamma' rGamma'
+    h' Hwf Hpost_wf Hsound Hpost_sound Hincoming Htyping Heval.
+  inversion Heval; subst.
+  assert (Hupdate :
+      set_vars rGamma (update x (Iot (dom h)) (vars rGamma)) =
+      update_r_env_value rGamma x (Iot (dom h))).
+  { destruct rGamma. reflexivity. }
+  rewrite Hupdate in Hpost_wf, Hpost_sound |- *.
+  intros mode location Hmode Hcolor Hlocation.
+  eapply executing_authority_colors_after_new_covered; eauto.
+Qed.
