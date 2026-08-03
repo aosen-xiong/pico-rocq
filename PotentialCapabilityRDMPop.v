@@ -703,3 +703,40 @@ Proof.
       * exists return_var, body_return_type. repeat split; assumption.
       * exact Hreturn_imm.
 Qed.
+
+(** Two RDM roots of a suspended caller frame remain adjacent in the callee's
+    potential graph: the caller frame is still a live frame member across the
+    boundary, and [potential_frame_edge] carries no authority condition.
+
+    This is the collapse used by the immutable call-pop residual.  An RDM
+    parameter's argument is forced below
+    [vpa_mutability_tt_readonly_state Ty T], which for an RDM receiver and an
+    RDM parameter is RDM, so any old object the callee holds through such a
+    parameter is a caller RDM root and is therefore joined to the receiver. *)
+Lemma boundary_caller_rdm_roots_are_adjacent :
+  forall CT h callee boundary stack left right,
+    typed_root RDM boundary.(boundary_caller).(frame_senv)
+      boundary.(boundary_caller).(frame_renv) left ->
+    typed_root RDM boundary.(boundary_caller).(frame_senv)
+      boundary.(boundary_caller).(frame_renv) right ->
+    potential_adjacent CT h callee (boundary :: stack) left right.
+Proof.
+  intros CT h callee boundary stack left right Hleft Hright.
+  right. left.
+  exists boundary.(boundary_caller). split.
+  - apply live_frame_suspended. left. reflexivity.
+  - split; [exact Hleft|exact Hright].
+Qed.
+
+Lemma boundary_caller_rdm_roots_are_connected :
+  forall CT h callee boundary stack left right,
+    typed_root RDM boundary.(boundary_caller).(frame_senv)
+      boundary.(boundary_caller).(frame_renv) left ->
+    typed_root RDM boundary.(boundary_caller).(frame_senv)
+      boundary.(boundary_caller).(frame_renv) right ->
+    potential_connected CT h callee (boundary :: stack) left right.
+Proof.
+  intros CT h callee boundary stack left right Hleft Hright.
+  apply rt_step.
+  eapply boundary_caller_rdm_roots_are_adjacent; eauto.
+Qed.
