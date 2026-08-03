@@ -656,3 +656,29 @@ Support that survives:
 
 The per-case reflection lemmas themselves did not survive and must be
 re-proved from that machinery.  None of it needs an admit.
+
+### C4: neither colour closure covers the potential graph's frame joins
+
+Sharper statement of the join-scoping gap.  Three relations, three different
+join scopes:
+
+  * `phased_authority_frame_step CT h frame` -- joins among the RDM roots of
+    that single frame;
+  * `resumed_authority_frame_step CT h eligible caller` -- joins among the
+    RDM roots of the *caller* frame, gated by `resumed_frame_join_target`;
+  * `potential_frame_edge active stack` -- joins among the RDM roots of
+    *every* live frame, i.e. the active frame and every suspended caller
+    reachable through the boundaries.
+
+`call_pop_merge_safe` is stated over
+`potential_connected callee (boundary :: stack)`, so its paths may use both
+callee-frame and caller-frame joins.  The phased closure sees only the
+former, the resumed closure only the latter.  There is therefore no single
+colour closure for a `potential_connected` path to be replayed in, and the
+bridge cannot be obtained by choosing a different target relation.
+
+Closing C4 needs a genuinely new construction: either a combined closure that
+admits joins from every live frame, or a segment-wise argument that splits a
+potential path at frame boundaries and applies the phased and resumed
+closures to alternating segments.  Neither exists in the development.  This
+is the one remaining piece of the residual with no located strategy.
