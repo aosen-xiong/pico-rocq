@@ -550,3 +550,40 @@ the `Some`-headed snapshot list that
 `immutable_rdm_evolved_policy_head_pop_safe` requires.
 
 No step of this needs an admit: every piece it builds on is `Qed`.
+
+### The origins-alignment obstacle, and why the retired entry was not axiom-free
+
+`private_statement_enter_call_channel_free` (Private.v:7714) depends on
+`Classical_Prop.classic`.  So does the retired chain's channel-free entry,
+which contained the line
+
+  assert (witness_origins = origins) by apply proof_irrelevance.
+
+The cause is structural.  Each layer's call-entry lemma builds its boundary
+with `Build_call_boundary_origins ... Hwf ...`, extracting `Hwf` from *its
+own* invariant.  `watched_boundary` is a `Type` record whose last field is
+`boundary_origins : call_boundary_origins ... : Prop`, so two boundaries that
+differ only in that proof term are propositionally distinct.  Combining the
+layers into one state over one boundary therefore requires identifying two
+proofs of the same `Prop`, which needs proof irrelevance.
+
+This matters because `scripts/check-public-assumptions.py` fails on any
+global axiom, and commit 71815d0 removed classical assumptions on purpose.
+An axiom-free route C cannot use `private_statement_enter_call_channel_free`
+or reproduce its `proof_irrelevance` step.  Note the *single-layer* lemmas
+are clean: `private_fresh_frozen_statement_enter_call_channel_free` is
+`Closed under the global context`.
+
+Three ways out, in increasing order of blast radius:
+
+1. Prove `_with_origins` variants of the per-layer entry lemmas that take the
+   boundary (hence the origins proof) as input rather than existentially
+   producing it, so all layers share one term by construction.
+2. Prove one combined entry lemma directly, extracting `wf_r_config` once and
+   building the origins once, at the cost of redoing the entry proofs.
+3. Move `call_boundary_origins` from `Prop` to `SProp`, making the two proofs
+   definitionally equal so alignment is `reflexivity`.  This changes no
+   statement's meaning -- the record is proof-carrying only -- but it is a
+   core definition change in `WatchedFrames.v`.
+
+Option 1 is the smallest and keeps every existing proof intact.
