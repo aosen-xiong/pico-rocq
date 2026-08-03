@@ -722,3 +722,38 @@ mutably reach the return.  The existing component lemmas run forward
 (`principled_local_mut_result_component_is_fresh`) and do not give this;
 `potential_connected_to_fresh_is_fresh` is about `dom h` exactly, not about
 freshness across a call.
+
+### The Imm_r residual: the complete argument
+
+Orientation A of `call_pop_bridge` (`capability ->* receiver` with
+`return ->* protected`) is proved: the covariant `Mut` return is a `Mut` root
+of the completed callee, hence a live capability, and
+`potential_colors_separated` finishes it.
+
+Orientation B (`capability ->* return` with `receiver ->* protected`) dies on
+its first conjunct.  Only three kinds of step can arrive at the return:
+
+1. a heap edge into it -- some `RDM_f`/`Mut_f` field holds the return.  By
+   `mut_into_readonly_state_field_is_ro_or_mut_receiver` a `Mut` value fits
+   such a slot only through a `Mut` receiver (the `RO_f` escape is excluded
+   because `retained_mut_edge` does not follow `RO_f`), and by
+   `potential_local_mut_root_is_fresh` every `Mut`-typed variable of this
+   callee is fresh.  So the source is fresh.
+2. a backward step inside its own component -- `mutable_connected` is the
+   closure of a symmetric adjacency, and
+   `principled_local_mut_result_component_source_is_fresh` bounds that whole
+   component to fresh locations.
+3. a frame join.  This is the case that defeated every earlier attempt, and
+   it closes on channel-freeness.
+   `refined_mut_return_call_has_channel_free_entry_shape` proves the callee
+   entry frame has *no* RDM roots, and the body cannot create an old one: its
+   receiver is `RO` and `RO |> RDM_f = Lost`, so it can never hold an old
+   object at RDM type.  Every RDM root of the callee frame is therefore
+   fresh, and callee-frame joins connect only fresh locations.  Caller-frame
+   joins connect only old caller roots, which can enter the return's
+   component only through case 1.
+
+So nothing old reaches the return.  Note what this does *not* claim: the body
+does create old-to-fresh edges, by ordinary `RDM_f` writes, and that is legal
+and harmless.  What it cannot do is put `Mut` authority anywhere an old
+object reaches.
