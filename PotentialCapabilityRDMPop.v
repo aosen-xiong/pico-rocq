@@ -2046,3 +2046,129 @@ Proof.
       eapply HK with (v := v) (o := o) (f := f) (D := sctype T)
         (fdef := fDef); eauto.
 Qed.
+
+(** Preservation, field write.  L is the heart: a write into an old mutable
+    object's mutable field is statically impossible in a frame satisfying J
+    -- the receiver variable would have to be [Mut]/[RDM]-typed (J makes the
+    object fresh), [Imm]-typed (the object would be runtime-immutable), or
+    adapt to [Lost] (no location fits).  K's updated-slot case routes the
+    written value through J. *)
+Lemma rs_mutable_freshness_after_field_write :
+  forall CT h0 sGamma mt rGamma h x f y sGamma' rGamma' h',
+    wf_r_config CT sGamma rGamma h ->
+    readonly_state_method_scope mt ->
+    stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
+    eval_stmt CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
+    rs_mutable_freshness CT h0 sGamma rGamma h ->
+    rs_mutable_freshness CT h0 sGamma' rGamma' h'.
+Proof.
+  intros CT h0 sGamma mt rGamma h x f y sGamma' rGamma' h' Hwf Hscope
+    Htyping Heval [HJ [HK HL]].
+  inversion Heval; subst.
+  assert (Hstatic : exists Tx Ty fieldT,
+      static_getType sGamma x = Some Tx /\
+      static_getType sGamma y = Some Ty /\
+      sf_def_rel CT (sctype Tx) f fieldT /\
+      qualified_type_subtype CT Ty
+        (Build_qualified_type
+          (vpa_mutability_stype_fld_readonly_state (sqtype Tx)
+            (mutability (ftype fieldT)))
+          (f_base_type (ftype fieldT))) /\
+      sGamma' = sGamma).
+  { inversion Htyping; subst;
+      try (destruct Hscope as [Hbad | Hbad]; discriminate).
+    - exists Tx, Ty, fieldT. repeat split; assumption.
+    - exists Tx, Ty, fieldT. repeat split; assumption. }
+  destruct Hstatic as [Tx [Ty [fieldT [Hget_x [Hget_y [Hfld [Hsub ->]]]]]]].
+  have Hlocdom : loc_x < dom h.
+  { eapply runtime_getObj_dom. eassumption. }
+  split; [|split].
+  - (* J: env unchanged, runtime types unchanged *)
+    intros z T l Htype Hvalue Hkind Hmut.
+    rewrite r_muttype_update_field_preserve in Hmut.
+    eapply HJ; eauto.
+  - (* K *)
+    intros v ov f' l D fdef Hfresh Hobj' Hvmut Hval' Hbase Hfd Hfm Hlmut.
+    rewrite r_muttype_update_field_preserve in Hvmut.
+    rewrite r_muttype_update_field_preserve in Hlmut.
+    destruct (Nat.eq_dec v loc_x) as [-> | Hvneq].
+    2:{ unfold update_field in Hobj'.
+        rewrite Hobj in Hobj'.
+        rewrite runtime_getObj_update_diff in Hobj'; [congruence|].
+        eapply HK; eauto. }
+    unfold update_field in Hobj'. rewrite Hobj in Hobj'.
+    rewrite runtime_getObj_update_same in Hobj'; [exact Hlocdom|].
+    injection Hobj' as <-.
+    simpl in Hval', Hbase.
+    destruct (Nat.eq_dec f' f) as [-> | Hfneq].
+    2:{ unfold getVal in Hval'. rewrite update_diff in Hval'; [congruence|].
+        eapply HK; eauto. }
+    (* the updated slot: val_y = Iot l *)
+    have Hflen : f < length (fields_map o).
+    { unfold getVal in Hfield. apply nth_error_Some. rewrite Hfield. discriminate. }
+    unfold getVal in Hval'.
+    rewrite (update_same _ _ _ _ Hflen) in Hval'.
+    injection Hval' as ->.
+    (* the two field definitions coincide *)
+    have Hbase_x : base_subtype CT (rctype (rt_type o)) (sctype Tx).
+    { eapply typed_var_object_base_subtype; eauto. }
+    have Hfd_C : FieldLookup CT (rctype (rt_type o)) f fdef.
+    { eapply field_inheritance_subtyping; [exact Hbase | exact Hfd]. }
+    have Hft_C : FieldLookup CT (rctype (rt_type o)) f fieldT.
+    { eapply field_inheritance_subtyping; [exact Hbase_x | exact Hfld]. }
+    have Hfdef_eq : fdef = fieldT.
+    { eapply field_lookup_deterministic_rel; eauto. }
+    subst fdef.
+    have Hq := qualified_type_subtype_q_subtype _ _ _ Hsub. simpl in Hq.
+    destruct (readonly_state_mut_field_write_inversion _ _ _ Hfm Hq) as
+      [Hybot | [[Hximm Hyimm] | [Hxmut Hymut]]].
+    + exfalso. eapply wf_config_nonnull_variable_not_bot with (x := y);
+        eauto.
+    + exfalso.
+      have Himm : r_muttype h loc_x = Some Imm_r.
+      { eapply typed_imm_root_runtime_immutable_live; eauto.
+        exists x, Tx. repeat split; assumption. }
+      congruence.
+    + eapply HJ with (x := y); eauto.
+  - (* L *)
+    intros v ov f' l D fdef Hold Hobj' Hvmut Hval' Hbase Hfd Hfm.
+    rewrite r_muttype_update_field_preserve in Hvmut.
+    destruct (Nat.eq_dec v loc_x) as [-> | Hvneq].
+    2:{ unfold update_field in Hobj'.
+        rewrite Hobj in Hobj'.
+        rewrite runtime_getObj_update_diff in Hobj'; [congruence|].
+        eapply HL; eauto. }
+    unfold update_field in Hobj'. rewrite Hobj in Hobj'.
+    rewrite runtime_getObj_update_same in Hobj'; [exact Hlocdom|].
+    injection Hobj' as <-.
+    simpl in Hval', Hbase.
+    destruct (Nat.eq_dec f' f) as [-> | Hfneq].
+    2:{ unfold getVal in Hval'. rewrite update_diff in Hval'; [congruence|].
+        eapply HL; eauto. }
+    exfalso.
+    have Hflen : f < length (fields_map o).
+    { unfold getVal in Hfield. apply nth_error_Some. rewrite Hfield. discriminate. }
+    unfold getVal in Hval'.
+    rewrite (update_same _ _ _ _ Hflen) in Hval'.
+    injection Hval' as ->.
+    have Hbase_x : base_subtype CT (rctype (rt_type o)) (sctype Tx).
+    { eapply typed_var_object_base_subtype; eauto. }
+    have Hfd_C : FieldLookup CT (rctype (rt_type o)) f fdef.
+    { eapply field_inheritance_subtyping; [exact Hbase | exact Hfd]. }
+    have Hft_C : FieldLookup CT (rctype (rt_type o)) f fieldT.
+    { eapply field_inheritance_subtyping; [exact Hbase_x | exact Hfld]. }
+    have Hfdef_eq : fdef = fieldT.
+    { eapply field_lookup_deterministic_rel; eauto. }
+    subst fdef.
+    have Hq := qualified_type_subtype_q_subtype _ _ _ Hsub. simpl in Hq.
+    destruct (readonly_state_mut_field_write_inversion _ _ _ Hfm Hq) as
+      [Hybot | [[Hximm Hyimm] | [Hxmut Hymut]]].
+    + eapply wf_config_nonnull_variable_not_bot with (x := y); eauto.
+    + have Himm : r_muttype h loc_x = Some Imm_r.
+      { eapply typed_imm_root_runtime_immutable_live; eauto.
+        exists x, Tx. repeat split; assumption. }
+      congruence.
+    + have Hfresh_x : dom h0 <= loc_x.
+      { eapply HJ with (x := x); eauto. }
+      lia.
+Qed.
