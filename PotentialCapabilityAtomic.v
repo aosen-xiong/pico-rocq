@@ -2105,49 +2105,6 @@ Proof.
       Hroot_dom Hreachable) as [Hfresh_dom _]. lia.
 Qed.
 
-(** Allocation is the only statement that introduces a location not present
-    in the pre-state color set.  A dangerous color at that fresh location is
-    justified either by a mutable creation, or by an RDM creation joined to
-    an old colored RDM root.  This is ghost evidence used only by the
-    allocation proof. *)
-Definition allocation_fresh_authorized
-  (CT : class_table) (h : heap) (frame : watched_frame)
-  (old_colors : Ensemble authority_flow_state) (qc : q_c) : Prop :=
-  qc = Mut_c \/
-  (qc = RDM_c /\
-    (frame.(frame_authority) = Mut_r \/
-     exists mode anchor,
-       authority_mode_dangerous mode /\
-       In authority_flow_state old_colors (mode, anchor) /\
-       typed_root RDM frame.(frame_senv) frame.(frame_renv) anchor)).
-
-Lemma executing_authority_typed_mut_root_is_powered :
-  forall CT h frame incoming location,
-    typed_root Mut frame.(frame_senv) frame.(frame_renv) location ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame incoming)
-      (FlowPowered, location).
-Proof.
-  intros CT h frame incoming location Hroot.
-  apply executing_authority_owned_is_powered.
-  apply frame_owned_location_iff_active_live.
-  eapply typed_mut_root_is_live_capability. exact Hroot.
-Qed.
-
-Lemma executing_authority_typed_rdm_root_under_mut_is_powered :
-  forall CT h sGamma rGamma incoming location,
-    typed_root RDM sGamma rGamma location ->
-    In authority_flow_state
-      (executing_authority_color_set CT h
-        (mk_watched_frame Mut_r sGamma rGamma) incoming)
-      (FlowPowered, location).
-Proof.
-  intros CT h sGamma rGamma incoming location Hroot.
-  apply executing_authority_owned_is_powered.
-  apply frame_owned_location_iff_active_live.
-  eapply typed_rdm_root_is_live_under_mut_authority. exact Hroot.
-Qed.
-
 Lemma potential_history_after_new :
   forall CT P Z cutoff authority sGamma mt rGamma h stack x qc C args
     sGamma' rGamma' h',

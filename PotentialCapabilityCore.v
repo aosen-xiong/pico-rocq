@@ -307,29 +307,6 @@ Proof.
   - apply rt_refl.
 Qed.
 
-Lemma executing_authority_dangerous_frame_join :
-  forall CT h frame incoming mode left right,
-    authority_mode_dangerous mode ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame incoming) (mode, left) ->
-    typed_root RDM frame.(frame_senv) frame.(frame_renv) left ->
-    typed_root RDM frame.(frame_senv) frame.(frame_renv) right ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame incoming)
-      (FlowProspective, right).
-Proof.
-  intros CT h frame incoming mode left right Hmode Hcolor Hleft Hright.
-  destruct Hmode as [Hmode | Hmode].
-  - subst mode. destruct Hcolor as [seed [Hseed Hpath]].
-    exists seed. split; [exact Hseed|].
-    eapply rt_trans; [exact Hpath|]. apply rt_step.
-    eapply phased_authority_powered_frame_join; eauto.
-  - subst mode. destruct Hcolor as [seed [Hseed Hpath]].
-    exists seed. split; [exact Hseed|].
-    eapply rt_trans; [exact Hpath|]. apply rt_step.
-    eapply phased_authority_prospective_frame_join; eauto.
-Qed.
-
 Definition live_boundary_cutoffs_valid
   (h : heap) (stack : list watched_boundary) : Prop :=
   Forall (fun boundary =>
@@ -356,43 +333,6 @@ Definition potential_live_history_state
   potential_colors_separated CT h
     (live_capability_set CT h active stack) Z active stack /\
   live_boundary_cutoffs_valid h stack.
-
-(** Frozen caller authority deliberately excludes [FlowNeutral].  Neutral
-    flow remembers component identity after authority has been forgotten; a
-    later promotion at a callee-owned location is independent callee
-    authority and must not be attributed retroactively to the caller. *)
-Inductive frozen_caller_authority_step
-  (CT : class_table) (h : heap) (frame : watched_frame) :
-  authority_flow_state -> authority_flow_state -> Prop :=
-| frozen_caller_retained : forall left right,
-    retained_mut_edge CT h left right ->
-    frozen_caller_authority_step CT h frame
-      (FlowPowered, left) (FlowPowered, right)
-| frozen_caller_prospective_retained : forall left right,
-    retained_mut_edge CT h left right ->
-    frozen_caller_authority_step CT h frame
-      (FlowProspective, left) (FlowProspective, right)
-| frozen_caller_prospective_rdm_backward : forall left right,
-    mutable_edge CT h right left ->
-    frozen_caller_authority_step CT h frame
-      (FlowProspective, left) (FlowProspective, right)
-| frozen_caller_reverse_rdm : forall left right,
-    mutable_edge CT h right left ->
-    frozen_caller_authority_step CT h frame
-      (FlowPowered, left) (FlowProspective, right)
-| frozen_caller_powered_frame_join : forall left right,
-    effective_frame_rdm_root frame left ->
-    effective_frame_rdm_root frame right ->
-    frozen_caller_authority_step CT h frame
-      (FlowPowered, left) (FlowProspective, right)
-| frozen_caller_prospective_frame_join : forall left right,
-    effective_frame_rdm_root frame left ->
-    effective_frame_rdm_root frame right ->
-    frozen_caller_authority_step CT h frame
-      (FlowProspective, left) (FlowProspective, right)
-| frozen_caller_mark_prospective : forall location,
-    frozen_caller_authority_step CT h frame
-      (FlowPowered, location) (FlowProspective, location).
 
 Lemma potential_frame_edge_symmetric :
   forall active stack left right,
