@@ -757,3 +757,65 @@ So nothing old reaches the return.  Note what this does *not* claim: the body
 does create old-to-fresh edges, by ordinary `RDM_f` writes, and that is legal
 and harmless.  What it cannot do is put `Mut` authority anywhere an old
 object reaches.
+
+## The restored RO/RDM call rule: repair map
+
+The published artifact (de48a09) has, in both `SCall` rules:
+
+    Hrcv_sub : Ty <= vpa(Ty, mreceiver)
+               \/ (sqtype Ty = RO /\ sq mreceiver = RDM /\
+                   base_subtype CT (sctype Ty) (sctype mreceiver))
+
+The disjunct was silently dropped during the pre-snapshot proof effort,
+narrowing `stmt_typing` under every theorem.  It is now restored (f020677).
+Nobody has ever proved the combination special-rule x flexible-overriding:
+master's special-branch proofs used signature EQUALITY at dispatch
+(`runtime_call_signature_agrees`), which flexible overriding replaced with
+refinement.  Known repair obligations, in dependency order:
+
+1. `callee_frame_wf_abs` / `callee_frame_wf_rs_ts` (Preservation.v) must take
+   the disjunctive premise again.  In the special branch the dynamic receiver
+   qualifier is only refinement-bounded: static RDM gives
+   `qc2q qc <= sq dyn-receiver`, so dyn is `qc2q qc` or `RO`.  Receiver-var
+   typability for dyn = Mut or Imm is NOT automatic -- it follows from bound
+   agreement: `wf_rtypeuse` forces every instance of a Mut_c-bounded class to
+   be `Mut_r` (and Imm_c / Imm_r), and flexible subclassing makes bounds
+   hereditary except under RDM_c, so the dynamic class's bound matches the
+   declaring class's.  This bound-agreement step is the genuinely new lemma.
+
+2. `safe_typed_call_static_result` and everything downstream that inverts
+   `Hrcv_sub` as a plain subtype.  In the covariant-Mut-return residual the
+   special branch is REFUTABLE at the top call: the RDM destination forces
+   `sqtype receiver_type = RDM` (refined_call_rdm_result_classifies_body_
+   return), contradicting `sqtype Ty = RO`.  So the residual's top-level
+   analysis survives; only its lemma statements need the disjunction threaded
+   or refuted.
+
+3. `rs_mutable_freshness_preserved`'s call case: the special rule lets a
+   nested frame hold an OLD object at declared-RDM receiver type, so J as
+   stated fails at such entries.  What survives, by the channel analysis:
+   an RO view adapts every argument channel to RO/Imm and every return
+   channel to RO/Imm, so special-rule frames can never receive or return
+   outer Mut values at write-capable types.  Writes through old-RDM `this`:
+   the value channel is `RDM |> RDM_f = RDM`, but assignability gates it --
+   `vpa_assignability(RDM, RDA)` is not `Assignable`, so Final/RDA fields of
+   old objects remain unwritable (readonly_state_preservation is therefore
+   semantically unaffected).  Explicitly-`Assignable` `RDM_f` fields CAN be
+   stitched: an old `Mut_r` object may acquire an edge to a fresh `Mut_r`
+   object created inside a special-rule frame.  Hence:
+     - L weakens to Final/RDA-assignability fields only;
+     - the old-stays-old walk gains a crossing case: an
+       explicitly-Assignable RDM_f edge into special-frame-created fresh
+       structure.  The repair is an ownership argument: members of the outer
+       frame's Mut components are never named at Mut/RDM by any other frame
+       (they can only travel through RO/Imm channels), so the stitched
+       structure cannot contain the covariant Mut return, and the walk can
+       conclude "old or stitched-but-return-free" instead of "old".
+
+4. J itself weakens: RDM-typed variables may hold old objects exactly when
+   the value shares the frame receiver's runtime context (already a wf fact);
+   the Mut half of J is unchanged -- no channel ever passes an old object at
+   Mut type.
+
+Do NOT re-narrow the typing rule to make proofs pass; that repeats the
+original silent weakening.
