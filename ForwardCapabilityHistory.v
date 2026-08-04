@@ -470,27 +470,37 @@ Proof.
   destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x m y
     args sGamma' vals ly cy runtime_mdef capability_root Hwf Htyping Hscope
     Hval_y Hbase Hfind Hargs Hcaproot) as
-    [Tcap [Hreceiver_cap [Hcapqual Hcaporigin]]].
+    [Tcap [Hreceiver_cap Hcap_cases]].
   destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x m y
     args sGamma' vals ly cy runtime_mdef zone_root Hwf Htyping Hscope
     Hval_y Hbase Hfind Hargs Hzoneroot) as
-    [Tzone [Hreceiver_zone [Hzonequal Hzoneorigin]]].
+    [Tzone [Hreceiver_zone Hzone_cases]].
   rewrite Hreceiver_cap in Hreceiver_zone. injection Hreceiver_zone as <-.
-  destruct Hcapqual as [Hmut | [Himm | Hrdm]].
-  - rewrite Hmut in Hzoneorigin.
-    eapply separated_components_cannot_touch_both with (root := zone_root).
-    + exact Hcomponents.
-    + destruct Hzoneorigin as [z [T [Htype [Hval Hqual]]]].
-      exists zone_root. split.
-      * apply Hmutroots. exists z, T. repeat split; assumption.
-      * apply mutable_connected_refl.
-    + exact Hzone.
-  - rewrite Himm in Hcaporigin.
-    eapply immutable_root_cannot_touch_capability_component
-      with (root := capability_root); eauto.
-  - rewrite Hrdm in Hcaporigin, Hzoneorigin.
-    eapply Hactive with (capability_root := capability_root)
-      (zone_root := zone_root); eauto.
+  destruct Hcap_cases as [[Hcapqual Hcaporigin] |
+      [Hcap_ro [Hcap_eq Hcap_ro_origin]]];
+    destruct Hzone_cases as [[Hzonequal Hzoneorigin] |
+      [Hzone_ro [Hzone_eq Hzone_ro_origin]]].
+  - destruct Hcapqual as [Hmut | [Himm | Hrdm]].
+    + rewrite Hmut in Hzoneorigin.
+      eapply separated_components_cannot_touch_both
+        with (root := zone_root).
+      * exact Hcomponents.
+      * destruct Hzoneorigin as [z [T [Htype [Hval Hqual]]]].
+        exists zone_root. split.
+        -- apply Hmutroots. exists z, T. repeat split; assumption.
+        -- apply mutable_connected_refl.
+      * exact Hzone.
+    + rewrite Himm in Hcaporigin.
+      eapply immutable_root_cannot_touch_capability_component
+        with (root := capability_root); eauto.
+    + rewrite Hrdm in Hcaporigin, Hzoneorigin.
+      eapply Hactive with (capability_root := capability_root)
+        (zone_root := zone_root); eauto.
+  - destruct Hcapqual as [Hq | [Hq | Hq]]; congruence.
+  - destruct Hzonequal as [Hq | [Hq | Hq]]; congruence.
+  - subst capability_root zone_root.
+    eapply separated_components_cannot_touch_both with (root := ly);
+      [exact Hcomponents | exact Hcapability | exact Hzone].
 Qed.
 
 Lemma safe_call_callee_component_forward_history :
