@@ -49,7 +49,11 @@ Lemma callee_frame_wf_rs_ts :
     (Hargs : runtime_lookup_list rΓ zs = Some vals)
     (Hrcv_sub :
       qualified_type_subtype CT Ty
-        (vpa_mutability_tt_readonly_state Ty (mreceiver (msignature mdef))))
+        (vpa_mutability_tt_readonly_state Ty (mreceiver (msignature mdef)))
+      \/ (sqtype Ty = RO /\
+          sqtype (mreceiver (msignature mdef)) = RDM /\
+          base_subtype CT (sctype Ty)
+            (sctype (mreceiver (msignature mdef)))))
     (Harg_sub :
       Forall2
         (fun arg T => qualified_type_subtype CT arg
@@ -62,6 +66,22 @@ Proof.
   intros CT sΓ' rΓ h y m zs vals ly cy mdef Ty argtypes Tthis
     Hwf Hval_y Hbase Hfind_m Hget_y Hget_args Hthis Hargs
     Hrcv_sub Harg_sub.
+  have Hrcv_base : base_subtype CT (sctype Ty)
+      (sctype (mreceiver (msignature mdef))).
+  { destruct Hrcv_sub as [Hp | [_ [_ Hb]]].
+    - apply qualified_type_subtype_base_subtype in Hp.
+      rewrite (vpa_mutability_tt_sctype_readonly_state Ty
+        (mreceiver (msignature mdef))) in Hp. exact Hp.
+    - exact Hb. }
+  have Hrcv_qual : q_subtype (sqtype Ty)
+      (vpa_mutability_qq_readonly_state (sqtype Ty)
+        (sqtype (mreceiver (msignature mdef)))) \/
+    (sqtype Ty = RO /\ sqtype (mreceiver (msignature mdef)) = RDM).
+  { destruct Hrcv_sub as [Hp | [Hro [Hrdm _]]].
+    - left. apply qualified_type_subtype_q_subtype in Hp.
+      rewrite sq_vpa_tt_eq_qq_readonly_state in Hp. exact Hp.
+    - right. split; assumption. }
+  clear Hrcv_sub.
   have Hwfcopy := Hwf.
   unfold wf_r_config in Hwf.
   destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
@@ -230,15 +250,11 @@ Proof.
       destruct Hytypable as [Hsubtype _].
       simpl in Hobj_ly.
       (* receiver base type subtype *)
-      apply qualified_type_subtype_base_subtype in Hrcv_sub.
-      rewrite (vpa_mutability_tt_sctype_readonly_state Ty
-        (mreceiver (msignature mdef))) in Hrcv_sub.
-      eapply base_trans; [exact Hsubtype|exact Hrcv_sub].
+      eapply base_trans; [exact Hsubtype|exact Hrcv_base].
 
   ---
   (* receiver qualifier type subtype preserved *)
-  apply qualified_type_subtype_q_subtype in Hrcv_sub.
-    have Hcorrcopy := Hcorr.
+  have Hcorrcopy := Hcorr.
     specialize (Hcorr OutterReceiverAddr qrout OutterReceiverGetAddr H5).
     unfold static_getType in Hget_y.
     specialize (Hcorr y Hy_dom Ty Hget_y).
@@ -261,7 +277,6 @@ Proof.
     destruct (runtime_getObj h OutterReceiverAddr) as [outterreceiverobj|] eqn:Houtterobj; [|discriminate].
     inversion H5; subst qrout.
     destruct Hcorrcopy as [_ Houtterqualifier].
-    rewrite sq_vpa_tt_eq_qq_readonly_state in Hrcv_sub.
     assert (ly = ι).
     {
       rewrite Hmethod_this_addr in getThisAddr.
@@ -277,7 +292,10 @@ Proof.
       reflexivity.
     }
     subst qcontext.
-    clear - Houtterqualifier HInnerReceiverQualifier Hrcv_sub.
+    clear - Houtterqualifier HInnerReceiverQualifier Hrcv_qual.
+    destruct Hrcv_qual as [Hrcv_sub | [Hro Hrdm]].
+    2:{ rewrite Hrdm.
+        destruct (rqtype (rt_type objy)); simpl; exact I. }
     destruct (rqtype (rt_type objy)) eqn:Hrqtq;
     destruct (sqtype (mreceiver (msignature mdef))) eqn:Hreceiverq;
     try solve_qualifier_typable_correct_concrete.
@@ -442,7 +460,6 @@ Proof.
     }
     subst qrout.
     apply qualified_type_subtype_q_subtype in Harg_sub.
-    apply qualified_type_subtype_q_subtype in Hrcv_sub.
     clear - Harg_qual_subtype Houtterqualifier HInnerReceiverQualifier Harg_sub.
     rewrite sq_vpa_tt_eq_qq_readonly_state in Harg_sub.
     destruct (rqtype (rt_type obj_loc)) eqn:HArgMutability;
@@ -490,7 +507,11 @@ Lemma callee_frame_wf_abs :
     (Hargs : runtime_lookup_list rΓ zs = Some vals)
     (Hrcv_sub :
       qualified_type_subtype CT Ty
-        (vpa_mutability_tt_abstract_state Ty (mreceiver (msignature mdef))))
+        (vpa_mutability_tt_abstract_state Ty (mreceiver (msignature mdef)))
+      \/ (sqtype Ty = RO /\
+          sqtype (mreceiver (msignature mdef)) = RDM /\
+          base_subtype CT (sctype Ty)
+            (sctype (mreceiver (msignature mdef)))))
     (Harg_sub :
       Forall2
         (fun arg T => qualified_type_subtype CT arg
@@ -503,6 +524,22 @@ Proof.
   intros CT sΓ' rΓ h y m zs vals ly cy mdef Ty argtypes Tthis
     Hwf Hval_y Hbase Hfind_m Hget_y Hget_args Hthis Hargs
     Hrcv_sub Harg_sub.
+  have Hrcv_base : base_subtype CT (sctype Ty)
+      (sctype (mreceiver (msignature mdef))).
+  { destruct Hrcv_sub as [Hp | [_ [_ Hb]]].
+    - apply qualified_type_subtype_base_subtype in Hp.
+      rewrite (vpa_mutability_tt_sctype_abstract_state Ty
+        (mreceiver (msignature mdef))) in Hp. exact Hp.
+    - exact Hb. }
+  have Hrcv_qual : q_subtype (sqtype Ty)
+      (vpa_mutability_qq_abstract_state (sqtype Ty)
+        (sqtype (mreceiver (msignature mdef)))) \/
+    (sqtype Ty = RO /\ sqtype (mreceiver (msignature mdef)) = RDM).
+  { destruct Hrcv_sub as [Hp | [Hro [Hrdm _]]].
+    - left. apply qualified_type_subtype_q_subtype in Hp.
+      rewrite sq_vpa_tt_eq_qq_abstract_state in Hp. exact Hp.
+    - right. split; assumption. }
+  clear Hrcv_sub.
   have Hwfcopy := Hwf.
   unfold wf_r_config in Hwf.
   destruct Hwf as [Hclass [Hheap [Hrenv [Hsenv [Hlen Hcorr]]]]].
@@ -671,14 +708,10 @@ Proof.
       destruct Hytypable as [Hsubtype _].
       simpl in Hobj_ly.
       (* receiver base type subtype *)
-      apply qualified_type_subtype_base_subtype in Hrcv_sub.
-      rewrite (vpa_mutability_tt_sctype_abstract_state Ty
-        (mreceiver (msignature mdef))) in Hrcv_sub.
-      eapply base_trans; [exact Hsubtype|exact Hrcv_sub].
+      eapply base_trans; [exact Hsubtype|exact Hrcv_base].
   ---
   (* receiver qualifier type subtype preserved *)
-  apply qualified_type_subtype_q_subtype in Hrcv_sub.
-    have Hcorrcopy := Hcorr.
+  have Hcorrcopy := Hcorr.
     specialize (Hcorr OutterReceiverAddr qrout OutterReceiverGetAddr H5).
     unfold static_getType in Hget_y.
     specialize (Hcorr y Hy_dom Ty Hget_y).
@@ -701,7 +734,6 @@ Proof.
     destruct (runtime_getObj h OutterReceiverAddr) as [outterreceiverobj|] eqn:Houtterobj; [|discriminate].
     inversion H5; subst qrout.
     destruct Hcorrcopy as [_ Houtterqualifier].
-    rewrite sq_vpa_tt_eq_qq_abstract_state in Hrcv_sub.
     assert (ly = ι).
     {
       rewrite Hmethod_this_addr in getThisAddr.
@@ -717,7 +749,10 @@ Proof.
       reflexivity.
     }
     subst qcontext.
-    clear - Houtterqualifier HInnerReceiverQualifier Hrcv_sub.
+    clear - Houtterqualifier HInnerReceiverQualifier Hrcv_qual.
+    destruct Hrcv_qual as [Hrcv_sub | [Hro Hrdm]].
+    2:{ rewrite Hrdm.
+        destruct (rqtype (rt_type objy)); simpl; exact I. }
     destruct (rqtype (rt_type objy)) eqn:Hrqtq;
     destruct (sqtype (mreceiver (msignature mdef))) eqn:Hreceiverq;
     try solve_qualifier_typable_correct_concrete.
@@ -882,7 +917,6 @@ Proof.
     }
     subst qrout.
     apply qualified_type_subtype_q_subtype in Harg_sub.
-    apply qualified_type_subtype_q_subtype in Hrcv_sub.
     clear - Harg_qual_subtype Houtterqualifier HInnerReceiverQualifier Harg_sub.
     rewrite sq_vpa_tt_eq_qq_abstract_state in Harg_sub.
     destruct (rqtype (rt_type obj_loc)) eqn:HArgMutability;
