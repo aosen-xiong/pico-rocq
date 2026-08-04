@@ -846,9 +846,13 @@ Lemma refined_mut_return_call_has_channel_free_entry_shape :
     sqtype receiver_type <> Bot ->
     sqtype destination_type = RDM ->
     sqtype body_return_type = Mut ->
-    qualified_type_subtype CT receiver_type
-      (vpa_mutability_tt_readonly_state receiver_type
-        (mreceiver (msignature static_mdef))) ->
+    (qualified_type_subtype CT receiver_type
+       (vpa_mutability_tt_readonly_state receiver_type
+         (mreceiver (msignature static_mdef))) \/
+     (sqtype receiver_type = RO /\
+      sqtype (mreceiver (msignature static_mdef)) = RDM /\
+      base_subtype CT (sctype receiver_type)
+        (sctype (mreceiver (msignature static_mdef))))) ->
     signature_has_no_mutable_roots (msignature runtime_mdef) ->
     sqtype (mreceiver (msignature runtime_mdef)) = RO /\
     (forall root,
@@ -868,6 +872,8 @@ Proof.
     destination_type Hbody_sub Hrefine Hresult_sub Hreceiver_nonbottom
     (ltac:(rewrite Hbody_mut; discriminate)) Hdestination_rdm) as
     [Hreceiver_rdm _].
+  destruct Hreceiver_sub as [Hreceiver_sub | [Hreceiver_ro _]];
+    [| rewrite Hreceiver_rdm in Hreceiver_ro; discriminate].
   destruct (refined_call_rdm_mut_body_signature_shape CT receiver_type
     body_return_type (msignature runtime_mdef) (msignature static_mdef)
     destination_type Hbody_sub Hrefine Hresult_sub Hreceiver_nonbottom
@@ -1706,6 +1712,14 @@ Proof.
   inversion Hsub; subst; split; try congruence.
 Qed.
 
+(** A value fitting [Lost] is [Bot]. *)
+Lemma q_subtype_lost_inversion :
+  forall qa, q_subtype qa Lost -> qa = Bot.
+Proof.
+  intros qa Hsub.
+  inversion Hsub; subst; congruence.
+Qed.
+
 (** * The RS mutable-freshness invariant
 
     The residual's refutation characterises what a readonly-state body can
@@ -1751,6 +1765,169 @@ Definition rs_old_mut_fields_old
     sf_def_rel CT D f fdef ->
     (mutability (ftype fdef) = RDM_f \/ mutability (ftype fdef) = Mut_f) ->
     l < dom h0.
+
+(** * The two-sided partition invariant
+
+    Under the restored RO/RDM call rule a readonly-state frame may hold an
+    OLD object at declared-RDM receiver type, so the freshness conjunct J is
+    not hereditary across special call entries.  What is hereditary: every
+    frame's [Mut]/[RDM]-typed [Mut_r] values lie entirely on ONE side of a
+    partition of the [Mut_r] locations into [Old ∪ S] versus [Fresh ∖ S],
+    where [S] collects exactly the locations allocated by left-side frames,
+    and no retained/mutable edge between [Mut_r] endpoints ever crosses the
+    partition. *)
+
+Definition rs_left (h0 : heap) (S : list Loc) (l : Loc) : Prop :=
+  l < dom h0 \/ List.In l S.
+
+Definition rs_pool_left (h0 : heap) (S : list Loc)
+    (sGamma : s_env) (rGamma : r_env) (h : heap) : Prop :=
+  forall x T l, static_getType sGamma x = Some T ->
+    runtime_getVal rGamma x = Some (Iot l) ->
+    (sqtype T = Mut \/ sqtype T = RDM) ->
+    r_muttype h l = Some Mut_r -> rs_left h0 S l.
+
+Definition rs_pool_right (h0 : heap) (S : list Loc)
+    (sGamma : s_env) (rGamma : r_env) (h : heap) : Prop :=
+  forall x T l, static_getType sGamma x = Some T ->
+    runtime_getVal rGamma x = Some (Iot l) ->
+    (sqtype T = Mut \/ sqtype T = RDM) ->
+    r_muttype h l = Some Mut_r -> dom h0 <= l /\ ~ List.In l S.
+
+Definition rs_pool_sided h0 S (side : bool) sGamma rGamma h : Prop :=
+  if side then rs_pool_right h0 S sGamma rGamma h
+  else rs_pool_left h0 S sGamma rGamma h.
+
+Definition rs_stitch_set_wf (h0 h : heap) (S : list Loc) : Prop :=
+  forall l, List.In l S -> dom h0 <= l /\ l < dom h.
+
+Definition rs_mut_edges_respect_sides CT (h0 : heap) (S : list Loc) h : Prop :=
+  forall u v, retained_mut_edge CT h u v ->
+    r_muttype h u = Some Mut_r -> r_muttype h v = Some Mut_r ->
+    (rs_left h0 S u <-> rs_left h0 S v).
+
+(** Side membership, uniform over the flag. *)
+Definition rs_side (h0 : heap) (S : list Loc) (side : bool) (l : Loc) : Prop :=
+  if side then dom h0 <= l /\ ~ List.In l S else rs_left h0 S l.
+
+Lemma rs_pool_sided_spec :
+  forall h0 S side sGamma rGamma h,
+    rs_pool_sided h0 S side sGamma rGamma h <->
+    (forall x T l, static_getType sGamma x = Some T ->
+      runtime_getVal rGamma x = Some (Iot l) ->
+      (sqtype T = Mut \/ sqtype T = RDM) ->
+      r_muttype h l = Some Mut_r -> rs_side h0 S side l).
+Proof.
+  intros h0 S side sGamma rGamma h.
+  destruct side; split; intros H; exact H.
+Qed.
+
+Lemma rs_side_not_left :
+  forall h0 S l, (dom h0 <= l /\ ~ List.In l S) <-> ~ rs_left h0 S l.
+Proof.
+  intros h0 S l. unfold rs_left. split.
+  - intros [Hge Hnin] [Hlt | Hin]; [lia | exact (Hnin Hin)].
+  - intros Hnl. split.
+    + destruct (lt_dec l (dom h0)) as [Hlt | Hge]; [|lia].
+      exfalso. apply Hnl. left. exact Hlt.
+    + intros Hin. apply Hnl. right. exact Hin.
+Qed.
+
+Lemma rs_side_edge_transport :
+  forall CT h0 S h side u v,
+    rs_mut_edges_respect_sides CT h0 S h ->
+    retained_mut_edge CT h u v ->
+    r_muttype h u = Some Mut_r ->
+    r_muttype h v = Some Mut_r ->
+    rs_side h0 S side u ->
+    rs_side h0 S side v.
+Proof.
+  intros CT h0 S h side u v Hsides Hedge Hu Hv Hside.
+  have Hiff := Hsides u v Hedge Hu Hv.
+  destruct side; simpl in *.
+  - apply (proj2 (rs_side_not_left h0 S v)).
+    have Hnl := proj1 (rs_side_not_left h0 S u) Hside.
+    intros Hleft. apply Hnl. apply (proj2 Hiff). exact Hleft.
+  - apply (proj1 Hiff). exact Hside.
+Qed.
+
+Lemma rs_side_pair_iff :
+  forall h0 S side u v,
+    rs_side h0 S side u -> rs_side h0 S side v ->
+    (rs_left h0 S u <-> rs_left h0 S v).
+Proof.
+  intros h0 S side u v Hu Hv.
+  destruct side; simpl in *.
+  - have Hnu := proj1 (rs_side_not_left h0 S u) Hu.
+    have Hnv := proj1 (rs_side_not_left h0 S v) Hv.
+    split; intros H; [exact (False_ind _ (Hnu H)) |
+      exact (False_ind _ (Hnv H))].
+  - split; intros _; assumption.
+Qed.
+
+Lemma rs_left_mono :
+  forall h0 S S' l,
+    (forall a, List.In a S -> List.In a S') ->
+    rs_left h0 S l -> rs_left h0 S' l.
+Proof.
+  intros h0 S S' l Hincl [Hlt | Hin];
+    [left; exact Hlt | right; apply Hincl; exact Hin].
+Qed.
+
+(** For a location below the growth cutoff, membership on the left is
+    unchanged by growing the stitch set above the cutoff. *)
+Lemma rs_left_grow_old_iff :
+  forall (h0 h : heap) (S S' : list Loc) l,
+    (forall a, List.In a S -> List.In a S') ->
+    (forall a, List.In a S' -> List.In a S \/ dom h <= a) ->
+    l < dom h ->
+    (rs_left h0 S' l <-> rs_left h0 S l).
+Proof.
+  intros h0 h S S' l Hincl Hgrow Hl. unfold rs_left. split.
+  - intros [Hlt | Hin]; [left; exact Hlt|].
+    destruct (Hgrow l Hin) as [HinS | Hge]; [right; exact HinS | lia].
+  - intros [Hlt | Hin]; [left; exact Hlt | right; apply Hincl; exact Hin].
+Qed.
+
+Lemma rs_side_grow :
+  forall (h0 h : heap) (S S' : list Loc) side l,
+    (forall a, List.In a S -> List.In a S') ->
+    (forall a, List.In a S' -> List.In a S \/ dom h <= a) ->
+    l < dom h ->
+    rs_side h0 S side l -> rs_side h0 S' side l.
+Proof.
+  intros h0 h S S' side l Hincl Hgrow Hl Hside.
+  destruct side; simpl in *.
+  - destruct Hside as [Hge Hnin]. split; [exact Hge|].
+    intros Hin.
+    destruct (Hgrow l Hin) as [HinS | Hfresh]; [exact (Hnin HinS) | lia].
+  - eapply rs_left_mono; [exact Hincl | exact Hside].
+Qed.
+
+(** Entry forms: at [h0 = h] with [S = []] every [Mut_r] location is on the
+    left, so the partition holds trivially, and the channel-free entry pool
+    is right-sided. *)
+Lemma rs_mut_edges_respect_sides_entry :
+  forall CT h, wf_heap CT h -> rs_mut_edges_respect_sides CT h [] h.
+Proof.
+  intros CT h Hheap u v Hedge Hu Hv.
+  have Hu_dom : u < dom h.
+  { inversion Hedge; subst.
+    - inversion H; subst. eapply runtime_getObj_dom; eauto.
+    - eapply runtime_getObj_dom; eauto. }
+  have Hv_dom : v < dom h.
+  { eapply retained_edge_target_dom; eauto. }
+  unfold rs_left. split; intros _; left; assumption.
+Qed.
+
+Lemma rs_pool_right_from_mut_vars_fresh :
+  forall h0 sGamma rGamma h,
+    rs_mut_vars_fresh h0 sGamma rGamma h ->
+    rs_pool_right h0 [] sGamma rGamma h.
+Proof.
+  intros h0 sGamma rGamma h HJ x T l Htype Hvalue Hkind Hmut.
+  split; [eapply HJ; eauto | intros Hin; inversion Hin].
+Qed.
 
 (** A [Mut]-typed variable of a well-formed configuration denotes a
     runtime-mutable object.  Mirror of [typed_imm_root_runtime_immutable_live]:
@@ -1940,42 +2117,35 @@ Proof.
   exact (proj1 Hcorrespondence).
 Qed.
 
-(** ** The combined invariant and its per-statement preservation *)
+(** ** Per-statement preservation of the partition *)
 
-Definition rs_mutable_freshness
-  (CT : class_table) (h0 : heap) (sGamma : s_env) (rGamma : r_env)
-  (h : heap) : Prop :=
-  rs_mut_vars_fresh h0 sGamma rGamma h /\
-  rs_fresh_mut_fields_fresh CT h0 h /\
-  rs_old_mut_fields_old CT h0 h.
-
-(** Preservation, variable assignment.  The heap is unchanged, so K and L
-    transport verbatim; only the [x] slot of J changes.  A location can be
-    assigned at [Mut]/[RDM] type only from a variable of the same qualifier
-    (J applies directly) or by reading a mutable field of a [Mut]/[RDM]
-    receiver -- in which case the receiver's object is runtime-mutable
-    (per-edge runtime preservation), hence fresh by J, and K bounds the
-    field's value. *)
-Lemma rs_mutable_freshness_after_assignment :
-  forall CT h0 sGamma mt rGamma h x e old value,
+(** Variable assignment.  The heap is unchanged; only the [x] slot of the
+    pool changes.  A location can be assigned at [Mut]/[RDM] type only from
+    a variable of the same qualifier (the pool applies directly) or by
+    reading a mutable field of a [Mut]/[RDM] receiver -- in which case the
+    receiver's object is runtime-mutable and pool-sided, and the edge
+    condition transports the side across the field edge. *)
+Lemma rs_sides_after_assignment :
+  forall CT h0 S side sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
     readonly_state_method_scope mt ->
     stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
     runtime_getVal rGamma x = Some old ->
     eval_expr CT rGamma h e value OK rGamma h ->
-    rs_mutable_freshness CT h0 sGamma rGamma h ->
-    rs_mutable_freshness CT h0 sGamma
-      (update_r_env_value rGamma x value) h.
+    rs_mut_edges_respect_sides CT h0 S h ->
+    rs_pool_sided h0 S side sGamma rGamma h ->
+    rs_pool_sided h0 S side sGamma (update_r_env_value rGamma x value) h.
 Proof.
-  intros CT h0 sGamma mt rGamma h x e old value Hwf Hscope Htyping Hx Heval
-    [HJ [HK HL]].
-  split; [|split; [exact HK|exact HL]].
+  intros CT h0 S side sGamma mt rGamma h x e old value Hwf Hscope Htyping Hx
+    Heval Hsides Hpool.
+  have Huse := proj1 (rs_pool_sided_spec _ _ _ _ _ _) Hpool.
+  apply (proj2 (rs_pool_sided_spec _ _ _ _ _ _)).
   intros y T l Htype Hvalue Hkind Hmut.
   destruct (Nat.eq_dec y x) as [-> | Hneq].
   2:{ have Hxy : x <> y by (intros ->; apply Hneq; reflexivity).
       have Hold_value := runtime_getVal_update_diff rGamma x y value Hxy.
       rewrite Hvalue in Hold_value.
-      eapply HJ; eauto. }
+      eapply Huse; eauto. }
   (* the updated slot *)
   have Hxdom : x < dom (vars rGamma).
   { unfold runtime_getVal in Hx. apply nth_error_Some. rewrite Hx.
@@ -1989,7 +2159,7 @@ Proof.
     inversion Htype_e; subst.
     have Hq := qualified_type_subtype_q_subtype _ _ _ Hsub.
     destruct (mutable_slot_subtype_inversion _ _ Hq Hkind) as [Heq | Hbot].
-    + eapply HJ; eauto. rewrite Heq. exact Hkind.
+    + eapply Huse; eauto. rewrite Heq. exact Hkind.
     + exfalso.
       eapply wf_config_nonnull_variable_not_bot; eauto.
   - (* EField z f *)
@@ -2009,61 +2179,57 @@ Proof.
       vpa_mutability_stype_fld_readonly_state (sqtype T)
         (mutability (ftype fDef)) = RDM).
     { rewrite Heq. exact Hkind. }
+    have Hheap : wf_heap CT h := proj1 (proj2 Hwf).
+    have Hbase : base_subtype CT (rctype (rt_type o)) (sctype T).
+    { eapply typed_var_object_base_subtype; eauto. }
     destruct (readonly_state_field_read_mutable_inversion _ _ Hkind') as
       [[Hz_mut Hfm] | [Hz_rdm Hfm]].
     + (* receiver variable typed Mut: its object is runtime-mutable *)
       have Hw_mut : r_muttype h v = Some Mut_r.
       { eapply typed_mut_root_runtime_mutable_live; eauto.
         exists x0, T. repeat split; assumption. }
-      have Hw_fresh : dom h0 <= v.
-      { eapply HJ; eauto. }
-      eapply HK with (v := v) (o := o) (f := f) (D := sctype T)
-        (fdef := fDef); eauto.
-      eapply typed_var_object_base_subtype; eauto.
+      have Hedge : retained_mut_edge CT h v l.
+      { destruct Hfm as [Hrdm_f | Hmut_f].
+        - apply retained_edge_rdm. eapply mutable_edge_rdm; eauto.
+        - eapply retained_edge_mut; eauto. }
+      have Hside_v : rs_side h0 S side v.
+      { eapply Huse with (x := x0) (T := T);
+          [assumption | assumption | left; exact Hz_mut | exact Hw_mut]. }
+      eapply rs_side_edge_transport; eauto.
     + (* receiver variable typed RDM on an RDM_f field *)
-      have Hbase : base_subtype CT (rctype (rt_type o)) (sctype T).
-      { eapply typed_var_object_base_subtype; eauto. }
-      have Hedge : mutable_edge CT h v l.
+      have Hmedge : mutable_edge CT h v l.
       { eapply mutable_edge_rdm; eauto. }
-      have Hadj : potential_adjacent CT h
-          (mk_watched_frame Imm_r sGamma rGamma) [] v l.
-      { left. left. constructor. exact Hedge. }
-      have Hframes : live_frames_wf CT h
-          (mk_watched_frame Imm_r sGamma rGamma) [].
-      { split; [exact Hwf|constructor]. }
-      have Hheap : wf_heap CT h.
-      { exact (proj1 (proj2 Hwf)). }
-      have Hobj_v : runtime_getObj h v = Some o by assumption.
-      have Hw_runtime : exists qw, r_muttype h v = Some qw.
-      { unfold r_muttype. rewrite Hobj_v. eexists. reflexivity. }
-      destruct Hw_runtime as [qw Hqw].
-      have Hsame_runtime := potential_adjacent_preserves_runtime_mutability
-        CT h (mk_watched_frame Imm_r sGamma rGamma) [] v l qw
-        Hframes Hheap Hadj Hqw.
-      assert (qw = Mut_r) by congruence. subst qw.
-      have Hw_fresh : dom h0 <= v.
-      { eapply HJ; eauto. }
-      eapply HK with (v := v) (o := o) (f := f) (D := sctype T)
-        (fdef := fDef); eauto.
+      have Hw_mut : r_muttype h v = Some Mut_r.
+      { eapply mutable_edge_reflects_runtime_mutability; eauto. }
+      have Hside_v : rs_side h0 S side v.
+      { eapply Huse with (x := x0) (T := T);
+          [assumption | assumption | right; exact Hz_rdm | exact Hw_mut]. }
+      eapply rs_side_edge_transport; eauto.
+      apply retained_edge_rdm. exact Hmedge.
 Qed.
 
-(** Preservation, field write.  L is the heart: a write into an old mutable
-    object's mutable field is statically impossible in a frame satisfying J
-    -- the receiver variable would have to be [Mut]/[RDM]-typed (J makes the
-    object fresh), [Imm]-typed (the object would be runtime-immutable), or
-    adapt to [Lost] (no location fits).  K's updated-slot case routes the
-    written value through J. *)
-Lemma rs_mutable_freshness_after_field_write :
-  forall CT h0 sGamma mt rGamma h x f y sGamma' rGamma' h',
+(** Field write.  The environment is unchanged and [update_field] preserves
+    both the heap domain and runtime mutability, so the stitch set and pool
+    transport verbatim.  The edge condition gains exactly one edge -- the
+    written slot -- whose endpoints are both pool members of the writing
+    frame (the [Imm] and [Bot] channels cannot put a [Mut_r] value behind a
+    mutable field), hence on the same side. *)
+Lemma rs_sides_after_field_write :
+  forall CT h0 S side sGamma mt rGamma h x f y sGamma' rGamma' h',
     wf_r_config CT sGamma rGamma h ->
     readonly_state_method_scope mt ->
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     eval_stmt CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
-    rs_mutable_freshness CT h0 sGamma rGamma h ->
-    rs_mutable_freshness CT h0 sGamma' rGamma' h'.
+    rs_stitch_set_wf h0 h S ->
+    rs_mut_edges_respect_sides CT h0 S h ->
+    rs_pool_sided h0 S side sGamma rGamma h ->
+    rs_stitch_set_wf h0 h' S /\
+    rs_mut_edges_respect_sides CT h0 S h' /\
+    rs_pool_sided h0 S side sGamma' rGamma' h'.
 Proof.
-  intros CT h0 sGamma mt rGamma h x f y sGamma' rGamma' h' Hwf Hscope
-    Htyping Heval [HJ [HK HL]].
+  intros CT h0 S side sGamma mt rGamma h x f y sGamma' rGamma' h' Hwf Hscope
+    Htyping Heval Hstitch Hsides Hpool.
+  have Huse := proj1 (rs_pool_sided_spec _ _ _ _ _ _) Hpool.
   inversion Heval; subst.
   assert (Hstatic : exists Tx Ty fieldT,
       static_getType sGamma x = Some Tx /\
@@ -2083,107 +2249,63 @@ Proof.
   have Hlocdom : loc_x < dom h.
   { eapply runtime_getObj_dom. eassumption. }
   split; [|split].
-  - (* J: env unchanged, runtime types unchanged *)
+  - (* stitch set: the domain is unchanged *)
+    intros l Hin. destruct (Hstitch l Hin) as [Hge Hlt].
+    split; [exact Hge|]. rewrite update_field_length. exact Hlt.
+  - (* edge condition *)
+    intros u v Hedge Humut Hvmut.
+    rewrite r_muttype_update_field_preserve in Humut.
+    rewrite r_muttype_update_field_preserve in Hvmut.
+    destruct (retained_edge_after_field_update CT h loc_x o f val_y u v Hobj
+      Hedge) as [Hold_edge | [-> [Hval_eq [D' [fdef' [Hbase' [Hfd' Hfm']]]]]]].
+    + eapply Hsides; eauto.
+    + (* the written slot: u = loc_x, val_y = Iot v *)
+      subst val_y.
+      have Hbase_x : base_subtype CT (rctype (rt_type o)) (sctype Tx).
+      { eapply typed_var_object_base_subtype; eauto. }
+      have Hfd_C : FieldLookup CT (rctype (rt_type o)) f fdef'.
+      { eapply field_inheritance_subtyping; [exact Hbase' | exact Hfd']. }
+      have Hft_C : FieldLookup CT (rctype (rt_type o)) f fieldT.
+      { eapply field_inheritance_subtyping; [exact Hbase_x | exact Hfld]. }
+      have Hfdef_eq : fdef' = fieldT.
+      { eapply field_lookup_deterministic_rel; eauto. }
+      subst fdef'.
+      have Hq := qualified_type_subtype_q_subtype _ _ _ Hsub. simpl in Hq.
+      destruct (readonly_state_mut_field_write_inversion _ _ _ Hfm' Hq) as
+        [Hybot | [[Hximm Hyimm] | [Hxmut Hymut]]].
+      * exfalso. eapply wf_config_nonnull_variable_not_bot with (x := y);
+          eauto.
+      * exfalso.
+        have Himm : r_muttype h loc_x = Some Imm_r.
+        { eapply typed_imm_root_runtime_immutable_live; eauto.
+          exists x, Tx. repeat split; assumption. }
+        congruence.
+      * have Hside_u : rs_side h0 S side loc_x.
+        { eapply Huse with (x := x) (T := Tx);
+            [exact Hget_x | exact Hval_x | exact Hxmut | exact Humut]. }
+        have Hside_v : rs_side h0 S side v.
+        { eapply Huse with (x := y) (T := Ty);
+            [exact Hget_y | exact Hval_y | exact Hymut | exact Hvmut]. }
+        eapply rs_side_pair_iff; [exact Hside_u | exact Hside_v].
+  - (* pool: environment unchanged, runtime types unchanged *)
+    apply (proj2 (rs_pool_sided_spec _ _ _ _ _ _)).
     intros z T l Htype Hvalue Hkind Hmut.
     rewrite r_muttype_update_field_preserve in Hmut.
-    eapply HJ; eauto.
-  - (* K *)
-    intros v ov f' l D fdef Hfresh Hobj' Hvmut Hval' Hbase Hfd Hfm Hlmut.
-    rewrite r_muttype_update_field_preserve in Hvmut.
-    rewrite r_muttype_update_field_preserve in Hlmut.
-    destruct (Nat.eq_dec v loc_x) as [-> | Hvneq].
-    2:{ unfold update_field in Hobj'.
-        rewrite Hobj in Hobj'.
-        rewrite runtime_getObj_update_diff in Hobj'; [congruence|].
-        eapply HK; eauto. }
-    unfold update_field in Hobj'. rewrite Hobj in Hobj'.
-    rewrite runtime_getObj_update_same in Hobj'; [exact Hlocdom|].
-    injection Hobj' as <-.
-    simpl in Hval', Hbase.
-    destruct (Nat.eq_dec f' f) as [-> | Hfneq].
-    2:{ unfold getVal in Hval'. rewrite update_diff in Hval'; [congruence|].
-        eapply HK; eauto. }
-    (* the updated slot: val_y = Iot l *)
-    have Hflen : f < length (fields_map o).
-    { unfold getVal in Hfield. apply nth_error_Some. rewrite Hfield. discriminate. }
-    unfold getVal in Hval'.
-    rewrite (update_same _ _ _ _ Hflen) in Hval'.
-    injection Hval' as ->.
-    (* the two field definitions coincide *)
-    have Hbase_x : base_subtype CT (rctype (rt_type o)) (sctype Tx).
-    { eapply typed_var_object_base_subtype; eauto. }
-    have Hfd_C : FieldLookup CT (rctype (rt_type o)) f fdef.
-    { eapply field_inheritance_subtyping; [exact Hbase | exact Hfd]. }
-    have Hft_C : FieldLookup CT (rctype (rt_type o)) f fieldT.
-    { eapply field_inheritance_subtyping; [exact Hbase_x | exact Hfld]. }
-    have Hfdef_eq : fdef = fieldT.
-    { eapply field_lookup_deterministic_rel; eauto. }
-    subst fdef.
-    have Hq := qualified_type_subtype_q_subtype _ _ _ Hsub. simpl in Hq.
-    destruct (readonly_state_mut_field_write_inversion _ _ _ Hfm Hq) as
-      [Hybot | [[Hximm Hyimm] | [Hxmut Hymut]]].
-    + exfalso. eapply wf_config_nonnull_variable_not_bot with (x := y);
-        eauto.
-    + exfalso.
-      have Himm : r_muttype h loc_x = Some Imm_r.
-      { eapply typed_imm_root_runtime_immutable_live; eauto.
-        exists x, Tx. repeat split; assumption. }
-      congruence.
-    + eapply HJ with (x := y); eauto.
-  - (* L *)
-    intros v ov f' l D fdef Hold Hobj' Hvmut Hval' Hbase Hfd Hfm.
-    rewrite r_muttype_update_field_preserve in Hvmut.
-    destruct (Nat.eq_dec v loc_x) as [-> | Hvneq].
-    2:{ unfold update_field in Hobj'.
-        rewrite Hobj in Hobj'.
-        rewrite runtime_getObj_update_diff in Hobj'; [congruence|].
-        eapply HL; eauto. }
-    unfold update_field in Hobj'. rewrite Hobj in Hobj'.
-    rewrite runtime_getObj_update_same in Hobj'; [exact Hlocdom|].
-    injection Hobj' as <-.
-    simpl in Hval', Hbase.
-    destruct (Nat.eq_dec f' f) as [-> | Hfneq].
-    2:{ unfold getVal in Hval'. rewrite update_diff in Hval'; [congruence|].
-        eapply HL; eauto. }
-    exfalso.
-    have Hflen : f < length (fields_map o).
-    { unfold getVal in Hfield. apply nth_error_Some. rewrite Hfield. discriminate. }
-    unfold getVal in Hval'.
-    rewrite (update_same _ _ _ _ Hflen) in Hval'.
-    injection Hval' as ->.
-    have Hbase_x : base_subtype CT (rctype (rt_type o)) (sctype Tx).
-    { eapply typed_var_object_base_subtype; eauto. }
-    have Hfd_C : FieldLookup CT (rctype (rt_type o)) f fdef.
-    { eapply field_inheritance_subtyping; [exact Hbase | exact Hfd]. }
-    have Hft_C : FieldLookup CT (rctype (rt_type o)) f fieldT.
-    { eapply field_inheritance_subtyping; [exact Hbase_x | exact Hfld]. }
-    have Hfdef_eq : fdef = fieldT.
-    { eapply field_lookup_deterministic_rel; eauto. }
-    subst fdef.
-    have Hq := qualified_type_subtype_q_subtype _ _ _ Hsub. simpl in Hq.
-    destruct (readonly_state_mut_field_write_inversion _ _ _ Hfm Hq) as
-      [Hybot | [[Hximm Hyimm] | [Hxmut Hymut]]].
-    + eapply wf_config_nonnull_variable_not_bot with (x := y); eauto.
-    + have Himm : r_muttype h loc_x = Some Imm_r.
-      { eapply typed_imm_root_runtime_immutable_live; eauto.
-        exists x, Tx. repeat split; assumption. }
-      congruence.
-    + have Hfresh_x : dom h0 <= loc_x.
-      { eapply HJ with (x := x); eauto. }
-      lia.
+    eapply Huse; eauto.
 Qed.
 
-(** Preservation, local declaration: the appended slot holds [Null_a] and
-    the heap is unchanged. *)
-Lemma rs_mutable_freshness_after_local :
-  forall CT h0 sGamma rGamma h T,
+(** Local declaration: the appended slot holds [Null_a] and the heap is
+    unchanged. *)
+Lemma rs_sides_after_local :
+  forall h0 S side sGamma rGamma h T,
     length sGamma = length (vars rGamma) ->
-    rs_mutable_freshness CT h0 sGamma rGamma h ->
-    rs_mutable_freshness CT h0 (sGamma ++ [T])
+    rs_pool_sided h0 S side sGamma rGamma h ->
+    rs_pool_sided h0 S side (sGamma ++ [T])
       (set_vars rGamma (vars rGamma ++ [Null_a])) h.
 Proof.
-  intros CT h0 sGamma rGamma h T Hlen [HJ [HK HL]].
-  split; [|split; [exact HK|exact HL]].
+  intros h0 S side sGamma rGamma h T Hlen Hpool.
+  have Huse := proj1 (rs_pool_sided_spec _ _ _ _ _ _) Hpool.
+  apply (proj2 (rs_pool_sided_spec _ _ _ _ _ _)).
   intros x T' l Htype Hvalue Hkind Hmut.
   unfold static_getType in Htype. unfold runtime_getVal in Hvalue.
   simpl in Hvalue.
@@ -2194,7 +2316,7 @@ Proof.
                   = nth_error (vars rGamma) x).
     { apply nth_error_app1. lia. }
     rewrite Hts in Htype. rewrite Hvs in Hvalue.
-    eapply HJ; eauto.
+    eapply Huse; eauto.
   - assert (Hvs : nth_error (vars rGamma ++ [Null_a]) x
                   = nth_error [Null_a] (x - length (vars rGamma))).
     { apply nth_error_app2. lia. }
@@ -2241,27 +2363,191 @@ Proof.
     inversion Hsub; subst; try congruence; auto.
 Qed.
 
-(** Preservation, object creation.  The new slot is fresh; old objects are
-    untouched by the append; the new object's mutable fields are constructor
-    arguments whose static channel admits only [Mut]/[RDM] (J applies),
-    [Imm] (the value is runtime-immutable, contradicting K's premise) or
-    [Bot] (no location fits). *)
-Lemma rs_mutable_freshness_after_new :
-  forall CT h0 sGamma mt rGamma h x qc C args sGamma' rGamma' h',
+(** A mutable field of a freshly constructed object holding a runtime-mutable
+    value is fed by a [Mut]/[RDM]-typed argument variable of the creating
+    frame: the constructor channel admits only [Bot] (killed by non-nullity),
+    [Imm] (the value would be runtime-immutable) or [Mut]/[RDM]. *)
+Lemma rs_new_object_mut_field_arg_is_pool_member :
+  forall CT sGamma mt rGamma h x qc C args sGamma' vals f D fdef v,
+    wf_r_config CT sGamma rGamma h ->
+    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
+    runtime_lookup_list rGamma args = Some vals ->
+    getVal vals f = Some (Iot v) ->
+    base_subtype CT C D ->
+    sf_def_rel CT D f fdef ->
+    (mutability (ftype fdef) = RDM_f \/ mutability (ftype fdef) = Mut_f) ->
+    r_muttype h v = Some Mut_r ->
+    exists z A,
+      static_getType sGamma z = Some A /\
+      runtime_getVal rGamma z = Some (Iot v) /\
+      (sqtype A = Mut \/ sqtype A = RDM).
+Proof.
+  intros CT sGamma mt rGamma h x qc C args sGamma' vals f D fdef v Hwf
+    Htyping Hargs Hval' Hbase Hfd Hfm Hvmut.
+  inversion Htyping; subst.
+  (* locate the argument variable feeding slot f *)
+  destruct (runtime_lookup_list_nth_zs _ _ _ _ _ Hargs Hval') as
+    [z [Hzs Hzval]].
+  (* fdef is the f-th collected field *)
+  have Hfl : FieldLookup CT C f fdef.
+  { eapply field_inheritance_subtyping; [exact Hbase | exact Hfd]. }
+  (* constructor well-formedness *)
+  have HCdom : C < dom CT.
+  { unfold constructor_sig_lookup, constructor_def_lookup in Hconsig.
+    destruct (find_class CT C) as [cdef|] eqn:Hfind; [|discriminate].
+    eapply find_class_dom. exact Hfind. }
+  have Hwf_ct : wf_class_table CT := proj1 Hwf.
+  have Hctor := constructor_lookup_wf CT C consig Hwf_ct HCdom Hconsig.
+  unfold wf_constructor in Hctor.
+  destruct Hctor as [Hbound [Hparams_wf [field_defs
+    [Hcollect [Hlen_pf Hcompat]]]]].
+  (* the two field collections coincide *)
+  inversion Hfl; subst.
+  have Hfields_eq : fields = field_defs.
+  { eapply collect_fields_deterministic_rel; eauto. }
+  subst fields.
+  (* the f-th constructor parameter exists *)
+  have Hf_lt : f < length field_defs.
+  { apply nth_error_Some. unfold gget in Hget. rewrite Hget.
+    discriminate. }
+  have Hcp : exists cp, nth_error (cparams consig) f = Some cp.
+  { destruct (nth_error (cparams consig) f) as [cp|] eqn:Hcp_eq.
+    - exists cp. reflexivity.
+    - exfalso. apply nth_error_None in Hcp_eq. lia. }
+  destruct Hcp as [cp Hcp].
+  (* wf side: the parameter fits the field *)
+  have Hwf_pair := Forall2_nth_error _ _ _ _ _ _ Hcompat Hcp Hget.
+  (* site side: the argument fits the adapted parameter *)
+  have Hlen_at : length argtypes = length (cparams consig).
+  { have Hl1 := Forall2_length Harg_sub.
+    rewrite length_map in Hl1. exact Hl1. }
+  have Hat : exists T_arg, nth_error argtypes f = Some T_arg.
+  { destruct (nth_error argtypes f) as [T_arg|] eqn:Hat_eq.
+    - exists T_arg. reflexivity.
+    - exfalso. apply nth_error_None in Hat_eq. lia. }
+  destruct Hat as [T_arg Hat].
+  have Hmap_nth : nth_error
+      (map (vpa_mutability_constructor_param qc) (cparams consig)) f
+    = Some (vpa_mutability_constructor_param qc cp).
+  { eapply map_nth_error. exact Hcp. }
+  have Hsite_pair := Forall2_nth_error _ _ _ _ _ _ Harg_sub Hat Hmap_nth.
+  have Hz_type : static_getType sGamma' z = Some T_arg.
+  { eapply static_getType_list_index_strong; eauto. }
+  (* q-level analysis *)
+  have Hwf_q := qualified_type_subtype_q_subtype _ _ _ Hwf_pair.
+  simpl in Hwf_q.
+  have Hsite_q := qualified_type_subtype_q_subtype _ _ _ Hsite_pair.
+  simpl in Hsite_q.
+  have Hp_shape : sqtype cp = Mut \/ sqtype cp = RDM \/
+      sqtype cp = Imm \/ sqtype cp = Bot.
+  { eapply constructor_mut_field_param_shape with
+      (cq := cqualifier consig); eauto. }
+  have Hqa_shape := constructor_param_site_channel _ _ _ Hp_shape Hsite_q.
+  destruct Hqa_shape as [Hbot | [Himm | Hkind]].
+  - exfalso. eapply wf_config_nonnull_variable_not_bot with (x := z);
+      eauto.
+  - exfalso.
+    have Hlimm : r_muttype h v = Some Imm_r.
+    { eapply typed_imm_root_runtime_immutable_live; eauto.
+      exists z, T_arg. repeat split; assumption. }
+    congruence.
+  - exists z, T_arg. repeat split; assumption.
+Qed.
+
+(** Object creation.  The new slot is fresh; old objects are untouched by
+    the append.  With [side = false] the fresh location joins the stitch
+    set, with [side = true] it stays on the right -- either way the new
+    object lands on the creating frame's own side, and its mutable fields
+    are constructor arguments on the same side. *)
+Lemma rs_sides_after_new :
+  forall CT h0 S side sGamma mt rGamma h x qc C args sGamma' rGamma' h',
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     eval_stmt CT rGamma h (SNew x qc C args) OK rGamma' h' ->
     dom h0 <= dom h ->
-    rs_mutable_freshness CT h0 sGamma rGamma h ->
-    rs_mutable_freshness CT h0 sGamma' rGamma' h'.
+    rs_stitch_set_wf h0 h S ->
+    rs_mut_edges_respect_sides CT h0 S h ->
+    rs_pool_sided h0 S side sGamma rGamma h ->
+    exists S',
+      (forall l, List.In l S -> List.In l S') /\
+      (forall l, List.In l S' -> List.In l S \/ dom h <= l) /\
+      rs_stitch_set_wf h0 h' S' /\
+      rs_mut_edges_respect_sides CT h0 S' h' /\
+      rs_pool_sided h0 S' side sGamma' rGamma' h'.
 Proof.
-  intros CT h0 sGamma mt rGamma h x qc C args sGamma' rGamma' h' Hwf
-    Htyping Heval Hgrow [HJ [HK HL]].
+  intros CT h0 S side sGamma mt rGamma h x qc C args sGamma' rGamma' h' Hwf
+    Htyping Heval Hgrow Hstitch Hsides Hpool.
+  have Huse := proj1 (rs_pool_sided_spec _ _ _ _ _ _) Hpool.
+  have Htyping_copy := Htyping.
   inversion Heval; subst.
   inversion Htyping; subst.
   have Hheap : wf_heap CT h := proj1 (proj2 Hwf).
-  split; [|split].
-  - (* J *)
+  exists (if side then S else dom h :: S).
+  assert (Hincl : forall l, List.In l S ->
+      List.In l (if side then S else dom h :: S)).
+  { destruct side; intros l Hin; [exact Hin | right; exact Hin]. }
+  assert (Hgrow' : forall l, List.In l (if side then S else dom h :: S) ->
+      List.In l S \/ dom h <= l).
+  { destruct side; intros l Hin; [left; exact Hin|].
+    destruct Hin as [<- | Hin]; [right; lia | left; exact Hin]. }
+  assert (Hnew_side : rs_side h0 (if side then S else dom h :: S) side
+      (dom h)).
+  { destruct side; simpl.
+    - split; [exact Hgrow|]. intros Hin.
+      have Hbad := proj2 (Hstitch _ Hin). lia.
+    - right. left. reflexivity. }
+  split; [exact Hincl|]. split; [exact Hgrow'|]. split; [|split].
+  - (* stitch set *)
+    intros l Hin.
+    rewrite length_app. simpl.
+    destruct (Hgrow' l Hin) as [HinS | Hfresh].
+    + destruct (Hstitch l HinS) as [Hge Hlt]. split; [exact Hge | lia].
+    + destruct side.
+      * destruct (Hstitch l Hin) as [Hge Hlt]. split; [exact Hge | lia].
+      * destruct Hin as [<- | HinS]; [split; [exact Hgrow | lia]|].
+        destruct (Hstitch l HinS) as [Hge Hlt]. split; [exact Hge | lia].
+  - (* edge condition *)
+    intros u v Hedge Humut Hvmut.
+    destruct (retained_edge_after_append CT h _ u v Hedge) as
+      [Hold_edge | [-> [f [D [fdef [Hval' [Hbase [Hfd Hfm]]]]]]]].
+    + (* an edge of h: both endpoints below dom h *)
+      have Hu_dom : u < dom h.
+      { inversion Hold_edge; subst.
+        - inversion H; subst. eapply runtime_getObj_dom; eauto.
+        - eapply runtime_getObj_dom; eauto. }
+      have Hv_dom : v < dom h.
+      { eapply retained_edge_target_dom; eauto. }
+      rewrite r_muttype_app_left in Humut; [exact Hu_dom|].
+      rewrite r_muttype_app_left in Hvmut; [exact Hv_dom|].
+      have Hiff := Hsides u v Hold_edge Humut Hvmut.
+      split; intros Hmem.
+      * apply (proj2 (rs_left_grow_old_iff h0 h S _ v Hincl Hgrow' Hv_dom)).
+        apply (proj1 Hiff).
+        apply (proj1 (rs_left_grow_old_iff h0 h S _ u Hincl Hgrow' Hu_dom)).
+        exact Hmem.
+      * apply (proj2 (rs_left_grow_old_iff h0 h S _ u Hincl Hgrow' Hu_dom)).
+        apply (proj2 Hiff).
+        apply (proj1 (rs_left_grow_old_iff h0 h S _ v Hincl Hgrow' Hv_dom)).
+        exact Hmem.
+    + (* the new object's edge: u = dom h, v is a constructor argument *)
+      simpl in Hval', Hbase.
+      destruct (runtime_lookup_list_nth_zs _ _ _ _ _ Hargs Hval') as
+        [z0 [Hz0s Hz0val]].
+      have Hv_dom : v < dom h.
+      { eapply wf_config_value_dom; eauto. }
+      rewrite r_muttype_app_left in Hvmut; [exact Hv_dom|].
+      destruct (rs_new_object_mut_field_arg_is_pool_member CT _ mt
+        _ h x qc _ args _ vals f D fdef v Hwf Htyping_copy Hargs
+        Hval' Hbase Hfd Hfm Hvmut) as [z [A [Hz_type [Hz_val Hz_kind]]]].
+      have Hside_v : rs_side h0 S side v.
+      { eapply Huse with (x := z) (T := A);
+          [exact Hz_type | exact Hz_val | exact Hz_kind | exact Hvmut]. }
+      have Hside_v' : rs_side h0 (if side then S else dom h :: S) side v.
+      { eapply rs_side_grow with (S := S) (h := h);
+          [exact Hincl | exact Hgrow' | exact Hv_dom | exact Hside_v]. }
+      eapply rs_side_pair_iff; [exact Hnew_side | exact Hside_v'].
+  - (* pool *)
+    apply (proj2 (rs_pool_sided_spec _ _ _ _ _ _)).
     intros z T l Htype Hvalue Hkind Hzmut.
     assert (Henv_eq : set_vars rGamma (update x (Iot (dom h)) (vars rGamma))
         = update_r_env_value rGamma x (Iot (dom h))).
@@ -2276,7 +2562,7 @@ Proof.
       { lia. }
       have Hsame := runtime_getVal_update_same rGamma x (Iot (dom h)) Hxdom.
       rewrite Hsame in Hvalue. injection Hvalue as <-.
-      lia.
+      exact Hnew_side.
     + have Hxz : x <> z by congruence.
       have Hold_value := runtime_getVal_update_diff rGamma x z
         (Iot (dom h)) Hxz.
@@ -2284,105 +2570,9 @@ Proof.
       have Hldom : l < dom h.
       { eapply wf_config_value_dom; eauto. }
       rewrite r_muttype_app_left in Hzmut; [exact Hldom|].
-      eapply HJ; eauto.
-  - (* K *)
-    intros v ov f l D fdef Hfresh Hobj' Hvmut Hval' Hbase Hfd Hfm Hlmut.
-    destruct (lt_dec v (dom h)) as [Hvold | Hvnew].
-    + (* an object of h: untouched *)
-      unfold runtime_getObj in Hobj'.
-      rewrite nth_error_app1 in Hobj'; [exact Hvold|].
-      have Hldom : l < dom h.
-      { eapply wf_heap_field_value_dom with (h := h); eauto. }
-      rewrite r_muttype_app_left in Hvmut; [exact Hvold|].
-      rewrite r_muttype_app_left in Hlmut; [exact Hldom|].
-      eapply HK; eauto.
-    + (* the new object *)
-      have Hveq : v = dom h.
-      { have Hvdom := runtime_getObj_dom _ _ _ Hobj'.
-        rewrite length_app in Hvdom. simpl in Hvdom. lia. }
-      subst v.
-      unfold runtime_getObj in Hobj'.
-      rewrite nth_error_app2 in Hobj'; [lia|].
-      rewrite Nat.sub_diag in Hobj'. simpl in Hobj'.
-      injection Hobj' as <-.
-      simpl in Hval', Hbase.
-      (* locate the argument variable feeding slot f *)
-      destruct (runtime_lookup_list_nth_zs _ _ _ _ _ Hargs Hval') as
-        [z [Hzs Hzval]].
-      (* fdef is the f-th collected field *)
-      have Hfl : FieldLookup CT C f fdef.
-      { eapply field_inheritance_subtyping; [exact Hbase | exact Hfd]. }
-      (* constructor well-formedness *)
-      have HCdom : C < dom CT.
-      { unfold constructor_sig_lookup, constructor_def_lookup in Hconsig.
-        destruct (find_class CT C) as [cdef|] eqn:Hfind; [|discriminate].
-        eapply find_class_dom. exact Hfind. }
-      have Hwf_ct : wf_class_table CT := proj1 Hwf.
-      have Hctor := constructor_lookup_wf CT C consig Hwf_ct HCdom Hconsig.
-      unfold wf_constructor in Hctor.
-      destruct Hctor as [Hbound [Hparams_wf [field_defs
-        [Hcollect [Hlen_pf Hcompat]]]]].
-      (* the two field collections coincide *)
-      inversion Hfl; subst.
-      have Hfields_eq : fields = field_defs.
-      { eapply collect_fields_deterministic_rel; eauto. }
-      subst fields.
-      (* the f-th constructor parameter exists *)
-      have Hf_lt : f < length field_defs.
-      { apply nth_error_Some. unfold gget in Hget. rewrite Hget.
-        discriminate. }
-      have Hcp : exists cp, nth_error (cparams consig) f = Some cp.
-      { destruct (nth_error (cparams consig) f) as [cp|] eqn:Hcp_eq.
-        - exists cp. reflexivity.
-        - exfalso. apply nth_error_None in Hcp_eq. lia. }
-      destruct Hcp as [cp Hcp].
-      (* wf side: the parameter fits the field *)
-      have Hwf_pair := Forall2_nth_error _ _ _ _ _ _ Hcompat Hcp Hget.
-      (* site side: the argument fits the adapted parameter *)
-      have Hlen_at : length argtypes = length (cparams consig).
-      { have Hl1 := Forall2_length Harg_sub.
-        rewrite length_map in Hl1. exact Hl1. }
-      have Hat : exists T_arg, nth_error argtypes f = Some T_arg.
-      { destruct (nth_error argtypes f) as [T_arg|] eqn:Hat_eq.
-        - exists T_arg. reflexivity.
-        - exfalso. apply nth_error_None in Hat_eq. lia. }
-      destruct Hat as [T_arg Hat].
-      have Hmap_nth : nth_error
-          (map (vpa_mutability_constructor_param qc) (cparams consig)) f
-        = Some (vpa_mutability_constructor_param qc cp).
-      { eapply map_nth_error. exact Hcp. }
-      have Hsite_pair := Forall2_nth_error _ _ _ _ _ _ Harg_sub Hat Hmap_nth.
-      have Hz_type : static_getType sGamma' z = Some T_arg.
-      { eapply static_getType_list_index_strong; eauto. }
-      (* q-level analysis *)
-      have Hwf_q := qualified_type_subtype_q_subtype _ _ _ Hwf_pair.
-      simpl in Hwf_q.
-      have Hsite_q := qualified_type_subtype_q_subtype _ _ _ Hsite_pair.
-      simpl in Hsite_q.
-      have Hp_shape : sqtype cp = Mut \/ sqtype cp = RDM \/
-          sqtype cp = Imm \/ sqtype cp = Bot.
-      { eapply constructor_mut_field_param_shape with
-          (cq := cqualifier consig); eauto. }
-      have Hqa_shape := constructor_param_site_channel _ _ _ Hp_shape Hsite_q.
-      have Hldom : l < dom h.
-      { eapply wf_config_value_dom; eauto. }
-      rewrite r_muttype_app_left in Hlmut; [exact Hldom|].
-      destruct Hqa_shape as [Hbot | [Himm | Hkind]].
-      * exfalso. eapply wf_config_nonnull_variable_not_bot with (x := z);
-          eauto.
-      * exfalso.
-        have Hlimm : r_muttype h l = Some Imm_r.
-        { eapply typed_imm_root_runtime_immutable_live; eauto.
-          exists z, T_arg. repeat split; assumption. }
-        congruence.
-      * eapply HJ with (x := z); eauto.
-  - (* L *)
-    intros v ov f l D fdef Hold Hobj' Hvmut Hval' Hbase Hfd Hfm.
-    have Hvold : v < dom h by lia.
-    unfold runtime_getObj in Hobj'.
-    rewrite nth_error_app1 in Hobj'; [exact Hvold|].
-    rewrite r_muttype_app_left in Hvmut; [exact Hvold|].
-    eapply HL; eauto.
+      eapply rs_side_grow with (S := S) (h := h);
+        [exact Hincl | exact Hgrow' | exact Hldom |].
+      eapply Huse; eauto.
 Qed.
 
 (** J at a nested call entry, over the DYNAMIC callee signature.  A dynamic
@@ -2621,37 +2811,395 @@ Proof.
       Hcallee_wf Hret_type Hretval Hb).
 Qed.
 
-(** The master preservation induction: the freshness triple survives any
-    successful readonly-state statement, including nested calls. *)
+(** ** The pool at a nested call entry, under the restored rule
+
+    The plain branch routes every [Mut]/[RDM]-typed entry slot through the
+    caller's pool, so the callee frame inherits the caller's side.  The
+    special branch ([RO] receiver on a declared-[RDM] method) adapts every
+    parameter channel through [RO], which collapses [RDM] to [Lost] and
+    admits only [Bot] -- so the receiver is the frame's ONLY possible pool
+    member, and the callee's side is whichever side the receiver's location
+    is on, decided constructively. *)
+Lemma rs_pool_sided_call_entry :
+  forall CT h0 S side sGamma rGamma h y Ty ly args vals argtypes runtime_mdef
+    static_sig,
+    wf_r_config CT sGamma rGamma h ->
+    rs_pool_sided h0 S side sGamma rGamma h ->
+    static_getType sGamma y = Some Ty ->
+    runtime_getVal rGamma y = Some (Iot ly) ->
+    runtime_lookup_list rGamma args = Some vals ->
+    static_getType_list sGamma args = Some argtypes ->
+    method_signature_refinement CT (msignature runtime_mdef) static_sig ->
+    signature_has_no_mutable_roots (msignature runtime_mdef) ->
+    (qualified_type_subtype CT Ty
+       (vpa_mutability_tt_readonly_state Ty (mreceiver static_sig)) \/
+     (sqtype Ty = RO /\ sqtype (mreceiver static_sig) = RDM /\
+      base_subtype CT (sctype Ty) (sctype (mreceiver static_sig)))) ->
+    Forall2 (fun arg T => qualified_type_subtype CT arg
+        (vpa_mutability_tt_readonly_state Ty T))
+      argtypes (mparams static_sig) ->
+    exists side',
+      (side' = side \/ sqtype Ty = RO) /\
+      rs_pool_sided h0 S side'
+        (mreceiver (msignature runtime_mdef)
+          :: mparams (msignature runtime_mdef))
+        (mkr_env (Iot ly :: vals)) h.
+Proof.
+  intros CT h0 S side sGamma rGamma h y Ty ly args vals argtypes runtime_mdef
+    static_sig Hwf Hpool Hget_y Hval_y Hargs Hget_args Hrefine
+    [Hrec_safe Hparams_safe] Hrcv_sub Harg_sub.
+  have Huse := proj1 (rs_pool_sided_spec _ _ _ _ _ _) Hpool.
+  destruct Hrcv_sub as [Hrcv_sub | [Hro [Hstatic_rec_rdm _]]].
+  - (* plain branch: the callee inherits the caller's side *)
+    exists side. split; [left; reflexivity|].
+    apply (proj2 (rs_pool_sided_spec _ _ _ _ _ _)).
+    intros pos T l Htype Hvalue Hkind Hmut.
+    destruct pos as [|i].
+    + (* receiver *)
+      simpl in Htype. injection Htype as <-.
+      simpl in Hvalue. injection Hvalue as <-.
+      destruct Hkind as [Hkmut | Hkrdm].
+      { exfalso. unfold is_nonmutable_qualifier in Hrec_safe.
+        rewrite Hkmut in Hrec_safe.
+        destruct Hrec_safe as [Hb | [Hb | [Hb | Hb]]]; discriminate. }
+      have Hstatic_rdm : is_rdm_or_bot (sqtype (mreceiver static_sig)).
+      { eapply method_signature_refinement_receiver_rdm_or_bot; eauto.
+        left. exact Hkrdm. }
+      have Hq := qualified_type_subtype_q_subtype _ _ _ Hrcv_sub.
+      simpl in Hq.
+      destruct Hstatic_rdm as [Hsr | Hsr]; rewrite Hsr in Hq.
+      * (* static receiver RDM *)
+        destruct (readonly_state_call_channel_inversion _ _ _
+            (or_intror eq_refl) Hq) as
+          [Hbot | [[Ht [_ Hqa]] | [_ Hqa]]].
+        { exfalso.
+          eapply wf_config_nonnull_variable_not_bot with (x := y); eauto. }
+        { exfalso.
+          have Himm : r_muttype h ly = Some Imm_r.
+          { eapply typed_imm_root_runtime_immutable_live; eauto.
+            exists y, Ty. repeat split; assumption. }
+          congruence. }
+        { eapply Huse with (x := y) (T := Ty);
+            [exact Hget_y | exact Hval_y | exact Hqa | exact Hmut]. }
+      * (* static receiver Bot *)
+        exfalso.
+        assert (Hybot : sqtype Ty = Bot).
+        { destruct (sqtype Ty); simpl in Hq; inversion Hq; subst;
+            congruence. }
+        eapply wf_config_nonnull_variable_not_bot with (x := y); eauto.
+    + (* parameter i *)
+      simpl in Htype. unfold static_getType in Htype.
+      simpl in Hvalue.
+      destruct Hkind as [Hkmut | Hkrdm].
+      { exfalso.
+        have Hsafe : is_nonmutable_qualifier (sqtype T) :=
+          Forall_nth_error _ _ _ _ Hparams_safe Htype.
+        unfold is_nonmutable_qualifier in Hsafe.
+        rewrite Hkmut in Hsafe.
+        destruct Hsafe as [Hb | [Hb | [Hb | Hb]]]; discriminate. }
+      have Hlen := method_signature_refinement_params_length _ _ _ Hrefine.
+      have Hi : i < length (mparams static_sig).
+      { rewrite <- Hlen. apply nth_error_Some. rewrite Htype. discriminate. }
+      have Hsp : exists P, nth_error (mparams static_sig) i = Some P.
+      { destruct (nth_error (mparams static_sig) i) as [P|] eqn:HP.
+        - exists P. reflexivity.
+        - exfalso. apply nth_error_None in HP. lia. }
+      destruct Hsp as [P HP].
+      have Hstatic_rdm : is_rdm_or_bot (sqtype P).
+      { eapply method_signature_refinement_parameter_rdm_or_bot; eauto.
+        left. exact Hkrdm. }
+      destruct (runtime_lookup_list_nth_zs _ _ _ _ _ Hargs Hvalue) as
+        [z [Hzi Hzval]].
+      have Hlen_at : length argtypes = length (mparams static_sig).
+      { have Hl := Forall2_length Harg_sub. exact Hl. }
+      have Hat : exists A, nth_error argtypes i = Some A.
+      { destruct (nth_error argtypes i) as [A|] eqn:HA.
+        - exists A. reflexivity.
+        - exfalso. apply nth_error_None in HA. lia. }
+      destruct Hat as [A HA].
+      have Hz_type : static_getType sGamma z = Some A.
+      { eapply static_getType_list_index_strong; eauto. }
+      have Hpair := Forall2_nth_error _ _ _ _ _ _ Harg_sub HA HP.
+      have Hq := qualified_type_subtype_q_subtype _ _ _ Hpair. simpl in Hq.
+      destruct Hstatic_rdm as [Hsr | Hsr]; rewrite Hsr in Hq.
+      * destruct (readonly_state_call_channel_inversion _ _ _
+            (or_intror eq_refl) Hq) as
+          [Hbot | [[Ht [_ Hqa]] | [_ Hqa]]].
+        { exfalso.
+          eapply wf_config_nonnull_variable_not_bot with (x := z); eauto. }
+        { exfalso.
+          have Himm : r_muttype h l = Some Imm_r.
+          { eapply typed_imm_root_runtime_immutable_live; eauto.
+            exists z, A. repeat split; assumption. }
+          congruence. }
+        { eapply Huse with (x := z) (T := A);
+            [exact Hz_type | exact Hzval | exact Hqa | exact Hmut]. }
+      * exfalso.
+        assert (Hzbot : sqtype A = Bot).
+        { destruct (sqtype Ty); simpl in Hq; inversion Hq; subst;
+            congruence. }
+        eapply wf_config_nonnull_variable_not_bot with (x := z); eauto.
+  - (* special branch: RO receiver on a declared-RDM method *)
+    assert (Hpool_special : forall sd, rs_side h0 S sd ly ->
+        rs_pool_sided h0 S sd
+          (mreceiver (msignature runtime_mdef)
+            :: mparams (msignature runtime_mdef))
+          (mkr_env (Iot ly :: vals)) h).
+    { intros sd Hly_side.
+      apply (proj2 (rs_pool_sided_spec _ _ _ _ _ _)).
+      intros pos T l Htype Hvalue Hkind Hmut.
+      destruct pos as [|i].
+      - (* receiver: the only possible pool member, on the chosen side *)
+        simpl in Htype. injection Htype as <-.
+        simpl in Hvalue. injection Hvalue as <-.
+        exact Hly_side.
+      - (* parameters: the RO view collapses their channels to Lost/Bot *)
+        exfalso.
+        simpl in Htype. unfold static_getType in Htype.
+        simpl in Hvalue.
+        destruct Hkind as [Hkmut | Hkrdm].
+        { have Hsafe : is_nonmutable_qualifier (sqtype T) :=
+            Forall_nth_error _ _ _ _ Hparams_safe Htype.
+          unfold is_nonmutable_qualifier in Hsafe.
+          rewrite Hkmut in Hsafe.
+          destruct Hsafe as [Hb | [Hb | [Hb | Hb]]]; discriminate. }
+        have Hlen := method_signature_refinement_params_length _ _ _ Hrefine.
+        have Hi : i < length (mparams static_sig).
+        { rewrite <- Hlen. apply nth_error_Some. rewrite Htype.
+          discriminate. }
+        have Hsp : exists P, nth_error (mparams static_sig) i = Some P.
+        { destruct (nth_error (mparams static_sig) i) as [P|] eqn:HP.
+          - exists P. reflexivity.
+          - exfalso. apply nth_error_None in HP. lia. }
+        destruct Hsp as [P HP].
+        have Hstatic_rdm : is_rdm_or_bot (sqtype P).
+        { eapply method_signature_refinement_parameter_rdm_or_bot; eauto.
+          left. exact Hkrdm. }
+        destruct (runtime_lookup_list_nth_zs _ _ _ _ _ Hargs Hvalue) as
+          [z [Hzi Hzval]].
+        have Hlen_at : length argtypes = length (mparams static_sig).
+        { have Hl := Forall2_length Harg_sub. exact Hl. }
+        have Hat : exists A, nth_error argtypes i = Some A.
+        { destruct (nth_error argtypes i) as [A|] eqn:HA.
+          - exists A. reflexivity.
+          - exfalso. apply nth_error_None in HA. lia. }
+        destruct Hat as [A HA].
+        have Hz_type : static_getType sGamma z = Some A.
+        { eapply static_getType_list_index_strong; eauto. }
+        have Hpair := Forall2_nth_error _ _ _ _ _ _ Harg_sub HA HP.
+        have Hq := qualified_type_subtype_q_subtype _ _ _ Hpair.
+        simpl in Hq.
+        rewrite Hro in Hq.
+        assert (Hzbot : sqtype A = Bot).
+        { destruct Hstatic_rdm as [Hsr | Hsr]; rewrite Hsr in Hq;
+            simpl in Hq.
+          - eapply q_subtype_lost_inversion. exact Hq.
+          - inversion Hq; subst; congruence. }
+        eapply wf_config_nonnull_variable_not_bot with (x := z); eauto. }
+    destruct (lt_dec ly (dom h0)) as [Hly_old | Hly_not_old].
+    { exists false. split; [right; exact Hro|].
+      apply Hpool_special. left. exact Hly_old. }
+    destruct (in_dec Nat.eq_dec ly S) as [Hly_in | Hly_nin].
+    { exists false. split; [right; exact Hro|].
+      apply Hpool_special. right. exact Hly_in. }
+    exists true. split; [right; exact Hro|].
+    apply Hpool_special. split; [lia | exact Hly_nin].
+Qed.
+
+(** ** The pool after binding a call's return value
+
+    Unchanged variables transport backwards through the body's heap
+    extension and forwards through the stitch-set growth (their values are
+    below the call heap, where the set only grew above).  The destination
+    slot routes through the callee's final pool: the return channel pins
+    the receiver type to [Mut]/[RDM] whenever the destination is
+    [Mut]/[RDM], which refutes the cross-side special case ([Ty = RO]) and
+    forces the callee's side to be the caller's. *)
+Lemma rs_pool_sided_call_return :
+  forall CT h0 S S' side side' sGamma rGamma h h' x Tx y Ty ly retval
+    runtime_mdef static_sig method_end rGamma'' body_return_type,
+    wf_r_config CT sGamma rGamma h ->
+    wf_r_config CT method_end rGamma'' h' ->
+    rs_pool_sided h0 S side sGamma rGamma h ->
+    rs_pool_sided h0 S' side' method_end rGamma'' h' ->
+    (forall l, List.In l S -> List.In l S') ->
+    (forall l, List.In l S' -> List.In l S \/ dom h <= l) ->
+    (side' = side \/ sqtype Ty = RO) ->
+    (forall loc q, r_muttype h loc = Some q -> r_muttype h' loc = Some q) ->
+    static_getType sGamma x = Some Tx ->
+    static_getType sGamma y = Some Ty ->
+    runtime_getVal rGamma y = Some (Iot ly) ->
+    static_getType method_end (mreturn (mbody runtime_mdef))
+      = Some body_return_type ->
+    runtime_getVal rGamma'' (mreturn (mbody runtime_mdef)) = Some retval ->
+    qualified_type_subtype CT body_return_type
+      (mret (msignature runtime_mdef)) ->
+    method_signature_refinement CT (msignature runtime_mdef) static_sig ->
+    qualified_type_subtype CT
+      (vpa_mutability_tt_readonly_state Ty (mret static_sig)) Tx ->
+    rs_pool_sided h0 S' side sGamma
+      (update_r_env_value rGamma x retval) h'.
+Proof.
+  intros CT h0 S S' side side' sGamma rGamma h h' x Tx y Ty ly retval
+    runtime_mdef static_sig method_end rGamma'' body_return_type
+    Hcaller_wf Hcallee_wf Hpool Hpool'' Hincl Hgrow Hside_case Hpreserve
+    Hget_x Hget_y Hval_y Hret_type Hretval Hbody_sub Hrefine Hret_sub.
+  have Huse := proj1 (rs_pool_sided_spec _ _ _ _ _ _) Hpool.
+  have Huse'' := proj1 (rs_pool_sided_spec _ _ _ _ _ _) Hpool''.
+  apply (proj2 (rs_pool_sided_spec _ _ _ _ _ _)).
+  intros z T l Htype Hvalue Hkind Hmut.
+  destruct (Nat.eq_dec z x) as [-> | Hneq].
+  2:{ have Hxz : x <> z by congruence.
+      have Hold := runtime_getVal_update_diff rGamma x z retval Hxz.
+      rewrite Hold in Hvalue.
+      have Hldom : l < dom h.
+      { eapply wf_config_value_dom with (h := h); eauto. }
+      destruct (r_muttype h l) as [q0|] eqn:Hq0.
+      2:{ exfalso. unfold r_muttype in Hq0.
+          destruct (runtime_getObj h l) as [o0|] eqn:Ho0;
+            [discriminate|].
+          apply nth_error_None in Ho0. lia. }
+      have Hq0' := Hpreserve _ _ Hq0.
+      assert (q0 = Mut_r) by congruence. subst q0.
+      eapply rs_side_grow with (S := S) (h := h);
+        [exact Hincl | exact Hgrow | exact Hldom |].
+      eapply Huse; eauto. }
+  (* the destination slot *)
+  assert (T = Tx) by congruence. subst T.
+  have Hxdom : x < dom (vars rGamma).
+  { have Hxs : x < length sGamma.
+    { apply nth_error_Some. unfold static_getType in Hget_x.
+      rewrite Hget_x. discriminate. }
+    have Hlength := proj1 (proj2 (proj2 (proj2 (proj2 Hcaller_wf)))).
+    lia. }
+  have Hsame := runtime_getVal_update_same rGamma x retval Hxdom.
+  rewrite Hsame in Hvalue. injection Hvalue as ->.
+  have Hq := qualified_type_subtype_q_subtype _ _ _ Hret_sub. simpl in Hq.
+  destruct (mutable_slot_subtype_inversion _ _ Hq Hkind) as [Heq | Hbot].
+  2:{ (* adapted return is Bot *)
+      exfalso.
+      assert (Hcases : sqtype (mret static_sig) = Bot \/ sqtype Ty = Bot).
+      { destruct (sqtype Ty); destruct (sqtype (mret static_sig));
+          simpl in Hbot; try discriminate; auto. }
+      destruct Hcases as [Hmb | Hyb].
+      - have Hdynb := method_signature_refinement_return_bot _ _ _
+          Hrefine Hmb.
+        have Hbq := qualified_type_subtype_q_subtype _ _ _ Hbody_sub.
+        rewrite Hdynb in Hbq.
+        assert (Hbrb : sqtype body_return_type = Bot).
+        { inversion Hbq; subst; congruence. }
+        exact (wf_config_nonnull_variable_not_bot CT method_end rGamma'' h'
+          (mreturn (mbody runtime_mdef)) body_return_type l
+          Hcallee_wf Hret_type Hretval Hbrb).
+      - exact (wf_config_nonnull_variable_not_bot CT sGamma rGamma h y Ty ly
+          Hcaller_wf Hget_y Hval_y Hyb). }
+  (* the return channel pins the receiver and the static return *)
+  assert (Hchan : (sqtype Ty = Mut \/ sqtype Ty = RDM) /\
+      (sqtype (mret static_sig) = Mut \/ sqtype (mret static_sig) = RDM)).
+  { destruct (readonly_state_return_channel_inversion _ _ _ Hkind Heq) as
+      [[Hty Hm] | [Hty Hm]].
+    - split; [left; exact Hty | exact Hm].
+    - split; [right; exact Hty | right; exact Hm]. }
+  destruct Hchan as [Hty_mr Hm].
+  (* the cross-side special case is refuted *)
+  have Hside_eq : side' = side.
+  { destruct Hside_case as [Hs | Hro]; [exact Hs|].
+    exfalso.
+    destruct Hty_mr as [Hty | Hty]; rewrite Hro in Hty; discriminate. }
+  subst side'.
+  have Hconc : is_concrete_or_rdm_or_bot (sqtype (mret static_sig)).
+  { unfold is_concrete_or_rdm_or_bot.
+    destruct Hm as [-> | ->]; auto. }
+  have Hdyn := method_signature_refinement_return_concrete_or_rdm_or_bot
+    _ _ _ Hrefine Hconc.
+  have Hbq := qualified_type_subtype_q_subtype _ _ _ Hbody_sub.
+  unfold is_concrete_or_rdm_or_bot in Hdyn.
+  assert (Hbody_cases : sqtype body_return_type = Mut \/
+      sqtype body_return_type = RDM \/
+      sqtype body_return_type = Imm \/
+      sqtype body_return_type = Bot).
+  { destruct Hdyn as [Hd | [Hd | [Hd | Hd]]]; rewrite Hd in Hbq;
+      inversion Hbq; subst; auto. }
+  destruct Hbody_cases as [Hb | [Hb | [Hb | Hb]]].
+  - eapply Huse'' with (x := mreturn (mbody runtime_mdef))
+      (T := body_return_type);
+      [exact Hret_type | exact Hretval | left; exact Hb | exact Hmut].
+  - eapply Huse'' with (x := mreturn (mbody runtime_mdef))
+      (T := body_return_type);
+      [exact Hret_type | exact Hretval | right; exact Hb | exact Hmut].
+  - exfalso.
+    have Himm : r_muttype h' l = Some Imm_r.
+    { eapply typed_imm_root_runtime_immutable_live; [exact Hcallee_wf|].
+      exists (mreturn (mbody runtime_mdef)), body_return_type.
+      repeat split; assumption. }
+    congruence.
+  - exfalso.
+    exact (wf_config_nonnull_variable_not_bot CT method_end rGamma'' h'
+      (mreturn (mbody runtime_mdef)) body_return_type l
+      Hcallee_wf Hret_type Hretval Hb).
+Qed.
+
+(** ** The master preservation induction
+
+    The partition invariant survives any successful readonly-state
+    statement, including nested calls -- special ones included.  The
+    stitch set only ever grows, and only above the statement's entry
+    heap; that growth clause is what transports a suspended caller's
+    pool across a nested call (its values are below the entry heap). *)
 Lemma rs_mutable_freshness_preserved :
   forall CT rGamma h statement rGamma' h',
     eval_stmt CT rGamma h statement OK rGamma' h' ->
-    forall sGamma mt sGamma' h0,
+    forall sGamma mt sGamma' h0 S side,
       stmt_typing CT sGamma mt statement sGamma' ->
       readonly_state_method_scope mt ->
       wf_r_config CT sGamma rGamma h ->
       dom h0 <= dom h ->
-      rs_mutable_freshness CT h0 sGamma rGamma h ->
-      rs_mutable_freshness CT h0 sGamma' rGamma' h'.
+      rs_stitch_set_wf h0 h S ->
+      rs_mut_edges_respect_sides CT h0 S h ->
+      rs_pool_sided h0 S side sGamma rGamma h ->
+      exists S',
+        (forall l, List.In l S -> List.In l S') /\
+        (forall l, List.In l S' -> List.In l S \/ dom h <= l) /\
+        rs_stitch_set_wf h0 h' S' /\
+        rs_mut_edges_respect_sides CT h0 S' h' /\
+        rs_pool_sided h0 S' side sGamma' rGamma' h'.
 Proof.
   intros CT rGamma h statement rGamma' h' Heval.
   have Heval_copy := Heval.
   dependent induction Heval;
-    intros sGamma mt sGamma' h0 Htyping Hscope Hwf Hgrow Htriple.
-  - (* skip *) inversion Htyping; subst. exact Htriple.
-  - (* local *) inversion Htyping; subst.
-    eapply rs_mutable_freshness_after_local; [|exact Htriple].
+    intros sGamma mt sGamma' h0 S side Htyping Hscope Hwf Hgrow Hstitch
+      Hsides Hpool.
+  - (* skip *)
+    inversion Htyping; subst.
+    exists S. split; [intros l Hin; exact Hin|].
+    split; [intros l Hin; left; exact Hin|].
+    split; [exact Hstitch|]. split; [exact Hsides|]. exact Hpool.
+  - (* local *)
+    inversion Htyping; subst.
+    exists S. split; [intros l Hin; exact Hin|].
+    split; [intros l Hin; left; exact Hin|].
+    split; [exact Hstitch|]. split; [exact Hsides|].
+    eapply rs_sides_after_local; [|exact Hpool].
     exact (proj1 (proj2 (proj2 (proj2 (proj2 Hwf))))).
-  - (* var assignment *) inversion Htyping; subst.
+  - (* var assignment *)
+    inversion Htyping; subst.
     assert (Hupdate : set_vars rΓ (update x v2 (vars rΓ)) =
         update_r_env_value rΓ x v2).
     { destruct rΓ. reflexivity. }
     rewrite Hupdate.
-    eapply rs_mutable_freshness_after_assignment; eauto.
+    exists S. split; [intros l Hin; exact Hin|].
+    split; [intros l Hin; left; exact Hin|].
+    split; [exact Hstitch|]. split; [exact Hsides|].
+    eapply rs_sides_after_assignment; eauto.
   - (* field write *)
-    eapply rs_mutable_freshness_after_field_write; eauto.
+    destruct (rs_sides_after_field_write CT h0 S side sGamma mt rΓ h x f y
+      sGamma' rΓ h' Hwf Hscope Htyping Heval_copy Hstitch Hsides Hpool) as
+      [Hstitch' [Hsides' Hpool']].
+    exists S. split; [intros l Hin; exact Hin|].
+    split; [intros l Hin; left; exact Hin|].
+    split; [exact Hstitch'|]. split; [exact Hsides'|]. exact Hpool'.
   - (* new *)
-    eapply rs_mutable_freshness_after_new; eauto.
+    eapply rs_sides_after_new; eauto.
   - (* call *)
     destruct Hfind as [Hfind_method Hbody_definition].
     subst mbody mstmt mret. subst.
@@ -2691,18 +3239,18 @@ Proof.
         subst mdef0.
         exists argtypes. split; assumption. }
     destruct Hcall_args as [argtypes [Hget_args Harg_sub]].
-    destruct Htriple as [HJ [HK HL]].
-    have Hentry_J := rs_mut_vars_fresh_call_entry CT h0 sGamma rΓ h y
+    (* enter the callee: the pool lands on some side *)
+    destruct (rs_pool_sided_call_entry CT h0 S side sGamma rΓ h y
       receiver_type ly zs vals argtypes mdef (msignature static_mdef)
-      Hwf HJ Hreceiver_type Hval_y Hargs Hget_args Hrefine Hsig_safe
-      Hrcv_sub Harg_sub.
+      Hwf Hpool Hreceiver_type Hval_y Hargs Hget_args Hrefine Hsig_safe
+      Hrcv_sub Harg_sub) as [side' [Hside'_case Hentry_pool]].
     (* run the body *)
-    have Hbody_triple := IHHeval eq_refl Heval
+    destruct (IHHeval eq_refl Heval
       (mreceiver (msignature mdef) :: mparams (msignature mdef))
-      (mscope (msignature mdef)) method_end h0
-      Hmethod_body_typing Hcallee_scope Hcallee_initial_wf Hgrow
-      (conj Hentry_J (conj HK HL)).
-    destruct Hbody_triple as [HJ'' [HK'' HL'']].
+      (mscope (msignature mdef)) method_end h0 S side'
+      Hmethod_body_typing Hcallee_scope Hcallee_initial_wf Hgrow Hstitch
+      Hsides Hentry_pool) as
+      [S'' [Hincl'' [Hgrow'' [Hstitch'' [Hsides'' Hpool'']]]]].
     have Hcallee_final_wf := preservation_pico CT
       (mreceiver (msignature mdef) :: mparams (msignature mdef))
       (mscope (msignature mdef)) (mkr_env (Iot ly :: vals)) h
@@ -2719,9 +3267,11 @@ Proof.
       unfold r_muttype in Hq.
       destruct (runtime_getObj h loc) as [o0|] eqn:Ho0; [|discriminate].
       eapply runtime_getObj_dom. exact Ho0. }
-    split; [|split; [exact HK''|exact HL'']].
-    eapply rs_mut_vars_fresh_call_return with
-      (y := y) (Ty := receiver_type) (ly := ly)
+    exists S''.
+    split; [exact Hincl''|]. split; [exact Hgrow''|].
+    split; [exact Hstitch''|]. split; [exact Hsides''|].
+    eapply rs_pool_sided_call_return with
+      (S := S) (side' := side') (y := y) (Ty := receiver_type) (ly := ly)
       (runtime_mdef := mdef) (static_sig := msignature static_mdef)
       (method_end := method_end) (rGamma'' := rΓ'')
       (body_return_type := body_return_type); eauto.
@@ -2729,10 +3279,23 @@ Proof.
     inversion Htyping; subst.
     have Hmid_wf := preservation_pico CT sGamma mt rΓ h s1 rΓ' h' sΓ'
       Hwf Htype1 Heval1.
-    have Hmid_grow : dom h0 <= dom h'.
-    { have Hg := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h'
-        Heval1. lia. }
-    eapply IHHeval2 with (sGamma := sΓ') (mt := mt) (h0 := h0); eauto.
+    have Hg1 := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h'
+      Heval1.
+    destruct (IHHeval1 eq_refl Heval1 sGamma mt sΓ' h0 S side Htype1 Hscope
+      Hwf Hgrow Hstitch Hsides Hpool) as
+      [S1 [Hincl1 [Hgrow1 [Hstitch1 [Hsides1 Hpool1]]]]].
+    have Hmid_grow : dom h0 <= dom h' by lia.
+    destruct (IHHeval2 eq_refl Heval2 sΓ' mt sGamma' h0 S1 side Htype2
+      Hscope Hmid_wf Hmid_grow Hstitch1 Hsides1 Hpool1) as
+      [S2 [Hincl2 [Hgrow2 [Hstitch2 [Hsides2 Hpool2]]]]].
+    exists S2.
+    split; [intros l Hin; apply Hincl2; apply Hincl1; exact Hin|].
+    split.
+    { intros l Hin.
+      destruct (Hgrow2 l Hin) as [Hin1 | Hge]; [|right; lia].
+      destruct (Hgrow1 l Hin1) as [HinS | Hge];
+        [left; exact HinS | right; exact Hge]. }
+    split; [exact Hstitch2|]. split; [exact Hsides2|]. exact Hpool2.
 Qed.
 
 (** Stack-shape auxiliaries for the per-edge lemma. *)
@@ -2760,65 +3323,55 @@ Proof.
     + exists b. split; [right; exact Hin | reflexivity].
 Qed.
 
-(** Step 2: from an old runtime-mutable node, every potential-adjacent step
-    lands on an old node (and stays runtime-mutable).  L kills forward heap
-    edges, K kills backward ones, J kills active-frame joins, the stored
-    frames are old by hypothesis, and the head boundary contributes no return
-    edge because its callee return qualifier is not RDM. *)
-Lemma rs_potential_adjacent_from_old_mut_lands_old :
-  forall CT h0 h active boundary stack u v,
-    rs_mut_vars_fresh h0 active.(frame_senv) active.(frame_renv) h ->
-    rs_fresh_mut_fields_fresh CT h0 h ->
-    rs_old_mut_fields_old CT h0 h ->
+(** ** The partitioned walk
+
+    From a left-side runtime-mutable node, every potential-adjacent step
+    lands on a left-side node (and stays runtime-mutable).  Heap edges in
+    either orientation are absorbed by the partition's edge condition;
+    active-frame joins are refuted by the right-side pool; stored-frame
+    joins and return edges land on stored-frame values, which are old.  The
+    head boundary contributes no return edge because its callee return
+    qualifier is not RDM. *)
+Lemma rs_potential_adjacent_from_old_mut_stays_left :
+  forall CT h0 S h active boundary stack u v,
+    rs_pool_right h0 S active.(frame_senv) active.(frame_renv) h ->
+    rs_mut_edges_respect_sides CT h0 S h ->
     wf_heap CT h ->
     live_frames_wf CT h active (boundary :: stack) ->
     boundary.(boundary_callee_return_qualifier) <> RDM ->
-    (forall b, List.In b (boundary :: stack) ->
-      forall x l,
-        runtime_getVal b.(boundary_caller).(frame_renv) x = Some (Iot l) ->
-        l < dom h0) ->
+    (forall b, List.In b (boundary :: stack) -> forall x l,
+       runtime_getVal b.(boundary_caller).(frame_renv) x = Some (Iot l) ->
+       l < dom h0) ->
     potential_adjacent CT h active (boundary :: stack) u v ->
-    u < dom h0 ->
-    r_muttype h u = Some Mut_r ->
-    v < dom h0 /\ r_muttype h v = Some Mut_r.
+    rs_left h0 S u -> r_muttype h u = Some Mut_r ->
+    rs_left h0 S v /\ r_muttype h v = Some Mut_r.
 Proof.
-  intros CT h0 h active boundary stack u v HJ HK HL Hheap Hframes
-    Hhead_not_rdm Hstack_old Hadj Hold Hmut.
+  intros CT h0 S h active boundary stack u v Hpool Hsides Hheap Hframes
+    Hhead_not_rdm Hstack_old Hadj Hleft Hmut.
   have Hv_mut : r_muttype h v = Some Mut_r.
   { eapply potential_adjacent_preserves_runtime_mutability; eauto. }
   split; [|exact Hv_mut].
   destruct Hadj as [[Hforward | Hbackward] | [Hframe | Hreturn]].
-  - (* forward retained edge out of old Mut_r u: L *)
-    inversion Hforward; subst.
-    + (* RDM_f *)
-      inversion H; subst.
-      eapply HL; eauto.
-    + (* Mut_f *)
-      eapply HL; eauto.
-  - (* backward RDM_f edge: v's field holds u *)
-    inversion Hbackward; subst.
-    destruct (lt_dec v (dom h0)) as [Hvold | Hvfresh]; [exact Hvold|].
-    exfalso.
-    have Hu_fresh : dom h0 <= u.
-    { eapply HK with (v := v) (l := u); eauto; try lia. }
-    lia.
+  - (* forward retained edge out of u *)
+    apply (proj1 (Hsides u v Hforward Hmut Hv_mut)). exact Hleft.
+  - (* backward mutable edge from v into u *)
+    apply (proj2 (Hsides v u (retained_edge_rdm CT h v u Hbackward) Hv_mut
+      Hmut)).
+    exact Hleft.
   - (* frame join *)
     destruct Hframe as [frame [Hmember [Hu_root Hv_root]]].
     inversion Hmember; subst.
-    + (* the active frame: contradicts J *)
+    + (* the active frame: contradicts the right-side pool *)
       exfalso.
       destruct Hu_root as [xvar [T [Htype [Hvalue Hrdm]]]].
-      have Hu_fresh : dom h0 <= u.
-      { eapply HJ; eauto. }
-      lia.
+      destruct (Hpool xvar T u Htype Hvalue (or_intror Hrdm) Hmut) as
+        [Hge Hnin].
+      destruct Hleft as [Hlt | Hin]; [lia | exact (Hnin Hin)].
     + (* a stored caller frame *)
       destruct Hv_root as [xvar [T [Htype [Hvalue Hrdm]]]].
-      eapply Hstack_old; eauto.
+      left. eapply Hstack_old; eauto.
   - (* return edge *)
     destruct Hreturn as [callee' [boundary' [Hlive [Hview [Hretq Hrest]]]]].
-    have Hbd_in := live_call_boundary_in _ _ _ _ Hlive.
-    (* every frame the edge touches is a stored caller frame, or the head
-       boundary itself is the edge's boundary and the qualifier kills it *)
     inversion Hlive; subst.
     { exfalso. exact (Hhead_not_rdm Hretq). }
     match goal with
@@ -2838,36 +3391,33 @@ Proof.
     destruct Hrest as [Hmutty [[Hu_root Hv_root] | [Hu_root Hv_root]]].
     + (* v is a root of boundary'.(boundary_caller) *)
       destruct Hv_root as [xvar [T [Htype [Hvalue Hrdm]]]].
-      eapply Hstack_old with (b := boundary');
+      left. eapply Hstack_old with (b := boundary');
         [right; exact Hbd_in' | exact Hvalue].
     + (* v is a root of the deeper callee, itself a stored caller frame *)
       destruct Hv_root as [xvar [T [Htype [Hvalue Hrdm]]]].
-      eapply Hcallee_old. exact Hvalue.
+      left. eapply Hcallee_old. exact Hvalue.
 Qed.
 
-(** Step 3: the path form. *)
-Lemma rs_potential_path_from_old_mut_stays_old :
-  forall CT h0 h active boundary stack u w,
-    rs_mut_vars_fresh h0 active.(frame_senv) active.(frame_renv) h ->
-    rs_fresh_mut_fields_fresh CT h0 h ->
-    rs_old_mut_fields_old CT h0 h ->
+(** The path form. *)
+Lemma rs_potential_path_from_old_mut_stays_left :
+  forall CT h0 S h active boundary stack u w,
+    rs_pool_right h0 S active.(frame_senv) active.(frame_renv) h ->
+    rs_mut_edges_respect_sides CT h0 S h ->
     wf_heap CT h ->
     live_frames_wf CT h active (boundary :: stack) ->
     boundary.(boundary_callee_return_qualifier) <> RDM ->
-    (forall b, List.In b (boundary :: stack) ->
-      forall x l,
-        runtime_getVal b.(boundary_caller).(frame_renv) x = Some (Iot l) ->
-        l < dom h0) ->
+    (forall b, List.In b (boundary :: stack) -> forall x l,
+       runtime_getVal b.(boundary_caller).(frame_renv) x = Some (Iot l) ->
+       l < dom h0) ->
     potential_connected CT h active (boundary :: stack) u w ->
-    u < dom h0 ->
-    r_muttype h u = Some Mut_r ->
-    w < dom h0 /\ r_muttype h w = Some Mut_r.
+    rs_left h0 S u -> r_muttype h u = Some Mut_r ->
+    rs_left h0 S w /\ r_muttype h w = Some Mut_r.
 Proof.
-  intros CT h0 h active boundary stack u w HJ HK HL Hheap Hframes Hhead
-    Hstack_old Hconn.
-  induction Hconn; intros Hold Hmut.
-  - eapply rs_potential_adjacent_from_old_mut_lands_old; eauto.
+  intros CT h0 S h active boundary stack u w Hpool Hsides Hheap Hframes
+    Hhead Hstack_old Hconn.
+  induction Hconn; intros Hleft Hmut.
+  - eapply rs_potential_adjacent_from_old_mut_stays_left; eauto.
   - split; assumption.
-  - destruct (IHHconn1 Hold Hmut) as [Hmid_old Hmid_mut].
-    exact (IHHconn2 Hmid_old Hmid_mut).
+  - destruct (IHHconn1 Hleft Hmut) as [Hmid_left Hmid_mut].
+    exact (IHHconn2 Hmid_left Hmid_mut).
 Qed.
