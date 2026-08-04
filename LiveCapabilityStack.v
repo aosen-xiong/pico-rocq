@@ -642,18 +642,21 @@ Proof.
     destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x m y
       args sGamma' vals ly cy runtime_mdef root Hwf Htyping Hscope Hval Hbase
       Hfind Hargs Hrootrdm) as
-      [Ty0 [Hgety0 [Hshape Hcallerroot]]].
-    assert (Ty0 = Ty) by congruence. subst Ty0.
-    destruct Hcallerroot as
-      [caller_var [CallerT [Hcaller_type [Hcaller_val Hcaller_qual]]]].
-    exists caller_var, CallerT. repeat split; try assumption.
-    rewrite Hcaller_qual.
-    apply (safe_call_receiver_authority_reflects
-      caller_authority (sqtype Ty)).
-    + eapply wf_config_nonnull_variable_not_bot; eauto.
-    + unfold capability_in_context. right. split.
-      * reflexivity.
-      * exact Hcallee_authority.
+      [Ty0 [Hgety0 [[Hshape Hcallerroot] | [Hro [Hrooteq Hro_root]]]]].
+    + assert (Ty0 = Ty) by congruence. subst Ty0.
+      destruct Hcallerroot as
+        [caller_var [CallerT [Hcaller_type [Hcaller_val Hcaller_qual]]]].
+      exists caller_var, CallerT. repeat split; try assumption.
+      rewrite Hcaller_qual.
+      apply (safe_call_receiver_authority_reflects
+        caller_authority (sqtype Ty)).
+      * eapply wf_config_nonnull_variable_not_bot; eauto.
+      * unfold capability_in_context. right. split.
+        -- reflexivity.
+        -- exact Hcallee_authority.
+    + assert (Ty0 = Ty) by congruence. subst Ty0.
+      rewrite Hro in Hcallee_authority. simpl in Hcallee_authority.
+      discriminate.
 Qed.
 
 Lemma safe_call_capability_roots_reflect_through_view :
