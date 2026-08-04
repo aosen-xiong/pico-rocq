@@ -182,29 +182,6 @@ Definition effective_frame_rdm_root
   (frame : watched_frame) (root : Loc) : Prop :=
   typed_root RDM frame.(frame_senv) frame.(frame_renv) root.
 
-(** Phase-correct live coloring.
-
-    [staged_live_color_set] above was the first temporal prototype.  Because
-    its seed is the global [live_capability_set], it makes suspended-caller
-    capabilities available during the callee phase.  That is too early: a
-    path may use a caller-only prospective join and then return to an already
-    completed callee join.
-
-    The final phase construction below injects a frame's owned mutable
-    capabilities only when execution reaches that frame.  Incoming colors
-    from a completed callee are retained, the single return transition is
-    applied, and only then are the resumed caller's capabilities added.  Thus
-    the order is exactly
-
-      callee capabilities / callee phase / return / caller capabilities /
-      caller phase.
-
-    No assumption is added to a typing or preservation theorem: this is a
-    proof-maintained color computation over the existing live stack. *)
-Definition phase_frame_capability_set
-  (CT : class_table) (h : heap) (frame : watched_frame) : Ensemble Loc :=
-  frame_owned_location CT h frame.
-
 (** Stateful authority flow for pending calls.
 
     [FlowPowered] means that the path currently carries actual mutable
@@ -409,80 +386,6 @@ Proof.
     Hconnected Hseed_runtime).
 Qed.
 
-Lemma phased_authority_frame_step_preserves_coverage :
-  forall CT h h' frame old_colors source target,
-    (forall old_source old_target,
-      In authority_flow_state old_colors old_source ->
-      phased_authority_frame_connected CT h frame old_source old_target ->
-      In authority_flow_state old_colors old_target) ->
-    (forall location,
-      frame_owned_location CT h' frame location ->
-      exists old_mode,
-        authority_mode_dangerous old_mode /\
-        In authority_flow_state old_colors (old_mode, location)) ->
-    (forall old_mode left right,
-      authority_mode_dangerous old_mode ->
-      In authority_flow_state old_colors (old_mode, left) ->
-      retained_mut_edge CT h' left right ->
-      exists target_mode,
-        authority_mode_dangerous target_mode /\
-        In authority_flow_state old_colors (target_mode, right)) ->
-    (forall old_mode left right,
-      authority_mode_dangerous old_mode ->
-      In authority_flow_state old_colors (old_mode, left) ->
-      mutable_edge CT h' right left ->
-      exists target_mode,
-        authority_mode_dangerous target_mode /\
-        In authority_flow_state old_colors (target_mode, right)) ->
-    authority_state_covered old_colors source ->
-    phased_authority_frame_step CT h' frame source target ->
-    authority_state_covered old_colors target.
-Proof.
-  intros CT h h' frame old_colors source target Hclosed Howned Hforward
-    Hbackward Hsource Hstep Htarget_dangerous.
-  inversion Hstep; subst; simpl in *.
-  - destruct (Hsource (or_introl eq_refl)) as
-      [old_mode [Hold_dangerous Hold]].
-    eapply Hforward; eauto.
-  - destruct (Hsource (or_intror eq_refl)) as
-      [old_mode [Hold_dangerous Hold]].
-    eapply Hforward; eauto.
-  - destruct (Hsource (or_intror eq_refl)) as
-      [old_mode [Hold_dangerous Hold]].
-    eapply Hbackward; eauto.
-  - destruct (Hsource (or_introl eq_refl)) as
-      [old_mode [Hold_dangerous Hold]].
-    eapply Hbackward; eauto.
-  - destruct Htarget_dangerous as [Hbad | Hbad]; discriminate.
-  - destruct Htarget_dangerous as [Hbad | Hbad]; discriminate.
-  - destruct (Hsource (or_introl eq_refl)) as
-      [old_mode [[-> | ->] Hold]].
-    + exists FlowProspective. split; [right; reflexivity|].
-      eapply Hclosed; [exact Hold|].
-      apply rt_step. eapply phased_authority_powered_frame_join; eauto.
-    + exists FlowProspective. split; [right; reflexivity|].
-      eapply Hclosed; [exact Hold|].
-      apply rt_step. eapply phased_authority_prospective_frame_join; eauto.
-  - destruct (Hsource (or_intror eq_refl)) as
-      [old_mode [[-> | ->] Hold]].
-    + exists FlowProspective. split; [right; reflexivity|].
-      eapply Hclosed; [exact Hold|].
-      apply rt_step. eapply phased_authority_powered_frame_join; eauto.
-    + exists FlowProspective. split; [right; reflexivity|].
-      eapply Hclosed; [exact Hold|].
-      apply rt_step. eapply phased_authority_prospective_frame_join; eauto.
-  - destruct Htarget_dangerous as [Hbad | Hbad]; discriminate.
-  - destruct Htarget_dangerous as [Hbad | Hbad]; discriminate.
-  - destruct Htarget_dangerous as [Hbad | Hbad]; discriminate.
-  - destruct (Hsource (or_introl eq_refl)) as
-      [old_mode [[-> | ->] Hold]].
-    + exists FlowProspective. split; [right; reflexivity|].
-      eapply Hclosed; [exact Hold|].
-      apply rt_step. apply phased_authority_mark_prospective.
-    + exists FlowProspective. split; [right; reflexivity|exact Hold].
-  - eapply Howned. exact H.
-Qed.
-
 Lemma executing_authority_owned_is_powered :
   forall CT h frame incoming location,
     frame_owned_location CT h frame location ->
@@ -563,26 +466,6 @@ Proof.
     eapply phased_authority_prospective_frame_join; eauto.
 Qed.
 
-(** The three endpoint shapes furnished by a well-typed write.  Mutable
-    endpoints are already owned, immutable endpoints cannot be reached by an
-    executing mutable authority color, and RDM endpoints are related by the
-    phase-local prospective join. *)
-Inductive authority_safe_field_endpoints
-  (CT : class_table) (h : heap) (frame : watched_frame) (left right : Loc) :
-  Prop :=
-| authority_safe_field_mutable :
-    frame_owned_location CT h frame left ->
-    frame_owned_location CT h frame right ->
-    authority_safe_field_endpoints CT h frame left right
-| authority_safe_field_immutable :
-    r_muttype h left = Some Imm_r ->
-    r_muttype h right = Some Imm_r ->
-    authority_safe_field_endpoints CT h frame left right
-| authority_safe_field_rdm :
-    typed_root RDM frame.(frame_senv) frame.(frame_renv) left ->
-    typed_root RDM frame.(frame_senv) frame.(frame_renv) right ->
-    authority_safe_field_endpoints CT h frame left right.
-
 (** Boundary-local authority freshness.  A readonly-state body receives no
     direct mutable root from its caller.  Consequently every direct mutable
     root it later acquires, and every runtime-mutable RDM root, denotes a
@@ -594,47 +477,6 @@ Definition mutable_authority_root
   typed_root Mut frame.(frame_senv) frame.(frame_renv) root \/
   (typed_root RDM frame.(frame_senv) frame.(frame_renv) root /\
    r_muttype h root = Some Mut_r).
-
-Lemma phased_authority_neutral_mutable_forward :
-  forall CT h frame left right,
-    mutable_reachable CT h left right ->
-    phased_authority_frame_connected CT h frame
-      (FlowNeutral, left) (FlowNeutral, right).
-Proof.
-  intros CT h frame left right Hreachable.
-  induction Hreachable.
-  - apply rt_refl.
-  - eapply rt_trans; [exact IHHreachable|].
-    apply rt_step. apply phased_authority_neutral_rdm_forward. exact H.
-Qed.
-
-Lemma phased_authority_neutral_mutable_reverse :
-  forall CT h frame left right,
-    mutable_reachable CT h left right ->
-    phased_authority_frame_connected CT h frame
-      (FlowNeutral, right) (FlowNeutral, left).
-Proof.
-  intros CT h frame left right Hreachable.
-  induction Hreachable.
-  - apply rt_refl.
-  - eapply rt_trans.
-    + apply rt_step. apply phased_authority_neutral_rdm_backward. exact H.
-    + exact IHHreachable.
-Qed.
-
-Lemma phased_authority_prospective_mutable_forward :
-  forall CT h frame left right,
-    mutable_reachable CT h left right ->
-    phased_authority_frame_connected CT h frame
-      (FlowProspective, left) (FlowProspective, right).
-Proof.
-  intros CT h frame left right Hreachable.
-  induction Hreachable.
-  - apply rt_refl.
-  - eapply rt_trans; [exact IHHreachable|].
-    apply rt_step. apply phased_authority_prospective_retained.
-    constructor. exact H.
-Qed.
 
 Lemma phased_authority_prospective_mutable_reverse :
   forall CT h frame left right,
@@ -649,20 +491,6 @@ Proof.
     + apply rt_step. apply phased_authority_prospective_rdm_backward.
       exact H.
     + exact IHHreachable.
-Qed.
-
-Lemma phased_authority_powered_mutable_reverse :
-  forall CT h frame left right,
-    mutable_reachable CT h left right ->
-    phased_authority_frame_connected CT h frame
-      (FlowPowered, right) (FlowProspective, left).
-Proof.
-  intros CT h frame left right Hreachable.
-  induction Hreachable as [location | first middle last Hprefix IH Hedge].
-  - apply rt_step. apply phased_authority_mark_prospective.
-  - eapply rt_trans.
-    + apply rt_step. apply phased_authority_reverse_rdm. exact Hedge.
-    + eapply phased_authority_prospective_mutable_reverse. exact Hprefix.
 Qed.
 
 Definition live_boundary_cutoffs_valid
@@ -740,23 +568,6 @@ Definition frozen_caller_authority_closure
   fun state => exists seed,
     In authority_flow_state seeds seed /\
     frozen_caller_authority_connected CT h frame seed state.
-
-Definition prospective_location_covered_by_frame
-  (CT : class_table) (h : heap) (frame : watched_frame)
-  (location : Loc) : Prop :=
-  exists root,
-    mutable_authority_root frame h root /\
-    frozen_caller_authority_connected CT h frame
-      (FlowProspective, root) (FlowProspective, location).
-
-Lemma frozen_caller_authority_closure_contains :
-  forall CT h frame seeds,
-    Included authority_flow_state seeds
-      (frozen_caller_authority_closure CT h frame seeds).
-Proof.
-  intros CT h frame seeds state Hstate.
-  exists state. split; [exact Hstate|apply rt_refl].
-Qed.
 
 Lemma frozen_caller_authority_step_is_phased :
   forall CT h frame source target,
@@ -977,23 +788,6 @@ Definition frozen_caller_snapshots_resume_roots_safe
       snapshot.(frozen_snapshot_current_resume_exposure)
       (exposure_mode, target) ->
     ~ In Loc Z target.
-
-Lemma frozen_caller_authority_step_preserves_dangerous :
-  forall CT h frame source target,
-    authority_mode_dangerous (fst source) ->
-    frozen_caller_authority_step CT h frame source target ->
-    authority_mode_dangerous (fst target).
-Proof.
-  intros CT h frame source target Hsource Hstep.
-  inversion Hstep; subst; simpl.
-  - left. reflexivity.
-  - right. reflexivity.
-  - right. reflexivity.
-  - right. reflexivity.
-  - right. reflexivity.
-  - right. reflexivity.
-  - right. reflexivity.
-Qed.
 
 Lemma frozen_caller_color_dangerous_retained :
   forall CT h frame colors mode left right,
@@ -1514,19 +1308,6 @@ Proof.
   - left. exists variable, T. repeat split; try assumption.
     unfold capability_in_context. left. exact Hmut.
   - constructor.
-Qed.
-
-Lemma frozen_caller_prospective_mutable_reverse :
-  forall CT h frame left right,
-    mutable_reachable CT h left right ->
-    frozen_caller_authority_connected CT h frame
-      (FlowProspective, right) (FlowProspective, left).
-Proof.
-  intros CT h frame left right Hreachable. induction Hreachable.
-  - apply rt_refl.
-  - eapply rt_trans.
-    + apply rt_step. apply frozen_caller_prospective_rdm_backward. exact H.
-    + exact IHHreachable.
 Qed.
 
 (** Generic preservation rule for the pairwise nested resume certificate.
