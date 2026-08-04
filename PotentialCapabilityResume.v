@@ -97,13 +97,6 @@ Inductive resumed_authority_frame_step
     resumed_authority_frame_step CT h eligible caller
       (FlowNeutral, location) (FlowPowered, location).
 
-Definition resumed_authority_frame_connected
-  (CT : class_table) (h : heap)
-  (eligible : Ensemble Loc) (caller : watched_frame) :
-  authority_flow_state -> authority_flow_state -> Prop :=
-  clos_refl_trans authority_flow_state
-    (resumed_authority_frame_step CT h eligible caller).
-
 (** Policy witnesses use the same entry-or-safe rule as completed colors.
     Requiring the stronger ordinary-snapshot [resume_roots_safe] property
     here would incorrectly reject a resumed color that was already present
