@@ -265,19 +265,6 @@ Definition phased_frame_powered_seeds
     state = (FlowPowered, location) /\
     frame_owned_location CT h frame location.
 
-(** Authority available while one frame is executing.  [incoming] is the
-    caller-side authority that existed before the call and therefore remains
-    semantically live while the caller is suspended.  It is passed inward at
-    call entry and restored from the proof stack at return; callee results are
-    not retroactively inserted into it. *)
-Definition executing_authority_color_set
-  (CT : class_table) (h : heap) (active : watched_frame)
-  (incoming : Ensemble authority_flow_state) :
-  Ensemble authority_flow_state :=
-  phased_authority_frame_closure CT h active
-    (Union authority_flow_state incoming
-      (phased_frame_powered_seeds CT h active)).
-
 Definition live_boundary_cutoffs_valid
   (h : heap) (stack : list watched_boundary) : Prop :=
   Forall (fun boundary =>
