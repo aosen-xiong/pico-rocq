@@ -1033,14 +1033,13 @@ Qed.
 (** * The RS mutable-freshness invariant
 
     The residual's refutation characterises what a readonly-state body can
-    publish.  Three conjuncts, all relative to the entry heap [h0]:
+    publish.  The variable-level conjunct, relative to the entry heap [h0]:
 
     - J ([rs_mut_vars_fresh]): a [Mut]- or [RDM]-typed variable holding a
-      runtime-mutable object holds a fresh one;
-    - K ([rs_fresh_mut_fields_fresh]): mutable fields of fresh [Mut_r]
-      objects hold fresh values whenever those values are runtime-mutable;
-    - L ([rs_old_mut_fields_old]): mutable fields of old [Mut_r] objects
-      still hold old values -- the body cannot write them at all. *)
+      runtime-mutable object holds a fresh one.
+
+    The heap-level field conjuncts that once accompanied J were superseded
+    by the two-sided partition invariant below. *)
 
 Definition rs_mut_vars_fresh
   (h0 : heap) (sGamma : s_env) (rGamma : r_env) (h : heap) : Prop :=
@@ -1050,31 +1049,6 @@ Definition rs_mut_vars_fresh
     (sqtype T = Mut \/ sqtype T = RDM) ->
     r_muttype h l = Some Mut_r ->
     dom h0 <= l.
-
-Definition rs_fresh_mut_fields_fresh
-  (CT : class_table) (h0 h : heap) : Prop :=
-  forall v o f l D fdef,
-    dom h0 <= v ->
-    runtime_getObj h v = Some o ->
-    r_muttype h v = Some Mut_r ->
-    getVal o.(fields_map) f = Some (Iot l) ->
-    base_subtype CT (rctype (rt_type o)) D ->
-    sf_def_rel CT D f fdef ->
-    (mutability (ftype fdef) = RDM_f \/ mutability (ftype fdef) = Mut_f) ->
-    r_muttype h l = Some Mut_r ->
-    dom h0 <= l.
-
-Definition rs_old_mut_fields_old
-  (CT : class_table) (h0 h : heap) : Prop :=
-  forall v o f l D fdef,
-    v < dom h0 ->
-    runtime_getObj h v = Some o ->
-    r_muttype h v = Some Mut_r ->
-    getVal o.(fields_map) f = Some (Iot l) ->
-    base_subtype CT (rctype (rt_type o)) D ->
-    sf_def_rel CT D f fdef ->
-    (mutability (ftype fdef) = RDM_f \/ mutability (ftype fdef) = Mut_f) ->
-    l < dom h0.
 
 (** * The two-sided partition invariant
 
@@ -1271,34 +1245,7 @@ Proof.
   - destruct context; contradiction.
 Qed.
 
-(** Field values of a well-formed heap lie in its domain. *)
-Lemma wf_heap_field_value_dom :
-  forall CT h v o f l,
-    wf_heap CT h ->
-    runtime_getObj h v = Some o ->
-    getVal o.(fields_map) f = Some (Iot l) ->
-    l < dom h.
-Proof.
-  intros CT h v o f l Hheap Hobj Hval.
-  have Hvdom : v < dom h.
-  { eapply runtime_getObj_dom. exact Hobj. }
-  specialize (Hheap v Hvdom). unfold wf_obj in Hheap.
-  rewrite Hobj in Hheap.
-  destruct Hheap as [_ [field_defs [_ [Hlen Hfields]]]].
-  unfold getVal in Hval.
-  destruct (nth_error field_defs f) as [fdef|] eqn:Hfdef.
-  - have Hpair := Forall2_nth_error _ _ _ _ _ _ Hfields Hval Hfdef.
-    simpl in Hpair.
-    destruct (runtime_getObj h l) as [lobj|] eqn:Hlobj; [|contradiction].
-    eapply runtime_getObj_dom. exact Hlobj.
-  - exfalso.
-    have Hlt : f < length o.(fields_map).
-    { apply nth_error_Some. rewrite Hval. discriminate. }
-    rewrite Hlen in Hlt.
-    apply nth_error_Some in Hlt. congruence.
-Qed.
-
-(** Entry forms of the three conjuncts, at [h0 = h]. *)
+(** Entry form of J, at [h0 = h]. *)
 Lemma rs_mut_vars_fresh_channel_free_entry :
   forall h0 h msig rGamma,
     signature_has_no_mutable_roots msig ->
@@ -1322,26 +1269,6 @@ Proof.
       rewrite Hmut in Hsafe.
       destruct Hsafe as [Hbad | [Hbad | [Hbad | Hbad]]]; discriminate.
   - apply (Hno_rdm l). exists x, T. repeat split; assumption.
-Qed.
-
-Lemma rs_fresh_mut_fields_fresh_entry :
-  forall CT h,
-    rs_fresh_mut_fields_fresh CT h h.
-Proof.
-  intros CT h v o f l D fdef Hfresh Hobj Hmut Hval Hsub Hfd Hfm Hlmut.
-  exfalso.
-  have Hvdom : v < dom h.
-  { eapply runtime_getObj_dom. exact Hobj. }
-  lia.
-Qed.
-
-Lemma rs_old_mut_fields_old_entry :
-  forall CT h,
-    wf_heap CT h ->
-    rs_old_mut_fields_old CT h h.
-Proof.
-  intros CT h Hheap v o f l D fdef Hold Hobj Hmut Hval Hsub Hfd Hfm.
-  eapply wf_heap_field_value_dom; eauto.
 Qed.
 
 (** ** Table micro-lemmas for the preservation induction *)
@@ -1885,124 +1812,6 @@ Proof.
       eapply Huse; eauto.
 Qed.
 
-(** J at a nested call entry, over the DYNAMIC callee signature.  A dynamic
-    [Mut] position is excluded by [signature_has_no_mutable_roots]; a dynamic
-    [RDM] position reflects to an [RDM]-or-[Bot] static position
-    (refinement), whose readonly-state call channel admits only [Bot]
-    (killed by non-nullity), [Imm]-typed arguments (the value is
-    runtime-immutable) or [Mut]/[RDM]-typed arguments (J applies in the
-    caller). *)
-Lemma rs_mut_vars_fresh_call_entry :
-  forall CT h0 sGamma rGamma h y Ty ly args vals argtypes runtime_mdef
-    static_sig,
-    wf_r_config CT sGamma rGamma h ->
-    rs_mut_vars_fresh h0 sGamma rGamma h ->
-    static_getType sGamma y = Some Ty ->
-    runtime_getVal rGamma y = Some (Iot ly) ->
-    runtime_lookup_list rGamma args = Some vals ->
-    static_getType_list sGamma args = Some argtypes ->
-    method_signature_refinement CT (msignature runtime_mdef) static_sig ->
-    signature_has_no_mutable_roots (msignature runtime_mdef) ->
-    qualified_type_subtype CT Ty
-      (vpa_mutability_tt_readonly_state Ty (mreceiver static_sig)) ->
-    Forall2 (fun arg T => qualified_type_subtype CT arg
-        (vpa_mutability_tt_readonly_state Ty T))
-      argtypes (mparams static_sig) ->
-    rs_mut_vars_fresh h0
-      (mreceiver (msignature runtime_mdef)
-        :: mparams (msignature runtime_mdef))
-      (mkr_env (Iot ly :: vals)) h.
-Proof.
-  intros CT h0 sGamma rGamma h y Ty ly args vals argtypes runtime_mdef
-    static_sig Hwf HJ Hget_y Hval_y Hargs Hget_args Hrefine
-    [Hrec_safe Hparams_safe] Hrcv_sub Harg_sub.
-  intros pos T l Htype Hvalue Hkind Hmut.
-  destruct pos as [|i].
-  - (* receiver *)
-    simpl in Htype. injection Htype as <-.
-    simpl in Hvalue. injection Hvalue as <-.
-    destruct Hkind as [Hkmut | Hkrdm].
-    { exfalso. unfold is_nonmutable_qualifier in Hrec_safe.
-      rewrite Hkmut in Hrec_safe.
-      destruct Hrec_safe as [Hb | [Hb | [Hb | Hb]]]; discriminate. }
-    have Hstatic_rdm : is_rdm_or_bot (sqtype (mreceiver static_sig)).
-    { eapply method_signature_refinement_receiver_rdm_or_bot; eauto.
-      left. exact Hkrdm. }
-    have Hq := qualified_type_subtype_q_subtype _ _ _ Hrcv_sub.
-    simpl in Hq.
-    destruct Hstatic_rdm as [Hsr | Hsr]; rewrite Hsr in Hq.
-    + (* static receiver RDM *)
-      destruct (readonly_state_call_channel_inversion _ _ _
-          (or_intror eq_refl) Hq) as
-        [Hbot | [[Ht [_ Hqa]] | [_ Hqa]]].
-      * exfalso.
-        eapply wf_config_nonnull_variable_not_bot with (x := y); eauto.
-      * exfalso.
-        have Himm : r_muttype h ly = Some Imm_r.
-        { eapply typed_imm_root_runtime_immutable_live; eauto.
-          exists y, Ty. repeat split; assumption. }
-        congruence.
-      * eapply HJ with (x := y); eauto.
-    + (* static receiver Bot *)
-      exfalso.
-      assert (Hybot : sqtype Ty = Bot).
-      { destruct (sqtype Ty); simpl in Hq; inversion Hq; subst;
-          congruence. }
-      eapply wf_config_nonnull_variable_not_bot with (x := y); eauto.
-  - (* parameter i *)
-    simpl in Htype. unfold static_getType in Htype.
-    simpl in Hvalue.
-    destruct Hkind as [Hkmut | Hkrdm].
-    { exfalso.
-      have Hsafe : is_nonmutable_qualifier (sqtype T) :=
-        Forall_nth_error _ _ _ _ Hparams_safe Htype.
-      unfold is_nonmutable_qualifier in Hsafe.
-      rewrite Hkmut in Hsafe.
-      destruct Hsafe as [Hb | [Hb | [Hb | Hb]]]; discriminate. }
-    (* static parameter exists and is RDM-or-Bot *)
-    have Hlen := method_signature_refinement_params_length _ _ _ Hrefine.
-    have Hi : i < length (mparams static_sig).
-    { rewrite <- Hlen. apply nth_error_Some. rewrite Htype. discriminate. }
-    have Hsp : exists P, nth_error (mparams static_sig) i = Some P.
-    { destruct (nth_error (mparams static_sig) i) as [P|] eqn:HP.
-      - exists P. reflexivity.
-      - exfalso. apply nth_error_None in HP. lia. }
-    destruct Hsp as [P HP].
-    have Hstatic_rdm : is_rdm_or_bot (sqtype P).
-    { eapply method_signature_refinement_parameter_rdm_or_bot; eauto.
-      left. exact Hkrdm. }
-    (* the argument variable *)
-    destruct (runtime_lookup_list_nth_zs _ _ _ _ _ Hargs Hvalue) as
-      [z [Hzi Hzval]].
-    have Hlen_at : length argtypes = length (mparams static_sig).
-    { have Hl := Forall2_length Harg_sub. exact Hl. }
-    have Hat : exists A, nth_error argtypes i = Some A.
-    { destruct (nth_error argtypes i) as [A|] eqn:HA.
-      - exists A. reflexivity.
-      - exfalso. apply nth_error_None in HA. lia. }
-    destruct Hat as [A HA].
-    have Hz_type : static_getType sGamma z = Some A.
-    { eapply static_getType_list_index_strong; eauto. }
-    have Hpair := Forall2_nth_error _ _ _ _ _ _ Harg_sub HA HP.
-    have Hq := qualified_type_subtype_q_subtype _ _ _ Hpair. simpl in Hq.
-    destruct Hstatic_rdm as [Hsr | Hsr]; rewrite Hsr in Hq.
-    + destruct (readonly_state_call_channel_inversion _ _ _
-          (or_intror eq_refl) Hq) as
-        [Hbot | [[Ht [_ Hqa]] | [_ Hqa]]].
-      * exfalso.
-        eapply wf_config_nonnull_variable_not_bot with (x := z); eauto.
-      * exfalso.
-        have Himm : r_muttype h l = Some Imm_r.
-        { eapply typed_imm_root_runtime_immutable_live; eauto.
-          exists z, A. repeat split; assumption. }
-        congruence.
-      * eapply HJ with (x := z); eauto.
-    + exfalso.
-      assert (Hzbot : sqtype A = Bot).
-      { destruct (sqtype Ty); simpl in Hq; inversion Hq; subst; congruence. }
-      eapply wf_config_nonnull_variable_not_bot with (x := z); eauto.
-Qed.
-
 (** The return-slot channel: if the adapted static return fits a [Mut]/[RDM]
     destination, the receiver view and the static return are pinned. *)
 Lemma readonly_state_return_channel_inversion :
@@ -2014,111 +1823,6 @@ Proof.
   intros t m qx Hkind Heq.
   destruct Hkind as [-> | ->]; destruct t; destruct m;
     simpl in Heq; try discriminate; auto.
-Qed.
-
-(** J after binding a call's return value.  Unchanged variables transport
-    backwards through the body's heap extension; the destination slot routes
-    through the nested frame's final J via the covariant return channel. *)
-Lemma rs_mut_vars_fresh_call_return :
-  forall CT h0 sGamma rGamma h h' x Tx y Ty ly retval
-    runtime_mdef static_sig method_end rGamma'' body_return_type,
-    wf_r_config CT sGamma rGamma h ->
-    wf_r_config CT method_end rGamma'' h' ->
-    rs_mut_vars_fresh h0 sGamma rGamma h ->
-    rs_mut_vars_fresh h0 method_end rGamma'' h' ->
-    (forall loc q, r_muttype h loc = Some q -> r_muttype h' loc = Some q) ->
-    static_getType sGamma x = Some Tx ->
-    static_getType sGamma y = Some Ty ->
-    runtime_getVal rGamma y = Some (Iot ly) ->
-    static_getType method_end (mreturn (mbody runtime_mdef))
-      = Some body_return_type ->
-    runtime_getVal rGamma'' (mreturn (mbody runtime_mdef)) = Some retval ->
-    qualified_type_subtype CT body_return_type
-      (mret (msignature runtime_mdef)) ->
-    method_signature_refinement CT (msignature runtime_mdef) static_sig ->
-    qualified_type_subtype CT
-      (vpa_mutability_tt_readonly_state Ty (mret static_sig)) Tx ->
-    rs_mut_vars_fresh h0 sGamma
-      (update_r_env_value rGamma x retval) h'.
-Proof.
-  intros CT h0 sGamma rGamma h h' x Tx y Ty ly retval runtime_mdef
-    static_sig method_end rGamma'' body_return_type
-    Hcaller_wf Hcallee_wf HJ HJ'' Hpreserve Hget_x Hget_y Hval_y
-    Hret_type Hretval Hbody_sub Hrefine Hret_sub.
-  intros z T l Htype Hvalue Hkind Hmut.
-  destruct (Nat.eq_dec z x) as [-> | Hneq].
-  2:{ have Hxz : x <> z by congruence.
-      have Hold := runtime_getVal_update_diff rGamma x z retval Hxz.
-      rewrite Hold in Hvalue.
-      have Hldom : l < dom h.
-      { eapply wf_config_value_dom with (h := h); eauto. }
-      destruct (r_muttype h l) as [q0|] eqn:Hq0.
-      2:{ exfalso. unfold r_muttype in Hq0.
-          destruct (runtime_getObj h l) as [o0|] eqn:Ho0;
-            [discriminate|].
-          apply nth_error_None in Ho0. lia. }
-      have Hq0' := Hpreserve _ _ Hq0.
-      assert (q0 = Mut_r) by congruence. subst q0.
-      eapply HJ; eauto. }
-  (* the destination slot *)
-  assert (T = Tx) by congruence. subst T.
-  have Hxdom : x < dom (vars rGamma).
-  { have Hxs : x < length sGamma.
-    { apply nth_error_Some. unfold static_getType in Hget_x.
-      rewrite Hget_x. discriminate. }
-    have Hlength := proj1 (proj2 (proj2 (proj2 (proj2 Hcaller_wf)))).
-    lia. }
-  have Hsame := runtime_getVal_update_same rGamma x retval Hxdom.
-  rewrite Hsame in Hvalue. injection Hvalue as ->.
-  have Hq := qualified_type_subtype_q_subtype _ _ _ Hret_sub. simpl in Hq.
-  destruct (mutable_slot_subtype_inversion _ _ Hq Hkind) as [Heq | Hbot].
-  2:{ (* adapted return is Bot *)
-      exfalso.
-      assert (Hcases : sqtype (mret static_sig) = Bot \/ sqtype Ty = Bot).
-      { destruct (sqtype Ty); destruct (sqtype (mret static_sig));
-          simpl in Hbot; try discriminate; auto. }
-      destruct Hcases as [Hmb | Hyb].
-      - have Hdynb := method_signature_refinement_return_bot _ _ _
-          Hrefine Hmb.
-        have Hbq := qualified_type_subtype_q_subtype _ _ _ Hbody_sub.
-        rewrite Hdynb in Hbq.
-        assert (Hbrb : sqtype body_return_type = Bot).
-        { inversion Hbq; subst; congruence. }
-        exact (wf_config_nonnull_variable_not_bot CT method_end rGamma'' h'
-          (mreturn (mbody runtime_mdef)) body_return_type l
-          Hcallee_wf Hret_type Hretval Hbrb).
-      - exact (wf_config_nonnull_variable_not_bot CT sGamma rGamma h y Ty ly
-          Hcaller_wf Hget_y Hval_y Hyb). }
-  assert (Hm : sqtype (mret static_sig) = Mut \/
-               sqtype (mret static_sig) = RDM).
-  { destruct (readonly_state_return_channel_inversion _ _ _ Hkind Heq) as
-      [[_ Hm] | [_ Hm]]; [exact Hm | right; exact Hm]. }
-  have Hconc : is_concrete_or_rdm_or_bot (sqtype (mret static_sig)).
-  { unfold is_concrete_or_rdm_or_bot.
-    destruct Hm as [-> | ->]; auto. }
-  have Hdyn := method_signature_refinement_return_concrete_or_rdm_or_bot
-    _ _ _ Hrefine Hconc.
-  have Hbq := qualified_type_subtype_q_subtype _ _ _ Hbody_sub.
-  unfold is_concrete_or_rdm_or_bot in Hdyn.
-  assert (Hbody_cases : sqtype body_return_type = Mut \/
-      sqtype body_return_type = RDM \/
-      sqtype body_return_type = Imm \/
-      sqtype body_return_type = Bot).
-  { destruct Hdyn as [Hd | [Hd | [Hd | Hd]]]; rewrite Hd in Hbq;
-      inversion Hbq; subst; auto. }
-  destruct Hbody_cases as [Hb | [Hb | [Hb | Hb]]].
-  - eapply HJ'' with (x := mreturn (mbody runtime_mdef)); eauto.
-  - eapply HJ'' with (x := mreturn (mbody runtime_mdef)); eauto.
-  - exfalso.
-    have Himm : r_muttype h' l = Some Imm_r.
-    { eapply typed_imm_root_runtime_immutable_live; [exact Hcallee_wf|].
-      exists (mreturn (mbody runtime_mdef)), body_return_type.
-      repeat split; assumption. }
-    congruence.
-  - exfalso.
-    exact (wf_config_nonnull_variable_not_bot CT method_end rGamma'' h'
-      (mreturn (mbody runtime_mdef)) body_return_type l
-      Hcallee_wf Hret_type Hretval Hb).
 Qed.
 
 (** ** The pool at a nested call entry, under the restored rule
