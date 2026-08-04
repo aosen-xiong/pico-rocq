@@ -819,3 +819,24 @@ refinement.  Known repair obligations, in dependency order:
 
 Do NOT re-narrow the typing rule to make proofs pass; that repeats the
 original silent weakening.
+
+### Restored-rule triage, session end state
+
+Repaired and committed: callee_frame_wf_rs_ts / callee_frame_wf_abs
+(Preservation.v) -- disjunctive premise, special branch closed by RDM's
+universal runtime-typability.  Preservation.v compiles.
+
+Next casualty, and it is semantic: safe_call_callee_rdm_root_origin
+(ForwardCapabilityHistory.v:191).  Its conclusion
+
+    sqtype Ty = Mut \/ sqtype Ty = Imm \/ sqtype Ty = RDM
+
+is FALSE under the special rule: the callee's receiver-derived RDM root
+reflects to the caller's y at sqtype Ty = RO.  The conclusion must gain the
+RO case, which flows into rdm_roots_reflect_through_view and the boundary
+origins record -- i.e. the callee's RDM roots are no longer guaranteed to
+reflect to non-readonly caller roots.  This is where the ownership rework of
+items 3-4 begins, not a mechanical thread-the-disjunction site.
+
+Everything after ForwardCapabilityHistory.v in the build order is untested
+against the restored rule.
