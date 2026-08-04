@@ -863,3 +863,70 @@ Then continue make -k.  After FCH, the same reshaping will be needed wherever
 the origins record is CONSTRUCTED for a special call (the RO branch of
 rdm_roots_reflect_through_view finally becomes reachable), and then items 3-4
 of the repair map (the freshness invariant under the restored rule).
+
+### Stage 1-2 status: 2026-08-03
+
+All 16 consumers of the reshaped safe_call_callee_rdm_root_origin are
+fixed; every file through PotentialCapabilityResume.v compiles and the
+repaired lemmas are Closed under the global context (checked with
+Print Assumptions per file).
+
+Committed, in build order:
+- ForwardCapabilityHistory.v (3047711): color-separation consumer at
+  :470/474 -- mixed branches by congruence on the shared receiver type,
+  RO/RO closes at ly via separated_components_cannot_touch_both.
+- AuthorityHistory.v (9c5a3fd): :856 -- call_authority _ RO = Imm_r,
+  discriminate against Hcallee_mut.
+- WatchedFrames.v: :182 -- the RO branch of
+  rdm_roots_reflect_through_view is finally exercised;
+  get_this_var_mapping on mkr_env (Iot ly :: vals) reduces to Some ly.
+- LiveCapabilityStack.v: :642/:659 -- same discriminate as AH:856.
+- PotentialCapabilityPrivate.v: Stage 1 paired-root sites (5881/5885,
+  6914/6918, 6943/6947, and the frame-join case of the prospective step
+  lemma at 5470: a special join is a self-loop at ly, reuse the source
+  coverage); Stage 2 widenings below.
+- PotentialCapabilityResume.v: Stage 2 widening at 9949.
+
+Stage 2 disjunct, as implemented (stronger than the plan's wording --
+it also records the receiver view, which downstream refutation needs):
+  \/ (sqtype Ty = RO /\ root = ly /\ typed_root RO sGamma rGamma root
+      /\ r_muttype h root = Some Mut_r)
+Widened lemmas: safe_call_callee_mutable_authority_root_reflects_to_
+caller (Private:5449), live_mutable_authority_components_enter_safe_call
+(5701) + its prospective sibling and the two frozen_callee_side_*_enter_
+untracked_safe_call consumers (conclusions unfolded per root/target),
+frozen_caller_snapshots_active_resume_origins_after_safe_call_entry
+(7112), principled_live_mutable_rdm_history_enter_call (8055),
+frozen_active_overlap_justified_after_safe_call_entry (Resume:9949).
+
+Stage 4 frontier (NOT blockers -- deliberate preconditions): the
+master-record entry lemmas whose conclusions are stack-invariant records
+that are semantically FALSE at a special call (an old runtime-mutable
+receiver becomes a below-cutoff RDM authority root of the callee):
+  private_fresh_frozen_statement_enter_call_untracked,
+  private_statement_enter_call_untracked (Private.v),
+  private_policy_head_overlap_after_safe_call_entry (Resume.v)
+now take a `sqtype Ty <> RO` premise and refute the special disjunct
+with it.  This is plan Stage 4's "precondition the chain on the active
+frame being non-special", applied at the record boundary so the files
+compile; the special-entry path is Stage 4's redesign.  Their consumers
+live in the not-yet-repaired files, so no caller currently has to
+discharge the premise.
+
+Stage 3 pull-forward: safe_typed_call_static_result (Private:5366) sits
+before the Stage 2 sites in the file and would not compile; its 8th
+conjunct is now the restored disjunction verbatim (exact plan Stage 3
+wording).  Its consumers (ProtectedFieldPreservation.v:186,
+RDMPop.v:2658, PotentialCapability.v:57) are untouched and will need
+the Stage 3 destruct-and-refute pattern.
+
+Next compile error (start of Stage 3): PotentialCapabilityRDMPop.v:2698
+-- the destruct of safe_typed_call_static_result at :2658 now yields the
+disjunctive receiver conjunct; refute the special branch via
+refined_call_rdm_result_classifies_body_return (Private:3384 area) per
+plan Stage 3.
+
+Note: private_statement_enter_call_untracked reports the pre-existing
+Classical_Prop.classic assumption (its proof already used
+proof_irrelevance before this repair); all other repaired lemmas are
+axiom-free.
