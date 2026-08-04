@@ -35,32 +35,6 @@ Definition resumed_frame_join_target
   caller.(frame_authority) = Mut_r \/
   In Loc eligible location.
 
-Lemma resumed_frame_join_target_mutable :
-  forall eligible caller location,
-    caller.(frame_authority) = Mut_r ->
-    resumed_frame_join_target eligible caller location.
-Proof.
-  intros eligible caller location Hauthority. left. exact Hauthority.
-Qed.
-
-(** Location-level projection of every resumed-frame step other than an RDM
-    root join.  Keeping this relation independent of authority modes makes
-    the allocation-age argument below reusable for dangerous and neutral
-    paths alike. *)
-Inductive resumed_authority_nonjoin_location_step
-  (CT : class_table) (h : heap) : Loc -> Loc -> Prop :=
-| resumed_nonjoin_location_retained : forall left right,
-    retained_mut_edge CT h left right ->
-    resumed_authority_nonjoin_location_step CT h left right
-| resumed_nonjoin_location_mutable_forward : forall left right,
-    mutable_edge CT h left right ->
-    resumed_authority_nonjoin_location_step CT h left right
-| resumed_nonjoin_location_mutable_backward : forall left right,
-    mutable_edge CT h right left ->
-    resumed_authority_nonjoin_location_step CT h left right
-| resumed_nonjoin_location_refl : forall location,
-    resumed_authority_nonjoin_location_step CT h location location.
-
 Inductive resumed_authority_frame_step
   (CT : class_table) (h : heap)
   (eligible : Ensemble Loc) (caller : watched_frame) :
@@ -211,75 +185,6 @@ Inductive resumed_frozen_authority_step
     resumed_frozen_authority_step CT h eligible caller
       (FlowProspective, left) (FlowProspective, right).
 
-Definition resumed_frozen_authority_connected
-  (CT : class_table) (h : heap) (eligible : Ensemble Loc)
-  (caller : watched_frame) :
-  authority_flow_state -> authority_flow_state -> Prop :=
-  clos_refl_trans authority_flow_state
-    (resumed_frozen_authority_step CT h eligible caller).
-
-Inductive resumed_dangerous_color_derivation
-  (CT : class_table) (h : heap) (eligible : Ensemble Loc)
-  (caller : watched_frame) (incoming : Ensemble authority_flow_state) :
-  authority_flow_state -> Prop :=
-| resumed_dangerous_from_incoming : forall state,
-    authority_mode_dangerous (fst state) ->
-    In authority_flow_state incoming state ->
-    resumed_dangerous_color_derivation CT h eligible caller incoming state
-| resumed_dangerous_from_owned : forall location,
-    frame_owned_location CT h caller location ->
-    resumed_dangerous_color_derivation CT h eligible caller incoming
-      (FlowPowered, location)
-| resumed_dangerous_by_frozen_step : forall source target,
-    resumed_dangerous_color_derivation CT h eligible caller incoming source ->
-    resumed_frozen_authority_step CT h eligible caller source target ->
-    resumed_dangerous_color_derivation CT h eligible caller incoming target.
-
-Definition executing_resumed_authority_colors_separated
-  (CT : class_table) (h : heap) (Z : Ensemble Loc)
-  (eligible : Ensemble Loc) (active : watched_frame)
-  (incoming : Ensemble authority_flow_state) : Prop :=
-  forall mode protected,
-    authority_mode_dangerous mode ->
-    In authority_flow_state
-      (executing_resumed_authority_color_set CT h eligible active incoming)
-      (mode, protected) ->
-    ~ In Loc Z protected.
-
-Lemma executing_resumed_authority_color_set_in_phased :
-  forall CT h eligible active incoming,
-    Included authority_flow_state
-      (executing_resumed_authority_color_set CT h eligible active incoming)
-      (executing_authority_color_set CT h active incoming).
-Proof.
-  intros CT h eligible active incoming state [seed [Hseed Hpath]].
-  exists seed. split; [exact Hseed|].
-  eapply resumed_authority_frame_connected_is_phased. exact Hpath.
-Qed.
-
-(** Policy-indexed form of the internal pop obligation.  It is the exact
-    interface required by an immutable resumed frame: paths quantify only
-    over joins whose targets remain eligible in that frame's persistent
-    policy. *)
-Definition executing_resumed_authority_call_pop_safe
-  (CT : class_table) (h : heap) (Z : Ensemble Loc)
-  (callee : watched_frame)
-  (callee_incoming : Ensemble authority_flow_state)
-  (eligible : Ensemble Loc)
-  (caller : watched_frame)
-  (caller_incoming : Ensemble authority_flow_state) : Prop :=
-  forall mode location,
-    authority_mode_dangerous mode ->
-    In authority_flow_state
-      (executing_resumed_authority_color_set CT h eligible caller
-        caller_incoming) (mode, location) ->
-    (exists callee_mode,
-      authority_mode_dangerous callee_mode /\
-      In authority_flow_state
-        (executing_authority_color_set CT h callee callee_incoming)
-        (callee_mode, location)) \/
-    ~ In Loc Z location.
-
 (** Stack discipline for the persistent target policy.  Every active frame
     has one set of eligible RDM target locations; suspension pushes that set
     unchanged, and return restores it unchanged.  A callee starts with the
@@ -309,22 +214,6 @@ Definition private_resume_witness_covers_tail
         Included authority_flow_state
           older.(frozen_snapshot_current_colors)
           head.(frozen_snapshot_current_colors)
-  end.
-
-(** Pointwise stack relation between phase-current policy witnesses and the
-    ordinary snapshot slots.  A witness at the current index covers the
-    strict snapshot tail because it denotes the caller suspended at that
-    boundary. *)
-Fixpoint private_resume_witnesses_cover_snapshots
-  (Z : Ensemble Loc) (witnesses snapshots : list frozen_caller_snapshot_slot)
-  : Prop :=
-  match witnesses, snapshots with
-  | [], [] => True
-  | witness :: witness_tail, None :: snapshot_tail =>
-      private_resume_witness_covers_tail Z witness
-        snapshot_tail /\
-      private_resume_witnesses_cover_snapshots Z witness_tail snapshot_tail
-  | _, _ => False
   end.
 
 (** Policy witnesses use the same entry-or-safe rule as completed colors.
@@ -482,103 +371,6 @@ Definition frozen_completed_colors_resume_phase_safe
       In authority_flow_state snapshot.(frozen_snapshot_phase_incoming)
         (phase_mode, source)) \/
     frozen_snapshot_resume_exposure_avoids Z snapshot.
-
-(** Cross-channel second-order certificate.  A lightweight target exists at
-    every boundary, but only a [Some] resume witness is later consumed by the
-    exceptional return reconstruction.  Consequently each target exposure
-    is related to the strict tail of retained resume witnesses, not to the
-    target tail itself. *)
-Fixpoint private_target_exposures_support_resume_phase
-  (Z : Ensemble Loc) (targets resumes : list frozen_caller_snapshot_slot) :
-  Prop :=
-  match targets, resumes with
-  | [], [] => True
-  | Some target :: target_tail, _ :: resume_tail =>
-      frozen_completed_colors_resume_phase_safe Z
-        target.(frozen_snapshot_current_resume_exposure) resume_tail /\
-      private_target_exposures_support_resume_phase Z target_tail resume_tail
-  | None :: target_tail, _ :: resume_tail =>
-      private_target_exposures_support_resume_phase Z target_tail resume_tail
-  | _, _ => False
-  end.
-
-(** The optional exceptional witness is a refinement of the lightweight
-    target witness at the same boundary.  They may carry different current
-    color summaries, but their static phase metadata and their evolving
-    resume exposure agree. *)
-Fixpoint private_target_supports_resume_witnesses
-  (targets resumes : list frozen_caller_snapshot_slot) : Prop :=
-  match targets, resumes with
-  | [], [] => True
-  | Some target :: target_tail, Some resume :: resume_tail =>
-      Same_set authority_flow_state
-        resume.(frozen_snapshot_phase_incoming)
-        target.(frozen_snapshot_entry_phase) /\
-      Same_set Loc resume.(frozen_snapshot_resume_rdm_roots)
-        target.(frozen_snapshot_resume_rdm_roots) /\
-      Same_set authority_flow_state
-        resume.(frozen_snapshot_entry_resume_exposure)
-        target.(frozen_snapshot_entry_resume_exposure) /\
-      Same_set authority_flow_state
-        resume.(frozen_snapshot_current_resume_exposure)
-        target.(frozen_snapshot_current_resume_exposure) /\
-      private_target_supports_resume_witnesses target_tail resume_tail
-  | Some _ :: target_tail, None :: resume_tail =>
-      private_target_supports_resume_witnesses target_tail resume_tail
-  | None :: target_tail, None :: resume_tail =>
-      private_target_supports_resume_witnesses target_tail resume_tail
-  | _, _ => False
-  end.
-
-(** The target channel may remember activations that the exact resume phase
-    intentionally does not.  This pairwise certificate records why such a
-    historical target color is nevertheless safe at the corresponding
-    resume root. *)
-Fixpoint private_target_history_supports_resume_phase
-  (Z : Ensemble Loc) (targets resumes : list frozen_caller_snapshot_slot) :
-  Prop :=
-  match targets, resumes with
-  | [], [] => True
-  | Some target :: target_tail, Some resume :: resume_tail =>
-      (forall source_mode source,
-        authority_mode_dangerous source_mode ->
-        In authority_flow_state target.(frozen_snapshot_phase_incoming)
-          (source_mode, source) ->
-        In Loc resume.(frozen_snapshot_resume_rdm_roots) source ->
-        (exists phase_mode,
-          authority_mode_dangerous phase_mode /\
-          In authority_flow_state resume.(frozen_snapshot_phase_incoming)
-            (phase_mode, source)) \/
-        frozen_snapshot_resume_exposure_avoids Z resume) /\
-      private_target_history_supports_resume_phase Z target_tail resume_tail
-  | Some _ :: target_tail, None :: resume_tail =>
-      private_target_history_supports_resume_phase Z target_tail resume_tail
-  | None :: target_tail, None :: resume_tail =>
-      private_target_history_supports_resume_phase Z target_tail resume_tail
-  | _, _ => False
-  end.
-
-(** Lightweight saved-target summaries.  These are present at every call
-    boundary, including an operational [None] boundary.  They intentionally
-    omit the strong callee-side freshness partition required only by the
-    exceptional immutable-RDM/mutable-return witness. *)
-Definition private_target_witness_stack_structural
-  (CT : class_table) (h : heap) (active : watched_frame)
-  (witnesses : list frozen_caller_snapshot_slot) : Prop :=
-  True /\
-  frozen_caller_snapshots_runtime_mutable h witnesses /\
-  frozen_caller_snapshots_dangerous witnesses /\
-  frozen_caller_snapshots_closed CT h active witnesses /\
-  frozen_caller_snapshots_resume_roots_in_heap h witnesses /\
-  frozen_caller_snapshots_resume_exposures_wf CT h active witnesses /\
-  frozen_caller_snapshots_retain_entry witnesses /\
-  frozen_caller_snapshots_cover_phase_incoming witnesses.
-
-Definition private_target_witness_temporal_state
-  (CT : class_table) (h : heap) (Z : Ensemble Loc) (cutoff : Loc)
-  (active : watched_frame) (stack : list watched_boundary)
-  (targets : list frozen_caller_snapshot_slot) : Prop :=
-  frozen_snapshot_boundaries_after_cutoff cutoff targets stack.
 
 Lemma frozen_caller_snapshots_nested_resume_safe_after_new :
   forall CT Z cutoff sGamma mt rGamma h x qc C args sGamma' vals
@@ -779,35 +571,6 @@ Definition frozen_caller_snapshot_phase_images_grow
     initial.(frozen_snapshot_current_resume_exposure)
     final.(frozen_snapshot_current_resume_exposure).
 
-Definition frozen_caller_snapshot_slot_phase_images_grow
-  (final initial : frozen_caller_snapshot_slot) : Prop :=
-  match final, initial with
-  | Some final_snapshot, Some initial_snapshot =>
-      frozen_caller_snapshot_phase_images_grow final_snapshot initial_snapshot
-  | None, None => True
-  | _, _ => False
-  end.
-
-Definition leave_private_frame_join_policies
-  (policies : private_frame_join_policies) :
-  option private_frame_join_policies :=
-  match policies.(suspended_frame_join_targets),
-        policies.(suspended_frame_target_witnesses),
-        policies.(suspended_frame_resume_witnesses) with
-  | caller_targets :: target_tail, _ :: target_witness_tail,
-      _ :: witness_tail =>
-      Some (mk_private_frame_join_policies caller_targets target_tail
-        target_witness_tail witness_tail)
-  | _, _, _ => None
-  end.
-
-Definition private_frame_join_policies_aligned
-  (policies : private_frame_join_policies)
-  (stack : list watched_boundary) : Prop :=
-  length policies.(suspended_frame_join_targets) = length stack /\
-  length policies.(suspended_frame_target_witnesses) = length stack /\
-  length policies.(suspended_frame_resume_witnesses) = length stack.
-
 (** Allocation-age invariant for the persistent target policy.  Active
     targets denote locations already present in the current heap.  Each
     suspended target set is stronger: its locations predate the exact call
@@ -823,30 +586,6 @@ Definition private_frame_join_targets_before_boundary
   forall location,
     In Loc targets location ->
     location < boundary.(boundary_entry_cutoff).
-
-Definition private_frame_join_policies_valid
-  (h : heap) (policies : private_frame_join_policies)
-  (stack : list watched_boundary) : Prop :=
-  private_frame_join_targets_in_heap h
-    policies.(active_frame_join_targets) /\
-  Forall2 private_frame_join_targets_before_boundary
-    policies.(suspended_frame_join_targets) stack.
-
-Lemma executing_authority_colors_separated_after_call_pop :
-  forall CT h Z callee callee_incoming caller caller_incoming,
-    executing_authority_colors_separated CT h Z callee callee_incoming ->
-    executing_authority_call_pop_safe CT h Z callee callee_incoming
-      caller caller_incoming ->
-    executing_authority_colors_separated CT h Z caller caller_incoming.
-Proof.
-  intros CT h Z callee callee_incoming caller caller_incoming
-    Hcallee Hpop mode protected Hmode Hcaller Hprotected.
-  destruct (Hpop mode protected Hmode Hcaller) as
-    [[callee_mode [Hcallee_mode Hcallee_color]] | Houtside].
-  - exact (Hcallee callee_mode protected Hcallee_mode Hcallee_color
-      Hprotected).
-  - exact (Houtside Hprotected).
-Qed.
 
 Lemma readonly_rdm_call_receiver_signature :
   forall CT receiver_type method_receiver,
