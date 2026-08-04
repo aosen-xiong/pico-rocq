@@ -9,32 +9,6 @@ From Stdlib Require Import List Sets.Ensembles Relations.Relation_Operators
   Program.Equality.
 Import ListNotations.
 
-(** Return-safety and policy-pop helpers accept either completed-callee
-    provenance or the retained witness's certified-safe resume exposure. *)
-
-(** The color set constructed at the pop transition.  Completed callee
-    colors cross the return boundary only after being demoted; the caller's
-    saved incoming authority is restored independently, and caller-owned
-    capabilities are powered in the resumed phase.  Thus no return edge is
-    present while the callee executes. *)
-
-(** A frame that resumes after a call does not acquire authority merely
-    because the returned value is installed in a fresh [RDM] destination.
-    For a mutable caller every [RDM] root is independently powered and is
-    therefore an admissible join target.  For an immutable caller, only an
-    [RDM] root that was already present in the saved pre-call frame is an
-    admissible target.  Notice that this restriction is directional: the
-    returned root may be the source of a neutral component-identification
-    step, but authority from an old root cannot be projected into it.
-
-    This is proof-local call-pop structure.  It neither changes dynamic
-    dispatch nor adds a premise to the public preservation theorem. *)
-Definition resumed_frame_join_target
-  (eligible : Ensemble Loc) (caller : watched_frame)
-  (location : Loc) : Prop :=
-  caller.(frame_authority) = Mut_r \/
-  In Loc eligible location.
-
 (** Policy witnesses use the same entry-or-safe rule as completed colors.
     Requiring the stronger ordinary-snapshot [resume_roots_safe] property
     here would incorrectly reject a resumed color that was already present
