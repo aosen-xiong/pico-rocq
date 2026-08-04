@@ -333,43 +333,6 @@ Proof.
     + simpl. exact I.
 Qed.
 
-Lemma authority_component_history_shrink :
-  forall CT P Z Mbig Msmall cutoff authority sGamma rGamma h,
-    authority_component_history_state CT P Z Mbig cutoff authority
-      sGamma rGamma h ->
-    Included Loc Msmall Mbig ->
-    mutable_heap_closed CT h Msmall ->
-    mutable_members_runtime_mut h Msmall ->
-    authority_env_roots_in authority Msmall sGamma rGamma ->
-    authority_component_history_state CT P Z Msmall cutoff authority
-      sGamma rGamma h.
-Proof.
-  intros CT P Z Mbig Msmall cutoff authority sGamma rGamma h
-    [[Hcontains [Hzone [Hconfined [Hclosed_big [Hruntime_big
-      [Hmutroots_big Havoid]]]]]]
-      [Hauthority_roots [Hcontext Hcolors]]]
-    Hincluded Hclosed Hruntime Hroots.
-  split.
-  - refine (conj Hcontains (conj Hzone (conj Hconfined
-      (conj Hclosed (conj Hruntime (conj _ _)))))).
-    + intros root [x [T [Htype [Hvalue Hmut]]]].
-      apply Hroots. exists x, T. repeat split; try assumption.
-      unfold capability_in_context. left. exact Hmut.
-    + intros location Hin. apply Havoid. apply Hincluded. exact Hin.
-  - split; [exact Hroots|].
-    split; [exact Hcontext|].
-    destruct Hcolors as [Hcomponents Hactive].
-    split.
-    + intros capability protected Hcapability Hprotected Hconnected.
-      eapply Hcomponents; [apply Hincluded; exact Hcapability| |]; eauto.
-    + intros capability_root zone_root Hcaproot
-        [capability [Hcapability Hcapconnected]] Hzoneroot Hzonetouch.
-      eapply Hactive with (capability_root := capability_root)
-        (zone_root := zone_root); eauto.
-      exists capability. split; [apply Hincluded; exact Hcapability|].
-      exact Hcapconnected.
-Qed.
-
 (** The heap-wide part of a history is independent of the currently active
     frame.  Reactivating a suspended caller therefore needs only the caller's
     environment facts, root inclusion, authority soundness, and its RDM color
@@ -1186,22 +1149,6 @@ Proof.
   eapply Hcallee; eauto.
 Qed.
 
-Lemma authority_context_sound_after_nonreceiver_update :
-  forall h rGamma authority destination value,
-    authority_context_sound h rGamma authority ->
-    destination <> 0 ->
-    authority_context_sound h
-      (update_r_env_value rGamma destination value) authority.
-Proof.
-  intros h rGamma authority destination value Hsound Hnot_receiver
-    Hmutable_authority.
-  destruct (Hsound Hmutable_authority) as
-    [receiver [Hreceiver Hreceiver_mutable]].
-  exists receiver. split; [|exact Hreceiver_mutable].
-  unfold update_r_env_value. destruct rGamma; simpl in *.
-  rewrite get_this_var_mapping_update_nonzero; assumption.
-Qed.
-
 (** Popping a successful call cannot expose a new capability root.  Unchanged
     caller roots are represented by the suspended caller boundary; the only
     changed root is the destination, whose value is reflected to the callee's
@@ -1414,7 +1361,7 @@ Proof.
   set (Msmall := live_capability_set CT callee_h caller_post stack).
   have Hcaller_old_sound : authority_context_sound callee_h caller_renv
       caller_authority := Forall_inv Hboundary_sound.
-  have Hcaller_post_sound := authority_context_sound_after_nonreceiver_update
+  have Hcaller_post_sound := authority_context_sound_after_nonreceiver_update_live
     callee_h caller_renv caller_authority destination (Iot return_location)
     Hcaller_old_sound Hdestination_not_receiver.
   have Htail_wf : Forall (fun boundary =>
@@ -1652,7 +1599,7 @@ Proof.
   set (Msmall := live_capability_set CT callee_h caller_post stack).
   have Hcaller_old_sound : authority_context_sound callee_h caller_renv
       caller_authority := Forall_inv Hboundary_sound.
-  have Hcaller_post_sound := authority_context_sound_after_nonreceiver_update
+  have Hcaller_post_sound := authority_context_sound_after_nonreceiver_update_live
     callee_h caller_renv caller_authority destination Null_a
     Hcaller_old_sound Hdestination_not_receiver.
   have Htail_wf : Forall (fun boundary =>
@@ -2074,7 +2021,7 @@ Proof.
   have Hroots := active_authority_roots_are_live CT h
     (mk_watched_frame authority sGamma
       (update_r_env_value rGamma x value)) stack.
-  have Hsmall := authority_component_history_shrink CT P Z
+  have Hsmall := authority_component_history_shrink_before_initialization CT P Z
     (live_capability_set CT h
       (mk_watched_frame authority sGamma rGamma) stack)
     (live_capability_set CT h
@@ -2140,7 +2087,7 @@ Proof.
   have Hroots := active_authority_roots_are_live CT h
     (mk_watched_frame authority sGamma'
       (set_vars rGamma (vars rGamma ++ [Null_a]))) stack.
-  have Hsmall := authority_component_history_shrink CT P Z
+  have Hsmall := authority_component_history_shrink_before_initialization CT P Z
     (live_capability_set CT h
       (mk_watched_frame authority sGamma rGamma) stack)
     (live_capability_set CT h
@@ -2221,7 +2168,7 @@ Proof.
     Hframes_wf Hframes_sound.
   have Hroots := active_authority_roots_are_live CT h'
     (mk_watched_frame authority sGamma' rGamma') stack.
-  have Hsmall := authority_component_history_shrink CT P Z Mbig
+  have Hsmall := authority_component_history_shrink_before_initialization CT P Z Mbig
     (live_capability_set CT h'
       (mk_watched_frame authority sGamma' rGamma') stack)
     cutoff authority sGamma' rGamma' h' Hbig Hincluded Hclosed Hruntime
@@ -2330,7 +2277,7 @@ Proof.
         (caller_boundary :: stack)) cutoff
       (call_authority caller_authority (sqtype Ty))
       callee_senv callee_renv h.
-  { eapply authority_component_history_shrink with
+  { eapply authority_component_history_shrink_before_initialization with
       (Mbig := live_capability_set CT h
         (mk_watched_frame caller_authority sGamma rGamma) stack).
     - exact Hcallee_history.

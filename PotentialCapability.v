@@ -281,7 +281,7 @@ Proof.
                   (sqtype (mret (msignature mdef))) (dom h) origins ::
                   stack))
               return_location.
-        { eapply typed_mut_root_is_active_live_capability.
+        { eapply typed_mut_root_is_live_capability.
           exists (mreturn (mbody mdef)), body_return_type.
           repeat split;
             [exact Hreturn_type|exact Hretval|exact Hbody_mut]. }

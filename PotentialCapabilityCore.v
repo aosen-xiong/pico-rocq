@@ -1262,19 +1262,6 @@ Proof.
   eapply mutable_reachable_connected; eauto.
 Qed.
 
-Lemma typed_mut_root_is_active_live_capability :
-  forall CT h active stack root,
-    typed_root Mut active.(frame_senv) active.(frame_renv) root ->
-    In Loc (live_capability_set CT h active stack) root.
-Proof.
-  intros CT h active stack root
-    [variable [T [Htype [Hvalue Hmut]]]].
-  exists root. split.
-  - left. exists variable, T. repeat split; try assumption.
-    unfold capability_in_context. left. exact Hmut.
-  - constructor.
-Qed.
-
 (** Generic preservation rule for the pairwise nested resume certificate.
     A post-step color is classified either as the corresponding historical
     color or as a step-local exceptional provenance.  The exceptional class

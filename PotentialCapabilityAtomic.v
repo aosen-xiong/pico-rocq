@@ -307,27 +307,6 @@ Proof.
   - discriminate.
 Qed.
 
-Lemma mutable_edge_after_non_rdm_field_update_is_old :
-  forall CT h lx old field value C fieldT left right,
-    runtime_getObj h lx = Some old ->
-    base_subtype CT (rctype (rt_type old)) C ->
-    sf_def_rel CT C field fieldT ->
-    mutability (ftype fieldT) <> RDM_f ->
-    mutable_edge CT (update_field h lx field value) left right ->
-    mutable_edge CT h left right.
-Proof.
-  intros CT h lx old field value C fieldT left right Hobj Hbase Hfield
-    Hnot_rdm Hedge.
-  destruct (mutable_edge_after_field_update CT h lx old field value
-    left right Hobj Hedge) as [Hold | Hnew]; [exact Hold|].
-  destruct Hnew as [Hsource [Hvalue [D [runtime_fd [Hruntime_base
-    [Hruntime_field Hruntime_rdm]]]]]].
-  assert (runtime_fd = fieldT).
-  { eapply field_defs_agree_at_runtime_subtype with
-      (C := rctype (rt_type old)) (D1 := D) (D2 := C); eauto. }
-  subst runtime_fd. contradiction.
-Qed.
-
 Lemma potential_colors_after_graph_reflection :
   forall CT h h' active stack M M' Z,
     Included Loc M' M ->
@@ -370,35 +349,6 @@ Proof.
   - left. exists variable, T. repeat split; try assumption.
     unfold capability_in_context. right. split; [exact Hrdm|reflexivity].
   - constructor.
-Qed.
-
-Lemma typed_imm_root_runtime_immutable :
-  forall CT sGamma rGamma h root,
-    wf_r_config CT sGamma rGamma h ->
-    typed_root Imm sGamma rGamma root ->
-    r_muttype h root = Some Imm_r.
-Proof.
-  intros CT sGamma rGamma h root Hwf
-    [variable [T [Htype [Hvalue Himm]]]].
-  destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf) as
-    [receiver [context [Hreceiver [_ Hcontext]]]].
-  have Hwf_copy := Hwf.
-  unfold wf_r_config in Hwf.
-  destruct Hwf as [_ [_ [_ [_ [_ Hcorrespondence]]]]].
-  have Hvariable_dom := Htype. apply static_getType_dom in Hvariable_dom.
-  specialize (Hcorrespondence receiver context Hreceiver Hcontext variable
-    Hvariable_dom T Htype).
-  rewrite Hvalue in Hcorrespondence.
-  unfold wf_r_typable, r_type in Hcorrespondence.
-  destruct (runtime_getObj h root) as [object|] eqn:Hobject;
-    try contradiction.
-  destruct Hcorrespondence as [_ Hqualifier].
-  unfold qualifier_typable_context, vpa_mutability_runtime in Hqualifier.
-  rewrite Himm in Hqualifier.
-  unfold r_muttype. rewrite Hobject. simpl.
-  destruct (rqtype (rt_type object)).
-  - destruct context; contradiction.
-  - reflexivity.
 Qed.
 
 Lemma potential_connected_after_field_update_if_edge_redundant :
@@ -1276,10 +1226,10 @@ Proof.
         -- exact Hwritten_live.
         -- exact Hpotential.
       * have Hloc_x_immutable : r_muttype h loc_x = Some Imm_r.
-        { eapply typed_imm_root_runtime_immutable; [exact Hwf|].
+        { eapply typed_imm_root_runtime_immutable_live; [exact Hwf|].
           exists x, Tx'. repeat split; assumption. }
         have Hwritten_immutable : r_muttype h written = Some Imm_r.
-        { eapply typed_imm_root_runtime_immutable; [exact Hwf|].
+        { eapply typed_imm_root_runtime_immutable_live; [exact Hwf|].
           exists y, Ty. repeat split; assumption. }
         eapply potential_colors_after_immutable_field_update; eauto.
 	      * have Hredundant : potential_connected CT h
@@ -2430,7 +2380,7 @@ Proof.
       destruct qc.
       * left. reflexivity.
       * simpl in Hroot.
-        have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma
+        have Himmutable := typed_imm_root_runtime_immutable_live CT sGamma rGamma
           h left Hwf Hroot.
         have Hmutable := Hold_runtime old_mode left Hold_color.
         congruence.
@@ -2767,192 +2717,6 @@ Proof.
   - simpl in Hfresh. subst location. lia.
 Qed.
 
-Lemma frozen_caller_snapshots_nested_resume_safe_after_new :
-  forall CT Z cutoff sGamma mt rGamma h x qc C args sGamma' vals
-    qreceiver qruntime authority snapshots,
-    wf_r_config CT sGamma rGamma h ->
-    wf_r_config CT sGamma'
-      (update_r_env_value rGamma x (Iot (dom h)))
-      (h ++ [mkObj (mkruntime_type qruntime C) vals]) ->
-    authority_context_sound h rGamma authority ->
-    authority_context_sound
-      (h ++ [mkObj (mkruntime_type qruntime C) vals])
-      (update_r_env_value rGamma x (Iot (dom h))) authority ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    vpa_mutability_object_creation qreceiver qc = qruntime ->
-    cutoff <= dom h ->
-    protected_zone_before_cutoff Z cutoff ->
-    frozen_caller_snapshots_runtime_mutable h snapshots ->
-    frozen_caller_snapshots_closed CT h
-      (mk_watched_frame authority sGamma rGamma) snapshots ->
-    frozen_caller_snapshots_resume_roots_in_heap h snapshots ->
-    frozen_caller_snapshots_resume_exposures_wf CT h
-      (mk_watched_frame authority sGamma rGamma) snapshots ->
-    frozen_caller_snapshots_nested_resume_safe Z snapshots ->
-    frozen_caller_snapshots_resume_roots_safe CT h Z
-      (mk_watched_frame authority sGamma rGamma) snapshots ->
-    (forall active_mode location,
-      authority_mode_dangerous active_mode ->
-      In authority_flow_state
-        (independent_active_authority_colors CT h
-          (mk_watched_frame authority sGamma rGamma))
-        (active_mode, location) ->
-      ~ In Loc Z location) ->
-    frozen_caller_snapshots_nested_resume_safe Z
-      (advance_frozen_caller_snapshots CT
-        (h ++ [mkObj (mkruntime_type qruntime C) vals])
-        (mk_watched_frame authority sGamma'
-          (update_r_env_value rGamma x (Iot (dom h)))) snapshots).
-Proof.
-  intros CT Z cutoff sGamma mt rGamma h x qc C args sGamma' vals
-    qreceiver qruntime authority snapshots Hwf Hpost_wf Hsound Hpost_sound
-    Htyping Hvals Hadapt Hcutoff Hzone Hruntime Hclosed Hroots Hexposure
-    Hnested Hresume Hactive_safe.
-  set (old_frame := mk_watched_frame authority sGamma rGamma).
-  set (new_h := h ++ [mkObj (mkruntime_type qruntime C) vals]).
-  set (new_frame := mk_watched_frame authority sGamma'
-    (update_r_env_value rGamma x (Iot (dom h)))).
-  eapply frozen_caller_snapshots_nested_resume_safe_after_classified_advance
-    with (exceptional := independent_active_authority_colors CT h old_frame).
-  - exact Hnested.
-  - exact Hresume.
-  - exact Hactive_safe.
-  - intros snapshot older mode location Hsnapshot Holder Hmode Hcolor Hroot.
-    have Hlocation_old : location < dom h.
-    { unfold old_frame in Hroots. eapply Hroots; eauto. }
-    have Hpost_color : In authority_flow_state
-        (executing_authority_color_set CT new_h new_frame
-          snapshot.(frozen_snapshot_current_colors)) (mode, location).
-    { destruct Hcolor as [seed [Hseed Hpath]]. exists seed.
-      split; [left; exact Hseed|].
-      eapply frozen_caller_authority_connected_is_phased. exact Hpath. }
-    destruct (executing_authority_colors_after_new_covered CT sGamma mt
-      rGamma h x qc C args sGamma' vals qreceiver qruntime authority
-      snapshot.(frozen_snapshot_current_colors) Hwf Hpost_wf Hsound
-      Hpost_sound (Hruntime snapshot Hsnapshot) Htyping Hvals Hadapt mode
-      location Hmode Hpost_color Hlocation_old) as
-      [old_mode [Hold_mode Hold_color]].
-    unfold old_frame.
-    eapply executing_with_frozen_incoming_dangerous_covered_by_old_or_active;
-      eauto.
-  - intros snapshot mode location Hsnapshot Hmode Hcolor Hprotected.
-    have Hlocation_old : location < dom h.
-    { have Hbefore := Hzone location Hprotected. lia. }
-    have Hpost_color : In authority_flow_state
-        (executing_authority_color_set CT new_h new_frame
-          snapshot.(frozen_snapshot_current_resume_exposure))
-        (mode, location).
-    { destruct Hcolor as [seed [Hseed Hpath]]. exists seed.
-      split; [left; exact Hseed|].
-      eapply frozen_caller_authority_connected_is_phased. exact Hpath. }
-    destruct (executing_authority_colors_after_new_covered CT sGamma mt
-      rGamma h x qc C args sGamma' vals qreceiver qruntime authority
-      snapshot.(frozen_snapshot_current_resume_exposure) Hwf Hpost_wf Hsound
-      Hpost_sound ((proj1 Hexposure) snapshot Hsnapshot) Htyping Hvals Hadapt
-      mode location Hmode Hpost_color Hlocation_old) as
-      [old_mode [Hold_mode Hold_color]].
-    unfold old_frame.
-    eapply executing_with_frozen_incoming_dangerous_covered_by_old_or_active.
-    + exact ((proj1 (proj2 Hexposure)) snapshot Hsnapshot).
-    + exact Hold_mode.
-    + exact Hold_color.
-Qed.
-
-Lemma frozen_completed_colors_resume_safe_after_new :
-  forall CT Z cutoff sGamma mt rGamma h x qc C args sGamma' vals
-    qreceiver qruntime authority incoming snapshots,
-    wf_r_config CT sGamma rGamma h ->
-    wf_r_config CT sGamma'
-      (update_r_env_value rGamma x (Iot (dom h)))
-      (h ++ [mkObj (mkruntime_type qruntime C) vals]) ->
-    authority_context_sound h rGamma authority ->
-    authority_context_sound
-      (h ++ [mkObj (mkruntime_type qruntime C) vals])
-      (update_r_env_value rGamma x (Iot (dom h))) authority ->
-    authority_colors_runtime_mutable h incoming ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    vpa_mutability_object_creation qreceiver qc = qruntime ->
-    cutoff <= dom h ->
-    protected_zone_before_cutoff Z cutoff ->
-    frozen_caller_snapshots_resume_roots_in_heap h snapshots ->
-    frozen_caller_snapshots_resume_exposures_wf CT h
-      (mk_watched_frame authority sGamma rGamma) snapshots ->
-    frozen_completed_colors_resume_safe Z
-      (executing_authority_color_set CT h
-        (mk_watched_frame authority sGamma rGamma) incoming) snapshots ->
-    (forall active_mode location,
-      authority_mode_dangerous active_mode ->
-      In authority_flow_state
-        (independent_active_authority_colors CT h
-          (mk_watched_frame authority sGamma rGamma))
-        (active_mode, location) ->
-      ~ In Loc Z location) ->
-    frozen_completed_colors_resume_safe Z
-      (executing_authority_color_set CT
-        (h ++ [mkObj (mkruntime_type qruntime C) vals])
-        (mk_watched_frame authority sGamma'
-          (update_r_env_value rGamma x (Iot (dom h)))) incoming)
-      (advance_frozen_caller_snapshots CT
-        (h ++ [mkObj (mkruntime_type qruntime C) vals])
-        (mk_watched_frame authority sGamma'
-          (update_r_env_value rGamma x (Iot (dom h)))) snapshots).
-Proof.
-  intros CT Z cutoff sGamma mt rGamma h x qc C args sGamma' vals
-    qreceiver qruntime authority incoming snapshots Hwf Hpost_wf Hsound
-    Hpost_sound Hincoming_runtime Htyping Hvals Hadapt Hcutoff Hzone Hroots
-    Hexposure Hcompleted Hactive_safe new_snapshot source_mode source Hnew
-    Hsource_mode Hsource Hsource_root.
-  set (old_frame := mk_watched_frame authority sGamma rGamma).
-  set (new_h := h ++ [mkObj (mkruntime_type qruntime C) vals]).
-  set (new_frame := mk_watched_frame authority sGamma'
-    (update_r_env_value rGamma x (Iot (dom h)))).
-  unfold advance_frozen_caller_snapshots in Hnew.
-  apply in_map_iff in Hnew.
-  destruct Hnew as [old_slot [Heq Hold]].
-  destruct old_slot as [old_snapshot|]; simpl in Heq; [|discriminate].
-  injection Heq as Heq. subst new_snapshot. simpl in *.
-  have Hsource_old : source < dom h by
-    (unfold old_frame in Hroots; eapply Hroots; eauto).
-  destruct (executing_authority_colors_after_new_covered CT sGamma mt
-    rGamma h x qc C args sGamma' vals qreceiver qruntime authority incoming
-    Hwf Hpost_wf Hsound Hpost_sound Hincoming_runtime Htyping Hvals Hadapt
-    source_mode source Hsource_mode Hsource Hsource_old) as
-    [old_source_mode [Hold_source_mode Hold_source]].
-  unfold old_frame in Hcompleted.
-  destruct (Hcompleted old_snapshot old_source_mode source Hold
-    Hold_source_mode Hold_source Hsource_root) as
-    [[entry_mode [Hentry_mode Hentry]] | Hsafe].
-  - left. exists entry_mode. split; assumption.
-  - right. intros exposure_mode target Hexposure_mode Htarget Hprotected.
-    have Htarget_old : target < dom h.
-    { have Hbefore := Hzone target Hprotected. lia. }
-    have Hpost_target : In authority_flow_state
-        (executing_authority_color_set CT new_h new_frame
-          old_snapshot.(frozen_snapshot_current_resume_exposure))
-        (exposure_mode, target).
-    { destruct Htarget as [seed [Hseed Hpath]]. exists seed. split.
-      - left. exact Hseed.
-      - eapply frozen_caller_authority_connected_is_phased. exact Hpath. }
-    destruct (executing_authority_colors_after_new_covered CT sGamma mt
-      rGamma h x qc C args sGamma' vals qreceiver qruntime authority
-      old_snapshot.(frozen_snapshot_current_resume_exposure) Hwf Hpost_wf
-      Hsound Hpost_sound ((proj1 Hexposure) old_snapshot Hold) Htyping Hvals
-      Hadapt exposure_mode target Hexposure_mode Hpost_target Htarget_old) as
-      [old_target_mode [Hold_target_mode Hold_target]].
-    destruct (executing_with_frozen_incoming_dangerous_covered_by_old_or_active
-      CT h old_frame old_snapshot.(frozen_snapshot_current_resume_exposure)
-      old_target_mode target ((proj1 (proj2 Hexposure)) old_snapshot Hold)
-      Hold_target_mode Hold_target) as
-      [[snapshot_target_mode [Hsnapshot_target_mode Hsnapshot_target]] |
-       [active_target_mode [Hactive_target_mode Hactive_target]]].
-    + exact (Hsafe snapshot_target_mode target Hsnapshot_target_mode
-        Hsnapshot_target Hprotected).
-    + exact (Hactive_safe active_target_mode target Hactive_target_mode
-        Hactive_target Hprotected).
-Qed.
-
 Lemma potential_history_after_new :
   forall CT P Z cutoff authority sGamma mt rGamma h stack x qc C args
     sGamma' rGamma' h',
@@ -3065,7 +2829,7 @@ Proof.
 	    + destruct Hzone_anchor as
 	        [Hzone_imm | [Hzone_mut | [Himpossible Hcaller]]].
 	      * simpl in Hzone_imm.
-	        have Hzone_immutable := typed_imm_root_runtime_immutable CT sGamma
+	        have Hzone_immutable := typed_imm_root_runtime_immutable_live CT sGamma
 	          rGamma h zone_anchor Hwf Hzone_imm.
 	        rewrite Hzone_immutable in Hzone_runtime. discriminate.
 	      * have Hzone_capability : In Loc

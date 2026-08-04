@@ -309,7 +309,7 @@ Proof.
       unfold boundary in Hcapability_anchor, Hanchor_connected. simpl in *.
       have Hcapability_runtime := live_capability_members_runtime_mutable CT h
         caller stack Hframes Hsound capability Hcapability_old.
-      have Hanchor_immutable := typed_imm_root_runtime_immutable CT sGamma
+      have Hanchor_immutable := typed_imm_root_runtime_immutable_live CT sGamma
         rGamma h capability_anchor Hwf Hcapability_anchor.
       have Hheap_wf : wf_heap CT h := proj1 (proj2 Hwf).
       have Hanchor_runtime := potential_connected_preserves_runtime_mutability
@@ -356,18 +356,6 @@ Proof.
   }
 Qed.
 
-Lemma readonly_adaptation_subtype_rdm :
-  forall receiver_q return_q,
-    receiver_q <> Bot ->
-    q_subtype
-      (vpa_mutability_qq_readonly_state receiver_q return_q) RDM ->
-    (receiver_q = RDM /\ return_q = RDM) \/ return_q = Bot.
-Proof.
-  intros receiver_q return_q Hreceiver Hsub.
-  destruct receiver_q, return_q; simpl in Hsub;
-    inversion Hsub; subst; auto; contradiction.
-Qed.
-
 Lemma refined_call_rdm_result_classifies_body_return :
   forall CT receiver_type body_return_type runtime_sig static_sig
     destination_type,
@@ -392,7 +380,7 @@ Proof.
     destination_type Hresult.
   rewrite sq_vpa_tt_eq_qq_readonly_state in Hresult_q.
   rewrite Hdestination in Hresult_q.
-  destruct (readonly_adaptation_subtype_rdm
+  destruct (readonly_adaptation_to_rdm_nonbottom
     (sqtype receiver_type) (sqtype (mret static_sig))
     Hreceiver_nonbottom Hresult_q) as
     [[Hreceiver_rdm Hstatic_rdm] | Hstatic_bot].
@@ -442,7 +430,7 @@ Proof.
     destination_type Hresult.
   rewrite sq_vpa_tt_eq_qq_readonly_state in Hresult_q.
   rewrite Hdestination in Hresult_q.
-  destruct (readonly_adaptation_subtype_rdm
+  destruct (readonly_adaptation_to_rdm_nonbottom
     (sqtype receiver_type) (sqtype (mret static_sig))
     Hreceiver_nonbottom Hresult_q) as
     [[_ Hstatic_rdm] | Hstatic_bot].
@@ -492,7 +480,7 @@ Proof.
     destination_type Hresult.
   rewrite sq_vpa_tt_eq_qq_readonly_state in Hresult_q.
   rewrite Hdestination in Hresult_q.
-  destruct (readonly_adaptation_subtype_rdm
+  destruct (readonly_adaptation_to_rdm_nonbottom
     (sqtype receiver_type) (sqtype (mret static_sig))
     Hreceiver_nonbottom Hresult_q) as
     [[_ Hstatic_rdm] | Hstatic_bot].
