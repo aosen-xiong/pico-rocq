@@ -91,31 +91,9 @@ Proof.
         (mreceiver (msignature mdef) :: mparams (msignature mdef))
         (mkr_env (Iot ly :: vals)) (sqtype receiver_type) (mreturn (mbody mdef)) (sqtype destination_type) (sqtype (mret (msignature mdef))) (dom h) origins :: stack)
       Z cutoff Hentry Hmethod_body_typing Hcallee_safe.
-    set (body_initial_reachable :=
-      reachable_locations_from_initial_env h (mkr_env (Iot ly :: vals))).
     have Hsignature_safe :
         signature_has_no_mutable_roots (msignature mdef).
     { exact ((proj2 (proj2 Hoverriding)) Hcallee_safe). }
-    have Hbody_initial_env :
-        env_respects_protected_set body_initial_reachable
-          (mreceiver (msignature mdef) :: mparams (msignature mdef))
-          (mkr_env (Iot ly :: vals)).
-    { eapply confinement_from_all_readonly_env; [exact Hcallee_initial_wf|].
-      intros variable variable_type Hvariable_type.
-      destruct Hsignature_safe as [Hreceiver_safe Hparams_safe].
-      destruct variable as [|parameter].
-      - simpl in Hvariable_type. injection Hvariable_type as <-.
-        exact Hreceiver_safe.
-      - simpl in Hvariable_type.
-        eapply Forall_nth_error in Hparams_safe; eauto. }
-    have Hbody_initial_local := initial_potential_live_history CT
-      (mreceiver (msignature mdef) :: mparams (msignature mdef))
-      (mkr_env (Iot ly :: vals)) h Hcallee_initial_wf Hbody_initial_env.
-    have Hbody_local_post := IHHeval eq_refl Heval body_initial_reachable
-      (mreceiver (msignature mdef) :: mparams (msignature mdef))
-      (mscope (msignature mdef)) method_end Imm_r []
-      body_initial_reachable (dom h) Hbody_initial_local
-      Hmethod_body_typing Hcallee_safe.
     have Hlive_start := proj1 Hstate.
     have Hauthority_start := proj1 Hlive_start.
     have Hcomponent_start := proj1 Hauthority_start.
@@ -326,24 +304,28 @@ Proof.
              Hsignature_refinement Hresult_sub Hreceiver_nonbottom
              Hdestination_rdm Hbody_mut Hstatic_receiver_sub Hsignature_safe)
              as [Hreceiver_ro Hno_rdm_roots].
-           (* the freshness triple holds after the body *)
+           (* seed the partition at the call entry: S = [], side = right *)
            have Hentry_J : rs_mut_vars_fresh h
                (mreceiver (msignature mdef) :: mparams (msignature mdef))
                (mkr_env (Iot ly :: vals)) h.
            { eapply rs_mut_vars_fresh_channel_free_entry; eauto. }
-           have Hentry_K := rs_fresh_mut_fields_fresh_entry CT h.
-           have Hentry_L : rs_old_mut_fields_old CT h h.
-           { eapply rs_old_mut_fields_old_entry.
+           have Hentry_pool : rs_pool_sided h [] true
+               (mreceiver (msignature mdef) :: mparams (msignature mdef))
+               (mkr_env (Iot ly :: vals)) h.
+           { eapply rs_pool_right_from_mut_vars_fresh. exact Hentry_J. }
+           have Hentry_stitch : rs_stitch_set_wf h h [].
+           { intros l Hin. inversion Hin. }
+           have Hentry_sides : rs_mut_edges_respect_sides CT h [] h.
+           { eapply rs_mut_edges_respect_sides_entry.
              exact (proj1 (proj2 Hcaller_wf)). }
-           have Htriple := rs_mutable_freshness_preserved CT
+           destruct (rs_mutable_freshness_preserved CT
              (mkr_env (Iot ly :: vals)) h (mbody_stmt (Syntax.mbody mdef))
              rΓ'' h' Heval
              (mreceiver (msignature mdef) :: mparams (msignature mdef))
-             (mscope (msignature mdef)) method_end h
+             (mscope (msignature mdef)) method_end h (@nil Loc) true
              Hmethod_body_typing Hcallee_safe Hcallee_initial_wf
-             (le_n (dom h))
-             (conj Hentry_J (conj Hentry_K Hentry_L)).
-           destruct Htriple as [HJf [HKf HLf]].
+             (le_n (dom h)) Hentry_stitch Hentry_sides Hentry_pool) as
+             [Sf [_ [_ [_ [Hsides_f Hpool_f]]]]].
            (* the head boundary's callee return qualifier is Mut, not RDM *)
            have Hshape := refined_call_rdm_mut_body_signature_shape CT
              receiver_type body_return_type (msignature mdef)
@@ -437,7 +419,10 @@ Proof.
            have Hhead_not_rdm :
                sqtype (mret (msignature mdef)) <> RDM.
            { rewrite Hmret_mut. discriminate. }
-           have Hcap_old := rs_potential_path_from_old_mut_stays_old CT h h'
+           have Hroot_left : rs_left h Sf root.
+           { unfold rs_left. left. exact Hroot_old. }
+           (* walk 1: the capability stays on the left side *)
+           destruct (rs_potential_path_from_old_mut_stays_left CT h Sf h'
              (mk_watched_frame
                (call_authority authority (sqtype receiver_type))
                method_end rΓ'')
@@ -447,10 +432,11 @@ Proof.
                (mkr_env (Iot ly :: vals)) (sqtype receiver_type)
                (mreturn (mbody mdef)) (sqtype destination_type)
                (sqtype (mret (msignature mdef))) (dom h) origins)
-             stack root capability HJf HKf HLf Hheap' Hbody_frames
-             Hhead_not_rdm Hstack_old Hroot_to_cap Hroot_old Hroot_mut.
-           destruct Hcap_old as [Hcap_old Hcap_mut].
-           have Hret_old := rs_potential_path_from_old_mut_stays_old CT h h'
+             stack root capability Hpool_f Hsides_f Hheap' Hbody_frames
+             Hhead_not_rdm Hstack_old Hroot_to_cap Hroot_left Hroot_mut)
+             as [Hcap_left Hcap_mut].
+           (* walk 2: so would the return location be *)
+           destruct (rs_potential_path_from_old_mut_stays_left CT h Sf h'
              (mk_watched_frame
                (call_authority authority (sqtype receiver_type))
                method_end rΓ'')
@@ -460,19 +446,16 @@ Proof.
                (mkr_env (Iot ly :: vals)) (sqtype receiver_type)
                (mreturn (mbody mdef)) (sqtype destination_type)
                (sqtype (mret (msignature mdef))) (dom h) origins)
-             stack capability return_location HJf HKf HLf Hheap'
-             Hbody_frames Hhead_not_rdm Hstack_old Hcap_return Hcap_old
-             Hcap_mut.
-           destruct Hret_old as [Hret_old _].
-           (* but the return is fresh *)
-           have Hret_fresh : dom h <= return_location.
-           { eapply potential_local_mut_root_is_fresh with
-               (P := body_initial_reachable) (cutoff := dom h)
-               (active := mk_watched_frame Imm_r method_end rΓ'')
-               (stack := []) (h := h');
-               [exact Hbody_local_post | exact Hreturn_type
-               | exact Hretval | exact Hbody_mut]. }
-           lia.
+             stack capability return_location Hpool_f Hsides_f Hheap'
+             Hbody_frames Hhead_not_rdm Hstack_old Hcap_return Hcap_left
+             Hcap_mut) as [Hret_left Hret_mut].
+           (* but the callee's final pool places the Mut return strictly on
+              the right side *)
+           destruct (Hpool_f (mreturn (mbody mdef)) body_return_type
+             return_location Hreturn_type Hretval (or_introl Hbody_mut)
+             Hret_mut) as [Hret_ge Hret_nin].
+           destruct Hret_left as [Hret_lt | Hret_in];
+             [lia | exact (Hret_nin Hret_in)].
   - inversion Htyping; subst.
     eapply (IHHeval2 eq_refl Heval2 P).
     + eapply (IHHeval1 eq_refl Heval1 P); eauto.
