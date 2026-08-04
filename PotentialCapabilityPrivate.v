@@ -5382,16 +5382,21 @@ Lemma safe_typed_call_static_result :
       qualified_type_subtype CT
         (vpa_mutability_tt_readonly_state receiver_type
           (mret (msignature static_mdef))) destination_type /\
-      qualified_type_subtype CT receiver_type
+      (qualified_type_subtype CT receiver_type
         (vpa_mutability_tt_readonly_state receiver_type
-          (mreceiver (msignature static_mdef))).
+          (mreceiver (msignature static_mdef))) \/
+       (sqtype receiver_type = RO /\
+        sqtype (mreceiver (msignature static_mdef)) = RDM /\
+        base_subtype CT (sctype receiver_type)
+          (sctype (mreceiver (msignature static_mdef))))).
 Proof.
   intros CT sGamma mt rGamma h x method y args sGamma' ly cy runtime_mdef
     Hwf Htyping Hsafe Hvalue Hbase Hfind.
   inversion Htyping; subst.
   - destruct Hsafe as [Hrs | Hts]; subst mt;
       destruct Hscope as [Has | [Hcs Hcallee]]; discriminate.
-  - exists Tx, Ty, mdef. repeat split; try assumption.
+  - exists Tx, Ty, mdef. repeat split; try assumption;
+      try (exact Hrcv_sub).
     eapply runtime_call_signature_refines; eauto.
 Qed.
 
@@ -5440,26 +5445,32 @@ Lemma safe_call_callee_mutable_authority_root_reflects_to_caller :
           mparams (msignature runtime_mdef))
         (mkr_env (Iot ly :: vals))) h root ->
     mutable_authority_root
-      (mk_watched_frame caller_authority sGamma rGamma) h root.
+      (mk_watched_frame caller_authority sGamma rGamma) h root \/
+    (sqtype Ty = RO /\ root = ly /\ typed_root RO sGamma rGamma root /\
+     r_muttype h root = Some Mut_r).
 Proof.
   intros CT caller_authority sGamma mt rGamma h x method y args sGamma'
     vals ly cy runtime_mdef Ty root Hwf Htyping Hscope Hgety Hvalue Hbase
     Hfind Hargs [Hmut | [Hrdm Hruntime]].
-  - left. eapply safe_call_callee_mut_root_origin; eauto.
+  - left. left. eapply safe_call_callee_mut_root_origin; eauto.
   - destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
       method y args sGamma' vals ly cy runtime_mdef root Hwf Htyping Hscope
       Hvalue Hbase Hfind Hargs Hrdm) as
-      [caller_T [Hcaller_type [Hshape Hcaller_root]]].
-    assert (caller_T = Ty) by congruence. subst caller_T.
-    destruct Hshape as [Hcaller_mut | [Hcaller_imm | Hcaller_rdm]].
-    + left. rewrite Hcaller_mut in Hcaller_root. exact Hcaller_root.
-    + have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma h
-        root Hwf (ltac:(rewrite Hcaller_imm in Hcaller_root;
-          exact Hcaller_root)).
-      congruence.
-    + right. split.
-      * rewrite Hcaller_rdm in Hcaller_root. exact Hcaller_root.
-      * exact Hruntime.
+      [caller_T [Hcaller_type [[Hshape Hcaller_root] |
+        [Hro [Hrooteq Hro_root]]]]].
+    + assert (caller_T = Ty) by congruence. subst caller_T.
+      destruct Hshape as [Hcaller_mut | [Hcaller_imm | Hcaller_rdm]].
+      * left. left. rewrite Hcaller_mut in Hcaller_root. exact Hcaller_root.
+      * have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma
+          h root Hwf (ltac:(rewrite Hcaller_imm in Hcaller_root;
+            exact Hcaller_root)).
+        congruence.
+      * left. right. split.
+        -- rewrite Hcaller_rdm in Hcaller_root. exact Hcaller_root.
+        -- exact Hruntime.
+    + assert (caller_T = Ty) by congruence. subst caller_T.
+      right. split; [exact Hro|]. split; [exact Hrooteq|].
+      split; [exact Hro_root | exact Hruntime].
 Qed.
 
 Lemma safe_call_prospective_step_covered_by_caller :
@@ -5513,11 +5524,19 @@ Proof.
         [runtime_q [Hsource_context Htarget_context]].
       rewrite Hsource_runtime in Hsource_context.
       injection Hsource_context as <-. exact Htarget_context. }
-    exists target. split.
-    + eapply safe_call_callee_mutable_authority_root_reflects_to_caller;
-        eauto.
-      right. split; [exact H2|exact Htarget_runtime].
-    + apply rt_refl.
+    destruct (safe_call_callee_mutable_authority_root_reflects_to_caller
+        CT caller_authority sGamma mt rGamma h x method y args sGamma' vals
+        ly cy runtime_mdef Ty target Hwf Htyping Hscope Hgety Hvalue Hbase
+        Hfind Hargs (or_intror (conj H2 Htarget_runtime))) as
+      [Hcaller_root | [Hro [Htarget_eq [Hro_root Hro_runtime]]]].
+    + exists target. split; [exact Hcaller_root | apply rt_refl].
+    + destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
+        method y args sGamma' vals ly cy runtime_mdef source Hwf Htyping
+        Hscope Hvalue Hbase Hfind Hargs H1) as
+        [Ts [Hgets [[Hshape_s _] | [_ [Hsource_eq _]]]]].
+      * exfalso. assert (Ts = Ty) by congruence. subst Ts.
+        destruct Hshape_s as [Hq | [Hq | Hq]]; congruence.
+      * rewrite Hsource_eq in Hsource. rewrite Htarget_eq. exact Hsource.
 Qed.
 
 Definition prospective_state_covered_by_frame
@@ -5619,22 +5638,29 @@ Lemma live_prospective_mutable_authority_components_enter_safe_call :
       mk_watched_frame caller_authority sGamma rGamma ->
     live_prospective_mutable_authority_components_after_cutoff CT h cutoff
       (mk_watched_frame caller_authority sGamma rGamma) stack ->
-    live_prospective_mutable_authority_components_after_cutoff CT h cutoff
-      (mk_watched_frame
-        (call_authority caller_authority (sqtype Ty))
-        (mreceiver (msignature runtime_mdef) ::
-          mparams (msignature runtime_mdef))
-        (mkr_env (Iot ly :: vals))) (boundary :: stack).
+    forall frame root target,
+      live_frame_member
+        (mk_watched_frame
+          (call_authority caller_authority (sqtype Ty))
+          (mreceiver (msignature runtime_mdef) ::
+            mparams (msignature runtime_mdef))
+          (mkr_env (Iot ly :: vals))) (boundary :: stack) frame ->
+      prospective_mutable_authority_reachable CT h frame root target ->
+      cutoff <= target \/
+      (sqtype Ty = RO /\ root = ly /\ typed_root RO sGamma rGamma root /\
+       r_muttype h root = Some Mut_r).
 Proof.
   intros CT cutoff caller_authority sGamma mt rGamma h stack x method y args
     sGamma' vals ly cy runtime_mdef Ty boundary Hwf Hsound Hcallee_wf Htyping
     Hscope Hgety Hvalue Hbase Hfind Hargs Hboundary Hold frame root target
     Hlive [Hroot Hpath].
   inversion Hlive; subst.
-  - have Hcaller_root : mutable_authority_root
-        (mk_watched_frame caller_authority sGamma rGamma) h root.
-    { eapply safe_call_callee_mutable_authority_root_reflects_to_caller;
-        eauto. }
+  - destruct (safe_call_callee_mutable_authority_root_reflects_to_caller
+        CT caller_authority sGamma mt rGamma h x method y args sGamma' vals
+        ly cy runtime_mdef Ty root Hwf Htyping Hscope Hgety Hvalue Hbase
+        Hfind Hargs Hroot) as [Hcaller_root | Hspecial];
+      [|right; exact Hspecial].
+    left.
     have Hsource : prospective_state_covered_by_frame CT h
         (mk_watched_frame caller_authority sGamma rGamma)
         (FlowProspective, root).
@@ -5651,7 +5677,7 @@ Proof.
       (root := caller_root).
     + constructor.
     + split; assumption.
-  - simpl in H. destruct H as [Heq | Hin].
+  - left. simpl in H. destruct H as [Heq | Hin].
     + subst boundary0. rewrite Hboundary in Hroot, Hpath.
       eapply Hold with
         (frame := mk_watched_frame caller_authority sGamma rGamma)
@@ -5678,12 +5704,17 @@ Lemma live_mutable_authority_components_enter_safe_call :
       mk_watched_frame caller_authority sGamma rGamma ->
     live_mutable_authority_components_after_cutoff CT h cutoff
       (mk_watched_frame caller_authority sGamma rGamma) stack ->
-    live_mutable_authority_components_after_cutoff CT h cutoff
-      (mk_watched_frame
-        (call_authority caller_authority (sqtype Ty))
-        (mreceiver (msignature runtime_mdef) ::
-          mparams (msignature runtime_mdef))
-        (mkr_env (Iot ly :: vals))) (boundary :: stack).
+    forall frame root target,
+      live_frame_member
+        (mk_watched_frame
+          (call_authority caller_authority (sqtype Ty))
+          (mreceiver (msignature runtime_mdef) ::
+            mparams (msignature runtime_mdef))
+          (mkr_env (Iot ly :: vals))) (boundary :: stack) frame ->
+      mutable_authority_reachable CT h frame root target ->
+      cutoff <= target \/
+      (sqtype Ty = RO /\ root = ly /\ typed_root RO sGamma rGamma root /\
+       r_muttype h root = Some Mut_r).
 Proof.
   intros CT cutoff caller_authority sGamma mt rGamma h stack x method y args
     sGamma' vals ly cy runtime_mdef Ty boundary Hwf Htyping Hscope Hgety
@@ -5693,7 +5724,7 @@ Proof.
   - destruct Hreachable as
       [root target Hcallee_capability Hruntime Hretained
       |root target Hcallee_rdm Hruntime Hmutable].
-    + eapply Hold; [constructor|].
+    + left. eapply Hold; [constructor|].
       apply mutable_authority_reachable_capability.
       * eapply safe_call_callee_capability_root_reflects_to_caller; eauto.
       * exact Hruntime.
@@ -5701,29 +5732,33 @@ Proof.
     + destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
         method y args sGamma' vals ly cy runtime_mdef root Hwf Htyping Hscope
         Hvalue Hbase Hfind Hargs Hcallee_rdm) as
-        [caller_T [Hcaller_type [Hshape Hcaller_root]]].
-      assert (caller_T = Ty) by congruence. subst caller_T.
-      destruct Hshape as [Hcaller_mut | [Hcaller_imm | Hcaller_rdm]].
-      * eapply Hold; [constructor|].
-        apply mutable_authority_reachable_capability.
-        -- rewrite Hcaller_mut in Hcaller_root.
-           destruct Hcaller_root as
-             [variable [root_T [Htype [Hroot_value Hmut]]]].
-           exists variable, root_T. split; [exact Htype|].
-           split; [exact Hroot_value|].
-           unfold capability_in_context. left. exact Hmut.
-        -- exact Hruntime.
-        -- exact Hmutable.
-      * have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma
-          h root Hwf (ltac:(rewrite Hcaller_imm in Hcaller_root;
-            exact Hcaller_root)).
-        congruence.
-      * eapply Hold; [constructor|].
-        apply mutable_authority_reachable_rdm.
-        -- rewrite Hcaller_rdm in Hcaller_root. exact Hcaller_root.
-        -- exact Hruntime.
-        -- exact Hmutable.
-  - destruct H as [Heq | Hin].
+        [caller_T [Hcaller_type [[Hshape Hcaller_root] |
+          [Hro [Hrooteq Hro_root]]]]].
+      * assert (caller_T = Ty) by congruence. subst caller_T.
+        destruct Hshape as [Hcaller_mut | [Hcaller_imm | Hcaller_rdm]].
+        -- left. eapply Hold; [constructor|].
+           apply mutable_authority_reachable_capability.
+           ++ rewrite Hcaller_mut in Hcaller_root.
+              destruct Hcaller_root as
+                [variable [root_T [Htype [Hroot_value Hmut]]]].
+              exists variable, root_T. split; [exact Htype|].
+              split; [exact Hroot_value|].
+              unfold capability_in_context. left. exact Hmut.
+           ++ exact Hruntime.
+           ++ exact Hmutable.
+        -- have Himmutable := typed_imm_root_runtime_immutable CT sGamma
+             rGamma h root Hwf (ltac:(rewrite Hcaller_imm in Hcaller_root;
+               exact Hcaller_root)).
+           congruence.
+        -- left. eapply Hold; [constructor|].
+           apply mutable_authority_reachable_rdm.
+           ++ rewrite Hcaller_rdm in Hcaller_root. exact Hcaller_root.
+           ++ exact Hruntime.
+           ++ exact Hmutable.
+      * assert (caller_T = Ty) by congruence. subst caller_T.
+        right. split; [exact Hro|]. split; [exact Hrooteq|].
+        split; [exact Hro_root | exact Hruntime].
+  - left. destruct H as [Heq | Hin].
     + subst boundary0. rewrite Hboundary in Hreachable.
       eapply Hold; eauto. constructor.
     + eapply Hold; eauto. constructor. exact Hin.
@@ -5744,24 +5779,31 @@ Lemma frozen_callee_side_components_enter_untracked_safe_call :
       mk_watched_frame caller_authority sGamma rGamma ->
     frozen_callee_side_mutable_components_after_boundaries CT h
       (mk_watched_frame caller_authority sGamma rGamma) snapshots stack ->
-    frozen_callee_side_mutable_components_after_boundaries CT h
-      (mk_watched_frame
-        (call_authority caller_authority (sqtype Ty))
-        (mreceiver (msignature runtime_mdef) ::
-          mparams (msignature runtime_mdef))
-        (mkr_env (Iot ly :: vals)))
-      (None :: advance_frozen_caller_snapshots CT h
-        (mk_watched_frame
-          (call_authority caller_authority (sqtype Ty))
-          (mreceiver (msignature runtime_mdef) ::
-            mparams (msignature runtime_mdef))
-          (mkr_env (Iot ly :: vals))) snapshots)
-      (boundary :: stack).
+    forall snapshot tracked_boundary above below,
+      frozen_snapshot_live_partition
+        (None :: advance_frozen_caller_snapshots CT h
+          (mk_watched_frame
+            (call_authority caller_authority (sqtype Ty))
+            (mreceiver (msignature runtime_mdef) ::
+              mparams (msignature runtime_mdef))
+            (mkr_env (Iot ly :: vals))) snapshots)
+        (boundary :: stack) snapshot tracked_boundary above below ->
+      forall frame root target,
+        live_frame_member
+          (mk_watched_frame
+            (call_authority caller_authority (sqtype Ty))
+            (mreceiver (msignature runtime_mdef) ::
+              mparams (msignature runtime_mdef))
+            (mkr_env (Iot ly :: vals))) above frame ->
+        mutable_authority_reachable CT h frame root target ->
+        tracked_boundary.(boundary_entry_cutoff) <= target \/
+        (sqtype Ty = RO /\ root = ly /\ typed_root RO sGamma rGamma root /\
+         r_muttype h root = Some Mut_r).
 Proof.
   intros CT h caller_authority sGamma mt rGamma stack snapshots x
     method y args sGamma' vals ly cy runtime_mdef Ty boundary Hwf Htyping
     Hscope Hgety Hvalue Hbase Hfind Hargs Hboundary Hold snapshot
-    tracked_boundary above below Hpartition.
+    tracked_boundary above below Hpartition frame root target Hlive Hreach.
   inversion Hpartition; subst.
   destruct (advance_frozen_snapshot_live_partition_reflects CT h
     (mk_watched_frame
@@ -5796,24 +5838,31 @@ Lemma frozen_callee_side_prospective_components_enter_untracked_safe_call :
       mk_watched_frame caller_authority sGamma rGamma ->
     frozen_callee_side_prospective_components_after_boundaries CT h
       (mk_watched_frame caller_authority sGamma rGamma) snapshots stack ->
-    frozen_callee_side_prospective_components_after_boundaries CT h
-      (mk_watched_frame
-        (call_authority caller_authority (sqtype Ty))
-        (mreceiver (msignature runtime_mdef) ::
-          mparams (msignature runtime_mdef))
-        (mkr_env (Iot ly :: vals)))
-      (None :: advance_frozen_caller_snapshots CT h
-        (mk_watched_frame
-          (call_authority caller_authority (sqtype Ty))
-          (mreceiver (msignature runtime_mdef) ::
-            mparams (msignature runtime_mdef))
-          (mkr_env (Iot ly :: vals))) snapshots)
-      (boundary :: stack).
+    forall snapshot tracked_boundary above below,
+      frozen_snapshot_live_partition
+        (None :: advance_frozen_caller_snapshots CT h
+          (mk_watched_frame
+            (call_authority caller_authority (sqtype Ty))
+            (mreceiver (msignature runtime_mdef) ::
+              mparams (msignature runtime_mdef))
+            (mkr_env (Iot ly :: vals))) snapshots)
+        (boundary :: stack) snapshot tracked_boundary above below ->
+      forall frame root target,
+        live_frame_member
+          (mk_watched_frame
+            (call_authority caller_authority (sqtype Ty))
+            (mreceiver (msignature runtime_mdef) ::
+              mparams (msignature runtime_mdef))
+            (mkr_env (Iot ly :: vals))) above frame ->
+        prospective_mutable_authority_reachable CT h frame root target ->
+        tracked_boundary.(boundary_entry_cutoff) <= target \/
+        (sqtype Ty = RO /\ root = ly /\ typed_root RO sGamma rGamma root /\
+         r_muttype h root = Some Mut_r).
 Proof.
   intros CT h caller_authority sGamma mt rGamma stack snapshots x method y
     args sGamma' vals ly cy runtime_mdef Ty boundary Hwf Hsound Hcallee_wf
     Htyping Hscope Hgety Hvalue Hbase Hfind Hargs Hboundary Hold snapshot
-    tracked_boundary above below Hpartition.
+    tracked_boundary above below Hpartition frame root target Hlive Hreach.
   inversion Hpartition; subst.
   destruct (advance_frozen_snapshot_live_partition_reflects CT h
     (mk_watched_frame
@@ -5838,6 +5887,8 @@ Proof.
   - exact Hargs.
   - exact Hboundary.
   - exact Hold_components.
+  - exact Hlive.
+  - exact Hreach.
 Qed.
 
 Lemma safe_call_callee_rdm_join_is_caller_colored :
@@ -5881,26 +5932,34 @@ Proof.
   destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x method
     y args sGamma' vals ly cy runtime_mdef left Hwf Htyping Hscope Hvalue
     Hbase Hfind Hargs Hleft) as
-    [left_T [Hleft_get [Hleft_shape Hleft_root]]].
+    [left_T [Hleft_get Hleft_cases]].
   destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
     method y args sGamma' vals ly cy runtime_mdef right Hwf Htyping Hscope
     Hvalue Hbase Hfind Hargs Hright) as
-    [right_T [Hright_get [Hright_shape Hright_root]]].
+    [right_T [Hright_get Hright_cases]].
   assert (left_T = Ty) by congruence.
   assert (right_T = Ty) by congruence. subst left_T right_T.
-  destruct Hleft_shape as [Hview | [Hview | Hview]].
-  - exists FlowPowered. split; [left; reflexivity|].
-    eapply executing_authority_typed_mut_root_is_powered.
-    rewrite Hview in Hright_root. exact Hright_root.
-  - have Hleft_immutable := typed_imm_root_runtime_immutable CT sGamma
-      rGamma h left Hwf (ltac:(rewrite Hview in Hleft_root;
-        exact Hleft_root)).
-    have Hleft_mutable := Hruntime old_mode left Hold_color.
-    congruence.
-  - exists FlowProspective. split; [right; reflexivity|].
-    eapply executing_authority_dangerous_frame_join; eauto.
-    + rewrite Hview in Hleft_root. exact Hleft_root.
-    + rewrite Hview in Hright_root. exact Hright_root.
+  destruct Hleft_cases as [[Hleft_shape Hleft_root] |
+      [Hleft_ro [Hleft_eq Hleft_ro_root]]];
+    destruct Hright_cases as [[Hright_shape Hright_root] |
+      [Hright_ro [Hright_eq Hright_ro_root]]].
+  - destruct Hleft_shape as [Hview | [Hview | Hview]].
+    + exists FlowPowered. split; [left; reflexivity|].
+      eapply executing_authority_typed_mut_root_is_powered.
+      rewrite Hview in Hright_root. exact Hright_root.
+    + have Hleft_immutable := typed_imm_root_runtime_immutable CT sGamma
+        rGamma h left Hwf (ltac:(rewrite Hview in Hleft_root;
+          exact Hleft_root)).
+      have Hleft_mutable := Hruntime old_mode left Hold_color.
+      congruence.
+    + exists FlowProspective. split; [right; reflexivity|].
+      eapply executing_authority_dangerous_frame_join; eauto.
+      * rewrite Hview in Hleft_root. exact Hleft_root.
+      * rewrite Hview in Hright_root. exact Hright_root.
+  - destruct Hleft_shape as [Hq | [Hq | Hq]]; congruence.
+  - destruct Hright_shape as [Hq | [Hq | Hq]]; congruence.
+  - exists old_mode. split; [exact Hold_mode|].
+    rewrite Hright_eq. rewrite <- Hleft_eq. exact Hold_color.
 Qed.
 
 Lemma safe_call_callee_frame_step_preserves_coverage :
@@ -6914,61 +6973,77 @@ Proof.
   - destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
       method y args sGamma' vals ly cy runtime_mdef left Hwf Htyping Hscope
       Hvalue Hbase Hfind Hargs H) as
-      [left_T [Hleft_get [Hleft_shape Hleft_root]]].
+      [left_T [Hleft_get Hleft_cases]].
     destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
       method y args sGamma' vals ly cy runtime_mdef right Hwf Htyping Hscope
       Hvalue Hbase Hfind Hargs H0) as
-      [right_T [Hright_get [Hright_shape Hright_root]]].
+      [right_T [Hright_get Hright_cases]].
     assert (left_T = Ty) by congruence.
     assert (right_T = Ty) by congruence. subst left_T right_T.
-    destruct Hleft_shape as [Hmut | [Himm | Hrdm]].
-    + right. apply (Horigins old_mode FlowPowered left Hold_mode
-        (or_introl eq_refl) Hold_color).
-      left. unfold independent_active_authority_colors.
-      eapply executing_authority_typed_mut_root_is_powered.
-      rewrite Hmut in Hleft_root. exact Hleft_root.
-    + have Hmutable := Hruntime old_mode left Hold_color.
-      have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma h
-        left Hwf (ltac:(rewrite Himm in Hleft_root; exact Hleft_root)).
-      congruence.
-    + left. exists FlowProspective. split; [right; reflexivity|].
-      apply Hclosed. exists (old_mode, left). split; [exact Hold_color|].
-      apply rt_step. destruct Hold_mode as [-> | ->].
-      * apply frozen_caller_powered_frame_join.
-        -- rewrite Hrdm in Hleft_root. exact Hleft_root.
-        -- rewrite Hrdm in Hright_root. exact Hright_root.
-      * apply frozen_caller_prospective_frame_join.
-        -- rewrite Hrdm in Hleft_root. exact Hleft_root.
-        -- rewrite Hrdm in Hright_root. exact Hright_root.
+    destruct Hleft_cases as [[Hleft_shape Hleft_root] |
+        [Hleft_ro [Hleft_eq Hleft_ro_root]]];
+      destruct Hright_cases as [[Hright_shape Hright_root] |
+        [Hright_ro [Hright_eq Hright_ro_root]]].
+    + destruct Hleft_shape as [Hmut | [Himm | Hrdm]].
+      * right. apply (Horigins old_mode FlowPowered left Hold_mode
+          (or_introl eq_refl) Hold_color).
+        left. unfold independent_active_authority_colors.
+        eapply executing_authority_typed_mut_root_is_powered.
+        rewrite Hmut in Hleft_root. exact Hleft_root.
+      * have Hmutable := Hruntime old_mode left Hold_color.
+        have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma
+          h left Hwf (ltac:(rewrite Himm in Hleft_root; exact Hleft_root)).
+        congruence.
+      * left. exists FlowProspective. split; [right; reflexivity|].
+        apply Hclosed. exists (old_mode, left). split; [exact Hold_color|].
+        apply rt_step. destruct Hold_mode as [-> | ->].
+        -- apply frozen_caller_powered_frame_join.
+           ++ rewrite Hrdm in Hleft_root. exact Hleft_root.
+           ++ rewrite Hrdm in Hright_root. exact Hright_root.
+        -- apply frozen_caller_prospective_frame_join.
+           ++ rewrite Hrdm in Hleft_root. exact Hleft_root.
+           ++ rewrite Hrdm in Hright_root. exact Hright_root.
+    + destruct Hleft_shape as [Hq | [Hq | Hq]]; congruence.
+    + destruct Hright_shape as [Hq | [Hq | Hq]]; congruence.
+    + left. exists old_mode. split; [exact Hold_mode|].
+      rewrite Hright_eq. rewrite <- Hleft_eq. exact Hold_color.
   - destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
       method y args sGamma' vals ly cy runtime_mdef left Hwf Htyping Hscope
       Hvalue Hbase Hfind Hargs H) as
-      [left_T [Hleft_get [Hleft_shape Hleft_root]]].
+      [left_T [Hleft_get Hleft_cases]].
     destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
       method y args sGamma' vals ly cy runtime_mdef right Hwf Htyping Hscope
       Hvalue Hbase Hfind Hargs H0) as
-      [right_T [Hright_get [Hright_shape Hright_root]]].
+      [right_T [Hright_get Hright_cases]].
     assert (left_T = Ty) by congruence.
     assert (right_T = Ty) by congruence. subst left_T right_T.
-    destruct Hleft_shape as [Hmut | [Himm | Hrdm]].
-    + right. apply (Horigins old_mode FlowPowered left Hold_mode
-        (or_introl eq_refl) Hold_color).
-      left. unfold independent_active_authority_colors.
-      eapply executing_authority_typed_mut_root_is_powered.
-      rewrite Hmut in Hleft_root. exact Hleft_root.
-    + have Hmutable := Hruntime old_mode left Hold_color.
-      have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma h
-        left Hwf (ltac:(rewrite Himm in Hleft_root; exact Hleft_root)).
-      congruence.
-    + left. exists FlowProspective. split; [right; reflexivity|].
-      apply Hclosed. exists (old_mode, left). split; [exact Hold_color|].
-      apply rt_step. destruct Hold_mode as [-> | ->].
-      * apply frozen_caller_powered_frame_join.
-        -- rewrite Hrdm in Hleft_root. exact Hleft_root.
-        -- rewrite Hrdm in Hright_root. exact Hright_root.
-      * apply frozen_caller_prospective_frame_join.
-        -- rewrite Hrdm in Hleft_root. exact Hleft_root.
-        -- rewrite Hrdm in Hright_root. exact Hright_root.
+    destruct Hleft_cases as [[Hleft_shape Hleft_root] |
+        [Hleft_ro [Hleft_eq Hleft_ro_root]]];
+      destruct Hright_cases as [[Hright_shape Hright_root] |
+        [Hright_ro [Hright_eq Hright_ro_root]]].
+    + destruct Hleft_shape as [Hmut | [Himm | Hrdm]].
+      * right. apply (Horigins old_mode FlowPowered left Hold_mode
+          (or_introl eq_refl) Hold_color).
+        left. unfold independent_active_authority_colors.
+        eapply executing_authority_typed_mut_root_is_powered.
+        rewrite Hmut in Hleft_root. exact Hleft_root.
+      * have Hmutable := Hruntime old_mode left Hold_color.
+        have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma
+          h left Hwf (ltac:(rewrite Himm in Hleft_root; exact Hleft_root)).
+        congruence.
+      * left. exists FlowProspective. split; [right; reflexivity|].
+        apply Hclosed. exists (old_mode, left). split; [exact Hold_color|].
+        apply rt_step. destruct Hold_mode as [-> | ->].
+        -- apply frozen_caller_powered_frame_join.
+           ++ rewrite Hrdm in Hleft_root. exact Hleft_root.
+           ++ rewrite Hrdm in Hright_root. exact Hright_root.
+        -- apply frozen_caller_prospective_frame_join.
+           ++ rewrite Hrdm in Hleft_root. exact Hleft_root.
+           ++ rewrite Hrdm in Hright_root. exact Hright_root.
+    + destruct Hleft_shape as [Hq | [Hq | Hq]]; congruence.
+    + destruct Hright_shape as [Hq | [Hq | Hq]]; congruence.
+    + left. exists old_mode. split; [exact Hold_mode|].
+      rewrite Hright_eq. rewrite <- Hleft_eq. exact Hold_color.
   - left. exists FlowProspective. split; [right; reflexivity|].
     destruct Hold_mode as [-> | ->].
     + apply Hclosed. exists (FlowPowered, location).
@@ -7053,8 +7128,25 @@ Lemma frozen_caller_snapshots_active_resume_origins_after_safe_call_entry :
       (mreceiver (msignature runtime_mdef) ::
         mparams (msignature runtime_mdef))
       (mkr_env (Iot ly :: vals)) in
-    frozen_caller_snapshots_active_resume_origins CT h callee
-      (None :: advance_frozen_caller_snapshots CT h callee snapshots).
+    forall snapshot snapshot_mode active_mode location,
+      List.In (Some snapshot)
+        (None :: advance_frozen_caller_snapshots CT h callee snapshots) ->
+      authority_mode_dangerous snapshot_mode ->
+      authority_mode_dangerous active_mode ->
+      In authority_flow_state snapshot.(frozen_snapshot_current_colors)
+        (snapshot_mode, location) ->
+      (In authority_flow_state
+         (independent_active_authority_colors CT h callee)
+         (active_mode, location) \/
+       typed_root RDM callee.(frame_senv) callee.(frame_renv) location) ->
+      (exists root_mode root,
+        authority_mode_dangerous root_mode /\
+        In authority_flow_state snapshot.(frozen_snapshot_current_colors)
+          (root_mode, root) /\
+        In Loc snapshot.(frozen_snapshot_resume_rdm_roots) root) \/
+      (sqtype Ty = RO /\ location = ly /\
+       typed_root RO sGamma rGamma location /\
+       r_muttype h location = Some Mut_r).
 Proof.
   intros CT caller_authority sGamma mt rGamma h snapshots x method y args
     sGamma' vals ly cy runtime_mdef Ty Hwf Hsound Htyping Hscope Hgety
@@ -7107,42 +7199,51 @@ Proof.
       destruct (Horigins old_snapshot old_mode caller_mode location Hold
         Hold_mode Hcaller_mode Hold_color (or_introl Hcaller_color)) as
         [root_mode [root [Hroot_mode [Hroot_color Hroot]]]].
-      exists root_mode, root. repeat split; try assumption.
+      left. exists root_mode, root. repeat split; try assumption.
       apply frozen_caller_authority_closure_contains. exact Hroot_color.
     + destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
         method y args sGamma' vals ly cy runtime_mdef location Hwf Htyping
         Hscope Hvalue Hbase Hfind Hargs Hrdm) as
-        [caller_T [Hcaller_type [Hshape Hcaller_root]]].
-      assert (caller_T = Ty) by congruence. subst caller_T.
-      destruct Hshape as [Hmut | [Himm | Hcaller_rdm]].
-      * have Hcaller_color : In authority_flow_state
-            (independent_active_authority_colors CT h
-              (mk_watched_frame caller_authority sGamma rGamma))
-            (FlowPowered, location).
-        { unfold independent_active_authority_colors.
-          eapply executing_authority_typed_mut_root_is_powered.
-          rewrite Hmut in Hcaller_root. exact Hcaller_root. }
-        destruct (Horigins old_snapshot old_mode FlowPowered location Hold
-          Hold_mode (or_introl eq_refl) Hold_color (or_introl Hcaller_color))
-          as [root_mode [root [Hroot_mode [Hroot_color Hroot]]]].
-        exists root_mode, root. repeat split; try assumption.
-        apply frozen_caller_authority_closure_contains. exact Hroot_color.
-      * have Hmutable := Hruntime old_snapshot Hold old_mode location
+        [caller_T [Hcaller_type [[Hshape Hcaller_root] |
+          [Hro [Hlocation_eq Hro_root]]]]].
+      * assert (caller_T = Ty) by congruence. subst caller_T.
+        destruct Hshape as [Hmut | [Himm | Hcaller_rdm]].
+        -- have Hcaller_color : In authority_flow_state
+              (independent_active_authority_colors CT h
+                (mk_watched_frame caller_authority sGamma rGamma))
+              (FlowPowered, location).
+           { unfold independent_active_authority_colors.
+             eapply executing_authority_typed_mut_root_is_powered.
+             rewrite Hmut in Hcaller_root. exact Hcaller_root. }
+           destruct (Horigins old_snapshot old_mode FlowPowered location
+             Hold Hold_mode (or_introl eq_refl) Hold_color
+             (or_introl Hcaller_color))
+             as [root_mode [root [Hroot_mode [Hroot_color Hroot]]]].
+           left. exists root_mode, root. repeat split; try assumption.
+           apply frozen_caller_authority_closure_contains.
+           exact Hroot_color.
+        -- have Hmutable := Hruntime old_snapshot Hold old_mode location
+             Hold_color.
+           have Himmutable := typed_imm_root_runtime_immutable CT sGamma
+             rGamma h location Hwf
+             (ltac:(rewrite Himm in Hcaller_root; exact Hcaller_root)).
+           congruence.
+        -- destruct (Horigins old_snapshot old_mode active_mode location
+             Hold Hold_mode Hactive_mode Hold_color
+             (or_intror (ltac:(rewrite Hcaller_rdm in Hcaller_root;
+               exact Hcaller_root)))) as
+             [root_mode [root [Hroot_mode [Hroot_color Hroot]]]].
+           left. exists root_mode, root. repeat split; try assumption.
+           apply frozen_caller_authority_closure_contains.
+           exact Hroot_color.
+      * assert (caller_T = Ty) by congruence. subst caller_T.
+        have Hmutable := Hruntime old_snapshot Hold old_mode location
           Hold_color.
-        have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma
-          h location Hwf
-          (ltac:(rewrite Himm in Hcaller_root; exact Hcaller_root)).
-        congruence.
-      * destruct (Horigins old_snapshot old_mode active_mode location Hold
-          Hold_mode Hactive_mode Hold_color
-          (or_intror (ltac:(rewrite Hcaller_rdm in Hcaller_root;
-            exact Hcaller_root)))) as
-          [root_mode [root [Hroot_mode [Hroot_color Hroot]]]].
-        exists root_mode, root. repeat split; try assumption.
-        apply frozen_caller_authority_closure_contains. exact Hroot_color.
+        right. split; [exact Hro|]. split; [exact Hlocation_eq|].
+        split; [exact Hro_root | exact Hmutable].
   - destruct Hold_origin as
       [root_mode [root [Hroot_mode [Hroot_color Hroot]]]].
-    exists root_mode, root. repeat split; try assumption.
+    left. exists root_mode, root. repeat split; try assumption.
     apply frozen_caller_authority_closure_contains. exact Hroot_color.
 Qed.
 
@@ -7284,6 +7385,7 @@ Lemma private_fresh_frozen_statement_enter_call_untracked :
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy method runtime_mdef ->
     runtime_lookup_list rGamma args = Some vals ->
+    sqtype Ty <> RO ->
     exists origins destination_type,
       static_getType sGamma x = Some destination_type /\
       private_fresh_frozen_statement_state CT P Z cutoff
@@ -7311,7 +7413,7 @@ Proof.
   intros CT P Z cutoff caller_authority sGamma mt rGamma h stack incoming
     snapshots x method y args sGamma' vals ly cy runtime_mdef Ty
     [Hprivate [Hcomponents [Hprospective Hafter]]] Htyping Hscope Hgety
-    Hvalue Hbase Hfind Hargs.
+    Hvalue Hbase Hfind Hargs Hnot_special.
   have Hmain := proj1 Hprivate.
   have Hstate := proj1 Hmain.
   have Hwf : wf_r_config CT sGamma rGamma h :=
@@ -7351,9 +7453,16 @@ Proof.
           (mreceiver (msignature runtime_mdef) ::
             mparams (msignature runtime_mdef))
           (mkr_env (Iot ly :: vals))) snapshots) (boundary :: stack)).
-      eapply (frozen_callee_side_components_enter_untracked_safe_call CT h
+      intros snapshot tracked_boundary above below Hpartition frame root
+        target Hlive Hreach.
+      destruct (frozen_callee_side_components_enter_untracked_safe_call CT h
         caller_authority sGamma mt rGamma stack snapshots x method y args
-        sGamma' vals ly cy runtime_mdef Ty boundary); eauto.
+        sGamma' vals ly cy runtime_mdef Ty boundary Hwf Htyping Hscope Hgety
+        Hvalue Hbase Hfind Hargs eq_refl Hcomponents snapshot
+        tracked_boundary above below Hpartition frame root target Hlive
+        Hreach) as [Hle | [Hro _]].
+      * exact Hle.
+      * exfalso. exact (Hnot_special Hro).
     + split.
       * set (boundary := mk_watched_call_boundary
           (mk_watched_frame caller_authority sGamma rGamma)
@@ -7362,10 +7471,17 @@ Proof.
           (mkr_env (Iot ly :: vals)) (sqtype Ty)
           (mreturn (mbody runtime_mdef)) (sqtype destination_type)
           (sqtype (mret (msignature runtime_mdef))) (dom h) origins).
-        eapply
+        intros snapshot tracked_boundary above below Hpartition frame root
+          target Hlive Hreach.
+        destruct
           (frozen_callee_side_prospective_components_enter_untracked_safe_call
             CT h caller_authority sGamma mt rGamma stack snapshots x method y
-            args sGamma' vals ly cy runtime_mdef Ty boundary); eauto.
+            args sGamma' vals ly cy runtime_mdef Ty boundary Hwf Hsound
+            Hcallee_wf Htyping Hscope Hgety Hvalue Hbase Hfind Hargs eq_refl
+            Hprospective snapshot tracked_boundary above below Hpartition
+            frame root target Hlive Hreach) as [Hle | [Hro _]].
+        -- exact Hle.
+        -- exfalso. exact (Hnot_special Hro).
       * constructor; [exact I|].
         eapply advance_snapshot_boundaries_after_cutoff. exact Hafter.
 Qed.
@@ -7820,6 +7936,7 @@ Lemma private_statement_enter_call_untracked :
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy method runtime_mdef ->
     runtime_lookup_list rGamma args = Some vals ->
+    sqtype Ty <> RO ->
     exists origins destination_type,
       static_getType sGamma x = Some destination_type /\
       let boundary := mk_watched_call_boundary caller
@@ -7837,7 +7954,8 @@ Lemma private_statement_enter_call_untracked :
 Proof.
   intros CT P Z cutoff caller_authority sGamma mt rGamma h stack incoming
     snapshots x method y args sGamma' vals ly cy runtime_mdef Ty caller callee
-    Hpotential Hprivate Htyping Hscope Hgety Hvalue Hbase Hfind Hargs.
+    Hpotential Hprivate Htyping Hscope Hgety Hvalue Hbase Hfind Hargs
+    Hnot_special.
   destruct (potential_history_enter_call CT P Z cutoff caller_authority
     sGamma mt rGamma h stack x method y args sGamma' vals ly cy runtime_mdef
     Ty Hpotential Htyping Hscope Hgety Hvalue Hbase Hfind Hargs) as
@@ -7846,7 +7964,7 @@ Proof.
   destruct (private_fresh_frozen_statement_enter_call_untracked CT P Z
     cutoff caller_authority sGamma mt rGamma h stack incoming snapshots x
     method y args sGamma' vals ly cy runtime_mdef Ty Hprivate Htyping Hscope
-    Hgety Hvalue Hbase Hfind Hargs) as
+    Hgety Hvalue Hbase Hfind Hargs Hnot_special) as
     [private_origins [private_destination
       [Hprivate_destination Hprivate_entry]]].
   assert (Hdestination : private_destination = public_destination) by
@@ -8023,7 +8141,7 @@ Lemma principled_live_mutable_rdm_history_enter_call :
     runtime_lookup_list rGamma args = Some vals ->
     exists origins destination_type,
       static_getType sGamma x = Some destination_type /\
-      principled_live_mutable_rdm_history_state CT P Z cutoff
+      principled_phased_authority_live_history_state CT P Z cutoff
         (mk_watched_frame
           (call_authority caller_authority (sqtype Ty))
           (mreceiver (msignature runtime_mdef) ::
@@ -8037,7 +8155,28 @@ Lemma principled_live_mutable_rdm_history_enter_call :
           (mreturn (mbody runtime_mdef)) (sqtype destination_type)
           (sqtype (mret (msignature runtime_mdef))) (dom h) origins :: stack)
         (executing_authority_color_set CT h
-          (mk_watched_frame caller_authority sGamma rGamma) incoming) h.
+          (mk_watched_frame caller_authority sGamma rGamma) incoming) h /\
+      (forall frame root target,
+        live_frame_member
+          (mk_watched_frame
+            (call_authority caller_authority (sqtype Ty))
+            (mreceiver (msignature runtime_mdef) ::
+              mparams (msignature runtime_mdef))
+            (mkr_env (Iot ly :: vals)))
+          (mk_watched_call_boundary
+            (mk_watched_frame caller_authority sGamma rGamma)
+            (mreceiver (msignature runtime_mdef) ::
+              mparams (msignature runtime_mdef))
+            (mkr_env (Iot ly :: vals)) (sqtype Ty)
+            (mreturn (mbody runtime_mdef)) (sqtype destination_type)
+            (sqtype (mret (msignature runtime_mdef))) (dom h) origins
+            :: stack) frame ->
+        typed_root RDM frame.(frame_senv) frame.(frame_renv) root ->
+        r_muttype h root = Some Mut_r ->
+        mutable_reachable CT h root target ->
+        cutoff <= target \/
+        (sqtype Ty = RO /\ root = ly /\ typed_root RO sGamma rGamma root /\
+         r_muttype h root = Some Mut_r)).
 Proof.
   intros CT P Z cutoff caller_authority sGamma mt rGamma h stack incoming
     x method y args sGamma' vals ly cy runtime_mdef Ty
@@ -8055,30 +8194,34 @@ Proof.
     destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
       method y args sGamma' vals ly cy runtime_mdef root Hcaller_wf Htyping
       Hscope Hvalue Hbase Hfind Hargs Hroot) as
-      [caller_T [Hcaller_get [Hshape Hcaller_root]]].
-    assert (caller_T = Ty) by congruence. subst caller_T.
-    destruct Hshape as [Hmut | [Himm | Hrdm]].
-    + eapply principled_phased_frame_owned_is_after_cutoff with
-        (frame := mk_watched_frame caller_authority sGamma rGamma)
-        (stack := stack) (incoming := incoming).
-      * exact Hstate.
-      * exists root. split.
-        -- destruct Hcaller_root as
-             [variable [T [Htype [Hroot_value Hqualifier]]]].
-           exists variable, T. repeat split; try assumption.
-           unfold capability_in_context. left.
-           rewrite Hmut in Hqualifier. exact Hqualifier.
-        -- eapply mutable_reachable_is_retained. exact Hreachable.
-    + have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma h
-        root Hcaller_wf (ltac:(rewrite Himm in Hcaller_root;
-          exact Hcaller_root)).
-      congruence.
-    + eapply Hcomponents.
-      * constructor.
-      * rewrite Hrdm in Hcaller_root. exact Hcaller_root.
-      * exact Hroot_runtime.
-      * exact Hreachable.
-  - simpl in H. destruct H as [Heq | Hin].
+      [caller_T [Hcaller_get [[Hshape Hcaller_root] |
+        [Hro [Hrooteq Hro_root]]]]].
+    + assert (caller_T = Ty) by congruence. subst caller_T.
+      destruct Hshape as [Hmut | [Himm | Hrdm]].
+      * left. eapply principled_phased_frame_owned_is_after_cutoff with
+          (frame := mk_watched_frame caller_authority sGamma rGamma)
+          (stack := stack) (incoming := incoming).
+        -- exact Hstate.
+        -- exists root. split.
+           ++ destruct Hcaller_root as
+                [variable [T [Htype [Hroot_value Hqualifier]]]].
+              exists variable, T. repeat split; try assumption.
+              unfold capability_in_context. left.
+              rewrite Hmut in Hqualifier. exact Hqualifier.
+           ++ eapply mutable_reachable_is_retained. exact Hreachable.
+      * have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma
+          h root Hcaller_wf (ltac:(rewrite Himm in Hcaller_root;
+            exact Hcaller_root)).
+        congruence.
+      * left. eapply Hcomponents.
+        -- constructor.
+        -- rewrite Hrdm in Hcaller_root. exact Hcaller_root.
+        -- exact Hroot_runtime.
+        -- exact Hreachable.
+    + assert (caller_T = Ty) by congruence. subst caller_T.
+      right. split; [exact Hro|]. split; [exact Hrooteq|].
+      split; [exact Hro_root | exact Hroot_runtime].
+  - left. simpl in H. destruct H as [Heq | Hin].
     + subst. eapply Hcomponents; eauto. constructor.
     + eapply Hcomponents; eauto. constructor. exact Hin.
 Qed.
