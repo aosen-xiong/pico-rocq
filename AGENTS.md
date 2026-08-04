@@ -991,3 +991,36 @@ Audit results:
 No blockers.  Remaining from the overall plan: Stage 5 bookkeeping
 (merge/push wip/pre-repair-snapshot, bump the pico-artifact submodule)
 -- the build chain itself is already green.
+
+### Cleanup round: 2026-08-04
+
+Deletion-only pass over the Potential* cluster (statements of all 20
+manifest theorems byte-identical; Typing.v, Syntax.v, Bigstep.v,
+Subtyping.v, ViewpointAdaptation.v untouched).
+
+Removed, by category:
+- RDMPop.v targeted removals (48 declarations): route-C threading
+  machinery (14), per-statement reflection recoveries (6),
+  colour-bridge fragments (4), superseded K/L freshness pieces (7,
+  J = rs_mut_vars_fresh and its channel-free entry stay live -- used
+  by PotentialCapability.v), abandoned immutable saved-target pop
+  chain (7), misc residual helpers (10).
+- Reference-counted sweeps over Core/Atomic/Private/Resume to
+  fixpoint: 1,454 declarations with zero uses outside their own
+  bodies (13 rounds), plus 52 more orphaned by the duplicate merge.
+- Duplicate lemmas merged repo-wide (9 groups): kept one copy each,
+  redirected references; also removed ~500 lines of commented-out
+  proofs of discarded machinery in Atomic.v.  The identical Typing.v
+  pair override_own_method_found / override_local_precedence was left
+  alone (protected file).
+
+Declaration counts before -> after: Core 708 -> 40, Atomic 290 -> 50,
+Private 322 -> 28, Resume 335 -> 1 (now a thin re-export shim in the
+Require chain), RDMPop 93 -> 45.
+
+Resulting file sizes (lines): Core 620, Atomic 1,808, Private 1,422,
+Resume 25, RDMPop 1,805 (was 15,564 / 12,114 / 14,435 / 12,728 /
+3,423).  Net: about 55.9k lines deleted.
+
+Both audit scripts and the full make are green after every commit of
+the round.
