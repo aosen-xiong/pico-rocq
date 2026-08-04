@@ -352,32 +352,6 @@ Proof.
   - apply IHHconnected2. apply IHHconnected1. exact Hruntime.
 Qed.
 
-Lemma executing_authority_colors_runtime_mutable :
-  forall CT h frame incoming,
-    wf_r_config CT frame.(frame_senv) frame.(frame_renv) h ->
-    authority_context_sound h frame.(frame_renv) frame.(frame_authority) ->
-    authority_colors_runtime_mutable h incoming ->
-    authority_colors_runtime_mutable h
-      (executing_authority_color_set CT h frame incoming).
-Proof.
-  intros CT h frame incoming Hwf Hsound Hincoming mode location
-    [seed [Hseed Hconnected]].
-  destruct seed as [seed_mode seed_location].
-  have Hseed_runtime : r_muttype h (snd (seed_mode, seed_location)) =
-      Some Mut_r.
-  { inversion Hseed; subst.
-    - eapply Hincoming. exact H.
-    - destruct H as [powered_location [Heq Howned]].
-      inversion Heq; subst. simpl.
-      eapply (live_capability_members_runtime_mutable CT h frame []).
-      + split; [exact Hwf|constructor].
-      + split; [exact Hsound|constructor].
-      + apply frame_owned_location_iff_active_live. exact Howned. }
-  exact (phased_authority_frame_connected_preserves_runtime_mutability
-    CT h frame (seed_mode, seed_location) (mode, location) Mut_r Hwf
-    Hconnected Hseed_runtime).
-Qed.
-
 Lemma executing_authority_owned_is_powered :
   forall CT h frame incoming location,
     frame_owned_location CT h frame location ->
@@ -534,21 +508,6 @@ Definition frozen_caller_authority_closure
     In authority_flow_state seeds seed /\
     frozen_caller_authority_connected CT h frame seed state.
 
-Lemma frozen_caller_authority_step_is_phased :
-  forall CT h frame source target,
-    frozen_caller_authority_step CT h frame source target ->
-    phased_authority_frame_step CT h frame source target.
-Proof.
-  intros CT h frame source target Hstep. inversion Hstep; subst.
-  - apply phased_authority_retained. exact H.
-  - apply phased_authority_prospective_retained. exact H.
-  - apply phased_authority_prospective_rdm_backward. exact H.
-  - apply phased_authority_reverse_rdm. exact H.
-  - eapply phased_authority_powered_frame_join; eauto.
-  - eapply phased_authority_prospective_frame_join; eauto.
-  - apply phased_authority_mark_prospective.
-Qed.
-
 (** A caller color snapshot is proof-only state captured when a call suspends
     its caller.  Current execution colors advance through the active phase;
     latent resume exposure is always closed under the saved caller frame.
@@ -587,17 +546,6 @@ Definition advance_frozen_caller_snapshot
     snapshot.(frozen_snapshot_resume_frame)
     snapshot.(frozen_snapshot_resume_authority).
 
-Definition advance_frozen_caller_snapshots
-  (CT : class_table) (h : heap) (active : watched_frame)
-  (snapshots : list frozen_caller_snapshot_slot) :
-  list frozen_caller_snapshot_slot :=
-  map (fun slot =>
-    match slot with
-    | Some snapshot =>
-        Some (advance_frozen_caller_snapshot CT h active snapshot)
-    | None => None
-    end) snapshots.
-
 (** Cross-boundary continuation certificate.  If a newer frozen phase has a
     dangerous color at a root that will resume in an older caller, then the
     older caller's entire potential RDM-join exposure is classified exactly
@@ -619,42 +567,6 @@ Definition frozen_snapshot_resume_safe_against
       authority_mode_dangerous exposure_mode ->
       In authority_flow_state
         older.(frozen_snapshot_current_resume_exposure)
-        (exposure_mode, target) ->
-      ~ In Loc Z target).
-
-Fixpoint frozen_caller_snapshots_nested_resume_safe
-  (Z : Ensemble Loc) (snapshots : list frozen_caller_snapshot_slot) : Prop :=
-  match snapshots with
-  | [] => True
-  | None :: tail => frozen_caller_snapshots_nested_resume_safe Z tail
-  | Some head :: tail =>
-      (forall older,
-        List.In (Some older) tail ->
-        frozen_snapshot_resume_safe_against Z head older) /\
-      frozen_caller_snapshots_nested_resume_safe Z tail
-  end.
-
-(** Boundary-facing certificate for the phase that is executing now.  This
-    differs from independent active authority: [completed] also contains
-    inherited incoming colors.  It is maintained only by the private
-    statement induction and is consumed when a tracked nested head freezes
-    the immediate caller's completed colors. *)
-Definition frozen_completed_colors_resume_safe
-  (Z : Ensemble Loc) (completed : Ensemble authority_flow_state)
-  (snapshots : list frozen_caller_snapshot_slot) : Prop :=
-  forall snapshot source_mode source,
-    List.In (Some snapshot) snapshots ->
-    authority_mode_dangerous source_mode ->
-    In authority_flow_state completed (source_mode, source) ->
-    In Loc snapshot.(frozen_snapshot_resume_rdm_roots) source ->
-    (exists entry_mode,
-      authority_mode_dangerous entry_mode /\
-      In authority_flow_state snapshot.(frozen_snapshot_entry_colors)
-        (entry_mode, source)) \/
-    (forall exposure_mode target,
-      authority_mode_dangerous exposure_mode ->
-      In authority_flow_state
-        snapshot.(frozen_snapshot_current_resume_exposure)
         (exposure_mode, target) ->
       ~ In Loc Z target).
 
@@ -809,23 +721,6 @@ Proof.
   - right. exists FlowPowered. split; [left; reflexivity|].
     unfold independent_active_authority_colors.
     apply executing_authority_owned_is_powered. exact H.
-Qed.
-
-Lemma phased_connected_with_frozen_incoming_covered_by_old_or_active :
-  forall CT h frame colors source target,
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h frame colors) colors ->
-    frozen_authority_state_covered_by_old_or_active colors
-      (independent_active_authority_colors CT h frame) source ->
-    phased_authority_frame_connected CT h frame source target ->
-    frozen_authority_state_covered_by_old_or_active colors
-      (independent_active_authority_colors CT h frame) target.
-Proof.
-  intros CT h frame colors source target Hclosed Hsource Hconnected.
-  induction Hconnected.
-  - eapply phased_step_with_frozen_incoming_covered_by_old_or_active; eauto.
-  - exact Hsource.
-  - apply IHHconnected2. apply IHHconnected1. exact Hsource.
 Qed.
 
 Lemma potential_frame_edge_symmetric :

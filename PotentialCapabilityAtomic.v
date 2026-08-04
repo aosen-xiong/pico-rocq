@@ -2578,58 +2578,6 @@ Proof.
   - eapply allocation_promote_preserves_coverage; eauto.
 Qed.
 
-Lemma allocation_frame_connected_preserves_coverage :
-  forall CT sGamma mt rGamma h x qc C args sGamma' vals qreceiver qruntime
-    authority incoming source target,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    vpa_mutability_object_creation qreceiver qc = qruntime ->
-    authority_colors_runtime_mutable h
-      (executing_authority_color_set CT h
-        (mk_watched_frame authority sGamma rGamma) incoming) ->
-    authority_colors_runtime_mutable
-      (h ++ [mkObj (mkruntime_type qruntime C) vals])
-      (executing_authority_color_set CT
-        (h ++ [mkObj (mkruntime_type qruntime C) vals])
-        (mk_watched_frame authority sGamma'
-          (update_r_env_value rGamma x (Iot (dom h)))) incoming) ->
-    In authority_flow_state
-      (executing_authority_color_set CT
-        (h ++ [mkObj (mkruntime_type qruntime C) vals])
-        (mk_watched_frame authority sGamma'
-          (update_r_env_value rGamma x (Iot (dom h)))) incoming) source ->
-    allocation_authority_state_covered CT h
-      (executing_authority_color_set CT h
-        (mk_watched_frame authority sGamma rGamma) incoming)
-      qc (mk_watched_frame authority sGamma rGamma) source ->
-    phased_authority_frame_connected CT
-      (h ++ [mkObj (mkruntime_type qruntime C) vals])
-      (mk_watched_frame authority sGamma'
-        (update_r_env_value rGamma x (Iot (dom h)))) source target ->
-    allocation_authority_state_covered CT h
-      (executing_authority_color_set CT h
-        (mk_watched_frame authority sGamma rGamma) incoming)
-      qc (mk_watched_frame authority sGamma rGamma) target.
-Proof.
-  intros CT sGamma mt rGamma h x qc C args sGamma' vals qreceiver qruntime
-    authority incoming source target Hwf Htyping Hvals Hadapt Hold_runtime
-    Hpost_runtime Hsource_color Hsource_covered Hconnected.
-  induction Hconnected.
-  - eapply allocation_frame_step_preserves_coverage; eauto.
-  - exact Hsource_covered.
-  - assert (Hmiddle_color : In authority_flow_state
-        (executing_authority_color_set CT
-          (h ++ [mkObj (mkruntime_type qruntime C) vals])
-          (mk_watched_frame authority sGamma'
-            (update_r_env_value rGamma x (Iot (dom h)))) incoming) y).
-    { destruct Hsource_color as [seed [Hseed Hpath]]. exists seed.
-      split; [exact Hseed|]. eapply rt_trans; eauto. }
-    have Hmiddle_covered :=
-      IHHconnected1 Hsource_color Hsource_covered.
-    exact (IHHconnected2 Hmiddle_color Hmiddle_covered).
-Qed.
-
 Lemma potential_history_after_new :
   forall CT P Z cutoff authority sGamma mt rGamma h stack x qc C args
     sGamma' rGamma' h',
