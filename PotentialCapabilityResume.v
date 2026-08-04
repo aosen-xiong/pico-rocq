@@ -35,68 +35,6 @@ Definition resumed_frame_join_target
   caller.(frame_authority) = Mut_r \/
   In Loc eligible location.
 
-Inductive resumed_authority_frame_step
-  (CT : class_table) (h : heap)
-  (eligible : Ensemble Loc) (caller : watched_frame) :
-  authority_flow_state -> authority_flow_state -> Prop :=
-| resumed_authority_retained : forall left right,
-    retained_mut_edge CT h left right ->
-    resumed_authority_frame_step CT h eligible caller
-      (FlowPowered, left) (FlowPowered, right)
-| resumed_authority_prospective_retained : forall left right,
-    retained_mut_edge CT h left right ->
-    resumed_authority_frame_step CT h eligible caller
-      (FlowProspective, left) (FlowProspective, right)
-| resumed_authority_prospective_rdm_backward : forall left right,
-    mutable_edge CT h right left ->
-    resumed_authority_frame_step CT h eligible caller
-      (FlowProspective, left) (FlowProspective, right)
-| resumed_authority_reverse_rdm : forall left right,
-    mutable_edge CT h right left ->
-    resumed_authority_frame_step CT h eligible caller
-      (FlowPowered, left) (FlowProspective, right)
-| resumed_authority_neutral_rdm_forward : forall left right,
-    mutable_edge CT h left right ->
-    resumed_authority_frame_step CT h eligible caller
-      (FlowNeutral, left) (FlowNeutral, right)
-| resumed_authority_neutral_rdm_backward : forall left right,
-    mutable_edge CT h right left ->
-    resumed_authority_frame_step CT h eligible caller
-      (FlowNeutral, left) (FlowNeutral, right)
-| resumed_authority_powered_frame_join : forall left right,
-    typed_root RDM caller.(frame_senv) caller.(frame_renv) left ->
-    typed_root RDM caller.(frame_senv) caller.(frame_renv) right ->
-    resumed_frame_join_target eligible caller left ->
-    resumed_frame_join_target eligible caller right ->
-    resumed_authority_frame_step CT h eligible caller
-      (FlowPowered, left) (FlowProspective, right)
-| resumed_authority_prospective_frame_join : forall left right,
-    typed_root RDM caller.(frame_senv) caller.(frame_renv) left ->
-    typed_root RDM caller.(frame_senv) caller.(frame_renv) right ->
-    resumed_frame_join_target eligible caller left ->
-    resumed_frame_join_target eligible caller right ->
-    resumed_authority_frame_step CT h eligible caller
-      (FlowProspective, left) (FlowProspective, right)
-| resumed_authority_neutral_frame_join : forall left right,
-    typed_root RDM caller.(frame_senv) caller.(frame_renv) left ->
-    typed_root RDM caller.(frame_senv) caller.(frame_renv) right ->
-    resumed_frame_join_target eligible caller right ->
-    resumed_authority_frame_step CT h eligible caller
-      (FlowNeutral, left) (FlowNeutral, right)
-| resumed_authority_forget : forall location,
-    resumed_authority_frame_step CT h eligible caller
-      (FlowPowered, location) (FlowNeutral, location)
-| resumed_authority_prospective_forget : forall location,
-    resumed_authority_frame_step CT h eligible caller
-      (FlowProspective, location) (FlowNeutral, location)
-| resumed_authority_mark_prospective : forall location,
-    resumed_authority_frame_step CT h eligible caller
-      (FlowPowered, location) (FlowProspective, location)
-| resumed_authority_promote : forall location,
-    frame_owned_location CT h caller location ->
-    resumed_authority_frame_step CT h eligible caller
-      (FlowNeutral, location) (FlowPowered, location).
-
 (** Policy witnesses use the same entry-or-safe rule as completed colors.
     Requiring the stronger ordinary-snapshot [resume_roots_safe] property
     here would incorrectly reject a resumed color that was already present
