@@ -706,43 +706,6 @@ Proof.
       * exact Hreturn_imm.
 Qed.
 
-(** Two RDM roots of a suspended caller frame remain adjacent in the callee's
-    potential graph: the caller frame is still a live frame member across the
-    boundary, and [potential_frame_edge] carries no authority condition.
-
-    This is the collapse used by the immutable call-pop residual.  An RDM
-    parameter's argument is forced below
-    [vpa_mutability_tt_readonly_state Ty T], which for an RDM receiver and an
-    RDM parameter is RDM, so any old object the callee holds through such a
-    parameter is a caller RDM root and is therefore joined to the receiver. *)
-Lemma boundary_caller_rdm_roots_are_adjacent :
-  forall CT h callee boundary stack left right,
-    typed_root RDM boundary.(boundary_caller).(frame_senv)
-      boundary.(boundary_caller).(frame_renv) left ->
-    typed_root RDM boundary.(boundary_caller).(frame_senv)
-      boundary.(boundary_caller).(frame_renv) right ->
-    potential_adjacent CT h callee (boundary :: stack) left right.
-Proof.
-  intros CT h callee boundary stack left right Hleft Hright.
-  right. left.
-  exists boundary.(boundary_caller). split.
-  - apply live_frame_suspended. left. reflexivity.
-  - split; [exact Hleft|exact Hright].
-Qed.
-
-Lemma boundary_caller_rdm_roots_are_connected :
-  forall CT h callee boundary stack left right,
-    typed_root RDM boundary.(boundary_caller).(frame_senv)
-      boundary.(boundary_caller).(frame_renv) left ->
-    typed_root RDM boundary.(boundary_caller).(frame_senv)
-      boundary.(boundary_caller).(frame_renv) right ->
-    potential_connected CT h callee (boundary :: stack) left right.
-Proof.
-  intros CT h callee boundary stack left right Hleft Hright.
-  apply rt_step.
-  eapply boundary_caller_rdm_roots_are_adjacent; eauto.
-Qed.
-
 (** Every [Mut]-typed root of a frame whose protected zone coincides with its
     confinement set lies above the cutoff.
 
@@ -777,47 +740,6 @@ Proof.
   destruct (Henv variable root Hvalue) as [HinP | Hfresh].
   - contradiction.
   - exact Hfresh.
-Qed.
-
-(** [potential_adjacent] is [authority_color_adjacent] plus
-    [potential_return_edge], so the converse of
-    [authority_color_connected_is_potential_connected] holds exactly when no
-    live boundary contributes a return edge.
-
-    This is the step that lets a potential-graph bridge be replayed in the
-    colour formalism, where authority provenance is tracked. *)
-Lemma potential_connected_is_authority_color_connected_without_return :
-  forall CT h active stack left right,
-    (forall l r, ~ potential_return_edge h active stack l r) ->
-    potential_connected CT h active stack left right ->
-    authority_color_connected CT h active stack left right.
-Proof.
-  intros CT h active stack left right Hno_return Hconnected.
-  induction Hconnected.
-  - apply rt_step. destruct H as [Hheap | [Hframe | Hreturn]].
-    + left. exact Hheap.
-    + right. exact Hframe.
-    + exfalso. exact (Hno_return x y Hreturn).
-  - apply rt_refl.
-  - eapply rt_trans; eauto.
-Qed.
-
-(** A boundary whose callee return qualifier is not [RDM] contributes no
-    return edge.  In the covariant [Mut] return branch
-    [sqtype body_return_type = Mut] together with
-    [body_return_type <= mret runtime_sig] forces
-    [sqtype (mret runtime_sig)] into [{Mut, RO}], so the head boundary of that
-    branch is always of this shape. *)
-Lemma no_return_edge_when_callee_return_not_rdm :
-  forall h active stack,
-    (forall callee boundary,
-      live_call_boundary active stack callee boundary ->
-      boundary.(boundary_callee_return_qualifier) <> RDM) ->
-    forall l r, ~ potential_return_edge h active stack l r.
-Proof.
-  intros h active stack Hnot_rdm l r
-    [callee [boundary [Hlive [_ [Hreturn_rdm _]]]]].
-  exact (Hnot_rdm callee boundary Hlive Hreturn_rdm).
 Qed.
 
 (** Recovered from the retired [PotentialCapabilityCall] development.
