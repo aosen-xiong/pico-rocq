@@ -23,7 +23,3 @@ Proof.
   destruct (sqtype method_receiver); simpl in Hsub;
     inversion Hsub; subst; auto.
 Qed.
-
-(** Statement preservation keeps its original public interface.  The proof
-    below is strengthened internally with phase-sensitive authority flow;
-    no additional hypothesis is exposed to callers. *)
