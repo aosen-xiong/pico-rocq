@@ -137,20 +137,6 @@ Definition potential_colors_separated
     In Loc Z protected ->
     ~ potential_connected CT h active stack capability protected.
 
-(** Stateful authority flow for pending calls.
-
-    [FlowPowered] means that the path currently carries actual mutable
-    authority.  It may follow retained edges, including [Mut_f].
-    Traversing an RDM edge backwards or crossing a prospective frame join
-    enters [FlowNeutral]: the color may have joined, but mutable authority was
-    not acquired.  A neutral path may move only inside RDM components and
-    across RDM frame joins.  It becomes powered again only at a location that
-    is independently live as a mutable capability. *)
-Inductive authority_flow_mode : Type :=
-| FlowPowered
-| FlowProspective
-| FlowNeutral.
-
 Definition live_boundary_cutoffs_valid
   (h : heap) (stack : list watched_boundary) : Prop :=
   Forall (fun boundary =>
