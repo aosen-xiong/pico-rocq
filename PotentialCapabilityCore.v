@@ -24,13 +24,6 @@ Inductive live_frame_member
     List.In boundary stack ->
     live_frame_member active stack boundary.(boundary_caller).
 
-Definition frame_owned_location
-  (CT : class_table) (h : heap) (frame : watched_frame)
-  (location : Loc) : Prop :=
-  exists root,
-    frame_capability_root frame root /\
-    retained_mut_reachable CT h root location.
-
 Definition potential_frame_edge
   (active : watched_frame) (stack : list watched_boundary)
   (left right : Loc) : Prop :=
@@ -144,31 +137,6 @@ Definition potential_colors_separated
     In Loc Z protected ->
     ~ potential_connected CT h active stack capability protected.
 
-(** Design boundary: [layered_color_connected] is intentionally not yet the
-    final flexible-call invariant.  Excluding [Mut_f] prevents a prospective
-    join in one call phase from granting fictitious authority in another, but
-    it also means that, after an RDM join becomes actual, newly enabled
-    forward [Mut_f] reachability is not represented by this graph alone.
-
-    The full option-2 design must therefore be temporally stratified:
-
-    - one prospective closure per live frame, containing actual forward
-      retained edges and only that frame's RDM-root joins;
-    - no return edge while the callee body is executing;
-    - call pop as the transition that constructs and verifies the resumed
-      caller closure.
-
-    Do not promote this RDM-only core to the recursive preservation theorem
-    until that per-frame staging replaces the cross-frame closure above. *)
-
-(** Frame joins record possible alias connectivity, not authority seeds.
-    Every syntactic RDM root therefore participates in these joins.  Whether
-    such a root contributes authority is decided separately, by
-    [capability_in_context] using the frame's class-bounded authority. *)
-Definition effective_frame_rdm_root
-  (frame : watched_frame) (root : Loc) : Prop :=
-  typed_root RDM frame.(frame_senv) frame.(frame_renv) root.
-
 (** Stateful authority flow for pending calls.
 
     [FlowPowered] means that the path currently carries actual mutable
@@ -182,8 +150,6 @@ Inductive authority_flow_mode : Type :=
 | FlowPowered
 | FlowProspective
 | FlowNeutral.
-
-Definition authority_flow_state : Type := (authority_flow_mode * Loc)%type.
 
 Definition live_boundary_cutoffs_valid
   (h : heap) (stack : list watched_boundary) : Prop :=
