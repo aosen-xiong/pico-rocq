@@ -185,66 +185,6 @@ Inductive authority_flow_mode : Type :=
 
 Definition authority_flow_state : Type := (authority_flow_mode * Loc)%type.
 
-(** Phase-local authority flow.  Unlike [authority_flow_step] below, the
-    promotion rule is restricted to capabilities owned by the frame whose
-    phase is currently executing.  Suspended-caller capabilities are injected
-    only when the sequential construction reaches that caller. *)
-Inductive phased_authority_frame_step
-  (CT : class_table) (h : heap) (frame : watched_frame) :
-  authority_flow_state -> authority_flow_state -> Prop :=
-| phased_authority_retained : forall left right,
-    retained_mut_edge CT h left right ->
-    phased_authority_frame_step CT h frame
-      (FlowPowered, left) (FlowPowered, right)
-| phased_authority_prospective_retained : forall left right,
-    retained_mut_edge CT h left right ->
-    phased_authority_frame_step CT h frame
-      (FlowProspective, left) (FlowProspective, right)
-| phased_authority_prospective_rdm_backward : forall left right,
-    mutable_edge CT h right left ->
-    phased_authority_frame_step CT h frame
-      (FlowProspective, left) (FlowProspective, right)
-| phased_authority_reverse_rdm : forall left right,
-    mutable_edge CT h right left ->
-    phased_authority_frame_step CT h frame
-      (FlowPowered, left) (FlowProspective, right)
-| phased_authority_neutral_rdm_forward : forall left right,
-    mutable_edge CT h left right ->
-    phased_authority_frame_step CT h frame
-      (FlowNeutral, left) (FlowNeutral, right)
-| phased_authority_neutral_rdm_backward : forall left right,
-    mutable_edge CT h right left ->
-    phased_authority_frame_step CT h frame
-      (FlowNeutral, left) (FlowNeutral, right)
-| phased_authority_powered_frame_join : forall left right,
-    effective_frame_rdm_root frame left ->
-    effective_frame_rdm_root frame right ->
-    phased_authority_frame_step CT h frame
-      (FlowPowered, left) (FlowProspective, right)
-| phased_authority_prospective_frame_join : forall left right,
-    effective_frame_rdm_root frame left ->
-    effective_frame_rdm_root frame right ->
-    phased_authority_frame_step CT h frame
-      (FlowProspective, left) (FlowProspective, right)
-| phased_authority_neutral_frame_join : forall left right,
-    effective_frame_rdm_root frame left ->
-    effective_frame_rdm_root frame right ->
-    phased_authority_frame_step CT h frame
-      (FlowNeutral, left) (FlowNeutral, right)
-| phased_authority_forget : forall location,
-    phased_authority_frame_step CT h frame
-      (FlowPowered, location) (FlowNeutral, location)
-| phased_authority_prospective_forget : forall location,
-    phased_authority_frame_step CT h frame
-      (FlowProspective, location) (FlowNeutral, location)
-| phased_authority_mark_prospective : forall location,
-    phased_authority_frame_step CT h frame
-      (FlowPowered, location) (FlowProspective, location)
-| phased_authority_promote : forall location,
-    frame_owned_location CT h frame location ->
-    phased_authority_frame_step CT h frame
-      (FlowNeutral, location) (FlowPowered, location).
-
 Definition live_boundary_cutoffs_valid
   (h : heap) (stack : list watched_boundary) : Prop :=
   Forall (fun boundary =>
