@@ -245,12 +245,6 @@ Inductive phased_authority_frame_step
     phased_authority_frame_step CT h frame
       (FlowNeutral, location) (FlowPowered, location).
 
-Definition phased_authority_frame_connected
-  (CT : class_table) (h : heap) (frame : watched_frame) :
-  authority_flow_state -> authority_flow_state -> Prop :=
-  clos_refl_trans authority_flow_state
-    (phased_authority_frame_step CT h frame).
-
 Definition live_boundary_cutoffs_valid
   (h : heap) (stack : list watched_boundary) : Prop :=
   Forall (fun boundary =>
