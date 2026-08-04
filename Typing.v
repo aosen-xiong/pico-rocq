@@ -690,7 +690,11 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
       (Hret_sub    : qualified_type_subtype CT (vpa_mutability_tt_abstract_state Ty (mret (msignature mdef))) Tx)
       (Hrcv_sub    : qualified_type_subtype CT Ty
                        (vpa_mutability_tt_abstract_state Ty
-                         (mreceiver (msignature mdef))))
+                         (mreceiver (msignature mdef)))
+                     \/ (sqtype Ty = RO /\
+                         mdef.(msignature).(mreceiver).(sqtype) = RDM /\
+                         base_subtype CT (sctype Ty)
+                           mdef.(msignature).(mreceiver).(sctype)))
       (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_abstract_state Ty T))
                        argtypes (mparams (msignature mdef)))
       (Hscope      : mt = AbstractState \/
@@ -711,7 +715,11 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
       (Hret_sub    : qualified_type_subtype CT (vpa_mutability_tt_readonly_state Ty (mret (msignature mdef))) Tx)
       (Hrcv_sub    : qualified_type_subtype CT Ty
                        (vpa_mutability_tt_readonly_state Ty
-                         (mreceiver (msignature mdef))))
+                         (mreceiver (msignature mdef)))
+                     \/ (sqtype Ty = RO /\
+                         mdef.(msignature).(mreceiver).(sqtype) = RDM /\
+                         base_subtype CT (sctype Ty)
+                           mdef.(msignature).(mreceiver).(sctype)))
       (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_readonly_state Ty T))
                        argtypes (mparams (msignature mdef)))
       (Hmt_not_abs2 : mt <> AbstractState)
