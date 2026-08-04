@@ -204,8 +204,10 @@ Lemma safe_call_callee_rdm_root_origin :
       (mkr_env (Iot ly :: vals)) root ->
     exists Ty,
       static_getType sGamma y = Some Ty /\
-      (sqtype Ty = Mut \/ sqtype Ty = Imm \/ sqtype Ty = RDM) /\
-      typed_root (sqtype Ty) sGamma rGamma root.
+      ((sqtype Ty = Mut \/ sqtype Ty = Imm \/ sqtype Ty = RDM) /\
+       typed_root (sqtype Ty) sGamma rGamma root \/
+       (sqtype Ty = RO /\ root = ly /\
+        typed_root RO sGamma rGamma root)).
 Proof.
   intros CT sGamma mt rGamma h x m y args sGamma' vals ly cy runtime_mdef
     root Hwf Htyping Hsafe_scope Hval_y Hbase Hfind Hargs
@@ -217,6 +219,46 @@ Proof.
       method_signature_refinement CT
         (msignature runtime_mdef) (msignature mdef).
     { eapply runtime_call_signature_refines; eauto. }
+    destruct Hrcv_sub as [Hrcv_sub | [Hro [Hsrdm Hsbase]]].
+    2:{ (* the special RO/RDM call: the receiver is the only RDM root *)
+        destruct z as [|i].
+        - simpl in Htype, Hval.
+          injection Htype as <-. injection Hval as <-.
+          exists Ty. split; [exact Hget_y|]. right.
+          split; [exact Hro|]. split; [reflexivity|].
+          exists y, Ty. repeat split; assumption.
+        - exfalso.
+          simpl in Htype, Hval. unfold static_getType in Htype.
+          assert (Hi_runtime :
+              i < length (mparams (msignature runtime_mdef))).
+          { apply nth_error_Some. rewrite Htype. discriminate. }
+          have Hrefine_lengths :=
+            method_signature_refinement_params_length CT
+              (msignature runtime_mdef) (msignature mdef) Hrefine.
+          assert (Hi_static : i < length (mparams (msignature mdef)))
+            by lia.
+          destruct (nth_error_Some_exists (mparams (msignature mdef)) i
+            Hi_static) as [Tstatic HTstatic].
+          have Hstatic_rdm_or_bot : is_rdm_or_bot (sqtype Tstatic).
+          { eapply method_signature_refinement_parameter_rdm_or_bot; eauto.
+            unfold is_rdm_or_bot. auto. }
+          have Harg_lengths := Forall2_length Harg_sub.
+          assert (Hi_args : i < length argtypes) by lia.
+          destruct (nth_error_Some_exists argtypes i Hi_args)
+            as [Targ HTarg].
+          have Hpair := Forall2_nth_error _ _ _ _ _ _ Harg_sub HTarg
+            HTstatic.
+          have Hq := qualified_type_subtype_q_subtype _ _ _ Hpair.
+          rewrite sq_vpa_tt_eq_qq_readonly_state in Hq.
+          rewrite Hro in Hq.
+          destruct (runtime_lookup_list_nth_zs _ _ _ _ _ Hargs Hval) as
+            [zv [Hzi Hzval]].
+          have Hz_type : static_getType sGamma' zv = Some Targ.
+          { eapply static_getType_list_index_strong; eauto. }
+          assert (Htarg_bot : sqtype Targ = Bot).
+          { destruct Hstatic_rdm_or_bot as [Hsr | Hsr]; rewrite Hsr in Hq;
+              simpl in Hq; inversion Hq; subst; congruence. }
+          eapply wf_config_nonnull_variable_not_bot with (x := zv); eauto. }
     destruct z as [|i].
     + simpl in Htype, Hval. injection Htype as <-. injection Hval as <-.
       have Hparent_receiver_rdm_or_bot :
@@ -236,7 +278,7 @@ Proof.
         destruct (sqtype Ty) eqn:Hty; simpl in Hrcv_sub;
           inversion Hrcv_sub; subst; try congruence.
       }
-      exists Ty. split; [exact Hget_y|]. split.
+      exists Ty. split; [exact Hget_y|]. left. split.
       * apply qualified_type_subtype_q_subtype in Hrcv_sub.
         unfold vpa_mutability_tt_readonly_state in Hrcv_sub.
         rewrite Hparent_receiver_rdm in Hrcv_sub. simpl in Hrcv_sub.
@@ -285,7 +327,7 @@ Proof.
         destruct (sqtype Targ) eqn:Hactual; inversion Hsub_i; subst;
           try congruence.
       }
-      exists Ty. split; [exact Hget_y|]. split.
+      exists Ty. split; [exact Hget_y|]. left. split.
       2: { exists arg, Targ. repeat split; try assumption.
            apply qualified_type_subtype_q_subtype in Hsub_i.
            unfold vpa_mutability_tt_readonly_state in Hsub_i.

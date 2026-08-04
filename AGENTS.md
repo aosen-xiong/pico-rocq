@@ -840,3 +840,26 @@ items 3-4 begins, not a mechanical thread-the-disjunction site.
 
 Everything after ForwardCapabilityHistory.v in the build order is untested
 against the restored rule.
+
+### Restored-rule triage: FCH origin lemma reshaped
+
+safe_call_callee_rdm_root_origin now concludes
+
+  ((sqtype Ty = Mut \/ Imm \/ RDM) /\ typed_root (sqtype Ty) caller root)
+  \/ (sqtype Ty = RO /\ root = ly /\ typed_root RO caller root)
+
+matching the RO branch that rdm_roots_reflect_through_view always had: under
+the special call the receiver is the callee's ONLY RDM root (RO-view
+parameter channels adapt RDM to Lost, so params hold no locations at RDM),
+and it reflects to the caller at RO.  The lemma and its special branch are
+proved; the plain-branch sites just gained `left`.
+
+REMAINING: its five consumers must handle the new RO case --
+  ForwardCapabilityHistory.v:~470 (two uses, in one separation lemma; in the
+    RO case both roots coincide with ly),
+  AuthorityHistory.v:856, LiveCapabilityStack.v:642,
+  PotentialCapabilityPrivate.v:5449.
+Then continue make -k.  After FCH, the same reshaping will be needed wherever
+the origins record is CONSTRUCTED for a special call (the RO branch of
+rdm_roots_reflect_through_view finally becomes reachable), and then items 3-4
+of the repair map (the freshness invariant under the restored rule).
