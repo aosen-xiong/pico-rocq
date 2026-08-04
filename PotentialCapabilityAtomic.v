@@ -1578,28 +1578,6 @@ Proof.
     eapply potential_new_entry_typed_root; exact Hroot.
 Qed.
 
-Lemma fresh_mutable_edge_target_has_creation_root :
-  forall CT sGamma mt rGamma h x qc C args sGamma' vals qruntime target,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    mutable_edge CT
-      (h ++ [mkObj (mkruntime_type qruntime C) vals]) (dom h) target ->
-    typed_root (qc2q qc) sGamma rGamma target.
-Proof.
-  intros CT sGamma mt rGamma h x qc C args sGamma' vals qruntime target
-    Hwf Htyping Hvals Hedge.
-  destruct (mutable_edge_after_append CT h
-    (mkObj (mkruntime_type qruntime C) vals) (dom h) target Hedge) as
-    [Hold | [Hfresh [field [D [fieldT
-      [Hfield [Hbase [Hdef Hrdm]]]]]]]].
-  - inversion Hold as [? ? oldobj ? ? ? Hobj].
-    apply runtime_getObj_dom in Hobj. lia.
-  - assert (HdefC : sf_def_rel CT C field fieldT).
-    { eapply field_inheritance_subtyping; eauto. }
-    eapply new_creation_rdm_field_target_has_creation_root; eauto.
-Qed.
-
 Lemma potential_adjacent_after_new :
   forall CT sGamma mt rGamma h x qc C args sGamma' vals qruntime
     authority stack left right,
@@ -2143,17 +2121,6 @@ Definition allocation_fresh_authorized
        In authority_flow_state old_colors (mode, anchor) /\
        typed_root RDM frame.(frame_senv) frame.(frame_renv) anchor)).
 
-Definition allocation_authority_state_covered
-  (CT : class_table) (h : heap)
-  (old_colors : Ensemble authority_flow_state) (qc : q_c)
-  (frame : watched_frame) (state : authority_flow_state) : Prop :=
-  authority_mode_dangerous (fst state) ->
-  (exists old_mode,
-      authority_mode_dangerous old_mode /\
-      In authority_flow_state old_colors (old_mode, snd state)) \/
-  (snd state = dom h /\
-   allocation_fresh_authorized CT h frame old_colors qc).
-
 Lemma executing_authority_typed_mut_root_is_powered :
   forall CT h frame incoming location,
     typed_root Mut frame.(frame_senv) frame.(frame_renv) location ->
@@ -2229,76 +2196,6 @@ Lemma allocation_typed_mut_root_is_old_colored :
 Proof.
   intros. exists FlowPowered. split; [left; reflexivity|].
   eapply executing_authority_typed_mut_root_is_powered; eauto.
-Qed.
-
-Lemma allocation_fresh_retained_target_is_old_colored :
-  forall CT sGamma mt rGamma h x qc C args sGamma' vals qruntime
-    authority incoming target,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    allocation_fresh_authorized CT h
-      (mk_watched_frame authority sGamma rGamma)
-      (executing_authority_color_set CT h
-        (mk_watched_frame authority sGamma rGamma) incoming) qc ->
-    retained_mut_edge CT
-      (h ++ [mkObj (mkruntime_type qruntime C) vals]) (dom h) target ->
-    exists mode,
-      authority_mode_dangerous mode /\
-      In authority_flow_state
-        (executing_authority_color_set CT h
-          (mk_watched_frame authority sGamma rGamma) incoming)
-        (mode, target).
-Proof.
-  intros CT sGamma mt rGamma h x qc C args sGamma' vals qruntime
-    authority incoming target Hwf Htyping Hvals Hauthorized Hedge.
-  destruct (retained_edge_after_append CT h
-    (mkObj (mkruntime_type qruntime C) vals) (dom h) target Hedge) as
-    [Hold | [Hfresh [field [D [fieldT [Hfield [Hbase [Hdefinition
-      [Hrdm | Hmut]]]]]]]]].
-  - inversion Hold as [? ? Hrdm_edge | ? ? object ? ? ? Hobject]; subst.
-    + inversion Hrdm_edge as [? ? object ? ? ? Hobject].
-      apply runtime_getObj_dom in Hobject. lia.
-    + apply runtime_getObj_dom in Hobject. lia.
-  - assert (Hdefinition_C : sf_def_rel CT C field fieldT).
-    { eapply field_inheritance_subtyping; eauto. }
-    have Hroot := new_creation_rdm_field_target_has_creation_root
-      CT sGamma mt rGamma h x qc C args sGamma' vals field fieldT target
-      Hwf Htyping Hvals Hfield Hdefinition_C Hrdm.
-    eapply allocation_creation_root_is_old_colored; eauto.
-  - assert (Hdefinition_C : sf_def_rel CT C field fieldT).
-    { eapply field_inheritance_subtyping; eauto. }
-    have Hroot := new_creation_mut_field_target_has_mut_root
-      CT sGamma mt rGamma h x qc C args sGamma' vals field fieldT target
-      Hwf Htyping Hvals Hfield Hdefinition_C Hmut.
-    eapply allocation_typed_mut_root_is_old_colored; eauto.
-Qed.
-
-Lemma allocation_old_color_is_not_fresh :
-  forall CT h frame incoming mode location,
-    authority_colors_runtime_mutable h
-      (executing_authority_color_set CT h frame incoming) ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame incoming) (mode, location) ->
-    location <> dom h.
-Proof.
-  intros CT h frame incoming mode location Hruntime Hcolor Heq.
-  have Hdom := r_muttype_some_dom h location Mut_r
-    (Hruntime mode location Hcolor).
-  lia.
-Qed.
-
-Lemma allocation_fresh_authorized_from_rdm_color :
-  forall CT h frame incoming mode anchor,
-    authority_mode_dangerous mode ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame incoming) (mode, anchor) ->
-    typed_root RDM frame.(frame_senv) frame.(frame_renv) anchor ->
-    allocation_fresh_authorized CT h frame
-      (executing_authority_color_set CT h frame incoming) RDM_c.
-Proof.
-  intros. right. split; [reflexivity|]. right.
-  exists mode, anchor. repeat split; assumption.
 Qed.
 
 Lemma potential_history_after_new :

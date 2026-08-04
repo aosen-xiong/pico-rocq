@@ -313,50 +313,6 @@ Proof.
   - apply rt_refl.
 Qed.
 
-Lemma executing_authority_dangerous_retained :
-  forall CT h frame incoming mode left right,
-    authority_mode_dangerous mode ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame incoming) (mode, left) ->
-    retained_mut_edge CT h left right ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame incoming) (mode, right).
-Proof.
-  intros CT h frame incoming mode left right Hmode Hcolor Hedge.
-  destruct Hmode as [Hmode | Hmode].
-  - subst mode. destruct Hcolor as [seed [Hseed Hpath]].
-    exists seed. split; [exact Hseed|].
-    eapply rt_trans; [exact Hpath|].
-    apply rt_step. apply phased_authority_retained. exact Hedge.
-  - subst mode. destruct Hcolor as [seed [Hseed Hpath]].
-    exists seed. split; [exact Hseed|].
-    eapply rt_trans; [exact Hpath|].
-    apply rt_step. apply phased_authority_prospective_retained. exact Hedge.
-Qed.
-
-Lemma executing_authority_dangerous_reverse_rdm :
-  forall CT h frame incoming mode left right,
-    authority_mode_dangerous mode ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame incoming) (mode, left) ->
-    mutable_edge CT h right left ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame incoming)
-      (FlowProspective, right).
-Proof.
-  intros CT h frame incoming mode left right Hmode Hcolor Hedge.
-  destruct Hmode as [Hmode | Hmode].
-  - subst mode. destruct Hcolor as [seed [Hseed Hpath]].
-    exists seed. split; [exact Hseed|].
-    eapply rt_trans; [exact Hpath|].
-    apply rt_step. apply phased_authority_reverse_rdm. exact Hedge.
-  - subst mode. destruct Hcolor as [seed [Hseed Hpath]].
-    exists seed. split; [exact Hseed|].
-    eapply rt_trans; [exact Hpath|].
-    apply rt_step. apply phased_authority_prospective_rdm_backward.
-    exact Hedge.
-Qed.
-
 Lemma executing_authority_dangerous_frame_join :
   forall CT h frame incoming mode left right,
     authority_mode_dangerous mode ->
@@ -448,13 +404,6 @@ Definition frozen_caller_authority_connected
   (CT : class_table) (h : heap) (frame : watched_frame) :=
   clos_refl_trans authority_flow_state
     (frozen_caller_authority_step CT h frame).
-
-Definition frozen_caller_authority_closure
-  (CT : class_table) (h : heap) (frame : watched_frame)
-  (seeds : Ensemble authority_flow_state) : Ensemble authority_flow_state :=
-  fun state => exists seed,
-    In authority_flow_state seeds seed /\
-    frozen_caller_authority_connected CT h frame seed state.
 
 Lemma potential_frame_edge_symmetric :
   forall active stack left right,
