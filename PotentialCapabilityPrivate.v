@@ -9,36 +9,6 @@ From Stdlib Require Import List Sets.Ensembles Relations.Relation_Operators
   Program.Equality.
 Import ListNotations.
 
-Lemma caller_post_capability_root_origin_private :
-  forall caller_authority caller_senv caller_renv destination
-    destination_type return_location root,
-    destination <> 0 ->
-    static_getType caller_senv destination = Some destination_type ->
-    length caller_senv = length caller_renv.(vars) ->
-    frame_capability_root
-      (mk_watched_frame caller_authority caller_senv
-        (update_r_env_value caller_renv destination
-          (Iot return_location))) root ->
-    frame_capability_root
-      (mk_watched_frame caller_authority caller_senv caller_renv) root \/
-    root = return_location.
-Proof.
-  intros caller_authority caller_senv caller_renv destination
-    destination_type return_location root Hdestination_nonzero Hdestination
-    Hlength [variable [T [Htype [Hvalue Hcapability]]]].
-  destruct (Nat.eq_dec variable destination) as [Heq | Hneq].
-  - subst variable. have Hdestination_dom := Hdestination.
-    apply static_getType_dom in Hdestination_dom. rewrite Hlength in Hdestination_dom.
-    rewrite (runtime_getVal_update_same caller_renv destination
-      (Iot return_location) Hdestination_dom) in Hvalue.
-    injection Hvalue as <-. right. reflexivity.
-  - left. exists variable, T. split; [exact Htype|]. split.
-    + have Hold_value := runtime_getVal_update_diff caller_renv destination
-        variable (Iot return_location) (ltac:(congruence)).
-      rewrite Hvalue in Hold_value. symmetry. exact Hold_value.
-    + exact Hcapability.
-Qed.
-
 Lemma caller_post_rdm_root_origin_private :
   forall caller_senv caller_renv destination destination_type return_location
     root,
@@ -127,45 +97,6 @@ Definition return_pop_prospective_state_covered
   fst state = FlowProspective /\
   r_muttype h (snd state) = Some Mut_r /\
   return_pop_location_covered CT h caller callee (snd state).
-
-Lemma return_pop_prospective_state_step_covered :
-  forall CT h caller callee caller_authority caller_senv caller_renv
-    destination destination_type return_location source target,
-    caller = mk_watched_frame caller_authority caller_senv caller_renv ->
-    destination <> 0 ->
-    static_getType caller_senv destination = Some destination_type ->
-    length caller_senv = length caller_renv.(vars) ->
-    wf_r_config CT caller_senv
-      (update_r_env_value caller_renv destination (Iot return_location)) h ->
-    prospective_location_covered_by_frame CT h callee return_location ->
-    return_pop_prospective_state_covered CT h caller callee source ->
-    frozen_caller_authority_step CT h
-      (mk_watched_frame caller_authority caller_senv
-        (update_r_env_value caller_renv destination (Iot return_location)))
-      source target ->
-    return_pop_prospective_state_covered CT h caller callee target.
-Proof.
-  intros CT h caller callee caller_authority caller_senv caller_renv
-    destination destination_type return_location [source_mode source]
-    [target_mode target] Hcaller Hdestination_nonzero Hdestination Hlength
-    Hpost_wf Hreturn [Hsource_mode [Hsource_runtime Hsource]] Hstep.
-  simpl in *. subst source_mode.
-  have Htarget_mode : target_mode = FlowProspective.
-  { inversion Hstep; reflexivity. }
-  subst target_mode.
-  have Htarget_runtime := phased_authority_frame_step_preserves_runtime_mutability
-    CT h
-    (mk_watched_frame caller_authority caller_senv
-      (update_r_env_value caller_renv destination (Iot return_location)))
-    (FlowProspective, source) (FlowProspective, target) Mut_r Hpost_wf
-    (frozen_caller_authority_step_is_phased CT h
-      (mk_watched_frame caller_authority caller_senv
-        (update_r_env_value caller_renv destination (Iot return_location)))
-      (FlowProspective, source) (FlowProspective, target) Hstep)
-    Hsource_runtime.
-  split; [reflexivity|]. split; [exact Htarget_runtime|].
-  eapply return_pop_prospective_step_covered; eauto.
-Qed.
 
 Definition boundary_view_anchor
   (boundary : watched_boundary) (root : Loc) : Prop :=
@@ -1664,78 +1595,6 @@ Proof.
       split; [exact Hro_root | exact Hruntime].
 Qed.
 
-Lemma safe_call_prospective_step_covered_by_caller :
-  forall CT caller_authority sGamma mt rGamma h x method y args sGamma'
-    vals ly cy runtime_mdef Ty source target,
-    wf_r_config CT sGamma rGamma h ->
-    authority_context_sound h rGamma caller_authority ->
-    wf_r_config CT
-      (mreceiver (msignature runtime_mdef) ::
-        mparams (msignature runtime_mdef))
-      (mkr_env (Iot ly :: vals)) h ->
-    stmt_typing CT sGamma mt (SCall x method y args) sGamma' ->
-    readonly_state_method_scope mt ->
-    static_getType sGamma y = Some Ty ->
-    runtime_getVal rGamma y = Some (Iot ly) ->
-    r_basetype h ly = Some cy ->
-    FindMethodWithName CT cy method runtime_mdef ->
-    runtime_lookup_list rGamma args = Some vals ->
-    prospective_location_covered_by_frame CT h
-      (mk_watched_frame caller_authority sGamma rGamma) source ->
-    frozen_caller_authority_step CT h
-      (mk_watched_frame
-        (call_authority caller_authority (sqtype Ty))
-        (mreceiver (msignature runtime_mdef) ::
-          mparams (msignature runtime_mdef))
-        (mkr_env (Iot ly :: vals)))
-      (FlowProspective, source) (FlowProspective, target) ->
-    prospective_location_covered_by_frame CT h
-      (mk_watched_frame caller_authority sGamma rGamma) target.
-Proof.
-  intros CT caller_authority sGamma mt rGamma h x method y args sGamma'
-    vals ly cy runtime_mdef Ty source target Hwf Hsound Hcallee_wf Htyping
-    Hscope Hgety Hvalue Hbase Hfind Hargs Hsource Hstep.
-  have Hsource_runtime := prospective_location_covered_by_frame_runtime_mutable
-    CT h (mk_watched_frame caller_authority sGamma rGamma) source Hwf Hsound
-    Hsource.
-  inversion Hstep; subst.
-  - destruct Hsource as [root [Hroot Hpath]]. exists root. split;
-      [exact Hroot|].
-    eapply rt_trans; [exact Hpath|]. apply rt_step.
-    apply frozen_caller_prospective_retained. exact H1.
-  - destruct Hsource as [root [Hroot Hpath]]. exists root. split;
-      [exact Hroot|].
-    eapply rt_trans; [exact Hpath|]. apply rt_step.
-    apply frozen_caller_prospective_rdm_backward. exact H1.
-  - have Htarget_runtime : r_muttype h target = Some Mut_r.
-    { destruct (active_rdm_roots_share_runtime_context CT
-        (mreceiver (msignature runtime_mdef) ::
-          mparams (msignature runtime_mdef))
-        (mkr_env (Iot ly :: vals)) h source target Hcallee_wf H1 H2) as
-        [runtime_q [Hsource_context Htarget_context]].
-      rewrite Hsource_runtime in Hsource_context.
-      injection Hsource_context as <-. exact Htarget_context. }
-    destruct (safe_call_callee_mutable_authority_root_reflects_to_caller
-        CT caller_authority sGamma mt rGamma h x method y args sGamma' vals
-        ly cy runtime_mdef Ty target Hwf Htyping Hscope Hgety Hvalue Hbase
-        Hfind Hargs (or_intror (conj H2 Htarget_runtime))) as
-      [Hcaller_root | [Hro [Htarget_eq [Hro_root Hro_runtime]]]].
-    + exists target. split; [exact Hcaller_root | apply rt_refl].
-    + destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
-        method y args sGamma' vals ly cy runtime_mdef source Hwf Htyping
-        Hscope Hvalue Hbase Hfind Hargs H1) as
-        [Ts [Hgets [[Hshape_s _] | [_ [Hsource_eq _]]]]].
-      * exfalso. assert (Ts = Ty) by congruence. subst Ts.
-        destruct Hshape_s as [Hq | [Hq | Hq]]; congruence.
-      * rewrite Hsource_eq in Hsource. rewrite Htarget_eq. exact Hsource.
-Qed.
-
-Definition prospective_state_covered_by_frame
-  (CT : class_table) (h : heap) (frame : watched_frame)
-  (state : authority_flow_state) : Prop :=
-  fst state = FlowProspective /\
-  prospective_location_covered_by_frame CT h frame (snd state).
-
 Lemma safe_call_callee_rdm_join_is_caller_colored :
   forall CT caller_authority sGamma mt rGamma h x method y args sGamma'
     vals ly cy runtime_mdef Ty incoming old_mode left right,
@@ -1805,117 +1664,6 @@ Proof.
   - destruct Hright_shape as [Hq | [Hq | Hq]]; congruence.
   - exists old_mode. split; [exact Hold_mode|].
     rewrite Hright_eq. rewrite <- Hleft_eq. exact Hold_color.
-Qed.
-
-Lemma safe_call_callee_frame_step_preserves_coverage :
-  forall CT caller_authority sGamma mt rGamma h x method y args sGamma'
-    vals ly cy runtime_mdef Ty incoming source target,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SCall x method y args) sGamma' ->
-    readonly_state_method_scope mt ->
-    static_getType sGamma y = Some Ty ->
-    runtime_getVal rGamma y = Some (Iot ly) ->
-    r_basetype h ly = Some cy ->
-    FindMethodWithName CT cy method runtime_mdef ->
-    runtime_lookup_list rGamma args = Some vals ->
-    authority_colors_runtime_mutable h
-      (executing_authority_color_set CT h
-        (mk_watched_frame caller_authority sGamma rGamma) incoming) ->
-    authority_state_covered
-      (executing_authority_color_set CT h
-        (mk_watched_frame caller_authority sGamma rGamma) incoming) source ->
-    phased_authority_frame_step CT h
-      (mk_watched_frame
-        (call_authority caller_authority (sqtype Ty))
-        (mreceiver (msignature runtime_mdef) ::
-          mparams (msignature runtime_mdef))
-        (mkr_env (Iot ly :: vals))) source target ->
-    authority_state_covered
-      (executing_authority_color_set CT h
-        (mk_watched_frame caller_authority sGamma rGamma) incoming) target.
-Proof.
-  intros CT caller_authority sGamma mt rGamma h x method y args sGamma'
-    vals ly cy runtime_mdef Ty incoming source target Hwf Htyping Hscope
-    Hgety Hvalue Hbase Hfind Hargs Hruntime Hcovered Hstep.
-  inversion Hstep; subst; simpl in *.
-  - intros _. destruct (Hcovered (or_introl eq_refl)) as
-      [old_mode [Hold_mode Hold_color]]. exists old_mode.
-    split; [exact Hold_mode|].
-    eapply executing_authority_dangerous_retained; eauto.
-  - intros _. destruct (Hcovered (or_intror eq_refl)) as
-      [old_mode [Hold_mode Hold_color]]. exists old_mode.
-    split; [exact Hold_mode|].
-    eapply executing_authority_dangerous_retained; eauto.
-  - intros _. destruct (Hcovered (or_intror eq_refl)) as
-      [old_mode [Hold_mode Hold_color]]. exists FlowProspective.
-    split; [right; reflexivity|].
-    eapply executing_authority_dangerous_reverse_rdm; eauto.
-  - intros _. destruct (Hcovered (or_introl eq_refl)) as
-      [old_mode [Hold_mode Hold_color]]. exists FlowProspective.
-    split; [right; reflexivity|].
-    eapply executing_authority_dangerous_reverse_rdm; eauto.
-  - intros Hdangerous. destruct Hdangerous as [Hbad | Hbad]; discriminate.
-  - intros Hdangerous. destruct Hdangerous as [Hbad | Hbad]; discriminate.
-  - intros _. destruct (Hcovered (or_introl eq_refl)) as
-      [old_mode [Hold_mode Hold_color]].
-    eapply safe_call_callee_rdm_join_is_caller_colored; eauto.
-  - intros _. destruct (Hcovered (or_intror eq_refl)) as
-      [old_mode [Hold_mode Hold_color]].
-    eapply safe_call_callee_rdm_join_is_caller_colored; eauto.
-  - intros Hdangerous. destruct Hdangerous as [Hbad | Hbad]; discriminate.
-  - intros Hdangerous. destruct Hdangerous as [Hbad | Hbad]; discriminate.
-  - intros Hdangerous. destruct Hdangerous as [Hbad | Hbad]; discriminate.
-  - intros _. destruct (Hcovered (or_introl eq_refl)) as
-      [old_mode [Hold_mode Hold_color]]. exists old_mode. split; assumption.
-  - intros _. exists FlowPowered. split; [left; reflexivity|].
-    apply executing_authority_owned_is_powered.
-    eapply safe_call_callee_owned_reflects_to_caller; eauto.
-Qed.
-
-Lemma phased_dangerous_path_has_frozen_origin_or_owned_promotion :
-  forall CT h frame source target,
-    authority_mode_dangerous (fst target) ->
-    phased_authority_frame_connected CT h frame source target ->
-    (authority_mode_dangerous (fst source) /\
-      frozen_caller_authority_connected CT h frame source target) \/
-    (exists anchor,
-      frame_owned_location CT h frame anchor /\
-      frozen_caller_authority_connected CT h frame
-        (FlowPowered, anchor) target).
-Proof.
-  intros CT h frame source target Htarget Hconnected.
-  induction Hconnected.
-  - inversion H; subst; simpl in *.
-    + left. split; [left; reflexivity|].
-      apply rt_step. apply frozen_caller_retained. exact H0.
-    + left. split; [right; reflexivity|].
-      apply rt_step. apply frozen_caller_prospective_retained. exact H0.
-    + left. split; [right; reflexivity|].
-      apply rt_step. apply frozen_caller_prospective_rdm_backward. exact H0.
-    + left. split; [left; reflexivity|].
-      apply rt_step. apply frozen_caller_reverse_rdm. exact H0.
-    + destruct Htarget as [Hbad | Hbad]; discriminate.
-    + destruct Htarget as [Hbad | Hbad]; discriminate.
-    + left. split; [left; reflexivity|].
-      apply rt_step. eapply frozen_caller_powered_frame_join; eauto.
-    + left. split; [right; reflexivity|].
-      apply rt_step. eapply frozen_caller_prospective_frame_join; eauto.
-    + destruct Htarget as [Hbad | Hbad]; discriminate.
-    + destruct Htarget as [Hbad | Hbad]; discriminate.
-    + destruct Htarget as [Hbad | Hbad]; discriminate.
-    + left. split; [left; reflexivity|].
-      apply rt_step. apply frozen_caller_mark_prospective.
-    + right. eexists. split; [eassumption|apply rt_refl].
-  - left. split; [exact Htarget|apply rt_refl].
-  - destruct (IHHconnected2 Htarget) as
-      [[Hmiddle Hfrozen_tail] | [anchor [Howned Hfrozen_tail]]].
-    + destruct (IHHconnected1 Hmiddle) as
-        [[Hsource Hfrozen_prefix] | [anchor [Howned Hfrozen_prefix]]].
-      * left. split; [exact Hsource|].
-        eapply rt_trans; eauto.
-      * right. exists anchor. split; [exact Howned|].
-        eapply rt_trans; eauto.
-    + right. exists anchor. split; assumption.
 Qed.
 
 (** Coverage used only while proving that a write preserves a boundary-local
@@ -2104,28 +1852,6 @@ Proof.
   eapply frozen_prospective_step_after_safe_field_update_covered; eauto.
 Qed.
 
-Lemma frozen_state_connected_after_safe_field_update_covered :
-  forall CT h old_frame active lx old field written source target,
-    wf_r_config CT old_frame.(frame_senv) old_frame.(frame_renv) h ->
-    authority_context_sound h old_frame.(frame_renv)
-      old_frame.(frame_authority) ->
-    wf_r_config CT active.(frame_senv) active.(frame_renv) h ->
-    authority_context_sound h active.(frame_renv) active.(frame_authority) ->
-    runtime_getObj h lx = Some old ->
-    authority_safe_field_endpoints CT h active lx written ->
-    prospective_state_covered_by_old_or_active CT h old_frame active source ->
-    frozen_caller_authority_connected CT
-      (update_field h lx field (Iot written)) old_frame source target ->
-    prospective_state_covered_by_old_or_active CT h old_frame active target.
-Proof.
-  intros CT h old_frame active lx old field written source target Hold_wf
-    Hold_sound Hactive_wf Hactive_sound Hobj Hendpoints Hsource Hconnected.
-  induction Hconnected.
-  - eapply frozen_state_step_after_safe_field_update_covered; eauto.
-  - exact Hsource.
-  - apply IHHconnected2. apply IHHconnected1. exact Hsource.
-Qed.
-
 (** Private evidence that a color observed while the callee executes really
     originates in authority of the suspended caller.  In particular, mere
     membership in the callee's executing colors is not enough: independently
@@ -2158,45 +1884,6 @@ Inductive frozen_caller_authority_nonjoin_step
 | frozen_nonjoin_mark_prospective : forall location,
     frozen_caller_authority_nonjoin_step CT h
       (FlowPowered, location) (FlowProspective, location).
-
-(** Lossless proof-local provenance for resumed-caller flow.  Unlike the
-    extensional class above, this object remembers the strictly smaller
-    derivation that crossed each caller-frame RDM join.  The return proof can
-    therefore peel a return-root source back to the join that introduced it,
-    rather than postulating a global pop-compatibility premise. *)
-Inductive tracked_resume_frozen_color_derivation
-  (CT : class_table) (h : heap) (Z : Ensemble Loc)
-  (callee : watched_frame) (callee_incoming : Ensemble authority_flow_state)
-  (caller : watched_frame) (caller_incoming : Ensemble authority_flow_state)
-  (snapshot : frozen_caller_color_snapshot) :
-  authority_flow_state -> Prop :=
-| tracked_resume_from_snapshot : forall state,
-    In authority_flow_state snapshot.(frozen_snapshot_current_colors) state ->
-    In authority_flow_state caller_incoming state ->
-    resumed_caller_frozen_origin CT h caller caller_incoming state ->
-    tracked_resume_frozen_color_derivation CT h Z callee callee_incoming
-      caller caller_incoming snapshot state
-| tracked_resume_from_caller_owned : forall anchor,
-    frame_owned_location CT h caller anchor ->
-    In authority_flow_state
-      (executing_authority_color_set CT h callee callee_incoming)
-      (FlowPowered, anchor) ->
-    tracked_resume_frozen_color_derivation CT h Z callee callee_incoming
-      caller caller_incoming snapshot (FlowPowered, anchor)
-| tracked_resume_by_nonjoin : forall source target,
-    tracked_resume_frozen_color_derivation CT h Z callee callee_incoming
-      caller caller_incoming snapshot source ->
-    frozen_caller_authority_nonjoin_step CT h source target ->
-    tracked_resume_frozen_color_derivation CT h Z callee callee_incoming
-      caller caller_incoming snapshot target
-| tracked_resume_by_frame_join : forall mode left right,
-    authority_mode_dangerous mode ->
-    tracked_resume_frozen_color_derivation CT h Z callee callee_incoming
-      caller caller_incoming snapshot (mode, left) ->
-    typed_root RDM caller.(frame_senv) caller.(frame_renv) left ->
-    typed_root RDM caller.(frame_senv) caller.(frame_renv) right ->
-    tracked_resume_frozen_color_derivation CT h Z callee callee_incoming
-      caller caller_incoming snapshot (FlowProspective, right).
 
 (** Well-founded classifier for the top snapshot when it is used as the
     summary of older frozen slots.  Its base constructor is frozen
@@ -2257,62 +1944,4 @@ Proof.
   - exists target. split.
     + right. split; [exact H2|exact Htarget_runtime].
     + apply rt_refl.
-Qed.
-
-Lemma pop_resume_exposure_state_class_step :
-  forall CT h active caller old_exposure source target,
-    wf_r_config CT caller.(frame_senv) caller.(frame_renv) h ->
-    authority_context_sound h caller.(frame_renv) caller.(frame_authority) ->
-    authority_colors_runtime_mutable h old_exposure ->
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h active old_exposure)
-      old_exposure ->
-    pop_resume_exposure_state_class CT h caller old_exposure source ->
-    frozen_caller_authority_step CT h caller source target ->
-    pop_resume_exposure_state_class CT h caller old_exposure target.
-Proof.
-  intros CT h active caller old_exposure [source_mode source]
-    [target_mode target] Hcaller_wf Hcaller_sound Hruntime Hclosed Hclass
-    Hstep. simpl in *.
-  destruct Hclass as [Hold | [Hsource_mode Hcovered]].
-  - inversion Hstep; subst.
-    + left. eapply Hclosed. exists (FlowPowered, source). split;
-        [exact Hold|]. apply rt_step. apply frozen_caller_retained. assumption.
-    + left. eapply Hclosed. exists (FlowProspective, source). split;
-        [exact Hold|]. apply rt_step.
-      apply frozen_caller_prospective_retained. assumption.
-    + left. eapply Hclosed. exists (FlowProspective, source). split;
-        [exact Hold|]. apply rt_step.
-      apply frozen_caller_prospective_rdm_backward. assumption.
-    + left. eapply Hclosed. exists (FlowPowered, source). split;
-        [exact Hold|]. apply rt_step.
-      apply frozen_caller_reverse_rdm. assumption.
-    + right. split; [reflexivity|].
-      have Hsource_runtime := Hruntime FlowPowered source Hold.
-      destruct (active_rdm_roots_share_runtime_context CT
-        caller.(frame_senv) caller.(frame_renv) h source target Hcaller_wf
-        (ltac:(eassumption)) (ltac:(eassumption))) as
-        [runtime_q [Hsource_context Htarget_context]].
-      rewrite Hsource_runtime in Hsource_context. injection Hsource_context as <-.
-      exists target. split.
-      * right. split; [eassumption|exact Htarget_context].
-      * apply rt_refl.
-    + right. split; [reflexivity|].
-      have Hsource_runtime := Hruntime FlowProspective source Hold.
-      destruct (active_rdm_roots_share_runtime_context CT
-        caller.(frame_senv) caller.(frame_renv) h source target Hcaller_wf
-        (ltac:(eassumption)) (ltac:(eassumption))) as
-        [runtime_q [Hsource_context Htarget_context]].
-      rewrite Hsource_runtime in Hsource_context. injection Hsource_context as <-.
-      exists target. split.
-      * right. split; [eassumption|exact Htarget_context].
-      * apply rt_refl.
-    + left. eapply Hclosed. exists (FlowPowered, target). split;
-        [exact Hold|]. apply rt_step. apply frozen_caller_mark_prospective.
-  - change (source_mode = FlowProspective) in Hsource_mode.
-    subst source_mode.
-    have Htarget_mode : target_mode = FlowProspective.
-    { inversion Hstep; reflexivity. }
-    subst target_mode. right. split; [reflexivity|].
-    eapply prospective_location_covered_after_prospective_frame_step; eauto.
 Qed.

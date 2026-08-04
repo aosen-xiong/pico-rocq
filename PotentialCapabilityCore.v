@@ -79,17 +79,6 @@ Inductive live_call_partition
     live_call_partition active (head :: tail) boundary
       (head :: above) below.
 
-Lemma live_call_partition_stack_shape :
-  forall active stack boundary above below,
-    live_call_partition active stack boundary above below ->
-    stack = above ++ boundary :: below.
-Proof.
-  intros active stack boundary above below Hpartition.
-  induction Hpartition.
-  - reflexivity.
-  - simpl. rewrite IHHpartition. reflexivity.
-Qed.
-
 Lemma live_call_boundary_callee_is_live :
   forall active stack callee boundary,
     live_call_boundary active stack callee boundary ->
@@ -173,15 +162,6 @@ Definition potential_connected
   (active : watched_frame) (stack : list watched_boundary) :
   Loc -> Loc -> Prop :=
   clos_refl_trans Loc (potential_adjacent CT h active stack).
-
-Definition ownership_frame_edge
-  (CT : class_table) (h : heap)
-  (active : watched_frame) (stack : list watched_boundary)
-  (left right : Loc) : Prop :=
-  exists frame,
-    live_frame_member active stack frame /\
-    frame_owned_location CT h frame left /\
-    frame_owned_location CT h frame right.
 
 Definition entry_ownership_channel_free
   (boundary : watched_boundary) : Prop :=
@@ -273,14 +253,6 @@ Definition staged_frame_connected
   Loc -> Loc -> Prop :=
   clos_refl_trans Loc (staged_frame_adjacent CT h frame).
 
-Definition staged_frame_closure
-  (CT : class_table) (h : heap) (frame : watched_frame)
-  (seeds : Ensemble Loc) : Ensemble Loc :=
-  fun location =>
-    exists seed,
-      In Loc seeds seed /\
-      staged_frame_connected CT h frame seed location.
-
 (** The return transition is separated from both adjacent frame phases.  It
     makes a possible RDM result available to the resumed caller, but it does
     not permit another traversal of the callee phase afterwards. *)
@@ -299,14 +271,6 @@ Definition staged_return_connected
   (h : heap) (callee : watched_frame) (boundary : watched_boundary) :
   Loc -> Loc -> Prop :=
   clos_refl_trans Loc (staged_return_adjacent h callee boundary).
-
-Definition staged_return_closure
-  (h : heap) (callee : watched_frame) (boundary : watched_boundary)
-  (seeds : Ensemble Loc) : Ensemble Loc :=
-  fun location =>
-    exists seed,
-      In Loc seeds seed /\
-      staged_return_connected h callee boundary seed location.
 
 (** Phase-correct live coloring.
 
@@ -460,29 +424,12 @@ Definition phased_authority_return_connected
   clos_refl_trans authority_flow_state
     (phased_authority_return_step h callee boundary).
 
-Definition phased_authority_return_closure
-  (h : heap) (callee : watched_frame) (boundary : watched_boundary)
-  (seeds : Ensemble authority_flow_state) : Ensemble authority_flow_state :=
-  fun state => exists seed,
-    In authority_flow_state seeds seed /\
-    phased_authority_return_connected h callee boundary seed state.
-
 Definition phased_frame_powered_seeds
   (CT : class_table) (h : heap) (frame : watched_frame) :
   Ensemble authority_flow_state :=
   fun state => exists location,
     state = (FlowPowered, location) /\
     frame_owned_location CT h frame location.
-
-(** A completed callee does not retain mutable authority merely because its
-    location remains allocated.  Return carries component identity forward
-    in neutral mode; the resumed caller is powered only by capabilities in
-    its own updated frame. *)
-Definition demote_authority_set
-  (seeds : Ensemble authority_flow_state) : Ensemble authority_flow_state :=
-  fun state => exists mode location,
-    In authority_flow_state seeds (mode, location) /\
-    state = (FlowNeutral, location).
 
 (** Authority available while one frame is executing.  [incoming] is the
     caller-side authority that existed before the call and therefore remains
@@ -957,15 +904,6 @@ Definition live_mutable_authority_components_after_cutoff
     live_frame_member active stack frame ->
     mutable_authority_reachable CT h frame root target ->
     cutoff <= target.
-
-Lemma live_mutable_authority_components_active :
-  forall CT h cutoff active stack,
-    live_mutable_authority_components_after_cutoff CT h cutoff active stack ->
-    active_mutable_authority_components_after_cutoff CT h cutoff active.
-Proof.
-  intros CT h cutoff active stack Hlive root target Hreachable.
-  eapply Hlive; eauto. constructor.
-Qed.
 
 Definition frame_rdm_root_set (frame : watched_frame) : Ensemble Loc :=
   fun root =>
@@ -1531,19 +1469,6 @@ Proof.
   - apply rt_refl.
 Qed.
 
-Lemma authority_flow_connected_projects_to_color :
-  forall CT h active stack source target,
-    authority_flow_connected CT h active stack source target ->
-    authority_color_connected CT h active stack
-      (snd source) (snd target).
-Proof.
-  intros CT h active stack source target Hconnected.
-  induction Hconnected.
-  - eapply authority_flow_step_projects_to_color; eauto.
-  - apply rt_refl.
-  - eapply rt_trans; eauto.
-Qed.
-
 Definition live_boundary_cutoffs_valid
   (h : heap) (stack : list watched_boundary) : Prop :=
   Forall (fun boundary =>
@@ -1812,24 +1737,6 @@ Proof.
   - apply frozen_caller_mark_prospective.
 Qed.
 
-Lemma channel_free_entry_frozen_connected_reflects :
-  forall CT h boundary old_frame source target,
-    entry_ownership_channel_free boundary ->
-    frozen_caller_authority_connected CT h
-      (mk_watched_frame
-        (call_authority boundary.(boundary_caller).(frame_authority)
-          boundary.(boundary_receiver_view))
-        boundary.(boundary_callee_entry_senv)
-        boundary.(boundary_callee_entry_renv)) source target ->
-    frozen_caller_authority_connected CT h old_frame source target.
-Proof.
-  intros CT h boundary old_frame source target Hfree Hconnected.
-  induction Hconnected.
-  - apply rt_step. eapply channel_free_entry_frozen_step_reflects; eauto.
-  - apply rt_refl.
-  - eapply rt_trans; eauto.
-Qed.
-
 (** A caller color snapshot is proof-only state captured when a call suspends
     its caller.  Current execution colors advance through the active phase;
     latent resume exposure is always closed under the saved caller frame.
@@ -1891,25 +1798,6 @@ Proof.
     constructor. exact Hpartition.
 Qed.
 
-(** The same tail-partition fact does not depend on the head slot being
-    tracked.  This form is used when an intentionally untracked [None]
-    boundary is popped while older tracked snapshots remain below it. *)
-Lemma frozen_snapshot_in_tail_has_partition_below_slot :
-  forall slot snapshots boundary stack snapshot,
-    length (slot :: snapshots) = length (boundary :: stack) ->
-    List.In (Some snapshot) snapshots ->
-    exists tracked_boundary above below,
-      frozen_snapshot_live_partition (slot :: snapshots)
-        (boundary :: stack) snapshot tracked_boundary (boundary :: above)
-        below.
-Proof.
-  intros slot snapshots boundary stack snapshot Haligned Hin.
-  simpl in Haligned. injection Haligned as Htail_length.
-  destruct (frozen_snapshot_in_has_live_partition snapshots stack snapshot
-    Htail_length Hin) as [tracked_boundary [above [below Hpartition]]].
-  exists tracked_boundary, above, below. constructor. exact Hpartition.
-Qed.
-
 Definition frozen_callee_side_mutable_components_after_boundaries
   (CT : class_table) (h : heap) (active : watched_frame)
   (snapshots : list frozen_caller_snapshot_slot)
@@ -1963,31 +1851,6 @@ Definition frozen_caller_snapshot_slot_metadata_eq
   | _, _ => False
   end.
 
-Definition frozen_caller_snapshot_list_metadata_eq
-  (new old : list frozen_caller_snapshot_slot) : Prop :=
-  Forall2 frozen_caller_snapshot_slot_metadata_eq new old.
-
-(** Target snapshots use [phase_incoming] as a forward-only activation
-    history.  All genuinely static metadata remains exact, but an older
-    target may remember additional colors whenever one of its nested
-    callees returns.  Ordinary snapshots and exceptional resume witnesses
-    continue to use [frozen_caller_snapshot_metadata_eq]. *)
-Definition frozen_target_snapshot_metadata_le
-  (new old : frozen_caller_color_snapshot) : Prop :=
-  Same_set authority_flow_state new.(frozen_snapshot_entry_colors)
-    old.(frozen_snapshot_entry_colors) /\
-  Same_set authority_flow_state new.(frozen_snapshot_entry_phase)
-    old.(frozen_snapshot_entry_phase) /\
-  Included authority_flow_state old.(frozen_snapshot_phase_incoming)
-    new.(frozen_snapshot_phase_incoming) /\
-  Same_set Loc new.(frozen_snapshot_resume_rdm_roots)
-    old.(frozen_snapshot_resume_rdm_roots) /\
-  Same_set authority_flow_state new.(frozen_snapshot_entry_resume_exposure)
-    old.(frozen_snapshot_entry_resume_exposure) /\
-  new.(frozen_snapshot_resume_frame) = old.(frozen_snapshot_resume_frame) /\
-  new.(frozen_snapshot_resume_authority) =
-    old.(frozen_snapshot_resume_authority).
-
 Definition advance_frozen_caller_snapshot
   (CT : class_table) (h : heap) (active : watched_frame)
   (snapshot : frozen_caller_color_snapshot) :
@@ -2016,29 +1879,6 @@ Definition advance_frozen_caller_snapshots
     | None => None
     end) snapshots.
 
-(** Entering a tracked call first captures the caller's completed colors and
-    then advances every tracked caller color through the new active frame.
-    The map never inspects any suspended frame. *)
-Definition enter_frozen_caller_snapshots
-  (CT : class_table) (h : heap) (caller callee : watched_frame)
-  (caller_colors : Ensemble authority_flow_state)
-  (snapshots : list frozen_caller_snapshot_slot) :
-  list frozen_caller_snapshot_slot :=
-  Some (mk_frozen_caller_color_snapshot
-    (frozen_caller_authority_closure CT h callee
-      (dangerous_authority_colors caller_colors))
-    (frozen_caller_authority_closure CT h callee
-      (dangerous_authority_colors caller_colors))
-    caller_colors
-    caller_colors
-    (frame_rdm_root_set caller)
-    (frame_resume_exposure_colors CT h caller)
-    (frozen_caller_authority_closure CT h callee
-      (frame_resume_exposure_colors CT h caller))
-    caller
-    caller.(frame_authority)) ::
-  advance_frozen_caller_snapshots CT h callee snapshots.
-
 (** Dangerous colors carried for older suspended callers must also cross a
     nested call boundary.  The ordinary caller color set alone is not a
     compositional summary: an older frozen color can reach the nested
@@ -2061,54 +1901,6 @@ Definition nested_frozen_call_entry_seeds
   Union authority_flow_state
     (dangerous_authority_colors caller_colors)
     (frozen_caller_snapshot_current_color_union snapshots).
-
-(** Stack-compositional tracked head.  [caller_colors] remains the exact
-    phase incoming set restored at pop; only the private frozen image is
-    enlarged with older frozen provenance. *)
-Definition nested_frozen_call_head
-  (CT : class_table) (h : heap) (caller callee : watched_frame)
-  (caller_colors : Ensemble authority_flow_state)
-  (snapshots : list frozen_caller_snapshot_slot) :
-  frozen_caller_color_snapshot :=
-  mk_frozen_caller_color_snapshot
-    (frozen_caller_authority_closure CT h callee
-      (nested_frozen_call_entry_seeds caller_colors snapshots))
-    (frozen_caller_authority_closure CT h callee
-      (nested_frozen_call_entry_seeds caller_colors snapshots))
-    caller_colors
-    caller_colors
-    (frame_rdm_root_set caller)
-    (frame_resume_exposure_colors CT h caller)
-    (frozen_caller_authority_closure CT h callee
-      (frame_resume_exposure_colors CT h caller))
-    caller
-    caller.(frame_authority).
-
-Lemma advance_frozen_snapshot_live_partition_reflects :
-  forall CT h active snapshots stack new_snapshot boundary above below,
-    frozen_snapshot_live_partition
-      (advance_frozen_caller_snapshots CT h active snapshots) stack
-      new_snapshot boundary above below ->
-    exists old_snapshot,
-      frozen_snapshot_live_partition snapshots stack old_snapshot boundary
-        above below.
-Proof.
-  intros CT h active snapshots. induction snapshots as [|slot tail IH];
-    intros stack new_snapshot boundary above below Hpartition.
-  - inversion Hpartition.
-  - destruct stack as [|top stack]; [inversion Hpartition|].
-    unfold advance_frozen_caller_snapshots in Hpartition. simpl in Hpartition.
-    destruct slot as [old_head|].
-    + inversion Hpartition; subst.
-      * exists old_head. constructor.
-      * destruct (IH stack new_snapshot boundary above0 below H7) as
-          [old_snapshot Hold].
-        exists old_snapshot. constructor. exact Hold.
-    + inversion Hpartition; subst.
-      destruct (IH stack new_snapshot boundary above0 below H7) as
-        [old_snapshot Hold].
-      exists old_snapshot. constructor. exact Hold.
-Qed.
 
 (** Each tracked boundary summarizes all older tracked provenance below it.
     The relation is deliberately stated only over proof-local color images;
@@ -2164,19 +1956,6 @@ Fixpoint frozen_caller_snapshots_nested_resume_safe
       frozen_caller_snapshots_nested_resume_safe Z tail
   end.
 
-(** A newer suspended caller's latent resume exposure cannot coincide with
-    a root captured for an older caller.  This is an age/provenance fact, not
-    a semantic precondition: tracked call entry establishes it from the
-    prospective-component cutoff invariant, and statement preservation
-    transports it as private ghost state. *)
-Definition frozen_snapshot_resume_exposure_disjoint_from
-  (newer older : frozen_caller_color_snapshot) : Prop :=
-  forall mode location,
-    In authority_flow_state
-      newer.(frozen_snapshot_current_resume_exposure) (mode, location) ->
-    In Loc older.(frozen_snapshot_resume_rdm_roots) location ->
-    False.
-
 (** Boundary-facing certificate for the phase that is executing now.  This
     differs from independent active authority: [completed] also contains
     inherited incoming colors.  It is maintained only by the private
@@ -2200,18 +1979,6 @@ Definition frozen_completed_colors_resume_safe
         snapshot.(frozen_snapshot_current_resume_exposure)
         (exposure_mode, target) ->
       ~ In Loc Z target).
-
-Lemma frozen_caller_snapshot_closure_monotone :
-  forall CT h active smaller larger,
-    Included authority_flow_state smaller larger ->
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h active smaller)
-      (frozen_caller_authority_closure CT h active larger).
-Proof.
-  intros CT h active smaller larger Hincluded state
-    [seed [Hseed Hpath]].
-  exists seed. split; [apply Hincluded; exact Hseed|exact Hpath].
-Qed.
 
 (** Static age certificate paired with each suspended boundary.  It records
     that both the completed caller colors and every captured caller RDM root
@@ -2252,20 +2019,6 @@ Definition frozen_snapshot_boundaries_after_cutoff
   (cutoff : Loc) (snapshots : list frozen_caller_snapshot_slot)
   (stack : list watched_boundary) : Prop :=
   Forall2 (frozen_snapshot_slot_boundary_after_cutoff cutoff) snapshots stack.
-
-Lemma frozen_snapshot_partition_boundary_after_cutoff :
-  forall cutoff snapshots stack snapshot boundary above below,
-    frozen_snapshot_boundaries_after_cutoff cutoff snapshots stack ->
-    frozen_snapshot_live_partition snapshots stack snapshot boundary above
-      below ->
-    cutoff <= boundary.(boundary_entry_cutoff).
-Proof.
-  intros cutoff snapshots stack snapshot boundary above below Hafter
-    Hpartition.
-  induction Hpartition.
-  - inversion Hafter; subst. exact H2.
-  - inversion Hafter; subst. eapply IHHpartition. exact H4.
-Qed.
 
 (** There is exactly one proof slot per operational boundary.  A [None] slot
     denotes a pre-existing or untracked call.  Exact alignment makes pop
@@ -2341,31 +2094,6 @@ Proof.
   eapply rt_trans; [exact Hprefix|].
   eapply frozen_caller_authority_connected_is_phased. exact Hpath.
 Qed.
-
-(** Allocation-stable replacement for global frozen/active disjointness.
-    If a frozen caller color is also independently exercisable by the active
-    frame, it is enough to remember one captured caller RDM root that
-    justifies that color.  The root-scoped resume certificate decides at pop
-    whether the caller-entry case was already closed, or whether every
-    exposed target avoids the protected zone. *)
-Definition frozen_caller_snapshots_active_resume_origins
-  (CT : class_table) (h : heap) (active : watched_frame)
-  (snapshots : list frozen_caller_snapshot_slot) : Prop :=
-  forall snapshot snapshot_mode active_mode location,
-    List.In (Some snapshot) snapshots ->
-    authority_mode_dangerous snapshot_mode ->
-    authority_mode_dangerous active_mode ->
-    In authority_flow_state snapshot.(frozen_snapshot_current_colors)
-      (snapshot_mode, location) ->
-    (In authority_flow_state
-       (independent_active_authority_colors CT h active)
-       (active_mode, location) \/
-     typed_root RDM active.(frame_senv) active.(frame_renv) location) ->
-    exists root_mode root,
-      authority_mode_dangerous root_mode /\
-      In authority_flow_state snapshot.(frozen_snapshot_current_colors)
-        (root_mode, root) /\
-      In Loc snapshot.(frozen_snapshot_resume_rdm_roots) root.
 
 Definition frozen_snapshot_resume_exposure_avoids
   (Z : Ensemble Loc) (snapshot : frozen_caller_color_snapshot) : Prop :=
@@ -2856,73 +2584,6 @@ Proof.
   eapply Hruntime. exact Hold.
 Qed.
 
-Lemma principled_phased_authority_starts_frozen :
-  forall CT P Z cutoff active stack incoming h,
-    principled_phased_authority_live_history_state CT P Z cutoff
-      active stack incoming h ->
-    principled_frozen_authority_history_state CT P Z cutoff
-      active stack incoming (repeat None (length stack)) h.
-Proof.
-  intros CT P Z cutoff active stack incoming h Hstate.
-  split; [exact Hstate|]. split.
-  - unfold frozen_caller_snapshots_aligned. apply repeat_length.
-  - split.
-    + apply frozen_caller_snapshots_none_runtime_mutable.
-    + split.
-      * apply frozen_caller_snapshots_none_closed.
-      * split.
-        -- apply frozen_caller_snapshots_none_retain_entry.
-        -- split.
-           ++ apply frozen_caller_snapshots_none_dangerous.
-           ++ split.
-              ** apply frozen_caller_snapshots_none_avoid_protected.
-              ** split.
-                 --- apply frozen_caller_snapshots_none_resume_roots_in_heap.
-                 --- split.
-                     +++ apply frozen_caller_snapshots_none_resume_exposures_wf.
-                     +++ split.
-                         *** apply frozen_caller_snapshots_none_resume_roots_safe.
-                         *** split.
-                             ---- apply frozen_caller_snapshots_none_resume_joins_safe.
-                             ---- split.
-                                  ++++ apply frozen_caller_snapshots_none_entry_exposure_covered.
-                                  ++++ apply frozen_caller_snapshots_none_cover_phase_incoming.
-Qed.
-
-Lemma potential_live_history_starts_principled_phased_authority :
-  forall CT P Z cutoff active stack h,
-    potential_live_history_state CT P Z cutoff active stack h ->
-    principled_phased_authority_live_history_state CT P Z cutoff
-      active stack (Empty_set authority_flow_state) h.
-Proof.
-  intros CT P Z cutoff active stack h [Hlive [Hpotential Hcutoffs]].
-  destruct Hlive as
-    [Hauthority [Hframes [Hsound [Hcutoff [Hzone Hchain]]]]].
-  destruct Hauthority as [Hdirected [Hroots [Hactive_sound Hcomponents]]].
-  destruct Hdirected as
-    [Hcontains [Hzone_env [Hconfined [Hclosed [Hruntime
-      [Hmut_roots Havoid]]]]]].
-  refine (conj Hcontains (conj Hconfined (conj _ (conj _
-    (conj Hframes (conj Hsound (conj Hcutoff
-      (conj Hzone (conj Hchain Hcutoffs))))))))).
-  - intros mode location Hempty. inversion Hempty.
-  - intros mode protected Hmode Hcolor Hprotected.
-    destruct Hcolor as [seed [Hseed Hpath]].
-    inversion Hseed; subst.
-    + inversion H.
-    + destruct H as [root [Heq Howned]]. inversion Heq; subst.
-      apply (Hpotential root protected).
-      * apply frame_owned_location_iff_active_live in Howned.
-        destruct Howned as
-          [capability_root [[Hactive | [boundary [Hin _]]] Hreachable]].
-        -- exists capability_root. split; [left; exact Hactive|].
-           exact Hreachable.
-        -- inversion Hin.
-      * exact Hprotected.
-      * exact (phased_authority_frame_connected_projects_to_potential CT h
-          active stack (FlowPowered, root) (mode, protected) Hpath).
-Qed.
-
 (** Explicit-witness form used by the private statement induction.  Keeping
     [incoming] and [snapshots] visible internally is essential at nested call
     return: the induction preserves the incoming phase exactly and returns a
@@ -2941,25 +2602,6 @@ Definition private_frozen_statement_state
   frozen_caller_snapshots_nested_resume_safe Z snapshots /\
   frozen_completed_colors_resume_safe Z
     (executing_authority_color_set CT h active incoming) snapshots.
-
-(** Final private induction package for nested channel-free calls.  The
-    existing snapshot certificates describe authority provenance; this
-    additional, stack-aligned conjunct describes the allocation age of the
-    mutable components that can be passed through a later nested call.  It
-    is vacuous for every boundary present at entry to the public theorem and
-    therefore introduces no public assumption. *)
-Definition private_fresh_frozen_statement_state
-  (CT : class_table) (P Z : Ensemble Loc) (cutoff : Loc)
-  (active : watched_frame) (stack : list watched_boundary)
-  (incoming : Ensemble authority_flow_state)
-  (snapshots : list frozen_caller_snapshot_slot) (h : heap) : Prop :=
-  private_frozen_statement_state CT P Z cutoff active stack incoming
-    snapshots h /\
-  frozen_callee_side_mutable_components_after_boundaries CT h active
-    snapshots stack /\
-  frozen_callee_side_prospective_components_after_boundaries CT h active
-    snapshots stack /\
-  frozen_snapshot_boundaries_after_cutoff cutoff snapshots stack.
 
 Definition frozen_caller_snapshot_list_included
   (new old : list frozen_caller_snapshot_slot) : Prop :=
@@ -3057,31 +2699,6 @@ Proof.
     eapply rt_trans.
     + exact Hold_first.
     + exact (IHHpath2 Hmiddle).
-Qed.
-
-Lemma frozen_caller_connected_after_graph_reflection :
-  forall CT old_h new_h frame source target,
-    (forall left right,
-      retained_mut_edge CT new_h left right ->
-      retained_mut_edge CT old_h left right) ->
-    (forall left right,
-      mutable_edge CT new_h left right ->
-      mutable_edge CT old_h left right) ->
-    frozen_caller_authority_connected CT new_h frame source target ->
-    frozen_caller_authority_connected CT old_h frame source target.
-Proof.
-  intros CT old_h new_h frame source target Hretained Hmutable Hpath.
-  induction Hpath.
-  - apply rt_step. inversion H; subst.
-    + apply frozen_caller_retained. eauto.
-    + apply frozen_caller_prospective_retained. eauto.
-    + apply frozen_caller_prospective_rdm_backward. eauto.
-    + apply frozen_caller_reverse_rdm. eauto.
-    + eapply frozen_caller_powered_frame_join; eauto.
-    + eapply frozen_caller_prospective_frame_join; eauto.
-    + apply frozen_caller_mark_prospective.
-  - apply rt_refl.
-  - eapply rt_trans; eauto.
 Qed.
 
 Lemma advance_frozen_caller_snapshots_after_graph_reflection_included :
@@ -3361,88 +2978,6 @@ Proof.
   apply rt_step. destruct Hmode as [-> | ->].
   - eapply frozen_caller_powered_frame_join; eauto.
   - eapply frozen_caller_prospective_frame_join; eauto.
-Qed.
-
-Lemma frozen_caller_field_update_forward_covered :
-  forall CT h frame colors lx old field written old_mode left right,
-    runtime_getObj h lx = Some old ->
-    authority_colors_runtime_mutable h colors ->
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h frame colors) colors ->
-    (forall caller_mode active_mode location,
-      authority_mode_dangerous caller_mode ->
-      authority_mode_dangerous active_mode ->
-      In authority_flow_state colors (caller_mode, location) ->
-      ~ In authority_flow_state
-          (independent_active_authority_colors CT h frame)
-          (active_mode, location)) ->
-    authority_safe_field_endpoints CT h frame lx written ->
-    authority_mode_dangerous old_mode ->
-    In authority_flow_state colors (old_mode, left) ->
-    retained_mut_edge CT (update_field h lx field (Iot written)) left right ->
-    exists target_mode,
-      authority_mode_dangerous target_mode /\
-      In authority_flow_state colors (target_mode, right).
-Proof.
-  intros CT h frame colors lx old field written old_mode left right Hobj
-    Hruntime Hclosed Hseparated Hendpoints Hmode Hleft Hedge.
-  destruct (retained_edge_after_field_update CT h lx old field
-    (Iot written) left right Hobj Hedge) as
-    [Hold | [Heq_left [Heq_value Hnew]]].
-  - exists old_mode. split; [exact Hmode|].
-    eapply frozen_caller_color_dangerous_retained; eauto.
-  - injection Heq_value as Heq_right. subst left right.
-    inversion Hendpoints; subst.
-    + exfalso. eapply Hseparated with
-        (caller_mode := old_mode) (active_mode := FlowPowered)
-        (location := lx); eauto.
-      * left. reflexivity.
-      * apply executing_authority_owned_is_powered. exact H.
-    + have Hmut := Hruntime old_mode lx Hleft.
-      rewrite H in Hmut. discriminate.
-    + exists FlowProspective. split; [right; reflexivity|].
-      eapply frozen_caller_color_dangerous_frame_join; eauto.
-Qed.
-
-Lemma frozen_caller_field_update_backward_covered :
-  forall CT h frame colors lx old field written old_mode left right,
-    runtime_getObj h lx = Some old ->
-    authority_colors_runtime_mutable h colors ->
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h frame colors) colors ->
-    (forall caller_mode active_mode location,
-      authority_mode_dangerous caller_mode ->
-      authority_mode_dangerous active_mode ->
-      In authority_flow_state colors (caller_mode, location) ->
-      ~ In authority_flow_state
-          (independent_active_authority_colors CT h frame)
-          (active_mode, location)) ->
-    authority_safe_field_endpoints CT h frame lx written ->
-    authority_mode_dangerous old_mode ->
-    In authority_flow_state colors (old_mode, left) ->
-    mutable_edge CT (update_field h lx field (Iot written)) right left ->
-    exists target_mode,
-      authority_mode_dangerous target_mode /\
-      In authority_flow_state colors (target_mode, right).
-Proof.
-  intros CT h frame colors lx old field written old_mode left right Hobj
-    Hruntime Hclosed Hseparated Hendpoints Hmode Hleft Hedge.
-  destruct (mutable_edge_after_field_update CT h lx old field
-    (Iot written) right left Hobj Hedge) as
-    [Hold | [Heq_right [Heq_value Hnew]]].
-  - exists FlowProspective. split; [right; reflexivity|].
-    eapply frozen_caller_color_dangerous_reverse_rdm; eauto.
-  - injection Heq_value as Heq_left. subst left right.
-    inversion Hendpoints; subst.
-    + exfalso. eapply Hseparated with
-        (caller_mode := old_mode) (active_mode := FlowPowered)
-        (location := written); eauto.
-      * left. reflexivity.
-      * apply executing_authority_owned_is_powered. exact H0.
-    + have Hmut := Hruntime old_mode written Hleft.
-      rewrite H0 in Hmut. discriminate.
-    + exists FlowProspective. split; [right; reflexivity|].
-      eapply frozen_caller_color_dangerous_frame_join; eauto.
 Qed.
 
 Definition frozen_authority_state_covered_by_old_or_active
@@ -3852,332 +3387,6 @@ Proof.
   exact (Hcovered Hmode).
 Qed.
 
-Lemma principled_frozen_authority_after_safe_field_update :
-  forall CT P Z cutoff frame stack incoming snapshots h lx old field written,
-    principled_frozen_authority_history_state CT P Z cutoff frame stack
-      incoming snapshots h ->
-    runtime_getObj h lx = Some old ->
-    authority_safe_field_endpoints CT h frame lx written ->
-    principled_phased_authority_live_history_state CT P Z cutoff frame stack
-      incoming (update_field h lx field (Iot written)) ->
-    principled_frozen_authority_history_state CT P Z cutoff frame stack
-      incoming
-      (advance_frozen_caller_snapshots CT
-        (update_field h lx field (Iot written)) frame snapshots)
-      (update_field h lx field (Iot written)).
-Proof.
-  intros CT P Z cutoff frame stack incoming snapshots h lx old field written
-    [Hold [Haligned [Hruntime [Hclosed
-      [Hretain [Hdangerous [Havoid [Hroots [Hexposure
-        [Hresume [Hjoins [Hentry_covered Hphase_covered]]]]]]]]]]]]
-    Hobj Hendpoints Hpost.
-  set (h' := update_field h lx field (Iot written)).
-  set (snapshots' := advance_frozen_caller_snapshots CT h' frame snapshots).
-  have Hactive_runtime : authority_colors_runtime_mutable h
-      (independent_active_authority_colors CT h frame).
-  { unfold independent_active_authority_colors.
-    eapply executing_authority_colors_runtime_mutable.
-    - exact (proj1 (proj1
-        (proj2 (proj2 (proj2 (proj2 Hold)))))).
-    - exact (proj1 (proj1 (proj2
-        (proj2 (proj2 (proj2 (proj2 Hold))))))).
-    - intros mode location Hempty. inversion Hempty. }
-  have Hcovered : frozen_caller_snapshot_list_covered_by_old_or_active
-      (independent_active_authority_colors CT h frame) snapshots' snapshots.
-  { unfold snapshots', h'.
-    eapply
-      advance_frozen_caller_snapshots_after_safe_field_update_covered_by_old_or_active;
-      eauto. }
-  have Hmain_separated :=
-    proj1 (proj2 (proj2 (proj2 Hold))).
-  split; [exact Hpost|]. split.
-  - unfold snapshots', frozen_caller_snapshots_aligned,
-      advance_frozen_caller_snapshots. rewrite length_map. exact Haligned.
-  - split.
-    + unfold snapshots', h'.
-      eapply advance_frozen_caller_snapshots_runtime_mutable.
-      * exact (proj1 (proj1
-           (proj2 (proj2 (proj2 (proj2 Hpost)))))).
-      * eapply frozen_caller_snapshots_runtime_mutable_transport.
-        -- intros location. apply r_muttype_update_field_preserve.
-        -- exact Hruntime.
-    + split.
-      * unfold snapshots'. apply advance_frozen_caller_snapshots_closed.
-      * split.
-        -- unfold snapshots'.
-           eapply advance_frozen_caller_snapshots_retain_entry. exact Hretain.
-        -- split.
-           ++ unfold snapshots'.
-              eapply advance_frozen_caller_snapshots_dangerous.
-              exact Hdangerous.
-           ++ split.
-              ** intros new_snapshot mode location Hnew Hmode Hcolor Hprotected.
-                 destruct (Hcovered new_snapshot Hnew) as
-                   [old_snapshot [Hold_snapshot Hcolors]].
-                 destruct (Hcolors mode location Hmode Hcolor) as
-                   [[old_mode [Hold_mode Hold_color]] |
-                    [active_mode [Hactive_mode Hactive_color]]].
-                 --- exact (Havoid old_snapshot old_mode location Hold_snapshot
-                      Hold_mode Hold_color Hprotected).
-                 --- eapply Hmain_separated;
-                       [exact Hactive_mode| |exact Hprotected].
-                     eapply independent_active_authority_colors_in_executing.
-                     exact Hactive_color.
-              ** split.
-                 --- intros new_snapshot root Hnew Hroot.
-                     unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                     apply in_map_iff in Hnew.
-                     destruct Hnew as [old_slot [Heq Hold_slot]].
-                     destruct old_slot as [old_snapshot|]; simpl in Heq;
-                       [|discriminate].
-                     injection Heq as Heq. subst new_snapshot. simpl in Hroot.
-                     unfold h'. rewrite update_field_length.
-                     eapply Hroots; eauto.
-                 --- split.
-                     +++ split.
-                         *** intros new_snapshot Hnew mode location Hcolor.
-                             unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                             apply in_map_iff in Hnew.
-                             destruct Hnew as [old_slot [Heq Hold_slot]].
-                             destruct old_slot as [old_snapshot|]; simpl in Heq;
-                               [|discriminate].
-                             injection Heq as Heq. subst new_snapshot. simpl in Hcolor.
-                             eapply (advance_frozen_caller_snapshot_runtime_mutable
-                               CT h' frame
-                               old_snapshot.(frozen_snapshot_current_resume_exposure)).
-                             ---- exact (proj1 (proj1
-                               (proj2 (proj2 (proj2 (proj2 Hpost)))))).
-                             ---- intros old_mode old_location Hold_color.
-                                  unfold h'. rewrite r_muttype_update_field_preserve.
-                                  eapply (proj1 Hexposure); eauto.
-                             ---- exact Hcolor.
-                         *** split.
-                             ---- intros new_snapshot Hnew.
-                                  unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                                  apply in_map_iff in Hnew.
-                                  destruct Hnew as [old_slot [Heq Hold_slot]].
-                                  destruct old_slot as [old_snapshot|]; simpl in Heq;
-                                    [|discriminate].
-                                  injection Heq as Heq. subst new_snapshot. simpl.
-                                  exact (proj1
-                                    (frozen_caller_authority_closure_idempotent
-                                      CT h' frame
-                                      old_snapshot.(frozen_snapshot_current_resume_exposure))).
-                             ---- split.
-                                  ++++ intros new_snapshot mode location Hnew Hcolor.
-                                  unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                                  apply in_map_iff in Hnew.
-                                  destruct Hnew as [old_slot [Heq Hold_slot]].
-                                  destruct old_slot as [old_snapshot|]; simpl in Heq;
-                                    [|discriminate].
-                                  injection Heq as Heq. subst new_snapshot. simpl in Hcolor.
-                                  destruct Hcolor as [seed [Hseed Hpath]].
-                                  destruct seed as [seed_mode seed_location].
-                                  have Hseed_mode : authority_mode_dangerous seed_mode by
-                                    (eapply (proj1 (proj2 (proj2 Hexposure))); eauto).
-                                  exact
-                                    (frozen_caller_authority_connected_preserves_dangerous
-                                      CT h' frame (seed_mode, seed_location)
-                                      (mode, location) Hseed_mode Hpath).
-                                  ++++ split.
-                                       ***** intros new_snapshot Hnew state Hentry.
-                                       unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                                       apply in_map_iff in Hnew.
-                                       destruct Hnew as [old_slot [Heq Hold_slot]].
-                                       destruct old_slot as [old_snapshot|]; simpl in Heq;
-                                         [|discriminate].
-                                       injection Heq as Heq. subst new_snapshot. simpl in *.
-                                       apply frozen_caller_authority_closure_contains.
-                                            eapply (proj1 (proj2 (proj2
-                                              (proj2 Hexposure)))); eauto.
-                                       ***** intros new_snapshot root Hnew
-                                               Hroot Hroot_runtime.
-                                            unfold snapshots',
-                                              advance_frozen_caller_snapshots in Hnew.
-                                            apply in_map_iff in Hnew.
-                                            destruct Hnew as
-                                              [old_slot [Heq Hold_slot]].
-                                            destruct old_slot as [old_snapshot|];
-                                              simpl in Heq; [|discriminate].
-                                            injection Heq as Heq.
-                                            subst new_snapshot. simpl in *.
-                                            apply frozen_caller_authority_closure_contains.
-                                            eapply (proj2 (proj2 (proj2
-                                              (proj2 Hexposure)))); eauto.
-                                            unfold h' in Hroot_runtime.
-                                            rewrite r_muttype_update_field_preserve
-                                              in Hroot_runtime.
-                                            exact Hroot_runtime.
-                     +++ split.
-                         *** intros new_snapshot active_mode source exposure_mode target
-                           Hnew Hactive_mode Hactive Hsource Hexposure_mode
-                           Htarget Hprotected.
-                         unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                         apply in_map_iff in Hnew.
-                         destruct Hnew as [old_slot [Heq Hold_slot]].
-                         destruct old_slot as [old_snapshot|]; simpl in Heq;
-                           [|discriminate].
-                         injection Heq as Heq. subst new_snapshot. simpl in *.
-                         destruct
-                           (executing_authority_colors_after_safe_field_update_covered
-                             CT h frame (Empty_set authority_flow_state) lx old field
-                             written Hobj Hactive_runtime Hendpoints active_mode source
-                             Hactive_mode Hactive) as
-                           [old_mode [Hold_mode Hold_active]].
-                         destruct Htarget as [seed [Hseed Hpath]].
-                         destruct seed as [seed_mode seed_location].
-                         have Hsource_covered :
-                             frozen_authority_state_covered_by_old_or_active
-                               old_snapshot.(frozen_snapshot_current_resume_exposure)
-                               (independent_active_authority_colors CT h frame)
-                               (seed_mode, seed_location).
-                         { intros Hseed_mode. left. exists seed_mode.
-                           split; assumption. }
-                         have Htarget_covered :=
-                           frozen_caller_connected_after_safe_field_update_covered_by_old_or_active
-                             CT h frame
-                             old_snapshot.(frozen_snapshot_current_resume_exposure)
-                             lx old field written (seed_mode, seed_location)
-                             (exposure_mode, target) Hobj
-                             ((proj1 Hexposure) old_snapshot Hold_slot)
-                             ((proj1 (proj2 Hexposure)) old_snapshot Hold_slot)
-                             Hactive_runtime Hendpoints Hsource_covered Hpath.
-                         destruct (Htarget_covered Hexposure_mode) as
-                           [[old_exposure_mode [Hold_exposure_mode Hold_target]] |
-                            [target_active_mode [Htarget_active_mode Htarget_active]]].
-                         ---- eapply Hresume with (snapshot := old_snapshot)
-                               (active_mode := old_mode) (source := source)
-                               (exposure_mode := old_exposure_mode); eauto.
-                         ---- eapply Hmain_separated;
-                               [exact Htarget_active_mode| |exact Hprotected].
-                             eapply independent_active_authority_colors_in_executing.
-                             exact Htarget_active.
-                         *** split.
-                             ---- intros new_snapshot source_mode source Hnew
-                               Hsource_mode Hsource_color Hsource_root.
-                             unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                             apply in_map_iff in Hnew.
-                             destruct Hnew as [old_slot [Heq Hold_slot]].
-                             destruct old_slot as [old_snapshot|]; simpl in Heq;
-                               [|discriminate].
-                             injection Heq as Heq. subst new_snapshot. simpl in *.
-                                  destruct Hsource_color as [seed [Hseed Hpath]].
-                                  destruct seed as [seed_mode seed_location].
-                                  have Hseed_covered :
-                                 frozen_authority_state_covered_by_old_or_active
-                                   old_snapshot.(frozen_snapshot_current_colors)
-                                   (independent_active_authority_colors CT h frame)
-                                   (seed_mode, seed_location).
-                                  { intros Hseed_mode. left. exists seed_mode.
-                                    split; assumption. }
-                                  have Hsource_covered :=
-                               frozen_caller_connected_after_safe_field_update_covered_by_old_or_active
-                                 CT h frame
-                                 old_snapshot.(frozen_snapshot_current_colors)
-                                 lx old field written (seed_mode, seed_location)
-                                 (source_mode, source) Hobj
-                                 (Hruntime old_snapshot Hold_slot)
-                                 (Hclosed old_snapshot Hold_slot)
-                                 Hactive_runtime Hendpoints Hseed_covered Hpath.
-                                  assert (Hclassify_target : forall exposure_mode target,
-                                 authority_mode_dangerous exposure_mode ->
-                                 In authority_flow_state
-                                   (frozen_caller_authority_closure CT h' frame
-                                     old_snapshot.(frozen_snapshot_current_resume_exposure))
-                                   (exposure_mode, target) ->
-                                 (exists old_exposure_mode,
-                                   authority_mode_dangerous old_exposure_mode /\
-                                   In authority_flow_state
-                                     old_snapshot.(frozen_snapshot_current_resume_exposure)
-                                     (old_exposure_mode, target)) \/
-                                 (exists target_active_mode,
-                                   authority_mode_dangerous target_active_mode /\
-                                   In authority_flow_state
-                                     (independent_active_authority_colors CT h frame)
-                                     (target_active_mode, target))).
-                                  { intros exposure_mode target Hexposure_mode
-                                 [target_seed [Htarget_seed Htarget_path]].
-                               destruct target_seed as
-                                 [target_seed_mode target_seed_location].
-                               have Htarget_seed_covered :
-                                   frozen_authority_state_covered_by_old_or_active
-                                     old_snapshot.(frozen_snapshot_current_resume_exposure)
-                                     (independent_active_authority_colors CT h frame)
-                                     (target_seed_mode, target_seed_location).
-                               { intros Htarget_seed_mode. left.
-                                 exists target_seed_mode. split; assumption. }
-                               have Htarget_covered :=
-                                 frozen_caller_connected_after_safe_field_update_covered_by_old_or_active
-                                   CT h frame
-                                   old_snapshot.(frozen_snapshot_current_resume_exposure)
-                                   lx old field written
-                                   (target_seed_mode, target_seed_location)
-                                   (exposure_mode, target) Hobj
-                                   ((proj1 Hexposure) old_snapshot Hold_slot)
-                                   ((proj1 (proj2 Hexposure)) old_snapshot Hold_slot)
-                                   Hactive_runtime Hendpoints Htarget_seed_covered
-                                   Htarget_path.
-                                    exact (Htarget_covered Hexposure_mode). }
-                                  destruct (Hsource_covered Hsource_mode) as
-                               [[old_source_mode [Hold_source_mode Hold_source]] |
-                                [active_source_mode
-                                  [Hactive_source_mode Hactive_source]]].
-                                  ++++ destruct (Hjoins old_snapshot old_source_mode source
-                                    Hold_slot Hold_source_mode Hold_source Hsource_root) as
-                                    [[entry_mode [Hentry_mode Hentry]] | Hsafe].
-                                       ***** left. exists entry_mode. split; assumption.
-                                       ***** right. intros exposure_mode target
-                                         Hexposure_mode Htarget Hprotected.
-                                       destruct (Hclassify_target exposure_mode target
-                                         Hexposure_mode Htarget) as
-                                         [[old_exposure_mode
-                                             [Hold_exposure_mode Hold_target]] |
-                                          [target_active_mode
-                                             [Htarget_active_mode Htarget_active]]].
-                                            +++++ exact (Hsafe old_exposure_mode target
-                                               Hold_exposure_mode Hold_target Hprotected).
-                                            +++++ eapply Hmain_separated;
-                                               [exact Htarget_active_mode| |exact Hprotected].
-                                             eapply independent_active_authority_colors_in_executing.
-                                             exact Htarget_active.
-                                  ++++ right. intros exposure_mode target Hexposure_mode
-                                    Htarget Hprotected.
-                                  destruct (Hclassify_target exposure_mode target
-                                    Hexposure_mode Htarget) as
-                                    [[old_exposure_mode
-                                        [Hold_exposure_mode Hold_target]] |
-                                     [target_active_mode
-                                        [Htarget_active_mode Htarget_active]]].
-                                       ***** eapply Hresume with (snapshot := old_snapshot)
-                                         (active_mode := active_source_mode)
-                                         (source := source)
-                                         (exposure_mode := old_exposure_mode); eauto.
-                                       ***** eapply Hmain_separated;
-                                         [exact Htarget_active_mode| |exact Hprotected].
-                                       eapply independent_active_authority_colors_in_executing.
-                                            exact Htarget_active.
-                             ---- split.
-                                  ++++ apply advance_frozen_caller_snapshots_entry_exposure_covered.
-                                       exact Hentry_covered.
-                                  ++++ apply advance_frozen_caller_snapshots_cover_phase_incoming.
-                                       exact Hphase_covered.
-Qed.
-
-Lemma entry_ownership_channel_free_has_no_frame_owned_location :
-  forall CT h boundary owned,
-    entry_ownership_channel_free boundary ->
-    ~ frame_owned_location CT h
-        (mk_watched_frame
-          (call_authority boundary.(boundary_caller).(frame_authority)
-            boundary.(boundary_receiver_view))
-          boundary.(boundary_callee_entry_senv)
-          boundary.(boundary_callee_entry_renv)) owned.
-Proof.
-  intros CT h boundary owned [Hno_capability Hno_rdm]
-    [root [Hroot Hreachable]].
-  exact (Hno_capability root Hroot).
-Qed.
-
 Lemma frozen_caller_authority_closure_dangerous :
   forall CT h frame colors,
     (forall mode location,
@@ -4227,128 +3436,6 @@ Proof.
     + eapply mutable_edge_preserves_runtime_mutability; eauto.
     + assert (runtime_q = Mut_r) by congruence. subst runtime_q.
       eapply retained_edge_preserves_runtime_mutability; eauto.
-Qed.
-
-Lemma active_mutable_authority_components_after_assignment :
-  forall CT cutoff authority sGamma mt rGamma h x expression old value,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SVarAss x expression) sGamma ->
-    readonly_state_method_scope mt ->
-    runtime_getVal rGamma x = Some old ->
-    eval_expr CT rGamma h expression value OK rGamma h ->
-    active_mutable_authority_components_after_cutoff CT h cutoff
-      (mk_watched_frame authority sGamma rGamma) ->
-    active_mutable_authority_components_after_cutoff CT h cutoff
-      (mk_watched_frame authority sGamma
-        (update_r_env_value rGamma x value)).
-Proof.
-  intros CT cutoff authority sGamma mt rGamma h x expression old value Hwf
-    Htyping Hscope Hvalue Heval Hold root target Hreachable.
-  inversion Hreachable; subst.
-  - destruct H as
-      [variable [T [Htype [Hroot_value [Hmut | [Hrdm Hauthority]]]]]].
-    + have Hnew_root : typed_root Mut sGamma
-          (update_r_env_value rGamma x value) root.
-      { exists variable, T. repeat split; assumption. }
-      destruct (assignment_mut_root_has_old_ancestor CT sGamma mt rGamma h x
-        expression old value Hwf Htyping Hscope Hvalue Heval root Hnew_root)
-        as [old_root [Hold_root Hold_to_root]].
-      have Hold_runtime : r_muttype h old_root = Some Mut_r.
-      { eapply retained_reachable_reflects_runtime_context_private;
-          [exact (proj1 (proj2 Hwf))|exact Hold_to_root|exact H0]. }
-      eapply Hold with (root := old_root).
-      apply mutable_authority_reachable_capability.
-      * destruct Hold_root as
-          [old_variable [old_T [Hold_type [Hold_value Hold_mut]]]].
-        exists old_variable, old_T. repeat split; try assumption.
-        unfold capability_in_context. left. exact Hold_mut.
-      * exact Hold_runtime.
-      * eapply retained_mut_reachable_transitive; eauto.
-    + have Hnew_root : typed_root RDM sGamma
-          (update_r_env_value rGamma x value) root.
-      { exists variable, T. repeat split; assumption. }
-      destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h x
-        expression old value Hwf Htyping Hscope Hvalue Heval root Hnew_root)
-        as [old_root [Hold_root Hold_to_root]].
-      have Hroot_to_old : mutable_connected CT h root old_root.
-      { eapply mutable_connected_sym.
-        eapply mutable_reachable_connected. exact Hold_to_root. }
-      have Hold_runtime : r_muttype h old_root = Some Mut_r.
-      { eapply mutable_connected_preserves_runtime_mutability;
-          [exact (proj1 (proj2 Hwf))|exact Hroot_to_old|exact H0]. }
-      eapply Hold with (root := old_root).
-      apply mutable_authority_reachable_capability.
-      * destruct Hold_root as
-          [old_variable [old_T [Hold_type [Hold_value Hold_rdm]]]].
-        exists old_variable, old_T. repeat split; try assumption.
-        unfold capability_in_context. right. split; assumption.
-      * exact Hold_runtime.
-      * eapply retained_mut_reachable_transitive.
-        -- apply mutable_reachable_is_retained. exact Hold_to_root.
-        -- exact H1.
-  - destruct (assignment_rdm_root_has_old_ancestor CT sGamma mt rGamma h x
-      expression old value Hwf Htyping Hscope Hvalue Heval root H) as
-      [old_root [Hold_root Hold_to_root]].
-    have Hroot_to_old : mutable_connected CT h root old_root.
-    { eapply mutable_connected_sym.
-      eapply mutable_reachable_connected. exact Hold_to_root. }
-    have Hold_runtime : r_muttype h old_root = Some Mut_r.
-    { eapply mutable_connected_preserves_runtime_mutability;
-        [exact (proj1 (proj2 Hwf))|exact Hroot_to_old|exact H0]. }
-    apply (Hold old_root target).
-    apply mutable_authority_reachable_rdm; [exact Hold_root|exact Hold_runtime|].
-    eapply retained_mut_reachable_transitive.
-    + apply mutable_reachable_is_retained. exact Hold_to_root.
-    + exact H1.
-Qed.
-
-Lemma active_mutable_authority_components_after_local :
-  forall CT cutoff authority sGamma mt rGamma h T x sGamma',
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
-    runtime_getVal rGamma x = None ->
-    active_mutable_authority_components_after_cutoff CT h cutoff
-      (mk_watched_frame authority sGamma rGamma) ->
-    active_mutable_authority_components_after_cutoff CT h cutoff
-      (mk_watched_frame authority sGamma'
-        (set_vars rGamma (vars rGamma ++ [Null_a]))).
-Proof.
-  intros CT cutoff authority sGamma mt rGamma h T x sGamma' Hwf Htyping
-    Hnone Hold root target Hreachable.
-  inversion Htyping; subst.
-  unfold wf_r_config in Hwf.
-  destruct Hwf as [Hheap [Hreceiver [Hdom [Htypes [Hlength Hcorr]]]]].
-  inversion Hreachable; subst.
-  - destruct H as [variable [root_T [Htype [Hvalue Hcapability]]]].
-    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T variable
-      root_T root Hlength Htype Hvalue) as [Hold_type Hold_value].
-    eapply Hold with (root := root).
-    apply mutable_authority_reachable_capability.
-    + exists variable, root_T. repeat split; assumption.
-    + exact H0.
-    + exact H1.
-  - destruct H as [variable [root_T [Htype [Hvalue Hqualifier]]]].
-    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T variable
-      root_T root Hlength Htype Hvalue) as [Hold_type Hold_value].
-    eapply Hold with (root := root).
-    apply mutable_authority_reachable_rdm.
-    + exists variable, root_T. repeat split; assumption.
-    + exact H0.
-    + exact H1.
-Qed.
-
-Lemma retained_reachable_after_graph_reflection_private :
-  forall CT h h' source target,
-    (forall left right,
-      retained_mut_edge CT h' left right ->
-      retained_mut_edge CT h left right) ->
-    retained_mut_reachable CT h' source target ->
-    retained_mut_reachable CT h source target.
-Proof.
-  intros CT h h' source target Hedges Hreachable.
-  induction Hreachable.
-  - constructor.
-  - eapply rmr_step; eauto.
 Qed.
 
 Lemma potential_frame_edge_symmetric :
@@ -4408,30 +3495,6 @@ Proof.
     + exact IHHreachable.
 Qed.
 
-Lemma layered_color_adjacent_symmetric :
-  forall CT h active stack left right,
-    layered_color_adjacent CT h active stack left right ->
-    layered_color_adjacent CT h active stack right left.
-Proof.
-  intros CT h active stack left right
-    [Hmutable | [Hframe | Hreturn]].
-  - left. eapply mutable_adjacent_symmetric; eauto.
-  - right. left. eapply potential_frame_edge_symmetric; eauto.
-  - right. right. eapply potential_return_edge_symmetric; eauto.
-Qed.
-
-Lemma mutable_connected_is_layered_color_connected :
-  forall CT h active stack left right,
-    mutable_connected CT h left right ->
-    layered_color_connected CT h active stack left right.
-Proof.
-  intros CT h active stack left right Hconnected.
-  induction Hconnected.
-  - apply rt_step. left. exact H.
-  - apply rt_refl.
-  - eapply rt_trans; eauto.
-Qed.
-
 Lemma potential_connected_refl :
   forall CT h active stack location,
     potential_connected CT h active stack location location.
@@ -4443,20 +3506,6 @@ Lemma potential_connected_trans :
     potential_connected CT h active stack middle last ->
     potential_connected CT h active stack first last.
 Proof. intros. eapply rt_trans; eauto. Qed.
-
-Lemma authority_color_connected_is_potential_connected :
-  forall CT h active stack left right,
-    authority_color_connected CT h active stack left right ->
-    potential_connected CT h active stack left right.
-Proof.
-  intros CT h active stack left right Hconnected.
-  induction Hconnected.
-  - apply rt_step. destruct H as [Hheap | Hframe].
-    + left. exact Hheap.
-    + right. left. exact Hframe.
-  - apply rt_refl.
-  - eapply rt_trans; eauto.
-Qed.
 
 Lemma mutable_connected_is_potential_connected :
   forall CT h active stack left right,
@@ -4526,18 +3575,6 @@ Lemma live_frame_member_wf :
     wf_r_config CT frame.(frame_senv) frame.(frame_renv) h.
 Proof.
   intros CT h active stack frame [Hactive Hstack] Hlive.
-  inversion Hlive; subst.
-  - exact Hactive.
-  - apply Forall_forall with (x := boundary) in Hstack; assumption.
-Qed.
-
-Lemma live_frame_member_authority_sound :
-  forall h active stack frame,
-    live_frames_authority_sound h active stack ->
-    live_frame_member active stack frame ->
-    authority_context_sound h frame.(frame_renv) frame.(frame_authority).
-Proof.
-  intros h active stack frame [Hactive Hstack] Hlive.
   inversion Hlive; subst.
   - exact Hactive.
   - apply Forall_forall with (x := boundary) in Hstack; assumption.
@@ -4640,27 +3677,6 @@ Proof.
   - eapply potential_adjacent_preserves_runtime_mutability; eauto.
   - exact Hruntime.
   - apply IHHconnected2. apply IHHconnected1. exact Hruntime.
-Qed.
-
-Lemma authority_flow_step_preserves_runtime_mutability :
-  forall CT h active stack source target runtime_q,
-    live_frames_wf CT h active stack ->
-    wf_heap CT h ->
-    authority_flow_step CT h active stack source target ->
-    r_muttype h (snd source) = Some runtime_q ->
-    r_muttype h (snd target) = Some runtime_q.
-Proof.
-  intros CT h active stack source target runtime_q Hframes Hheap Hstep
-    Hruntime.
-  inversion Hstep; subst; simpl in *.
-  - eapply retained_edge_preserves_runtime_context; eauto.
-  - eapply mutable_edge_reflects_runtime_mutability; eauto.
-  - eapply mutable_edge_preserves_runtime_mutability; eauto.
-  - eapply mutable_edge_reflects_runtime_mutability; eauto.
-  - eapply potential_frame_edge_preserves_runtime_mutability; eauto.
-  - eapply potential_frame_edge_preserves_runtime_mutability; eauto.
-  - exact Hruntime.
-  - exact Hruntime.
 Qed.
 
 Lemma potential_adjacent_reflects_runtime_mutability :
@@ -4774,32 +3790,6 @@ Proof.
   - left. exists variable, T. repeat split; try assumption.
     unfold capability_in_context. left. exact Hmut.
   - constructor.
-Qed.
-
-Lemma staged_frame_adjacent_after_descent_reflects :
-  forall CT h authority old_senv old_renv new_senv new_renv left right,
-    rdm_roots_descend_from CT h old_senv old_renv new_senv new_renv ->
-    staged_frame_adjacent CT h
-      (mk_watched_frame authority new_senv new_renv) left right ->
-    staged_frame_connected CT h
-      (mk_watched_frame authority old_senv old_renv) left right.
-Proof.
-  intros CT h authority old_senv old_renv new_senv new_renv left right
-    Hdescend [Hheap | [Hleft Hright]].
-  - apply rt_step. left. exact Hheap.
-  - destruct (Hdescend left Hleft) as
-      [old_left [Hold_left Hleft_reachable]].
-    destruct (Hdescend right Hright) as
-      [old_right [Hold_right Hright_reachable]].
-    eapply staged_frame_connected_trans.
-    + eapply mutable_reachable_is_reverse_staged_frame_connected.
-      exact Hleft_reachable.
-    + eapply staged_frame_connected_trans.
-      * apply rt_step. right. split.
-        -- exact Hold_left.
-        -- exact Hold_right.
-      * eapply mutable_reachable_is_staged_frame_connected.
-        exact Hright_reachable.
 Qed.
 
 Lemma phased_authority_frame_closure_after_descent_included :
@@ -5023,30 +4013,6 @@ Proof.
       * exact Hpath_old.
 Qed.
 
-Lemma live_prospective_mutable_authority_components_after_active_descent :
-  forall CT h cutoff authority old_senv old_renv new_senv new_renv stack,
-    wf_r_config CT old_senv old_renv h ->
-    authority_context_sound h old_renv authority ->
-    rdm_roots_descend_from CT h old_senv old_renv new_senv new_renv ->
-    Included Loc
-      (phase_frame_capability_set CT h
-        (mk_watched_frame authority new_senv new_renv))
-      (phase_frame_capability_set CT h
-        (mk_watched_frame authority old_senv old_renv)) ->
-    live_prospective_mutable_authority_components_after_cutoff CT h cutoff
-      (mk_watched_frame authority old_senv old_renv) stack ->
-    live_prospective_mutable_authority_components_after_cutoff CT h cutoff
-      (mk_watched_frame authority new_senv new_renv) stack.
-Proof.
-  intros CT h cutoff authority old_senv old_renv new_senv new_renv stack Hwf
-    Hsound Hdescend Howned Hold frame root target Hlive Hreachable.
-  destruct Hlive as [|boundary Hin].
-  - eapply active_prospective_mutable_authority_components_after_descent;
-      eauto.
-    eapply live_prospective_mutable_authority_components_active. exact Hold.
-  - eapply Hold; [constructor; exact Hin|exact Hreachable].
-Qed.
-
 Lemma advance_frozen_caller_snapshots_after_descent_included :
   forall CT h authority old_senv old_renv new_senv new_renv snapshots,
     rdm_roots_descend_from CT h old_senv old_renv new_senv new_renv ->
@@ -5187,206 +4153,6 @@ Proof.
       * simpl. right. exact Holder.
     + intros snapshot mode location Hsnapshot.
       eapply Hclassify_exposure. simpl. right. exact Hsnapshot.
-Qed.
-
-Lemma principled_frozen_authority_after_active_descent :
-  forall CT P Z cutoff authority old_senv old_renv new_senv new_renv
-    stack incoming snapshots h,
-    principled_frozen_authority_history_state CT P Z cutoff
-      (mk_watched_frame authority old_senv old_renv) stack incoming
-      snapshots h ->
-    principled_phased_authority_live_history_state CT P Z cutoff
-      (mk_watched_frame authority new_senv new_renv) stack incoming h ->
-    rdm_roots_descend_from CT h old_senv old_renv new_senv new_renv ->
-    Included Loc
-      (phase_frame_capability_set CT h
-        (mk_watched_frame authority new_senv new_renv))
-      (phase_frame_capability_set CT h
-        (mk_watched_frame authority old_senv old_renv)) ->
-    principled_frozen_authority_history_state CT P Z cutoff
-      (mk_watched_frame authority new_senv new_renv) stack incoming
-      (advance_frozen_caller_snapshots CT h
-        (mk_watched_frame authority new_senv new_renv) snapshots) h.
-Proof.
-  intros CT P Z cutoff authority old_senv old_renv new_senv new_renv
-    stack incoming snapshots h
-    [Hold [Haligned [Hruntime [Hclosed
-      [Hretain [Hdangerous [Havoid [Hroots [Hexposure
-        [Hresume [Hjoins [Hentry_covered Hphase_covered]]]]]]]]]]]]
-    Hpost Hdescend Howned.
-  set (old_frame := mk_watched_frame authority old_senv old_renv).
-  set (new_frame := mk_watched_frame authority new_senv new_renv).
-  set (snapshots' := advance_frozen_caller_snapshots CT h new_frame snapshots).
-  have Hincluded : frozen_caller_snapshot_list_included snapshots' snapshots.
-  { unfold snapshots', new_frame, old_frame in *.
-    eapply advance_frozen_caller_snapshots_after_descent_included; eauto. }
-  have Hactive_included : Included authority_flow_state
-      (independent_active_authority_colors CT h new_frame)
-      (independent_active_authority_colors CT h old_frame).
-  { unfold independent_active_authority_colors, new_frame, old_frame.
-    eapply executing_authority_colors_after_active_descent_included; eauto. }
-  split; [exact Hpost|]. split.
-  - unfold snapshots', frozen_caller_snapshots_aligned,
-      advance_frozen_caller_snapshots. rewrite length_map. exact Haligned.
-  - split.
-    + unfold snapshots'. eapply advance_frozen_caller_snapshots_runtime_mutable.
-      * exact (proj1 (proj1
-           (proj2 (proj2 (proj2 (proj2 Hpost)))))).
-      * exact Hruntime.
-    + split.
-      * unfold snapshots'. apply advance_frozen_caller_snapshots_closed.
-      * split.
-        -- unfold snapshots'.
-           eapply advance_frozen_caller_snapshots_retain_entry. exact Hretain.
-        -- split.
-           ++ unfold snapshots'.
-              eapply advance_frozen_caller_snapshots_dangerous.
-              exact Hdangerous.
-           ++ split.
-              ** intros new_snapshot mode location Hnew Hmode Hcolor.
-                 destruct (Hincluded new_snapshot Hnew) as
-                   [old_snapshot [Hold_snapshot Hcolors]].
-                 eapply Havoid; [exact Hold_snapshot|exact Hmode|].
-                 eapply Hcolors. exact Hcolor.
-              ** split.
-                 --- intros new_snapshot root Hnew Hroot.
-                     unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                     apply in_map_iff in Hnew.
-                     destruct Hnew as [old_slot [Heq Hold_slot]].
-                     destruct old_slot as [old_snapshot|]; simpl in Heq;
-                       [|discriminate].
-                     injection Heq as Heq. subst new_snapshot. simpl in Hroot.
-                     eapply Hroots; eauto.
-                 --- split.
-                     +++ split.
-                         *** intros new_snapshot Hnew mode location Hcolor.
-                             unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                             apply in_map_iff in Hnew.
-                             destruct Hnew as [old_slot [Heq Hold_slot]].
-                             destruct old_slot as [old_snapshot|]; simpl in Heq;
-                               [|discriminate].
-                             injection Heq as Heq. subst new_snapshot. simpl in Hcolor.
-                             eapply (advance_frozen_caller_snapshot_runtime_mutable
-                               CT h new_frame
-                               old_snapshot.(frozen_snapshot_current_resume_exposure)).
-                             ---- exact (proj1 (proj1
-                               (proj2 (proj2 (proj2 (proj2 Hpost)))))).
-                             ---- eapply (proj1 Hexposure); eauto.
-                             ---- exact Hcolor.
-                         *** split.
-                             ---- intros new_snapshot Hnew.
-                                  unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                                  apply in_map_iff in Hnew.
-                                  destruct Hnew as [old_slot [Heq Hold_slot]].
-                                  destruct old_slot as [old_snapshot|]; simpl in Heq;
-                                    [|discriminate].
-                                  injection Heq as Heq. subst new_snapshot. simpl.
-                                  exact (proj1
-                                    (frozen_caller_authority_closure_idempotent
-                                      CT h new_frame
-                                      old_snapshot.(frozen_snapshot_current_resume_exposure))).
-                             ---- split.
-                                  ++++ intros new_snapshot mode location Hnew Hcolor.
-                                  unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                                  apply in_map_iff in Hnew.
-                                  destruct Hnew as [old_slot [Heq Hold_slot]].
-                                  destruct old_slot as [old_snapshot|]; simpl in Heq;
-                                    [|discriminate].
-                                  injection Heq as Heq. subst new_snapshot. simpl in Hcolor.
-                                  eapply frozen_caller_authority_closure_dangerous;
-                                    [|exact Hcolor].
-                                  intros old_mode old_location Hold_color.
-                                  eapply (proj1 (proj2 (proj2 Hexposure))) with
-                                    (snapshot := old_snapshot)
-                                    (mode := old_mode) (location := old_location);
-                                    eauto.
-                                  ++++ split.
-                                       ***** intros new_snapshot Hnew state Hentry.
-                                       unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                                       apply in_map_iff in Hnew.
-                                       destruct Hnew as [old_slot [Heq Hold_slot]].
-                                       destruct old_slot as [old_snapshot|]; simpl in Heq;
-                                         [|discriminate].
-                                       injection Heq as Heq. subst new_snapshot. simpl in *.
-                                       apply frozen_caller_authority_closure_contains.
-                                            eapply (proj1 (proj2 (proj2
-                                              (proj2 Hexposure)))); eauto.
-                                       ***** intros new_snapshot root Hnew
-                                               Hroot Hroot_runtime.
-                                            unfold snapshots',
-                                              advance_frozen_caller_snapshots in Hnew.
-                                            apply in_map_iff in Hnew.
-                                            destruct Hnew as
-                                              [old_slot [Heq Hold_slot]].
-                                            destruct old_slot as [old_snapshot|];
-                                              simpl in Heq; [|discriminate].
-                                            injection Heq as Heq.
-                                            subst new_snapshot. simpl in *.
-                                            apply frozen_caller_authority_closure_contains.
-                                            eapply (proj2 (proj2 (proj2
-                                              (proj2 Hexposure)))); eauto.
-                     +++ split.
-                         *** intros new_snapshot active_mode source exposure_mode target
-                           Hnew Hactive_mode Hactive Hsource Hexposure_mode
-                           Htarget Hprotected.
-                         unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                         apply in_map_iff in Hnew.
-                         destruct Hnew as [old_slot [Heq Hold_slot]].
-                         destruct old_slot as [old_snapshot|]; simpl in Heq;
-                           [|discriminate].
-                         injection Heq as Heq. subst new_snapshot. simpl in *.
-                         have Hold_target : In authority_flow_state
-                             old_snapshot.(frozen_snapshot_current_resume_exposure)
-                             (exposure_mode, target).
-                         { eapply (proj1 (proj2 Hexposure)); [exact Hold_slot|].
-                           destruct Htarget as [seed [Hseed Hpath]].
-                           exists seed. split; [exact Hseed|].
-                           unfold new_frame, old_frame in *.
-                           eapply frozen_caller_connected_after_descent_reflects;
-                             eauto. }
-                         eapply Hresume with (snapshot := old_snapshot)
-                           (active_mode := active_mode) (source := source)
-                           (exposure_mode := exposure_mode); eauto.
-                         *** split.
-                             ---- intros new_snapshot source_mode source Hnew
-                               Hsource_mode Hsource_color Hsource_root.
-                             unfold snapshots', advance_frozen_caller_snapshots in Hnew.
-                             apply in_map_iff in Hnew.
-                             destruct Hnew as [old_slot [Heq Hold_slot]].
-                             destruct old_slot as [old_snapshot|]; simpl in Heq;
-                               [|discriminate].
-                             injection Heq as Heq. subst new_snapshot. simpl in *.
-                                  have Hold_source : In authority_flow_state
-                                 old_snapshot.(frozen_snapshot_current_colors)
-                                 (source_mode, source).
-                                  { eapply Hclosed; [exact Hold_slot|].
-                               destruct Hsource_color as [seed [Hseed Hpath]].
-                               exists seed. split; [exact Hseed|].
-                               unfold new_frame, old_frame in *.
-                               eapply frozen_caller_connected_after_descent_reflects;
-                                      eauto. }
-                                  destruct (Hjoins old_snapshot source_mode source
-                               Hold_slot Hsource_mode Hold_source Hsource_root) as
-                               [[entry_mode [Hentry_mode Hentry]] | Hsafe].
-                                  ++++ left. exists entry_mode. split; assumption.
-                                  ++++ right. intros exposure_mode target
-                                    Hexposure_mode Htarget Hprotected.
-                                       apply (Hsafe exposure_mode target Hexposure_mode);
-                                    [|exact Hprotected].
-                                       eapply (proj1 (proj2 Hexposure));
-                                         [exact Hold_slot|].
-                                       destruct Htarget as [seed [Hseed Hpath]].
-                                       exists seed. split; [exact Hseed|].
-                                       unfold new_frame, old_frame in *.
-                                       eapply frozen_caller_connected_after_descent_reflects;
-                                         eauto.
-                             ---- split.
-                                  ++++ unfold snapshots'.
-                                       apply advance_frozen_caller_snapshots_entry_exposure_covered.
-                                       exact Hentry_covered.
-                                  ++++ unfold snapshots'.
-                                       apply advance_frozen_caller_snapshots_cover_phase_incoming.
-                                       exact Hphase_covered.
 Qed.
 
 (** If the active frame changes only by replacing each new RDM root with a

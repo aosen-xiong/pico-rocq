@@ -104,37 +104,6 @@ Definition resumed_authority_frame_connected
   clos_refl_trans authority_flow_state
     (resumed_authority_frame_step CT h eligible caller).
 
-Definition resumed_authority_frame_closure
-  (CT : class_table) (h : heap)
-  (eligible : Ensemble Loc) (caller : watched_frame)
-  (seeds : Ensemble authority_flow_state) :
-  Ensemble authority_flow_state :=
-  fun state => exists seed,
-    In authority_flow_state seeds seed /\
-    resumed_authority_frame_connected CT h eligible caller seed state.
-
-Lemma resumed_authority_frame_step_is_phased :
-  forall CT h saved caller source target,
-    resumed_authority_frame_step CT h saved caller source target ->
-    phased_authority_frame_step CT h caller source target.
-Proof.
-  intros CT h saved caller source target Hstep.
-  inversion Hstep; subst.
-  - apply phased_authority_retained. exact H.
-  - apply phased_authority_prospective_retained. exact H.
-  - apply phased_authority_prospective_rdm_backward. exact H.
-  - apply phased_authority_reverse_rdm. exact H.
-  - apply phased_authority_neutral_rdm_forward. exact H.
-  - apply phased_authority_neutral_rdm_backward. exact H.
-  - eapply phased_authority_powered_frame_join; eauto.
-  - eapply phased_authority_prospective_frame_join; eauto.
-  - eapply phased_authority_neutral_frame_join; eauto.
-  - apply phased_authority_forget.
-  - apply phased_authority_prospective_forget.
-  - apply phased_authority_mark_prospective.
-  - apply phased_authority_promote. exact H.
-Qed.
-
 (** Policy witnesses use the same entry-or-safe rule as completed colors.
     Requiring the stronger ordinary-snapshot [resume_roots_safe] property
     here would incorrectly reject a resumed color that was already present
