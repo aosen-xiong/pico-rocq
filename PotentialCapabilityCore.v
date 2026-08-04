@@ -251,20 +251,6 @@ Definition phased_authority_frame_connected
   clos_refl_trans authority_flow_state
     (phased_authority_frame_step CT h frame).
 
-Definition phased_authority_frame_closure
-  (CT : class_table) (h : heap) (frame : watched_frame)
-  (seeds : Ensemble authority_flow_state) : Ensemble authority_flow_state :=
-  fun state => exists seed,
-    In authority_flow_state seeds seed /\
-    phased_authority_frame_connected CT h frame seed state.
-
-Definition phased_frame_powered_seeds
-  (CT : class_table) (h : heap) (frame : watched_frame) :
-  Ensemble authority_flow_state :=
-  fun state => exists location,
-    state = (FlowPowered, location) /\
-    frame_owned_location CT h frame location.
-
 Definition live_boundary_cutoffs_valid
   (h : heap) (stack : list watched_boundary) : Prop :=
   Forall (fun boundary =>
