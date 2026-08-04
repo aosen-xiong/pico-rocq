@@ -338,20 +338,6 @@ Proof.
     rewrite Hruntime in Hleft. injection Hleft as <-. exact Hright.
 Qed.
 
-Lemma phased_authority_frame_connected_preserves_runtime_mutability :
-  forall CT h frame source target runtime_q,
-    wf_r_config CT frame.(frame_senv) frame.(frame_renv) h ->
-    phased_authority_frame_connected CT h frame source target ->
-    r_muttype h (snd source) = Some runtime_q ->
-    r_muttype h (snd target) = Some runtime_q.
-Proof.
-  intros CT h frame source target runtime_q Hwf Hconnected.
-  induction Hconnected; intros Hruntime.
-  - eapply phased_authority_frame_step_preserves_runtime_mutability; eauto.
-  - exact Hruntime.
-  - apply IHHconnected2. apply IHHconnected1. exact Hruntime.
-Qed.
-
 Lemma executing_authority_owned_is_powered :
   forall CT h frame incoming location,
     frame_owned_location CT h frame location ->
@@ -526,50 +512,6 @@ Record frozen_caller_color_snapshot : Type := mk_frozen_caller_color_snapshot {
   frozen_snapshot_resume_authority : q_r
 }.
 
-Definition frozen_caller_snapshot_slot : Type :=
-  option frozen_caller_color_snapshot.
-
-Definition advance_frozen_caller_snapshot
-  (CT : class_table) (h : heap) (active : watched_frame)
-  (snapshot : frozen_caller_color_snapshot) :
-  frozen_caller_color_snapshot :=
-  mk_frozen_caller_color_snapshot
-    snapshot.(frozen_snapshot_entry_colors)
-    (frozen_caller_authority_closure CT h active
-      snapshot.(frozen_snapshot_current_colors))
-    snapshot.(frozen_snapshot_entry_phase)
-    snapshot.(frozen_snapshot_phase_incoming)
-    snapshot.(frozen_snapshot_resume_rdm_roots)
-    snapshot.(frozen_snapshot_entry_resume_exposure)
-    (frozen_caller_authority_closure CT h active
-      snapshot.(frozen_snapshot_current_resume_exposure))
-    snapshot.(frozen_snapshot_resume_frame)
-    snapshot.(frozen_snapshot_resume_authority).
-
-(** Cross-boundary continuation certificate.  If a newer frozen phase has a
-    dangerous color at a root that will resume in an older caller, then the
-    older caller's entire potential RDM-join exposure is classified exactly
-    as in its own pop rule: either that source was already present at the
-    older entry, or every exposed target avoids the protected zone.  This is
-    the conditional obligation that plain set inclusion cannot express. *)
-Definition frozen_snapshot_resume_safe_against
-  (Z : Ensemble Loc) (newer older : frozen_caller_color_snapshot) : Prop :=
-  forall source_mode source,
-    authority_mode_dangerous source_mode ->
-    In authority_flow_state newer.(frozen_snapshot_current_colors)
-      (source_mode, source) ->
-    In Loc older.(frozen_snapshot_resume_rdm_roots) source ->
-    (exists entry_mode,
-      authority_mode_dangerous entry_mode /\
-      In authority_flow_state older.(frozen_snapshot_entry_colors)
-        (entry_mode, source)) \/
-    (forall exposure_mode target,
-      authority_mode_dangerous exposure_mode ->
-      In authority_flow_state
-        older.(frozen_snapshot_current_resume_exposure)
-        (exposure_mode, target) ->
-      ~ In Loc Z target).
-
 Definition independent_active_authority_colors
   (CT : class_table) (h : heap) (active : watched_frame) :
   Ensemble authority_flow_state :=
@@ -636,92 +578,6 @@ Definition frozen_authority_state_covered_by_old_or_active
   (exists active_mode,
       authority_mode_dangerous active_mode /\
       In authority_flow_state active (active_mode, snd state)).
-
-(** Closing a frozen caller snapshot together with the active frame cannot
-    invent a third dangerous provenance.  Before promotion, all dangerous
-    steps are part of the frozen closure; after promotion, the same location
-    is independently powered by the active frame. *)
-Lemma phased_step_with_frozen_incoming_covered_by_old_or_active :
-  forall CT h frame colors source target,
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h frame colors) colors ->
-    frozen_authority_state_covered_by_old_or_active colors
-      (independent_active_authority_colors CT h frame) source ->
-    phased_authority_frame_step CT h frame source target ->
-    frozen_authority_state_covered_by_old_or_active colors
-      (independent_active_authority_colors CT h frame) target.
-Proof.
-  intros CT h frame colors source target Hclosed Hsource Hstep Htarget_mode.
-  inversion Hstep; subst; simpl in *.
-  - destruct (Hsource (or_introl eq_refl)) as
-      [[old_mode [Hold_mode Hold_color]] |
-       [active_mode [Hactive_mode Hactive_color]]].
-    + left. exists old_mode. split; [exact Hold_mode|].
-      eapply frozen_caller_color_dangerous_retained; eauto.
-    + right. exists active_mode. split; [exact Hactive_mode|].
-      eapply executing_authority_dangerous_retained; eauto.
-  - destruct (Hsource (or_intror eq_refl)) as
-      [[old_mode [Hold_mode Hold_color]] |
-       [active_mode [Hactive_mode Hactive_color]]].
-    + left. exists old_mode. split; [exact Hold_mode|].
-      eapply frozen_caller_color_dangerous_retained; eauto.
-    + right. exists active_mode. split; [exact Hactive_mode|].
-      eapply executing_authority_dangerous_retained; eauto.
-  - destruct (Hsource (or_intror eq_refl)) as
-      [[old_mode [Hold_mode Hold_color]] |
-       [active_mode [Hactive_mode Hactive_color]]].
-    + left. exists FlowProspective. split; [right; reflexivity|].
-      eapply frozen_caller_color_dangerous_reverse_rdm; eauto.
-    + right. exists FlowProspective. split; [right; reflexivity|].
-      eapply executing_authority_dangerous_reverse_rdm; eauto.
-  - destruct (Hsource (or_introl eq_refl)) as
-      [[old_mode [Hold_mode Hold_color]] |
-       [active_mode [Hactive_mode Hactive_color]]].
-    + left. exists FlowProspective. split; [right; reflexivity|].
-      eapply frozen_caller_color_dangerous_reverse_rdm; eauto.
-    + right. exists FlowProspective. split; [right; reflexivity|].
-      eapply executing_authority_dangerous_reverse_rdm; eauto.
-  - destruct Htarget_mode as [Hbad | Hbad]; discriminate.
-  - destruct Htarget_mode as [Hbad | Hbad]; discriminate.
-  - destruct (Hsource (or_introl eq_refl)) as
-      [[old_mode [Hold_mode Hold_color]] |
-       [active_mode [Hactive_mode Hactive_color]]].
-    + left. exists FlowProspective. split; [right; reflexivity|].
-      eapply frozen_caller_color_dangerous_frame_join;
-        eauto.
-    + right. exists FlowProspective. split; [right; reflexivity|].
-      eapply executing_authority_dangerous_frame_join;
-        eauto.
-  - destruct (Hsource (or_intror eq_refl)) as
-      [[old_mode [Hold_mode Hold_color]] |
-       [active_mode [Hactive_mode Hactive_color]]].
-    + left. exists FlowProspective. split; [right; reflexivity|].
-      eapply frozen_caller_color_dangerous_frame_join;
-        eauto.
-    + right. exists FlowProspective. split; [right; reflexivity|].
-      eapply executing_authority_dangerous_frame_join;
-        eauto.
-  - destruct Htarget_mode as [Hbad | Hbad]; discriminate.
-  - destruct Htarget_mode as [Hbad | Hbad]; discriminate.
-  - destruct Htarget_mode as [Hbad | Hbad]; discriminate.
-  - destruct (Hsource (or_introl eq_refl)) as
-      [[old_mode [[-> | ->] Hold_color]] |
-       [active_mode [[-> | ->] Hactive_color]]].
-    + left. exists FlowProspective. split; [right; reflexivity|].
-      apply Hclosed. exists (FlowPowered, location). split; [exact Hold_color|].
-      apply rt_step. apply frozen_caller_mark_prospective.
-    + left. exists FlowProspective. split; [right; reflexivity|exact Hold_color].
-    + right. exists FlowProspective. split; [right; reflexivity|].
-      unfold independent_active_authority_colors in *.
-      destruct Hactive_color as [seed [Hseed Hpath]]. exists seed.
-      split; [exact Hseed|]. eapply rt_trans; [exact Hpath|].
-      apply rt_step. apply phased_authority_mark_prospective.
-    + right. exists FlowProspective. split; [right; reflexivity|].
-      exact Hactive_color.
-  - right. exists FlowPowered. split; [left; reflexivity|].
-    unfold independent_active_authority_colors.
-    apply executing_authority_owned_is_powered. exact H.
-Qed.
 
 Lemma potential_frame_edge_symmetric :
   forall active stack left right,
