@@ -294,14 +294,6 @@ Definition executing_authority_color_set
 Definition authority_mode_dangerous (mode : authority_flow_mode) : Prop :=
   mode = FlowPowered \/ mode = FlowProspective.
 
-Definition authority_state_covered
-  (old_colors : Ensemble authority_flow_state)
-  (state : authority_flow_state) : Prop :=
-  authority_mode_dangerous (fst state) ->
-  exists old_mode,
-    authority_mode_dangerous old_mode /\
-    In authority_flow_state old_colors (old_mode, snd state).
-
 Definition authority_colors_runtime_mutable
   (h : heap) (colors : Ensemble authority_flow_state) : Prop :=
   forall mode location,
@@ -464,33 +456,6 @@ Proof.
     exists seed. split; [exact Hseed|].
     eapply rt_trans; [exact Hpath|]. apply rt_step.
     eapply phased_authority_prospective_frame_join; eauto.
-Qed.
-
-(** Boundary-local authority freshness.  A readonly-state body receives no
-    direct mutable root from its caller.  Consequently every direct mutable
-    root it later acquires, and every runtime-mutable RDM root, denotes a
-    component allocated on the callee side of the tracked boundary.  This is
-    stronger than the RDM-only helper above exactly where a nested call may
-    adapt a fresh [Mut] actual to an RDM formal. *)
-Definition mutable_authority_root
-  (frame : watched_frame) (h : heap) (root : Loc) : Prop :=
-  typed_root Mut frame.(frame_senv) frame.(frame_renv) root \/
-  (typed_root RDM frame.(frame_senv) frame.(frame_renv) root /\
-   r_muttype h root = Some Mut_r).
-
-Lemma phased_authority_prospective_mutable_reverse :
-  forall CT h frame left right,
-    mutable_reachable CT h left right ->
-    phased_authority_frame_connected CT h frame
-      (FlowProspective, right) (FlowProspective, left).
-Proof.
-  intros CT h frame left right Hreachable.
-  induction Hreachable.
-  - apply rt_refl.
-  - eapply rt_trans.
-    + apply rt_step. apply phased_authority_prospective_rdm_backward.
-      exact H.
-    + exact IHHreachable.
 Qed.
 
 Definition live_boundary_cutoffs_valid
