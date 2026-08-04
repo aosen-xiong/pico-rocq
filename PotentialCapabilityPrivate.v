@@ -1432,19 +1432,3 @@ Proof.
       try (exact Hrcv_sub).
     eapply runtime_call_signature_refines; eauto.
 Qed.
-
-(** Coverage used only while proving that a write preserves a boundary-local
-    prospective component.  The first frame is the tracked live frame whose
-    old component is being advanced; the second is the currently executing
-    frame that owns or types the newly installed edge. *)
-Definition prospective_location_covered_by_old_or_active
-  (CT : class_table) (h : heap) (old_frame : watched_frame)
-  (active : watched_frame) (location : Loc) : Prop :=
-  (exists old_root,
-    mutable_authority_root old_frame h old_root /\
-    frozen_caller_authority_connected CT h old_frame
-      (FlowProspective, old_root) (FlowProspective, location)) \/
-  exists active_root,
-    mutable_authority_root active h active_root /\
-    frozen_caller_authority_connected CT h active
-      (FlowProspective, active_root) (FlowProspective, location).
