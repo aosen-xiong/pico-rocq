@@ -300,44 +300,6 @@ Definition authority_colors_runtime_mutable
     In authority_flow_state colors (mode, location) ->
     r_muttype h location = Some Mut_r.
 
-Lemma phased_authority_frame_step_preserves_runtime_mutability :
-  forall CT h frame source target runtime_q,
-    wf_r_config CT frame.(frame_senv) frame.(frame_renv) h ->
-    phased_authority_frame_step CT h frame source target ->
-    r_muttype h (snd source) = Some runtime_q ->
-    r_muttype h (snd target) = Some runtime_q.
-Proof.
-  intros CT h frame source target runtime_q Hwf Hstep Hruntime.
-  inversion Hstep; subst; simpl in *; try exact Hruntime.
-  - eapply retained_edge_preserves_runtime_context; eauto.
-    exact (proj1 (proj2 Hwf)).
-  - eapply retained_edge_preserves_runtime_context; eauto.
-    exact (proj1 (proj2 Hwf)).
-  - eapply mutable_edge_reflects_runtime_mutability; eauto.
-    exact (proj1 (proj2 Hwf)).
-  - eapply mutable_edge_reflects_runtime_mutability; eauto.
-    exact (proj1 (proj2 Hwf)).
-  - eapply mutable_edge_preserves_runtime_mutability; eauto.
-    exact (proj1 (proj2 Hwf)).
-  - eapply mutable_edge_reflects_runtime_mutability; eauto.
-    exact (proj1 (proj2 Hwf)).
-  - destruct (active_rdm_roots_share_runtime_context CT
-      frame.(frame_senv) frame.(frame_renv) h left right Hwf
-      H H0) as
-      [context [Hleft Hright]].
-    rewrite Hruntime in Hleft. injection Hleft as <-. exact Hright.
-  - destruct (active_rdm_roots_share_runtime_context CT
-      frame.(frame_senv) frame.(frame_renv) h left right Hwf
-      H H0) as
-      [context [Hleft Hright]].
-    rewrite Hruntime in Hleft. injection Hleft as <-. exact Hright.
-  - destruct (active_rdm_roots_share_runtime_context CT
-      frame.(frame_senv) frame.(frame_renv) h left right Hwf
-      H H0) as
-      [context [Hleft Hright]].
-    rewrite Hruntime in Hleft. injection Hleft as <-. exact Hright.
-Qed.
-
 Lemma executing_authority_owned_is_powered :
   forall CT h frame incoming location,
     frame_owned_location CT h frame location ->
@@ -493,91 +455,6 @@ Definition frozen_caller_authority_closure
   fun state => exists seed,
     In authority_flow_state seeds seed /\
     frozen_caller_authority_connected CT h frame seed state.
-
-(** A caller color snapshot is proof-only state captured when a call suspends
-    its caller.  Current execution colors advance through the active phase;
-    latent resume exposure is always closed under the saved caller frame.
-    Keeping that frame makes the exposure's graph interpretation stable when
-    nested callees return. *)
-Record frozen_caller_color_snapshot : Type := mk_frozen_caller_color_snapshot {
-  frozen_snapshot_entry_colors : Ensemble authority_flow_state;
-  frozen_snapshot_current_colors : Ensemble authority_flow_state;
-  frozen_snapshot_entry_phase : Ensemble authority_flow_state;
-  frozen_snapshot_phase_incoming : Ensemble authority_flow_state;
-  frozen_snapshot_resume_rdm_roots : Ensemble Loc;
-  frozen_snapshot_entry_resume_exposure : Ensemble authority_flow_state;
-  frozen_snapshot_current_resume_exposure : Ensemble authority_flow_state;
-  frozen_snapshot_resume_frame : watched_frame;
-  (** Whether RDM denoted mutable authority in the suspended caller. *)
-  frozen_snapshot_resume_authority : q_r
-}.
-
-Definition independent_active_authority_colors
-  (CT : class_table) (h : heap) (active : watched_frame) :
-  Ensemble authority_flow_state :=
-  executing_authority_color_set CT h active
-    (Empty_set authority_flow_state).
-
-Lemma frozen_caller_color_dangerous_retained :
-  forall CT h frame colors mode left right,
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h frame colors) colors ->
-    authority_mode_dangerous mode ->
-    In authority_flow_state colors (mode, left) ->
-    retained_mut_edge CT h left right ->
-    In authority_flow_state colors (mode, right).
-Proof.
-  intros CT h frame colors mode left right Hclosed Hmode Hleft Hedge.
-  apply Hclosed. exists (mode, left). split; [exact Hleft|].
-  apply rt_step. destruct Hmode as [-> | ->].
-  - apply frozen_caller_retained. exact Hedge.
-  - apply frozen_caller_prospective_retained. exact Hedge.
-Qed.
-
-Lemma frozen_caller_color_dangerous_reverse_rdm :
-  forall CT h frame colors mode left right,
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h frame colors) colors ->
-    authority_mode_dangerous mode ->
-    In authority_flow_state colors (mode, left) ->
-    mutable_edge CT h right left ->
-    In authority_flow_state colors (FlowProspective, right).
-Proof.
-  intros CT h frame colors mode left right Hclosed Hmode Hleft Hedge.
-  apply Hclosed. exists (mode, left). split; [exact Hleft|].
-  apply rt_step. destruct Hmode as [-> | ->].
-  - apply frozen_caller_reverse_rdm. exact Hedge.
-  - apply frozen_caller_prospective_rdm_backward. exact Hedge.
-Qed.
-
-Lemma frozen_caller_color_dangerous_frame_join :
-  forall CT h frame colors mode left right,
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h frame colors) colors ->
-    authority_mode_dangerous mode ->
-    In authority_flow_state colors (mode, left) ->
-    typed_root RDM frame.(frame_senv) frame.(frame_renv) left ->
-    typed_root RDM frame.(frame_senv) frame.(frame_renv) right ->
-    In authority_flow_state colors (FlowProspective, right).
-Proof.
-  intros CT h frame colors mode left right Hclosed Hmode Hleft
-    Hleft_root Hright_root.
-  apply Hclosed. exists (mode, left). split; [exact Hleft|].
-  apply rt_step. destruct Hmode as [-> | ->].
-  - eapply frozen_caller_powered_frame_join; eauto.
-  - eapply frozen_caller_prospective_frame_join; eauto.
-Qed.
-
-Definition frozen_authority_state_covered_by_old_or_active
-  (old active : Ensemble authority_flow_state)
-  (state : authority_flow_state) : Prop :=
-  authority_mode_dangerous (fst state) ->
-  (exists old_mode,
-      authority_mode_dangerous old_mode /\
-      In authority_flow_state old (old_mode, snd state)) \/
-  (exists active_mode,
-      authority_mode_dangerous active_mode /\
-      In authority_flow_state active (active_mode, snd state)).
 
 Lemma potential_frame_edge_symmetric :
   forall active stack left right,
