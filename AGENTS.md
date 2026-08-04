@@ -930,3 +930,64 @@ Note: private_statement_enter_call_untracked reports the pre-existing
 Classical_Prop.classic assumption (its proof already used
 proof_irrelevance before this repair); all other repaired lemmas are
 axiom-free.
+
+### Stage 4 status: 2026-08-03
+
+COMPLETE.  The freshness chain is re-proved under the restored rule via
+the approved design's two-sided partition invariant (plan Stage 4 was
+superseded by the design doc; K/L weakenings were NOT added -- the
+assignability-indexed K is false under constructor stitching).
+
+PotentialCapabilityRDMPop.v (4a821d5):
+- q_subtype_lost_inversion; rs_left, rs_pool_{left,right,sided},
+  rs_stitch_set_wf, rs_mut_edges_respect_sides, rs_side helpers and
+  entry forms.  J/K/L definitions and entry lemmas kept in place.
+- rs_sides_after_{local,assignment,field_write,new} replace the four
+  rs_mutable_freshness_after_* bodies; _new returns
+  S' = if side then S else dom h :: S.
+- rs_pool_sided_call_entry (restored receiver disjunction; special
+  branch: params collapse to Bot via RO |> RDM = Lost, side' by
+  lt_dec/in_dec -- fully constructive), rs_pool_sided_call_return
+  (cross-side case refuted by readonly_state_return_channel_inversion).
+- rs_mutable_freshness_preserved rewritten to thread (side, S) with
+  S'-growth-only-above-dom-h clauses; special nested calls traverse
+  with side' from the entry lemma.
+- Walk lemmas rs_potential_{adjacent,path}_from_old_mut_stays_left
+  replace lands_old/stays_old.
+- refined_mut_return_call_has_channel_free_entry_shape premise is the
+  restored disjunction; special branch refuted via
+  refined_call_rdm_result_classifies_body_return.
+
+PotentialCapability.v (b1a8dfb): orientation-B seeds S = [],
+side = true; one master run, two walks; the callee's final right-side
+pool applied to the Mut return contradicts the left-side walk result.
+potential_local_mut_root_is_fresh is no longer needed there (kept).
+
+Design confidence flags, all resolved during implementation:
+(i) SNew edge preservation is vacuous unless the new object is Mut_r;
+    the Imm-argument case refutes by the VALUE's runtime immutability
+    (typed_imm_root_runtime_immutable_live), no
+    vpa_mutability_object_creation case analysis needed.
+(ii) the RDM x RDM_f read case uses
+    mutable_edge_reflects_runtime_mutability to pin the receiver Mut_r.
+(iii) every potential_return_edge sub-case lands on a stored-frame
+    value (< dom h0 = left) independent of which side u is on; the
+    head boundary is killed by its non-RDM return qualifier as before.
+
+Audit results:
+- make -f CoqMakefile: exit 0.
+- check-no-axioms-admits.py: "No forbidden Axiom/admit usage found."
+- check-public-assumptions.py: "All 20 manifest-listed public results
+  are closed under the global context; the manifest matches every
+  source Theorem declaration."
+- Statement gate: all 20 manifest theorem statements byte-identical
+  to f020677; Typing.v unchanged vs f020677.
+- Print Assumptions: q_subtype_lost_inversion, rs_sides_after_*,
+  rs_pool_sided_call_{entry,return}, rs_mutable_freshness_preserved,
+  both walk lemmas, refined_mut_return_call_has_channel_free_entry_
+  shape, successful_stmt_preserves_potential_history -- all
+  "Closed under the global context".
+
+No blockers.  Remaining from the overall plan: Stage 5 bookkeeping
+(merge/push wip/pre-repair-snapshot, bump the pico-artifact submodule)
+-- the build chain itself is already green.
