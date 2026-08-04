@@ -182,13 +182,18 @@ Proof.
   destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x m y
     args sGamma' vals ly cy runtime_mdef root Hwf Htyping Hscope
     Hreceiver_value Hbase Hfind Hargs Hroot) as
-    [Ty' [Hreceiver_type' [Hview Hcaller_root]]].
-  rewrite Hreceiver_type in Hreceiver_type'.
-  injection Hreceiver_type' as <-.
-  destruct Hview as [Hmut | [Himm | Hrdm]].
-  - rewrite Hmut in Hcaller_root |- *. exact Hcaller_root.
-  - rewrite Himm in Hcaller_root |- *. exact Hcaller_root.
-  - rewrite Hrdm in Hcaller_root |- *. exact Hcaller_root.
+    [Ty' [Hreceiver_type' [[Hview Hcaller_root] |
+      [Hro [Hrooteq Hro_root]]]]].
+  - rewrite Hreceiver_type in Hreceiver_type'.
+    injection Hreceiver_type' as <-.
+    destruct Hview as [Hmut | [Himm | Hrdm]].
+    + rewrite Hmut in Hcaller_root |- *. exact Hcaller_root.
+    + rewrite Himm in Hcaller_root |- *. exact Hcaller_root.
+    + rewrite Hrdm in Hcaller_root |- *. exact Hcaller_root.
+  - rewrite Hreceiver_type in Hreceiver_type'.
+    injection Hreceiver_type' as <-.
+    rewrite Hro. exists ly. split; [reflexivity|].
+    split; [exact Hrooteq | exact Hro_root].
 Qed.
 
 Lemma rdm_roots_descend_after_assignment :
