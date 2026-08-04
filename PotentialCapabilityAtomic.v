@@ -426,29 +426,6 @@ Proof.
         assumption.
 Qed.
 
-Lemma layered_color_adjacent_after_field_update :
-  forall CT h active stack lx old field value left right,
-    runtime_getObj h lx = Some old ->
-    layered_color_adjacent CT (update_field h lx field value)
-      active stack left right ->
-    layered_color_adjacent CT h active stack left right \/
-    exists written,
-      value = Iot written /\
-      ((left = lx /\ right = written) \/
-       (left = written /\ right = lx)).
-Proof.
-  intros CT h active stack lx old field value left right Hobj
-    [Hmutable | [Hframe | Hreturn]].
-  - destruct (mutable_adjacent_after_field_update CT h lx old field value
-      left right Hobj Hmutable) as
-      [Hold | [written [Hvalue Hends]]].
-    + left. left. exact Hold.
-    + right. exists written. split; assumption.
-  - left. right. left. exact Hframe.
-  - left. right. right.
-    eapply potential_return_edge_after_field_update_is_old; eauto.
-Qed.
-
 Lemma authority_color_adjacent_after_field_update :
   forall CT h active stack lx old field value left right,
     runtime_getObj h lx = Some old ->
@@ -527,30 +504,6 @@ Proof.
     + rewrite Hvalue1 in Hvalue2. injection Hvalue2 as <-.
       right. exists written1. split; [exact Hvalue1|]. right. split;
         assumption.
-Qed.
-
-Lemma authority_color_connected_after_redundant_field_update_is_old :
-  forall CT h active stack lx old field written left right,
-    runtime_getObj h lx = Some old ->
-    authority_color_connected CT h active stack lx written ->
-    authority_color_connected CT h active stack written lx ->
-    authority_color_connected CT
-      (update_field h lx field (Iot written)) active stack left right ->
-    authority_color_connected CT h active stack left right.
-Proof.
-  intros CT h active stack lx old field written left right Hobj Hforward
-    Hbackward Hconnected.
-  destruct (authority_color_connected_after_field_update CT h active stack
-    lx old field (Iot written) left right Hobj Hconnected) as
-    [Hold | [new_written [Hvalue
-      [[Hleft_lx Hwritten_right] | [Hleft_written Hlx_right]]]]].
-  - exact Hold.
-  - injection Hvalue as <-.
-    eapply rt_trans; [exact Hleft_lx|].
-    eapply rt_trans; [exact Hforward|exact Hwritten_right].
-  - injection Hvalue as <-.
-    eapply rt_trans; [exact Hleft_written|].
-    eapply rt_trans; [exact Hbackward|exact Hlx_right].
 Qed.
 
 Lemma potential_connected_after_non_rdm_field_update_is_old :
@@ -849,116 +802,6 @@ Proof.
     apply Hincoming. exact H.
   - eapply phase_frame_capability_after_colored_field_update_has_old_origin;
       eauto.
-Qed.
-
-(** Tail phases begin after the write's active phase.  Both endpoints are
-    carried in the incoming color set, so every later phase can use the
-    materialized edge without returning to the completed callee phase. *)
-Lemma phased_live_color_set_from_after_colored_field_update_included :
-  forall CT h active stack old_incoming new_incoming lx old field written,
-    runtime_getObj h lx = Some old ->
-    Included Loc new_incoming old_incoming ->
-    In Loc old_incoming lx ->
-    In Loc old_incoming written ->
-    In Loc new_incoming lx ->
-    In Loc new_incoming written ->
-    Included Loc
-      (phased_live_color_set_from CT
-        (update_field h lx field (Iot written)) active stack new_incoming)
-      (phased_live_color_set_from CT h active stack old_incoming).
-Proof.
-  intros CT h active stack. revert active.
-  induction stack as [|boundary tail IH];
-    intros active old_incoming new_incoming lx old field written Hobj
-      Hincoming Hold_lx Hold_written Hnew_lx Hnew_written; simpl.
-  all: set (old_seeds := Union Loc old_incoming
-      (phase_frame_capability_set CT h active)).
-  all: set (new_seeds := Union Loc new_incoming
-      (phase_frame_capability_set CT
-        (update_field h lx field (Iot written)) active)).
-  all: assert (forall seed,
-      In Loc new_seeds seed ->
-      In Loc (staged_frame_closure CT h active old_seeds) seed)
-    as Hseed_origins by
-      (unfold new_seeds, old_seeds;
-       eapply phase_frame_seeds_after_colored_field_update_have_old_origins;
-       eauto; left; exact Hold_written).
-  all: assert (In Loc old_seeds lx) as Hold_seed_lx by
-    (unfold old_seeds; left; exact Hold_lx).
-  all: assert (In Loc old_seeds written)
-    as Hold_seed_written by
-      (unfold old_seeds; left; exact Hold_written).
-  all: assert (Included Loc
-      (staged_frame_closure CT
-        (update_field h lx field (Iot written)) active new_seeds)
-      (staged_frame_closure CT h active old_seeds)) as Hframe_included by
-    (eapply staged_frame_closure_after_field_update_with_seed_origins; eauto).
-  - exact Hframe_included.
-  - set (new_return := staged_return_closure
-      (update_field h lx field (Iot written)) active boundary
-      (staged_frame_closure CT
-        (update_field h lx field (Iot written)) active new_seeds)).
-    set (old_return := staged_return_closure h active boundary
-      (staged_frame_closure CT h active old_seeds)).
-    assert (Hreturn_included : Included Loc new_return old_return).
-    { unfold new_return, old_return.
-      eapply staged_return_closure_after_field_update_included.
-      exact Hframe_included. }
-    eapply IH.
-    + exact Hobj.
-    + exact Hreturn_included.
-    + unfold old_return.
-      eapply staged_return_closure_contains.
-      eapply staged_frame_closure_contains. exact Hold_seed_lx.
-    + unfold old_return.
-      eapply staged_return_closure_contains.
-      eapply staged_frame_closure_contains. exact Hold_seed_written.
-    + unfold new_return.
-      eapply staged_return_closure_contains.
-      eapply staged_frame_closure_contains.
-      unfold new_seeds. left. exact Hnew_lx.
-    + unfold new_return.
-      eapply staged_return_closure_contains.
-      eapply staged_frame_closure_contains.
-      unfold new_seeds. left. exact Hnew_written.
-Qed.
-
-Lemma phase_frame_capability_after_immutable_field_update_is_old :
-  forall CT h frame lx old field written location,
-    wf_r_config CT frame.(frame_senv) frame.(frame_renv) h ->
-    authority_context_sound h frame.(frame_renv) frame.(frame_authority) ->
-    runtime_getObj h lx = Some old ->
-    r_muttype h lx = Some Imm_r ->
-    In Loc
-      (phase_frame_capability_set CT
-        (update_field h lx field (Iot written)) frame) location ->
-    In Loc (phase_frame_capability_set CT h frame) location.
-Proof.
-  intros CT h frame lx old field written location Hwf Hsound Hobj
-    Hlx_immutable Howned.
-  unfold phase_frame_capability_set in *.
-  destruct Howned as [root [Hroot Hreachable]].
-  destruct (retained_reachable_after_field_update CT h lx old field
-    (Iot written) root location Hobj Hreachable) as
-    [Hold | [written' [Hvalue [Hroot_lx Hwritten_location]]]].
-  - exists root. split; assumption.
-  - injection Hvalue as <-. exfalso.
-    have Hroot_mut := frame_capability_root_runtime_mutable CT h frame root
-      Hwf Hsound Hroot.
-    have Hlx_mut := retained_reachable_preserves_runtime_context CT h root lx
-      Mut_r (proj1 (proj2 Hwf)) Hroot_lx Hroot_mut.
-    rewrite Hlx_immutable in Hlx_mut. discriminate.
-Qed.
-
-Lemma active_capability_lifts_to_stack :
-  forall CT h active stack location,
-    In Loc (live_capability_set CT h active []) location ->
-    In Loc (live_capability_set CT h active stack) location.
-Proof.
-  intros CT h active stack location
-    [root [[Hactive | [boundary [Hin Hroot]]] Hreachable]].
-  - exists root. split; [left; exact Hactive|exact Hreachable].
-  - inversion Hin.
 Qed.
 
 Lemma potential_colors_after_graph_reflection :
@@ -1588,83 +1431,6 @@ Proof.
   - eapply potential_connected_after_field_update_if_edge_redundant;
       [exact Hobj|exact Hforward|exact Hbackward|].
     eapply retained_reachable_is_potential_connected; eauto.
-Qed.
-
-Lemma pending_call_colors_after_heap_graph_reflection :
-  forall CT h h' active stack,
-    (forall frame substack location,
-      In Loc (live_capability_set CT h' frame substack) location ->
-      In Loc (live_capability_set CT h frame substack) location) ->
-    (forall frame substack left right,
-      potential_connected CT h' frame substack left right ->
-      potential_connected CT h frame substack left right) ->
-    pending_call_ownership_colors_separated CT h active stack ->
-    pending_call_ownership_colors_separated CT h' active stack.
-Proof.
-  intros CT h h' active stack Hcapability Hgraph Hpending boundary above
-    below capability owned Hpartition Hchannel_free Howned Hcaller common
-    [Hcaller_common Howned_common].
-  apply (Hpending boundary above below capability owned Hpartition
-    Hchannel_free
-    (Hcapability active above owned Howned)
-    (Hcapability boundary.(boundary_caller) below capability Hcaller)
-    common).
-  split; eapply Hgraph; eauto.
-Qed.
-
-Lemma tracked_pending_call_colors_after_heap_graph_reflection :
-  forall CT h h' active stack tracked_depth,
-    (forall frame substack location,
-      In Loc (live_capability_set CT h' frame substack) location ->
-      In Loc (live_capability_set CT h frame substack) location) ->
-    (forall frame substack left right,
-      potential_connected CT h' frame substack left right ->
-      potential_connected CT h frame substack left right) ->
-    tracked_pending_call_ownership_colors_separated CT h active stack
-      tracked_depth ->
-    tracked_pending_call_ownership_colors_separated CT h' active stack
-      tracked_depth.
-Proof.
-  intros CT h h' active stack tracked_depth Hcapability Hgraph Hpending
-    boundary above below capability owned Hpartition Htracked Hchannel_free
-    Howned Hcaller common [Hcaller_common Howned_common].
-  apply (Hpending boundary above below capability owned Hpartition Htracked
-    Hchannel_free
-    (Hcapability active above owned Howned)
-    (Hcapability boundary.(boundary_caller) below capability Hcaller)
-    common).
-  split; eapply Hgraph; eauto.
-Qed.
-
-Lemma potential_connected_after_immutable_field_update_is_old_at_mutable_root :
-  forall CT h active stack lx old field written left right,
-    live_frames_wf CT h active stack ->
-    wf_heap CT h ->
-    runtime_getObj h lx = Some old ->
-    r_muttype h lx = Some Imm_r ->
-    r_muttype h written = Some Imm_r ->
-    r_muttype h left = Some Mut_r ->
-    potential_connected CT (update_field h lx field (Iot written))
-      active stack left right ->
-    potential_connected CT h active stack left right.
-Proof.
-  intros CT h active stack lx old field written left right Hframes Hheap
-    Hobj Hlx_imm Hwritten_imm Hleft_mut Hconnected.
-  destruct (potential_connected_after_field_update CT h active stack lx old
-    field (Iot written) left right Hobj Hconnected) as
-    [Hold |
-     [new_written [Hvalue
-       [[Hleft_lx Hwritten_right] |
-        [Hleft_written Hlx_right]]]]].
-  - exact Hold.
-  - injection Hvalue as <-.
-    have Hlx_mut := potential_connected_preserves_runtime_mutability CT h
-      active stack left lx Mut_r Hframes Hheap Hleft_lx Hleft_mut.
-    congruence.
-  - injection Hvalue as <-.
-    have Hwritten_mut := potential_connected_preserves_runtime_mutability CT h
-      active stack left written Mut_r Hframes Hheap Hleft_written Hleft_mut.
-    congruence.
 Qed.
 
 Lemma potential_colors_after_redundant_field_update :
@@ -2389,38 +2155,6 @@ Proof.
       exact (proj1 Hstate).
 Qed.
 
-Lemma principled_live_mutable_rdm_history_after_field_write :
-  forall CT P Z cutoff authority sGamma mt rGamma h stack incoming
-    x field y sGamma' rGamma' h',
-    principled_live_mutable_rdm_history_state CT P Z cutoff
-      (mk_watched_frame authority sGamma rGamma) stack incoming h ->
-    stmt_typing CT sGamma mt (SFldWrite x field y) sGamma' ->
-    readonly_state_method_scope mt ->
-    eval_stmt CT rGamma h (SFldWrite x field y) OK rGamma' h' ->
-    principled_live_mutable_rdm_history_state CT P Z cutoff
-      (mk_watched_frame authority sGamma' rGamma') stack incoming h'.
-Proof.
-  intros CT P Z cutoff authority sGamma mt rGamma h stack incoming
-    x field y sGamma' rGamma' h' [Hstate Hcomponents] Htyping Hscope Heval.
-  have Hwf : wf_r_config CT sGamma rGamma h :=
-    proj1 (proj1 (proj2 (proj2 (proj2 (proj2 Hstate))))).
-  have Heffect := typed_field_write_component_effect CT authority sGamma mt
-    rGamma h x field y sGamma' rGamma' h' Hwf Htyping Hscope Heval.
-  assert (HsGamma : sGamma' = sGamma) by
-    (inversion Htyping; reflexivity).
-  assert (HrGamma : rGamma' = rGamma) by
-    (inversion Heval; reflexivity).
-  subst sGamma' rGamma'.
-  split.
-  - eapply principled_phased_authority_history_after_field_write; eauto.
-  - destruct Heffect as
-      [[Hruntimes [Hedges [Hretained Howned]]] |
-       [lx [old [written [Hheap [Hobj Hendpoints]]]]]].
-    + eapply live_mutable_rdm_components_after_graph_reflection; eauto.
-    + subst h'. eapply live_mutable_rdm_components_after_safe_field_update;
-        eauto.
-Qed.
-
 (** At an RDM-view call whose dynamic signature actually returns RDM, a fresh
     callee RDM result may later be installed in the suspended caller.  Besides
     ordinary active-frame creation roots, the allocation normal form must
@@ -2761,13 +2495,6 @@ Inductive allocation_flow_normal_form
     allocation_flow_normal_form CT h active stack qc source
       (FlowNeutral, dom h).
 
-Lemma allocation_flow_normal_form_refl :
-  forall CT h active stack qc source,
-    allocation_flow_normal_form CT h active stack qc source source.
-Proof.
-  intros. apply allocation_flow_old. apply rt_refl.
-Qed.
-
 Lemma authority_new_entry_fresh :
   forall CT h active stack qc,
     authority_new_entry CT h active stack qc (dom h).
@@ -3039,44 +2766,6 @@ Proof.
         -- subst right. apply authority_new_attachment_fresh.
     + left. apply rt_step. right. exists boundary.(boundary_caller).
       split; [constructor; exact H|]. split; assumption.
-Qed.
-
-Lemma authority_color_connected_after_new :
-  forall CT sGamma mt rGamma h x qc C args sGamma' vals qruntime
-    authority stack left right,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    authority_color_connected CT
-      (h ++ [mkObj (mkruntime_type qruntime C) vals])
-      (mk_watched_frame authority sGamma'
-        (update_r_env_value rGamma x (Iot (dom h)))) stack left right ->
-    authority_color_connected CT h
-      (mk_watched_frame authority sGamma rGamma) stack left right \/
-    (authority_new_entry CT h
-       (mk_watched_frame authority sGamma rGamma) stack qc left /\
-     authority_new_attachment CT h
-       (mk_watched_frame authority sGamma rGamma) stack qc right).
-Proof.
-  intros CT sGamma mt rGamma h x qc C args sGamma' vals qruntime
-    authority stack left right Hwf Htyping Hvals Hconnected.
-  induction Hconnected.
-  - destruct (authority_color_adjacent_after_new CT sGamma mt rGamma h x qc
-      C args sGamma' vals qruntime authority stack x0 y Hwf Htyping Hvals H)
-      as [Hold | [Hleft Hright]].
-    + left. exact Hold.
-    + right. split; assumption.
-  - left. apply rt_refl.
-  - destruct IHHconnected1 as [Hxy | [Hentry_x Hattach_y]];
-      destruct IHHconnected2 as [Hyz | [Hentry_y Hattach_z]].
-    + left. eapply authority_color_connected_trans; eauto.
-    + right. split.
-      * eapply authority_new_entry_transport; eauto.
-      * exact Hattach_z.
-    + right. split.
-      * exact Hentry_x.
-      * eapply authority_new_attachment_transport; eauto.
-    + right. split; assumption.
 Qed.
 
 Lemma potential_adjacent_after_new :
@@ -3733,63 +3422,6 @@ Proof.
       * constructor.
 Qed.
 
-Lemma mutable_edge_before_append_included :
-  forall CT h newobj left right,
-    mutable_edge CT h left right ->
-    mutable_edge CT (h ++ [newobj]) left right.
-Proof.
-  intros CT h newobj left right Hedge.
-  inversion Hedge as
-    [source target object field declaring field_def Hobject Hfield
-      Hbase Hdefinition Hrdm]; subst.
-  have Hsource_dom := Hobject.
-  apply runtime_getObj_dom in Hsource_dom.
-  eapply mutable_edge_rdm; eauto.
-  eapply runtime_getObj_app_left; eauto.
-Qed.
-
-Lemma live_capability_before_append_included :
-  forall CT h newobj active stack location,
-    live_frames_wf CT h active stack ->
-    In Loc (live_capability_set CT (h ++ [newobj]) active stack) location ->
-    In Loc (live_capability_set CT h active stack) location.
-Proof.
-  intros CT h newobj active stack location Hframes
-    [root [Hroot Hreachable]].
-  have Hroot_dom : root < dom h.
-  { destruct Hroot as [Hactive | [boundary [Hin Hboundary]]].
-    - eapply frame_capability_root_dom; eauto. exact (proj1 Hframes).
-    - have Hstack_frames := proj2 Hframes.
-      apply Forall_forall with (x := boundary) in Hstack_frames;
-        [|exact Hin].
-      eapply frame_capability_root_dom; eauto. }
-  destruct (retained_reachable_from_old_after_append CT h newobj root
-    location (proj1 (proj2 (proj1 Hframes))) Hroot_dom Hreachable)
-    as [Hlocation_dom Hold].
-  exists root. split; assumption.
-Qed.
-
-Lemma live_capability_location_dom :
-  forall CT h active stack location,
-    live_frames_wf CT h active stack ->
-    In Loc (live_capability_set CT h active stack) location ->
-    location < dom h.
-Proof.
-  intros CT h active stack location Hframes
-    [root [Hroot Hreachable]].
-  have Hroot_dom : root < dom h.
-  { destruct Hroot as [Hactive | [boundary [Hin Hboundary]]].
-    - eapply frame_capability_root_dom; eauto. exact (proj1 Hframes).
-    - have Hstack_frames := proj2 Hframes.
-      apply Forall_forall with (x := boundary) in Hstack_frames;
-        [|exact Hin].
-      eapply frame_capability_root_dom; eauto. }
-  induction Hreachable.
-  - exact Hroot_dom.
-  - eapply retained_edge_target_dom; eauto.
-    exact (proj1 (proj2 (proj1 Hframes))).
-Qed.
-
 Lemma potential_new_attachment_to_old_has_typed_anchor :
   forall CT h active stack qc root,
     live_frames_wf CT h active stack ->
@@ -3810,28 +3442,6 @@ Proof.
   - exists anchor. split; [left; exact Htyped|exact Hconnected].
   - exists anchor. split; [right; left; exact Hmut|exact Hconnected].
   - exists anchor. split; [right; right; exact Hcaller|exact Hconnected].
-Qed.
-
-Lemma authority_new_attachment_to_old_has_typed_anchor :
-  forall CT h active stack qc root,
-    live_frames_wf CT h active stack ->
-    root < dom h ->
-    authority_new_attachment CT h active stack qc root ->
-    exists anchor,
-      (typed_root (qc2q qc) active.(frame_senv) active.(frame_renv) anchor \/
-       typed_root Mut active.(frame_senv) active.(frame_renv) anchor) /\
-      authority_color_connected CT h active stack anchor root.
-Proof.
-  intros CT h active stack qc root Hframes Hroot
-    [anchor [[Hfresh | [Htyped | Hmut]] Hconnected]].
-  - subst anchor.
-    have Hroot_fresh := potential_connected_from_fresh_is_fresh CT h active
-      stack root Hframes
-      (authority_color_connected_is_potential_connected CT h active stack
-        (dom h) root Hconnected).
-    subst root. lia.
-  - exists anchor. split; [left; exact Htyped|exact Hconnected].
-  - exists anchor. split; [right; exact Hmut|exact Hconnected].
 Qed.
 
 Lemma fresh_live_after_rdm_new_implies_mut_authority :
@@ -4246,52 +3856,6 @@ Proof.
   - eapply frozen_allocation_step_preserves_covered; eauto.
   - exact Hsource.
   - apply IHHconnected2. apply IHHconnected1. exact Hsource.
-Qed.
-
-Lemma advance_frozen_caller_snapshot_after_new_covered :
-  forall CT sGamma mt rGamma h x qc C args sGamma' vals qruntime authority
-    snapshot mode location,
-    wf_r_config CT sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    authority_colors_runtime_mutable h
-      snapshot.(frozen_snapshot_current_colors) ->
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h
-        (mk_watched_frame authority sGamma rGamma)
-        snapshot.(frozen_snapshot_current_colors))
-      snapshot.(frozen_snapshot_current_colors) ->
-    authority_mode_dangerous mode ->
-    In authority_flow_state
-      (advance_frozen_caller_snapshot CT
-        (h ++ [mkObj (mkruntime_type qruntime C) vals])
-        (mk_watched_frame authority sGamma'
-          (update_r_env_value rGamma x (Iot (dom h)))) snapshot)
-        .(frozen_snapshot_current_colors) (mode, location) ->
-    (exists old_mode,
-        authority_mode_dangerous old_mode /\
-        In authority_flow_state snapshot.(frozen_snapshot_current_colors)
-          (old_mode, location)) \/
-    (exists root_mode root,
-        authority_mode_dangerous root_mode /\
-        In authority_flow_state snapshot.(frozen_snapshot_current_colors)
-          (root_mode, root) /\
-        typed_root (qc2q qc) sGamma rGamma root).
-Proof.
-  intros CT sGamma mt rGamma h x qc C args sGamma' vals qruntime authority
-    snapshot mode location Hwf Htyping Hvals Hruntime Hclosed Hmode
-    [source [Hsource Hpath]].
-  have Hsource_covered : frozen_allocation_state_covered CT h
-      (mk_watched_frame authority sGamma rGamma)
-      snapshot.(frozen_snapshot_current_colors) qc source.
-  { intros Hsource_mode. left. exists (fst source). split.
-    - exact Hsource_mode.
-    - destruct source. exact Hsource. }
-  have Hcovered := frozen_allocation_connected_preserves_covered CT sGamma mt
-    rGamma h x qc C args sGamma' vals qruntime authority
-    snapshot.(frozen_snapshot_current_colors) source (mode, location) Hwf
-    Htyping Hvals Hruntime Hclosed Hsource_covered Hpath.
-  exact (Hcovered Hmode).
 Qed.
 
 Lemma allocation_fresh_authorized_from_rdm_color :
@@ -4723,77 +4287,6 @@ Proof.
   - simpl in Hfresh. subst location. lia.
 Qed.
 
-Lemma frozen_snapshot_resume_exposure_avoids_after_new :
-  forall CT Z cutoff sGamma mt rGamma h x qc C args sGamma' vals
-    qreceiver qruntime authority snapshot,
-    wf_r_config CT sGamma rGamma h ->
-    wf_r_config CT sGamma'
-      (update_r_env_value rGamma x (Iot (dom h)))
-      (h ++ [mkObj (mkruntime_type qruntime C) vals]) ->
-    authority_context_sound h rGamma authority ->
-    authority_context_sound
-      (h ++ [mkObj (mkruntime_type qruntime C) vals])
-      (update_r_env_value rGamma x (Iot (dom h))) authority ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    vpa_mutability_object_creation qreceiver qc = qruntime ->
-    cutoff <= dom h ->
-    protected_zone_before_cutoff Z cutoff ->
-    authority_colors_runtime_mutable h
-      snapshot.(frozen_snapshot_current_resume_exposure) ->
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h
-        (mk_watched_frame authority sGamma rGamma)
-        snapshot.(frozen_snapshot_current_resume_exposure))
-      snapshot.(frozen_snapshot_current_resume_exposure) ->
-    frozen_snapshot_resume_exposure_avoids Z snapshot ->
-    (forall active_mode location,
-      authority_mode_dangerous active_mode ->
-      In authority_flow_state
-        (independent_active_authority_colors CT h
-          (mk_watched_frame authority sGamma rGamma))
-        (active_mode, location) ->
-      ~ In Loc Z location) ->
-    frozen_snapshot_resume_exposure_avoids Z
-      (advance_frozen_caller_snapshot CT
-        (h ++ [mkObj (mkruntime_type qruntime C) vals])
-        (mk_watched_frame authority sGamma'
-          (update_r_env_value rGamma x (Iot (dom h)))) snapshot).
-Proof.
-  intros CT Z cutoff sGamma mt rGamma h x qc C args sGamma' vals
-    qreceiver qruntime authority snapshot Hwf Hpost_wf Hsound Hpost_sound
-    Htyping Hvals Hadapt Hcutoff Hzone Hruntime Hclosed Hsafe Hactive_safe
-    exposure_mode target Hexposure_mode Htarget Hprotected.
-  have Htarget_old : target < dom h.
-  { have Hbefore := Hzone target Hprotected. lia. }
-  have Hpost_target : In authority_flow_state
-      (executing_authority_color_set CT
-        (h ++ [mkObj (mkruntime_type qruntime C) vals])
-        (mk_watched_frame authority sGamma'
-          (update_r_env_value rGamma x (Iot (dom h))))
-        snapshot.(frozen_snapshot_current_resume_exposure))
-      (exposure_mode, target).
-  { destruct Htarget as [seed [Hseed Hpath]]. exists seed. split.
-    - left. exact Hseed.
-    - eapply frozen_caller_authority_connected_is_phased. exact Hpath. }
-  destruct (executing_authority_colors_after_new_covered CT sGamma mt
-    rGamma h x qc C args sGamma' vals qreceiver qruntime authority
-    snapshot.(frozen_snapshot_current_resume_exposure) Hwf Hpost_wf Hsound
-    Hpost_sound Hruntime Htyping Hvals Hadapt exposure_mode target
-    Hexposure_mode Hpost_target Htarget_old) as
-    [old_target_mode [Hold_target_mode Hold_target]].
-  destruct (executing_with_frozen_incoming_dangerous_covered_by_old_or_active
-    CT h (mk_watched_frame authority sGamma rGamma)
-    snapshot.(frozen_snapshot_current_resume_exposure) old_target_mode target
-    Hclosed Hold_target_mode Hold_target) as
-    [[snapshot_target_mode [Hsnapshot_target_mode Hsnapshot_target]] |
-     [active_target_mode [Hactive_target_mode Hactive_target]]].
-  - exact (Hsafe snapshot_target_mode target Hsnapshot_target_mode
-      Hsnapshot_target Hprotected).
-  - exact (Hactive_safe active_target_mode target Hactive_target_mode
-      Hactive_target Hprotected).
-Qed.
-
 Lemma frozen_caller_snapshots_nested_resume_safe_after_new :
   forall CT Z cutoff sGamma mt rGamma h x qc C args sGamma' vals
     qreceiver qruntime authority snapshots,
@@ -5190,35 +4683,6 @@ Proof.
   - eapply allocation_flow_hits_capability
       with (anchor := capability); assumption.
   - subst qc. eapply allocation_flow_normal_form_neutral_fresh_step; eauto.
-Qed.
-
-Lemma allocation_flow_normal_form_connected :
-  forall CT authority sGamma mt rGamma h stack x qc C args sGamma' vals
-    qruntime source current target,
-    wf_r_config CT sGamma rGamma h ->
-    live_frames_wf CT h
-      (mk_watched_frame authority sGamma rGamma) stack ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    snd source < dom h ->
-    r_muttype h (snd source) = Some Mut_r ->
-    allocation_flow_normal_form CT h
-      (mk_watched_frame authority sGamma rGamma) stack qc source current ->
-    authority_flow_connected CT
-      (h ++ [mkObj (mkruntime_type qruntime C) vals])
-      (mk_watched_frame authority sGamma'
-        (update_r_env_value rGamma x (Iot (dom h)))) stack current target ->
-    allocation_flow_normal_form CT h
-      (mk_watched_frame authority sGamma rGamma) stack qc source target.
-Proof.
-  intros CT authority sGamma mt rGamma h stack x qc C args sGamma' vals
-    qruntime source current target Hwf Hframes Htyping Hvals Hsource_dom
-    Hsource_runtime Hnormal Hconnected.
-  induction Hconnected.
-  - eapply allocation_flow_normal_form_step; eauto.
-  - exact Hnormal.
-  - apply IHHconnected2.
-    apply IHHconnected1. exact Hnormal.
 Qed.
 
 Lemma potential_history_after_new :
@@ -7162,60 +6626,6 @@ Proof.
       * exists variable, T. repeat split; assumption.
       * exact Hold_root_runtime.
       * exact Hold_reachable.
-Qed.
-
-Lemma live_mutable_rdm_components_after_new :
-  forall CT cutoff authority sGamma mt rGamma h stack x qc C args sGamma'
-    vals qruntime,
-    wf_r_config CT sGamma rGamma h ->
-    live_frames_wf CT h
-      (mk_watched_frame authority sGamma rGamma) stack ->
-    stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
-    runtime_lookup_list rGamma args = Some vals ->
-    wf_heap CT (h ++ [mkObj (mkruntime_type qruntime C) vals]) ->
-    cutoff <= dom h ->
-    live_mutable_rdm_components_after_cutoff CT h cutoff
-      (mk_watched_frame authority sGamma rGamma) stack ->
-    live_mutable_rdm_components_after_cutoff CT
-      (h ++ [mkObj (mkruntime_type qruntime C) vals]) cutoff
-      (mk_watched_frame authority sGamma'
-        (update_r_env_value rGamma x (Iot (dom h)))) stack.
-Proof.
-  intros CT cutoff authority sGamma mt rGamma h stack x qc C args sGamma'
-    vals qruntime Hwf Hframes Htyping Hvals Hpost_heap Hcutoff Hcomponents
-    frame root target Hlive Hroot Hroot_runtime Hreachable.
-  inversion Hlive; subst.
-  - have Hactive := active_mutable_rdm_components_after_new CT cutoff
-      authority sGamma mt rGamma h x qc C args sGamma' vals qruntime Hwf
-      Htyping Hvals Hpost_heap Hcutoff
-      (live_mutable_rdm_components_active CT h cutoff
-        (mk_watched_frame authority sGamma rGamma) stack Hcomponents).
-    eapply Hactive; eauto.
-  - have Hframe_live : live_frame_member
-        (mk_watched_frame authority sGamma rGamma) stack
-        boundary.(boundary_caller).
-    { constructor. exact H. }
-    have Hframe_wf := live_frame_member_wf CT h
-      (mk_watched_frame authority sGamma rGamma) stack
-      boundary.(boundary_caller) Hframes Hframe_live.
-    destruct Hroot as
-      [variable [T [Htype [Hvalue Hrdm]]]].
-    have Hroot_dom : root < dom h :=
-      wf_config_value_dom CT boundary.(boundary_caller).(frame_senv)
-        boundary.(boundary_caller).(frame_renv) h variable root
-        Hframe_wf Hvalue.
-    destruct (mutable_reachable_from_old_after_append CT h
-      (mkObj (mkruntime_type qruntime C) vals) root target
-      (proj1 (proj2 Hwf)) Hroot_dom Hreachable) as
-      [Htarget_dom Hold_reachable].
-    have Hroot_runtime_old : r_muttype h root = Some Mut_r.
-    { eapply r_muttype_app_preserve_old_Some; eauto. }
-    eapply Hcomponents.
-    + exact Hframe_live.
-    + exists variable, T. split; [exact Htype|].
-      split; [exact Hvalue|exact Hrdm].
-    + exact Hroot_runtime_old.
-    + exact Hold_reachable.
 Qed.
 
 Lemma live_mutable_authority_components_after_new :
