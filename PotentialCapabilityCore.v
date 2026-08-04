@@ -31,19 +31,6 @@ Definition frame_owned_location
     frame_capability_root frame root /\
     retained_mut_reachable CT h root location.
 
-Lemma frame_owned_location_iff_active_live :
-  forall CT h frame location,
-    frame_owned_location CT h frame location <->
-    In Loc (live_capability_set CT h frame []) location.
-Proof.
-  intros CT h frame location. split.
-  - intros [root [Hroot Hreach]].
-    exists root. split; [left; exact Hroot|exact Hreach].
-  - intros [root [[Hactive | [boundary [Hin _]]] Hreach]].
-    + exists root. split; assumption.
-    + inversion Hin.
-Qed.
-
 Definition potential_frame_edge
   (active : watched_frame) (stack : list watched_boundary)
   (left right : Loc) : Prop :=
@@ -290,22 +277,6 @@ Definition executing_authority_color_set
   phased_authority_frame_closure CT h active
     (Union authority_flow_state incoming
       (phased_frame_powered_seeds CT h active)).
-
-Definition authority_mode_dangerous (mode : authority_flow_mode) : Prop :=
-  mode = FlowPowered \/ mode = FlowProspective.
-
-Lemma executing_authority_owned_is_powered :
-  forall CT h frame incoming location,
-    frame_owned_location CT h frame location ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame incoming)
-      (FlowPowered, location).
-Proof.
-  intros CT h frame incoming location Howned.
-  exists (FlowPowered, location). split.
-  - right. exists location. split; [reflexivity|exact Howned].
-  - apply rt_refl.
-Qed.
 
 Definition live_boundary_cutoffs_valid
   (h : heap) (stack : list watched_boundary) : Prop :=
