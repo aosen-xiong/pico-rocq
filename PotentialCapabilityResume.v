@@ -9872,10 +9872,29 @@ Lemma frozen_active_overlap_justified_after_safe_call_entry :
       (mreceiver (msignature runtime_mdef) ::
         mparams (msignature runtime_mdef))
       (mkr_env (Iot ly :: vals)) in
-    frozen_caller_snapshots_executing_overlap_justified CT h Z callee
-      (executing_authority_color_set CT h
-        (mk_watched_frame caller_authority sGamma rGamma) caller_incoming)
-      (None :: advance_frozen_caller_snapshots CT h callee snapshots).
+    forall snapshot snapshot_mode active_mode location,
+      List.In (Some snapshot)
+        (None :: advance_frozen_caller_snapshots CT h callee snapshots) ->
+      authority_mode_dangerous snapshot_mode ->
+      authority_mode_dangerous active_mode ->
+      In authority_flow_state snapshot.(frozen_snapshot_current_colors)
+        (snapshot_mode, location) ->
+      (In authority_flow_state
+         (executing_authority_color_set CT h callee
+           (executing_authority_color_set CT h
+             (mk_watched_frame caller_authority sGamma rGamma)
+             caller_incoming))
+         (active_mode, location) \/
+       typed_root RDM callee.(frame_senv) callee.(frame_renv) location) ->
+      ((exists root_mode root,
+         authority_mode_dangerous root_mode /\
+         In authority_flow_state snapshot.(frozen_snapshot_current_colors)
+           (root_mode, root) /\
+         In Loc snapshot.(frozen_snapshot_resume_rdm_roots) root) \/
+       frozen_snapshot_resume_exposure_avoids Z snapshot) \/
+      (sqtype Ty = RO /\ location = ly /\
+       typed_root RO sGamma rGamma location /\
+       r_muttype h location = Some Mut_r).
 Proof.
   intros CT Z caller_authority sGamma mt rGamma h caller_incoming snapshots
     x method y args sGamma' vals ly cy runtime_mdef Ty Hwf Hsound Htyping
@@ -9934,8 +9953,12 @@ Proof.
       + exact ((proj1 Hexposure) old_snapshot Hold).
       + exact ((proj1 (proj2 Hexposure)) old_snapshot Hold). }
   destruct Hsnapshot_case as
-    [[old_mode [Hold_mode Hold_color]] | Hfallback]; [|exact (Hlift Hfallback)].
-  have Hcaller_result : fallback.
+    [[old_mode [Hold_mode Hold_color]] | Hfallback];
+    [|left; exact (Hlift Hfallback)].
+  have Hcaller_result : fallback \/
+      (sqtype Ty = RO /\ location = ly /\
+       typed_root RO sGamma rGamma location /\
+       r_muttype h location = Some Mut_r).
   { destruct Htrigger as [Hactive | Hrdm].
     - destruct (executing_authority_colors_enter_call_covered CT
         caller_authority sGamma mt rGamma h x method y args sGamma' vals ly
@@ -9944,39 +9967,49 @@ Proof.
         Hgety Hvalue Hbase Hfind Hargs active_mode location Hactive_mode
         Hactive) as [caller_mode [Hcaller_mode Hcaller_color]].
       unfold fallback.
+      left.
       exact (Hoverlap old_snapshot old_mode caller_mode location Hold
         Hold_mode Hcaller_mode Hold_color (or_introl Hcaller_color)).
     - destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x
         method y args sGamma' vals ly cy runtime_mdef location Hwf Htyping
         Hscope Hvalue Hbase Hfind Hargs Hrdm) as
-        [caller_T [Hcaller_type [Hshape Hcaller_root]]].
-      assert (caller_T = Ty) by congruence. subst caller_T.
-      destruct Hshape as [Hmut | [Himm | Hcaller_rdm]].
-      + have Hcaller_color : In authority_flow_state
-            (independent_active_authority_colors CT h
-              (mk_watched_frame caller_authority sGamma rGamma))
-            (FlowPowered, location).
-        { unfold independent_active_authority_colors.
-          eapply executing_authority_typed_mut_root_is_powered.
-          rewrite Hmut in Hcaller_root. exact Hcaller_root. }
-        unfold fallback.
-        exact (Hoverlap old_snapshot old_mode FlowPowered location Hold
-          Hold_mode (or_introl eq_refl) Hold_color
-          (or_introl (independent_active_authority_colors_in_executing CT h
-            (mk_watched_frame caller_authority sGamma rGamma)
-            caller_incoming (FlowPowered, location) Hcaller_color))).
-      + have Hmutable := Hruntime old_snapshot Hold old_mode location
+        [caller_T [Hcaller_type [[Hshape Hcaller_root] |
+          [Hro [Hlocation_eq Hro_root]]]]].
+      + assert (caller_T = Ty) by congruence. subst caller_T.
+        destruct Hshape as [Hmut | [Himm | Hcaller_rdm]].
+        * have Hcaller_color : In authority_flow_state
+              (independent_active_authority_colors CT h
+                (mk_watched_frame caller_authority sGamma rGamma))
+              (FlowPowered, location).
+          { unfold independent_active_authority_colors.
+            eapply executing_authority_typed_mut_root_is_powered.
+            rewrite Hmut in Hcaller_root. exact Hcaller_root. }
+          unfold fallback.
+          left.
+          exact (Hoverlap old_snapshot old_mode FlowPowered location Hold
+            Hold_mode (or_introl eq_refl) Hold_color
+            (or_introl (independent_active_authority_colors_in_executing CT
+              h (mk_watched_frame caller_authority sGamma rGamma)
+              caller_incoming (FlowPowered, location) Hcaller_color))).
+        * have Hmutable := Hruntime old_snapshot Hold old_mode location
+            Hold_color.
+          have Himmutable := typed_imm_root_runtime_immutable CT sGamma
+            rGamma h location Hwf
+            (ltac:(rewrite Himm in Hcaller_root; exact Hcaller_root)).
+          congruence.
+        * unfold fallback.
+          left.
+          exact (Hoverlap old_snapshot old_mode active_mode location Hold
+            Hold_mode Hactive_mode Hold_color
+            (or_intror (ltac:(rewrite Hcaller_rdm in Hcaller_root;
+              exact Hcaller_root)))).
+      + assert (caller_T = Ty) by congruence. subst caller_T.
+        have Hmutable := Hruntime old_snapshot Hold old_mode location
           Hold_color.
-        have Himmutable := typed_imm_root_runtime_immutable CT sGamma rGamma
-          h location Hwf
-          (ltac:(rewrite Himm in Hcaller_root; exact Hcaller_root)).
-        congruence.
-      + unfold fallback.
-        exact (Hoverlap old_snapshot old_mode active_mode location Hold
-          Hold_mode Hactive_mode Hold_color
-          (or_intror (ltac:(rewrite Hcaller_rdm in Hcaller_root;
-            exact Hcaller_root)))). }
-  exact (Hlift Hcaller_result).
+        right. split; [exact Hro|]. split; [exact Hlocation_eq|].
+        split; [exact Hro_root | exact Hmutable]. }
+  destruct Hcaller_result as [Hcaller_result | Hspecial];
+    [left; exact (Hlift Hcaller_result) | right; exact Hspecial].
 Qed.
 
 Lemma frozen_caller_snapshots_runtime_mutable_tail :
@@ -10215,6 +10248,7 @@ Lemma private_policy_head_overlap_after_safe_call_entry :
       (Empty_set authority_flow_state) ->
     private_policy_head_active_overlap_justified CT h Z
       (mk_watched_frame caller_authority sGamma rGamma) witnesses ->
+    sqtype Ty <> RO ->
     let callee := mk_watched_frame
       (call_authority caller_authority (sqtype Ty))
       (mreceiver (msignature runtime_mdef) ::
@@ -10226,21 +10260,31 @@ Proof.
   intros CT Z caller_authority sGamma mt rGamma h witnesses x method y args
     sGamma' vals ly cy runtime_mdef Ty Hwf Hsound Htyping Hscope Hgety
     Hvalue Hbase Hfind Hargs Hruntime Hclosed Hexposure Hseparated Hoverlap
-    callee.
+    Hnot_special callee.
   induction witnesses as [|slot tail IH].
   - exact I.
   - destruct slot as [head|].
     + simpl.
       eapply frozen_caller_snapshots_active_overlap_justified_tail with
         (slot := None).
-      eapply executing_overlap_justified_implies_active_overlap_justified.
-      exact (frozen_active_overlap_justified_after_safe_call_entry CT Z
+      apply (executing_overlap_justified_implies_active_overlap_justified
+        CT h Z callee
+        (executing_authority_color_set CT h
+          (mk_watched_frame caller_authority sGamma rGamma)
+          (Empty_set authority_flow_state))).
+      intros snapshot snapshot_mode active_mode location Hin Hsm Ham
+        Hcolor Htrigger.
+      destruct (frozen_active_overlap_justified_after_safe_call_entry CT Z
           caller_authority sGamma mt rGamma h
           (Empty_set authority_flow_state) (Some head :: tail)
-          x method y args sGamma' vals ly cy runtime_mdef Ty Hwf Hsound Htyping
-          Hscope Hgety Hvalue Hbase Hfind Hargs Hruntime Hclosed Hexposure
-          (ltac:(intros mode location Hempty; inversion Hempty)) Hseparated
-          Hoverlap).
+          x method y args sGamma' vals ly cy runtime_mdef Ty Hwf Hsound
+          Htyping Hscope Hgety Hvalue Hbase Hfind Hargs Hruntime Hclosed
+          Hexposure
+          (ltac:(intros mode location' Hempty; inversion Hempty)) Hseparated
+          Hoverlap snapshot snapshot_mode active_mode location Hin Hsm Ham
+          Hcolor Htrigger) as [Hjustified | [Hro _]].
+      * exact Hjustified.
+      * exfalso. exact (Hnot_special Hro).
     + simpl in Hoverlap |- *.
       eapply IH.
       * eapply frozen_caller_snapshots_runtime_mutable_tail. exact Hruntime.
