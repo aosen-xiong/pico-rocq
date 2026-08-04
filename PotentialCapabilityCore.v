@@ -549,17 +549,6 @@ Proof.
   - apply phased_authority_mark_prospective.
 Qed.
 
-Lemma frozen_caller_authority_connected_is_phased :
-  forall CT h frame source target,
-    frozen_caller_authority_connected CT h frame source target ->
-    phased_authority_frame_connected CT h frame source target.
-Proof.
-  intros CT h frame source target Hconnected. induction Hconnected.
-  - apply rt_step. apply frozen_caller_authority_step_is_phased. exact H.
-  - apply rt_refl.
-  - eapply rt_trans; eauto.
-Qed.
-
 (** A caller color snapshot is proof-only state captured when a call suspends
     its caller.  Current execution colors advance through the active phase;
     latent resume exposure is always closed under the saved caller frame.
@@ -669,90 +658,11 @@ Definition frozen_completed_colors_resume_safe
         (exposure_mode, target) ->
       ~ In Loc Z target).
 
-Definition frozen_caller_snapshots_runtime_mutable
-  (h : heap) (snapshots : list frozen_caller_snapshot_slot) : Prop :=
-  forall snapshot,
-    List.In (Some snapshot) snapshots ->
-    authority_colors_runtime_mutable h
-      snapshot.(frozen_snapshot_current_colors).
-
-Definition frozen_caller_snapshots_closed
-  (CT : class_table) (h : heap) (active : watched_frame)
-  (snapshots : list frozen_caller_snapshot_slot) : Prop :=
-  forall snapshot,
-    List.In (Some snapshot) snapshots ->
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h active
-        snapshot.(frozen_snapshot_current_colors))
-      snapshot.(frozen_snapshot_current_colors).
-
 Definition independent_active_authority_colors
   (CT : class_table) (h : heap) (active : watched_frame) :
   Ensemble authority_flow_state :=
   executing_authority_color_set CT h active
     (Empty_set authority_flow_state).
-
-(** Every captured resume root denotes an object in the current heap.  This
-    fact is established from the caller's well-formed runtime environment at
-    call entry and is monotone under heap growth. *)
-Definition frozen_caller_snapshots_resume_roots_in_heap
-  (h : heap) (snapshots : list frozen_caller_snapshot_slot) : Prop :=
-  forall snapshot root,
-    List.In (Some snapshot) snapshots ->
-    In Loc snapshot.(frozen_snapshot_resume_rdm_roots) root ->
-    root < dom h.
-
-Definition frozen_caller_snapshots_resume_exposures_wf
-  (CT : class_table) (h : heap) (active : watched_frame)
-  (snapshots : list frozen_caller_snapshot_slot) : Prop :=
-  (forall snapshot,
-    List.In (Some snapshot) snapshots ->
-    authority_colors_runtime_mutable h
-      snapshot.(frozen_snapshot_current_resume_exposure)) /\
-  (forall snapshot,
-    List.In (Some snapshot) snapshots ->
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h active
-        snapshot.(frozen_snapshot_current_resume_exposure))
-      snapshot.(frozen_snapshot_current_resume_exposure)) /\
-  (forall snapshot mode location,
-    List.In (Some snapshot) snapshots ->
-    In authority_flow_state
-      snapshot.(frozen_snapshot_current_resume_exposure) (mode, location) ->
-    authority_mode_dangerous mode) /\
-  (forall snapshot,
-    List.In (Some snapshot) snapshots ->
-    Included authority_flow_state
-      snapshot.(frozen_snapshot_entry_resume_exposure)
-      snapshot.(frozen_snapshot_current_resume_exposure)) /\
-  (forall snapshot root,
-    List.In (Some snapshot) snapshots ->
-    In Loc snapshot.(frozen_snapshot_resume_rdm_roots) root ->
-    r_muttype h root = Some Mut_r ->
-    In authority_flow_state
-      snapshot.(frozen_snapshot_current_resume_exposure)
-      (FlowProspective, root)).
-
-(** Pop-sensitive provenance is required only when independent callee
-    authority reaches an RDM root whose caller frame will resume.  The target
-    condition ranges over the frozen prospective exposure of all resume
-    roots, rather than just the roots themselves: after the pop-time join,
-    authority may continue through retained mutable descendants. *)
-Definition frozen_caller_snapshots_resume_roots_safe
-  (CT : class_table) (h : heap) (Z : Ensemble Loc) (active : watched_frame)
-  (snapshots : list frozen_caller_snapshot_slot) : Prop :=
-  forall snapshot active_mode source exposure_mode target,
-    List.In (Some snapshot) snapshots ->
-    authority_mode_dangerous active_mode ->
-    In authority_flow_state
-      (independent_active_authority_colors CT h active)
-      (active_mode, source) ->
-    In Loc snapshot.(frozen_snapshot_resume_rdm_roots) source ->
-    authority_mode_dangerous exposure_mode ->
-    In authority_flow_state
-      snapshot.(frozen_snapshot_current_resume_exposure)
-      (exposure_mode, target) ->
-    ~ In Loc Z target.
 
 Lemma frozen_caller_color_dangerous_retained :
   forall CT h frame colors mode left right,
@@ -916,41 +826,6 @@ Proof.
   - eapply phased_step_with_frozen_incoming_covered_by_old_or_active; eauto.
   - exact Hsource.
   - apply IHHconnected2. apply IHHconnected1. exact Hsource.
-Qed.
-
-Lemma executing_with_frozen_incoming_dangerous_covered_by_old_or_active :
-  forall CT h frame colors mode location,
-    Included authority_flow_state
-      (frozen_caller_authority_closure CT h frame colors) colors ->
-    authority_mode_dangerous mode ->
-    In authority_flow_state
-      (executing_authority_color_set CT h frame colors) (mode, location) ->
-    (exists old_mode,
-        authority_mode_dangerous old_mode /\
-        In authority_flow_state colors (old_mode, location)) \/
-    (exists active_mode,
-        authority_mode_dangerous active_mode /\
-        In authority_flow_state
-          (independent_active_authority_colors CT h frame)
-          (active_mode, location)).
-Proof.
-  intros CT h frame colors mode location Hclosed Hmode
-    [seed [Hseed Hpath]].
-  have Hsource : frozen_authority_state_covered_by_old_or_active colors
-      (independent_active_authority_colors CT h frame) seed.
-  { destruct seed as [seed_mode seed_location]. simpl in *.
-    intros Hseed_mode. inversion Hseed; subst.
-    - left. exists seed_mode. split; assumption.
-    - destruct H as [owned [Heq Howned]]. inversion Heq; subst.
-      right. exists FlowPowered. split; [left; reflexivity|].
-      unfold independent_active_authority_colors.
-      exists (FlowPowered, owned). split.
-      + right. exists owned. split; [reflexivity|exact Howned].
-      + apply rt_refl. }
-  have Hcovered :=
-    phased_connected_with_frozen_incoming_covered_by_old_or_active CT h frame
-      colors seed (mode, location) Hclosed Hsource Hpath.
-  exact (Hcovered Hmode).
 Qed.
 
 Lemma potential_frame_edge_symmetric :
@@ -1260,124 +1135,6 @@ Proof.
   intros CT h active stack source target Hreachable.
   apply mutable_connected_is_potential_connected.
   eapply mutable_reachable_connected; eauto.
-Qed.
-
-(** Generic preservation rule for the pairwise nested resume certificate.
-    A post-step color is classified either as the corresponding historical
-    color or as a step-local exceptional provenance.  The exceptional class
-    is required to be safe against the old resume exposures and against the
-    protected zone.  Thus it is a private proof device, not a premise of the
-    public preservation theorem. *)
-Lemma frozen_caller_snapshots_nested_resume_safe_after_classified_advance :
-  forall CT new_h Z new_active snapshots exceptional,
-    frozen_caller_snapshots_nested_resume_safe Z snapshots ->
-    (forall snapshot active_mode source exposure_mode target,
-      List.In (Some snapshot) snapshots ->
-      authority_mode_dangerous active_mode ->
-      In authority_flow_state exceptional (active_mode, source) ->
-      In Loc snapshot.(frozen_snapshot_resume_rdm_roots) source ->
-      authority_mode_dangerous exposure_mode ->
-      In authority_flow_state
-        snapshot.(frozen_snapshot_current_resume_exposure)
-        (exposure_mode, target) ->
-      ~ In Loc Z target) ->
-    (forall active_mode location,
-      authority_mode_dangerous active_mode ->
-      In authority_flow_state exceptional (active_mode, location) ->
-      ~ In Loc Z location) ->
-    (forall snapshot older mode location,
-      List.In (Some snapshot) snapshots ->
-      List.In (Some older) snapshots ->
-      authority_mode_dangerous mode ->
-      In authority_flow_state
-        (frozen_caller_authority_closure CT new_h new_active
-          snapshot.(frozen_snapshot_current_colors)) (mode, location) ->
-      In Loc older.(frozen_snapshot_resume_rdm_roots) location ->
-      (exists old_mode,
-        authority_mode_dangerous old_mode /\
-        In authority_flow_state snapshot.(frozen_snapshot_current_colors)
-          (old_mode, location)) \/
-      (exists active_mode,
-        authority_mode_dangerous active_mode /\
-        In authority_flow_state exceptional (active_mode, location))) ->
-    (forall snapshot mode location,
-      List.In (Some snapshot) snapshots ->
-      authority_mode_dangerous mode ->
-      In authority_flow_state
-        (frozen_caller_authority_closure CT new_h new_active
-          snapshot.(frozen_snapshot_current_resume_exposure))
-        (mode, location) ->
-      In Loc Z location ->
-      (exists old_mode,
-        authority_mode_dangerous old_mode /\
-        In authority_flow_state
-          snapshot.(frozen_snapshot_current_resume_exposure)
-          (old_mode, location)) \/
-      (exists active_mode,
-        authority_mode_dangerous active_mode /\
-        In authority_flow_state exceptional (active_mode, location))) ->
-    frozen_caller_snapshots_nested_resume_safe Z
-      (advance_frozen_caller_snapshots CT new_h new_active snapshots).
-Proof.
-  intros CT new_h Z new_active snapshots exceptional Hnested Hresume Hactive_safe
-    Hclassify_color Hclassify_exposure.
-  induction snapshots as [|slot tail IH]; simpl in *; [exact I|].
-  destruct slot as [head|].
-  - destruct Hnested as [Hhead Htail]. split.
-    + intros new_older Hnew_older.
-      unfold advance_frozen_caller_snapshots in Hnew_older.
-      apply in_map_iff in Hnew_older.
-      destruct Hnew_older as [old_slot [Heq Hold_slot]].
-      destruct old_slot as [old_older|]; simpl in Heq; [|discriminate].
-      injection Heq as Heq. subst new_older.
-      intros source_mode source Hsource_mode Hsource Hsource_root.
-      destruct (Hclassify_color head old_older source_mode source
-        (ltac:(simpl; auto)) (ltac:(simpl; right; exact Hold_slot))
-        Hsource_mode Hsource Hsource_root) as
-        [[old_source_mode [Hold_source_mode Hold_source]] |
-         [active_source_mode [Hactive_source_mode Hactive_source]]].
-      * destruct (Hhead old_older Hold_slot old_source_mode source
-          Hold_source_mode Hold_source Hsource_root) as
-          [[entry_mode [Hentry_mode Hentry]] | Hold_safe].
-        -- left. exists entry_mode. split; assumption.
-        -- right. intros exposure_mode target Hexposure_mode Htarget Hprotected.
-           destruct (Hclassify_exposure old_older exposure_mode target
-             (ltac:(simpl; right; exact Hold_slot)) Hexposure_mode Htarget
-             Hprotected) as
-             [[old_exposure_mode [Hold_exposure_mode Hold_target]] |
-              [active_target_mode [Hactive_target_mode Hactive_target]]].
-           ++ eapply Hold_safe; eauto.
-           ++ eapply Hactive_safe; eauto.
-      * right. intros exposure_mode target Hexposure_mode Htarget Hprotected.
-        destruct (Hclassify_exposure old_older exposure_mode target
-          (ltac:(simpl; right; exact Hold_slot)) Hexposure_mode Htarget
-          Hprotected) as
-          [[old_exposure_mode [Hold_exposure_mode Hold_target]] |
-           [active_target_mode [Hactive_target_mode Hactive_target]]].
-        -- eapply Hresume with (snapshot := old_older)
-             (active_mode := active_source_mode) (source := source)
-             (exposure_mode := old_exposure_mode); eauto.
-        -- eapply Hactive_safe; eauto.
-    + apply IH.
-      * exact Htail.
-      * intros snapshot active_mode source exposure_mode target Hsnapshot.
-        eapply Hresume. simpl. right. exact Hsnapshot.
-      * intros snapshot older mode location Hsnapshot Holder.
-        eapply Hclassify_color.
-        -- simpl. right. exact Hsnapshot.
-        -- simpl. right. exact Holder.
-      * intros snapshot mode location Hsnapshot.
-        eapply Hclassify_exposure. simpl. right. exact Hsnapshot.
-  - apply IH.
-    + exact Hnested.
-    + intros snapshot active_mode source exposure_mode target Hsnapshot.
-      eapply Hresume. simpl. right. exact Hsnapshot.
-    + intros snapshot older mode location Hsnapshot Holder.
-      eapply Hclassify_color.
-      * simpl. right. exact Hsnapshot.
-      * simpl. right. exact Holder.
-    + intros snapshot mode location Hsnapshot.
-      eapply Hclassify_exposure. simpl. right. exact Hsnapshot.
 Qed.
 
 (** If the active frame changes only by replacing each new RDM root with a
