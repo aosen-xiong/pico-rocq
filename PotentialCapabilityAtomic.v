@@ -2148,56 +2148,6 @@ Proof.
   eapply typed_rdm_root_is_live_under_mut_authority. exact Hroot.
 Qed.
 
-Lemma allocation_creation_root_is_old_colored :
-  forall CT h frame incoming qc location,
-    allocation_fresh_authorized CT h frame
-      (executing_authority_color_set CT h frame incoming) qc ->
-    typed_root (qc2q qc) frame.(frame_senv) frame.(frame_renv) location ->
-    exists mode,
-      authority_mode_dangerous mode /\
-      In authority_flow_state
-        (executing_authority_color_set CT h frame incoming)
-        (mode, location).
-Proof.
-  intros CT h frame incoming qc location Hauthorized Hroot.
-  destruct Hauthorized as [Hmut | [Hrdm Hauthorized]].
-  - subst qc. exists FlowPowered. split; [left; reflexivity|].
-    eapply executing_authority_typed_mut_root_is_powered. exact Hroot.
-  - subst qc. simpl in Hroot.
-    destruct Hauthorized as [Hauthority | [mode [anchor
-      [Hmode [Hcolor Hanchor]]]]].
-    + destruct frame as [authority sGamma rGamma]. simpl in *.
-      subst authority. exists FlowPowered. split; [left; reflexivity|].
-      eapply executing_authority_typed_rdm_root_under_mut_is_powered.
-      exact Hroot.
-    + exists FlowProspective. split; [right; reflexivity|].
-      eapply executing_authority_dangerous_frame_join; eauto.
-Qed.
-
-Lemma r_muttype_some_dom :
-  forall h location runtime_q,
-    r_muttype h location = Some runtime_q ->
-    location < dom h.
-Proof.
-  intros h location runtime_q Hruntime.
-  unfold r_muttype in Hruntime.
-  destruct (runtime_getObj h location) as [object|] eqn:Hobject;
-    [apply runtime_getObj_dom in Hobject; exact Hobject|discriminate].
-Qed.
-
-Lemma allocation_typed_mut_root_is_old_colored :
-  forall CT h frame incoming location,
-    typed_root Mut frame.(frame_senv) frame.(frame_renv) location ->
-    exists mode,
-      authority_mode_dangerous mode /\
-      In authority_flow_state
-        (executing_authority_color_set CT h frame incoming)
-        (mode, location).
-Proof.
-  intros. exists FlowPowered. split; [left; reflexivity|].
-  eapply executing_authority_typed_mut_root_is_powered; eauto.
-Qed.
-
 Lemma potential_history_after_new :
   forall CT P Z cutoff authority sGamma mt rGamma h stack x qc C args
     sGamma' rGamma' h',

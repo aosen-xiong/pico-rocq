@@ -294,12 +294,6 @@ Definition executing_authority_color_set
 Definition authority_mode_dangerous (mode : authority_flow_mode) : Prop :=
   mode = FlowPowered \/ mode = FlowProspective.
 
-Definition authority_colors_runtime_mutable
-  (h : heap) (colors : Ensemble authority_flow_state) : Prop :=
-  forall mode location,
-    In authority_flow_state colors (mode, location) ->
-    r_muttype h location = Some Mut_r.
-
 Lemma executing_authority_owned_is_powered :
   forall CT h frame incoming location,
     frame_owned_location CT h frame location ->
@@ -399,11 +393,6 @@ Inductive frozen_caller_authority_step
 | frozen_caller_mark_prospective : forall location,
     frozen_caller_authority_step CT h frame
       (FlowPowered, location) (FlowProspective, location).
-
-Definition frozen_caller_authority_connected
-  (CT : class_table) (h : heap) (frame : watched_frame) :=
-  clos_refl_trans authority_flow_state
-    (frozen_caller_authority_step CT h frame).
 
 Lemma potential_frame_edge_symmetric :
   forall active stack left right,
