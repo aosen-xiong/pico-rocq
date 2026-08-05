@@ -13,16 +13,6 @@ Inductive method_scope_subtype : method_scope -> method_scope -> Prop :=
   | method_ts_rs : method_scope_subtype TransitiveState ReadonlyState
   .
 
-Lemma method_subtyping_trans : 
-  forall mt1 mt2 mt3
-    (H12 : method_scope_subtype mt1 mt2)
-    (H23 : method_scope_subtype mt2 mt3),
-    method_scope_subtype mt1 mt3.
-Proof.
-  intros mt1 mt2 mt3 H12 H23.
-  inversion H12; subst; inversion H23; subst; constructor.
-Qed.
-
 Lemma concrete_assignability_submethod : forall callee caller,
   strict_assignability_method_scope caller ->
   method_scope_subtype callee caller ->
@@ -108,30 +98,6 @@ Inductive qualified_type_subtype : class_table -> qualified_type -> qualified_ty
       (Hdom      : sctype qt < dom CT)
       (Hnot_lost : sqtype qt <> Lost),
       qualified_type_subtype CT qt qt.
-
-Lemma qualified_type_subtype_dom2 :
-  forall CT qt1 qt2,
-    qualified_type_subtype CT qt1 qt2 ->
-    sctype qt2 < dom CT.
-Proof.
-  intros CT qt1 qt2 H.
-  induction H.
-  - exact Hdom2.
-  - exact IHqualified_type_subtype2.
-  - exact Hdom.
-Qed.
-
-Lemma qualified_type_subtype_dom1 :
-  forall CT qt1 qt2,
-    qualified_type_subtype CT qt1 qt2 ->
-    sctype qt1 < dom CT.
-Proof.
-  intros CT qt1 qt2 H.
-  induction H.
-  - exact Hdom1.
-  - exact IHqualified_type_subtype1.
-  - exact Hdom.
-Qed.
 
 Lemma qualified_type_subtype_base_subtype :
   forall CT qt1 qt2,

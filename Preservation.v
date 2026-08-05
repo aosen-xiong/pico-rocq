@@ -4,39 +4,6 @@ From Stdlib Require Import List.
 From Stdlib Require String.
 Import ListNotations.
 
-(* ------------------------------------------------------------- *)
-Lemma call_arguments_subtype_runtime :
-  forall (adapt : qualified_type -> qualified_type -> qualified_type)
-    CT Ty argtypes static_params runtime_params,
-    Forall2
-      (fun arg static_param =>
-        qualified_type_subtype CT arg (adapt Ty static_param))
-      argtypes static_params ->
-    Forall2
-      (fun static_param runtime_param =>
-        qualified_type_subtype CT
-          (adapt Ty static_param) (adapt Ty runtime_param))
-      static_params runtime_params ->
-    Forall2
-      (fun arg runtime_param =>
-        qualified_type_subtype CT arg (adapt Ty runtime_param))
-      argtypes runtime_params.
-Proof.
-  intros adapt CT Ty argtypes static_params runtime_params
-    Hargs Hparams.
-  eapply (Forall2_trans
-    (fun arg static_param =>
-      qualified_type_subtype CT arg (adapt Ty static_param))
-    (fun static_param runtime_param =>
-      qualified_type_subtype CT
-        (adapt Ty static_param) (adapt Ty runtime_param))
-    (fun arg runtime_param =>
-      qualified_type_subtype CT arg (adapt Ty runtime_param))).
-  - intros. eapply qtype_trans; eauto.
-  - exact Hargs.
-  - exact Hparams.
-Qed.
-
 Lemma callee_frame_wf_rs_ts :
   forall CT sΓ' rΓ h y m zs vals ly cy mdef Ty argtypes Tthis
     (Hwf : wf_r_config CT sΓ' rΓ h)

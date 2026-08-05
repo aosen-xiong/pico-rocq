@@ -74,14 +74,14 @@ Proof. reflexivity. Qed.
     controls whether the slot may be updated; this equation independently
     prevents a [Mut] right-hand side from flowing through the readonly
     receiver. *)
-Lemma vpa_mutability_field_readonly_state_ro_mut_is_lost :
+Example vpa_mutability_field_readonly_state_ro_mut_is_lost :
   vpa_mutability_stype_fld_readonly_state RO Mut_f = Lost.
 Proof. reflexivity. Qed.
 
 (* Regression fact for capability proofs: do not replace the result below
    with [RO].  Reading an [RDM_f] field through an [RO] receiver loses the
    field's mutability authority. *)
-Lemma vpa_mutability_field_readonly_state_ro_rdm_is_lost :
+Example vpa_mutability_field_readonly_state_ro_rdm_is_lost :
   vpa_mutability_stype_fld_readonly_state RO RDM_f = Lost.
 Proof. reflexivity. Qed.
 

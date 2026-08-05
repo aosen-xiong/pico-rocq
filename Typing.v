@@ -42,9 +42,6 @@ Definition sf_assignability_rel (CT: class_table) (C: class_name) (f: var) (a: a
 Definition sf_mutability_rel (CT: class_table) (C: class_name) (f: var) (qf: q_f) : Prop :=
   exists fdef, FieldLookup CT C f fdef /\ mutability (ftype fdef) = qf.
 
-Definition sf_base_rel (CT: class_table) (C: class_name) (f: var) (base: class_name) : Prop :=
-  exists fdef, FieldLookup CT C f fdef /\ f_base_type (ftype fdef) = base.
-  
 (* Key properties of relational field collection *)
 Lemma collect_fields_deterministic_rel : forall CT C fields1 fields2
   (Hcf1 : CollectFields CT C fields1)
@@ -124,22 +121,6 @@ Proof.
     discriminate Hparent.
 Qed.
 
-Lemma field_def_consistent_through_subtyping : forall CT C D f fdef1 fdef2
-  (Hsub      : base_subtype CT C D)
-  (Hlookup1  : FieldLookup CT C f fdef1)
-  (Hlookup2  : FieldLookup CT D f fdef2),
-  fdef1 = fdef2.
-Proof.
-  intros CT C D f fdef1 fdef2 Hsub Hlookup1 Hlookup2.
-  (* Use field inheritance: since C <: D, field f in D is also in C *)
-  assert (Hlookup2_in_C : FieldLookup CT C f fdef2).
-  {
-    apply (field_inheritance_subtyping CT C D f fdef2); assumption.
-  }
-  (* Now both lookups are in C, so use determinism *)
-  eapply field_lookup_deterministic_rel; eauto.
-Qed.
-
 (* Corollary for all field properties *)
 Lemma sf_def_subtyping : forall CT C D f fdef
   (Hsub    : base_subtype CT C D)
@@ -159,30 +140,6 @@ Proof.
   intros CT C D f a Hsub Hlookup.
   unfold sf_assignability_rel in *.
   destruct Hlookup as [fdef [Hfield Hassign]].
-  exists fdef. split; auto.
-  apply (sf_def_subtyping CT C D f fdef); auto.
-Qed.
-
-Lemma sf_mutability_subtyping : forall CT C D f q
-  (Hsub    : base_subtype CT C D)
-  (Hlookup : sf_mutability_rel CT D f q),
-  sf_mutability_rel CT C f q.
-Proof.
-  intros CT C D f q Hsub Hlookup.
-  unfold sf_mutability_rel in *.
-  destruct Hlookup as [fdef [Hfield Hmut]].
-  exists fdef. split; auto.
-  apply (sf_def_subtyping CT C D f fdef); auto.
-Qed.
-
-Lemma sf_base_subtyping : forall CT C D f base
-  (Hsub    : base_subtype CT C D)
-  (Hlookup : sf_base_rel CT D f base),
-  sf_base_rel CT C f base.
-Proof.
-  intros CT C D f base Hsub Hlookup.
-  unfold sf_base_rel in *.
-  destruct Hlookup as [fdef [Hfield Hbase]].
   exists fdef. split; auto.
   apply (sf_def_subtyping CT C D f fdef); auto.
 Qed.
@@ -258,36 +215,6 @@ Proof.
   - injection H as H. exact H.
 Qed.
 
-Lemma constructor_def_lookup_Some : forall CT C
-  (Hdom : C < dom CT),
-  exists ctor, constructor_def_lookup CT C = Some ctor.
-Proof.
-  intros CT C H.
-  apply find_class_Some in H.
-  destruct H as [def Hdef].
-  unfold constructor_def_lookup.
-  rewrite Hdef.
-  eexists. reflexivity.
-Qed.
-
-Lemma constructor_sig_lookup_Some : forall CT C
-  (Hdom : C < dom CT),
-  exists csig, constructor_sig_lookup CT C = Some csig.
-Proof.
-  intros CT C H.
-  apply constructor_def_lookup_Some in H.
-  destruct H as [ctor Hctor].
-  unfold constructor_sig_lookup.
-  rewrite Hctor.
-  eexists. reflexivity.
-Qed.  
-
-(* Helper to compare class names *)
-Definition eq_class_name (c1 c2 : class_name) : bool :=
-  match c1, c2 with
-  | n1, n2 => Nat.eqb n1 n2
-  end.
-
 (* Helper to compare method names *)
 Definition eq_method_name (m1 m2 : method_name) : bool :=
   match m1, m2 with
@@ -328,21 +255,6 @@ Inductive CollectMethods : class_table -> class_name -> list method_def -> Prop 
       (Hmerged        : merged = override parent_methods own_methods),
       CollectMethods CT C merged.
  
-Lemma collect_methods_deterministic : forall CT C methods1 methods2
-  (Hcm1 : CollectMethods CT C methods1)
-  (Hcm2 : CollectMethods CT C methods2),
-  methods1 = methods2.
-Proof.
-  intros CT C methods1 methods2 H1 H2.
-  generalize dependent methods2.
-  induction H1; intros; inversion H2; subst; try reflexivity; try congruence.
-  - (* Both CM_Inherit *)
-    assert (def = def0) by congruence. subst def0.
-    assert (parent = parent0) by congruence. subst parent0.
-    assert (parent_methods = parent_methods0) by eauto.
-    subst parent_methods0. reflexivity.
-Qed.
-
 (* STATIC WELLFORMEDNESS CONDITION *)
 (* Well-formedness of type use *)
 Definition wf_stypeuse (CT : class_table) (q_use: q) (c: class_name) : Prop :=
@@ -743,23 +655,6 @@ Proof.
   induction Htyping; auto.
 Qed.
 
-Lemma new_stmt_args_length : forall CT sΓ mt x qc C args argtypes consig
-  (Htyping : stmt_typing CT sΓ mt (SNew x qc C args) sΓ)
-  (Hstatic : static_getType_list sΓ args = Some argtypes)
-  (Hconsig : constructor_sig_lookup CT C = Some consig),
-  length consig.(cparams) = length args.
-Proof.
-  intros CT sΓ mt x qc C args argtypes consig Htyping Hstatic Hconsig.
-  inversion Htyping; subst.
-  assert (consig = consig0) by congruence.
-  assert (argtypes = argtypes0) by congruence.
-  subst.
-  apply Forall2_length in Harg_sub.
-  rewrite length_map in Harg_sub.
-  rewrite <- Harg_sub.
-  eapply static_getType_list_preserves_length; eauto.
-Qed.
-
 Definition wf_constructor_object (CT : class_table) (C : class_name) (ctor : constructor_def) : Prop :=
   parent_lookup CT C = None /\
   constructor_def_lookup CT C = Some ctor /\
@@ -811,16 +706,6 @@ Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : P
     sctype (mreceiver msig) = C /\
     (readonly_state_method_scope mscope ->
       signature_has_no_mutable_roots msig).
-
-Lemma wf_method_return_type_well_formed : forall CT C mdef,
-  wf_method CT C mdef ->
-  wf_stypeuse CT (sqtype (mret (msignature mdef)))
-    (sctype (mret (msignature mdef))).
-Proof.
-  intros CT C mdef Hwf.
-  unfold wf_method in Hwf; simpl in Hwf.
-  exact (proj1 Hwf).
-Qed.
 
 Lemma wf_method_receiver_class : forall CT C mdef,
   wf_method CT C mdef ->
@@ -913,426 +798,7 @@ Proof.
   apply Hcname_consistent; exact Hfind.
 Qed.
 
-Lemma find_class_consistent : forall CT i def def'
-  (Hwf_ct : wf_class_table CT)
-  (Hfind  : find_class CT i = Some def)
-  (Hfind' : find_class CT i = Some def'),
-  def = def'.
-Proof.
-  intros CT i def def' Hwf_ct Hfind Hfind'.
-  rewrite Hfind in Hfind'.
-  injection Hfind' as Heq.
-  exact Heq.
-Qed.
-
-Lemma sf_def_rel_wf_field : forall CT C f fdef
-  (Hwf_ct  : wf_class_table CT)
-  (Hsf_def : sf_def_rel CT C f fdef),
-  wf_field CT fdef.
-Proof.
-  intros CT C f fdef Hwf_ct Hsf_def.
-  unfold sf_def_rel in Hsf_def.
-  inversion Hsf_def as [CT' C' fields f' fdef' Hcf Hget]. subst.
-  generalize dependent fdef.
-  induction Hcf; intros fdef Hget.
-  - (* CF_NotFound case *)
-    intros Hgget.
-    inversion Hget as [CT' C' fields f' fdef' Hcf Hget']. subst.
-    assert (Hfields_empty : fields = []).
-    {
-      eapply collect_fields_deterministic_rel; eauto.
-      apply CF_NotFound. exact Hnone.
-    }
-    subst fields.
-    unfold gget in Hget'.
-    simpl in Hget'.
-    exfalso.
-    simpl in Hget'.
-    destruct f; discriminate Hget'.
-  - (* CF_Object case *)
-    intros Hgget.
-    unfold gget in Hgget.
-    simpl in Hgget.
-    destruct f; discriminate Hgget.
-  - (* CF_Inherit case *)
-    intros Hgget.
-    unfold gget in Hgget.
-    rewrite nth_error_app in Hgget.
-    destruct (lt_dec f (length parent_fields)) as [Hlt | Hge].
-    + (* Field is from parent class *)
-      apply IHHcf; auto.
-      apply FL_Found with parent_fields; auto.
-      unfold gget.
-      destruct (f <? dom parent_fields) eqn:Hcmp.
-      -- exact Hgget.
-      -- exfalso. 
-        apply Nat.ltb_nlt in Hcmp.
-        lia.
-      --
-      unfold gget.
-    assert (Hcmp : f <? dom parent_fields = true).
-    {
-      apply Nat.ltb_lt.
-      exact Hlt.
-    }
-    rewrite Hcmp in Hgget.
-    exact Hgget.
-    + (* Field is from own class *)
-    assert (Hown_field : nth_error own_fields (f - dom parent_fields) = Some fdef).
-    {
-      assert (Hcmp : f <? dom parent_fields = false).
-      {
-        apply Nat.ltb_nlt.
-        exact Hge.
-      }
-      rewrite Hcmp in Hgget.
-      exact Hgget.
-    }
-    assert (HWFC : wf_class CT def).
-    {
-      unfold wf_class_table in Hwf_ct.
-      destruct Hwf_ct as [wf _].
-      eapply Forall_nth_error; eauto.
-    }
-    inversion HWFC; subst.
-  rewrite Hno_fields in Hown_field.
-  simpl in Hown_field.
-  destruct (f - dom parent_fields) as [|ntest]; simpl in Hown_field; discriminate Hown_field.
-  subst sig0.
-  destruct H as [Hwf_ctor [Hwf_methods Hbound_case]].
-  destruct (bound CT superC) as [q_super|] eqn:Hbound.
-  ++ (* Some q_super case *)
-    destruct Hbound_case as [mnameunique fieldlist].
-    destruct fieldlist as [fs fieldlistproperty].
-    destruct fieldlistproperty as [collectfields [boundqualifier wellformedfields]].
-    assert (Hfields_eq : fs = parent_fields ++ fields (body def)).
-    {
-      eapply collect_fields_deterministic_rel; eauto.
-      assert (HC_eq : C = C0).
-      {
-        unfold C0, sig.
-        symmetry.
-        eapply find_class_cname_consistent; eauto.
-      }
-      subst C0.
-      apply CF_Inherit with (def := def) (parent := parent); eauto.
-      
-      rewrite <- HC_eq.
-      exact Hfind.
-    }
-    subst fs.
-    apply Forall_app in wellformedfields.
-    destruct wellformedfields as [_ Hwf_own].
-    eapply Forall_nth_error; eauto.
-  ++ (* None case *)
-    exfalso.
-    destruct Hbound_case as [Hnodup Hcf_empty].
-    assert (Hfields_eq : [] = parent_fields ++ fields (body def)).
-    {
-      eapply collect_fields_deterministic_rel; eauto.
-      apply CF_Inherit with (def := def) (parent := parent); eauto.
-            assert (HC_eq : C = C0).
-      {
-        unfold C0, sig.
-        symmetry.
-        eapply find_class_cname_consistent; eauto.
-      }
-      rewrite <- HC_eq.
-      exact Hfind.
-    }
-    destruct parent_fields, (fields (body def)); simpl in Hfields_eq; try discriminate.
-    simpl in Hown_field.
-    destruct (f - 0); simpl in Hown_field; discriminate.
-Qed.
-
-Lemma expr_has_type_class_in_table : forall CT mt sΓ e T
-  (HWFCT : wf_class_table CT)
-  (Htype : expr_has_type CT mt sΓ e T),
-  sctype T < dom CT.
-Proof.
-  intros CT mt sΓ e T HWFCT Htype.
-  induction Htype.
-  - (* ET_Null case *)
-    exact Hdom.
-  - (* ET_Var case *)
-    (* Use the fact that variables in well-formed environments have bounded types *)
-    eapply senv_var_domain; eauto.
-  - (* ET_Field case *)
-    assert (Hwf_field : wf_field CT fDef).
-    {
-      eapply sf_def_rel_wf_field; eauto.
-    }
-    unfold wf_field, wf_stypeuse in Hwf_field.
-    destruct (bound CT (f_base_type (ftype fDef))) as [qc|] eqn:Hbound.
-    + exact (proj2 Hwf_field).
-    + contradiction.
-  - (* ET_Field case *)
-    assert (Hwf_field : wf_field CT fDef).
-    {
-      eapply sf_def_rel_wf_field; eauto.
-    }
-    unfold wf_field, wf_stypeuse in Hwf_field.
-    destruct (bound CT (f_base_type (ftype fDef))) as [qc|] eqn:Hbound.
-    + exact (proj2 Hwf_field).
-    + contradiction.
-Qed.
-
 (* Well-formedness of program. Put it at the end because the main statement needs to be well-typed. *)
-(* Definition WFProgram (p: program_def) : Prop :=
-  Forall (fun decl => WFClass p.(classes) decl) p.(classes) . *)
-Lemma find_app : forall A (f : A -> bool) l1 l2 x
-  (H : find f l1 = Some x),
-  find f (l1 ++ l2) = Some x.
-Proof.
-  intros A f l1 l2 x H.
-  induction l1 as [|h t IH].
-  - (* l1 = [] *)
-    simpl in H.
-    discriminate.
-  - (* l1 = h :: t *)
-    simpl in H |- *.
-    destruct (f h) eqn:Heq.
-    + (* f h = true *)
-      injection H as Heq_x.
-      subst x.
-      reflexivity.
-    + (* f h = false *)
-      apply IH.
-      exact H.
-Qed.
-
-Lemma find_app_none : forall A (f : A -> bool) l1 l2
-  (H : find f l1 = None),
-  find f (l1 ++ l2) = find f l2.
-Proof.
-  intros A f l1 l2 H.
-  induction l1 as [|h t IH].
-  - (* l1 = [] *)
-    simpl.
-    reflexivity.
-  - (* l1 = h :: t *)
-    simpl in H |- *.
-    destruct (f h) eqn:Heq.
-    + (* f h = true - contradiction *)
-      discriminate H.
-    + (* f h = false *)
-      apply IH.
-      exact H.
-Qed.
-
-Lemma find_filter_equiv : forall A (f g : A -> bool) l
-  (H : forall x, In x l -> f x = true -> g x = true),
-  find f (filter g l) = find f l.
-Proof.
-  intros A f g l H.
-  induction l as [|h t IH].
-  - (* l = [] *)
-    simpl.
-    reflexivity.
-  - (* l = h :: t *)
-    simpl.
-    destruct (g h) eqn:Hg.
-    + (* g h = true *)
-      simpl.
-      destruct (f h) eqn:Hf.
-      * (* f h = true *)
-        reflexivity.
-      * (* f h = false *)
-        apply IH.
-        intros x Hin Hfx.
-        apply H; auto.
-        right; exact Hin.
-    + (* g h = false *)
-      destruct (f h) eqn:Hf.
-      * (* f h = true, but g h = false - contradiction with H *)
-        exfalso.
-        have Hg_true := H h (or_introl eq_refl) Hf.
-        rewrite Hg in Hg_true.
-        discriminate.
-      * (* f h = false *)
-        apply IH.
-        intros x Hin Hfx.
-        apply H; auto.
-        right; exact Hin.
-Qed.
-
-Lemma find_some_iff : forall A (f : A -> bool) l,
-  (exists x, find f l = Some x) <-> (exists x, In x l /\ f x = true).
-Proof.
-  intros A f l.
-  split.
-  - (* -> direction *)
-    intro H.
-    destruct H as [x Hfind].
-    exists x.
-    apply find_some in Hfind.
-    exact Hfind.
-  - (* <- direction *)
-    intro H.
-    destruct H as [x [Hin Hf]].
-    induction l as [|h t IH].
-    + (* l = [] *)
-      simpl in Hin.
-      contradiction.
-    + (* l = h :: t *)
-      simpl.
-      destruct (f h) eqn:Heq.
-      * (* f h = true *)
-        exists h.
-        reflexivity.
-      * (* f h = false *)
-        apply IH.
-        simpl in Hin.
-        destruct Hin as [Heq_h | Hin_t].
-        -- (* x = h *)
-           subst x.
-           rewrite Hf in Heq.
-           discriminate.
-        -- (* x in t *)
-           exact Hin_t.
-Qed.
-
-Lemma override_own_method_found : forall parent_methods own_methods m mdef
-  (Hown : gget_method own_methods m = Some mdef),
-  gget_method (override parent_methods own_methods) m = Some mdef.
-Proof.
-  intros parent_methods own_methods m mdef Hown.
-unfold override.
-unfold gget_method.
-induction own_methods as [|h t IH].
-- (* own_methods = [] *)
-  simpl in Hown.
-  discriminate.
-- (* own_methods = h :: t *)
-  simpl.
-  destruct (eq_method_name (mname (msignature h)) m) eqn:Heq.
-  + (* Found in head *)
-    unfold gget_method in Hown.
-    simpl in Hown.
-    rewrite Heq in Hown.
-    injection Hown as Heq_mdef.
-    subst mdef.
-    reflexivity.
-  + (* Not in head, check tail *)
-  assert (Hfind_t : find (fun mdef0 => eq_method_name (mname (msignature mdef0)) m) t = Some mdef).
-  {
-    unfold gget_method in Hown.
-    simpl in Hown.
-    rewrite Heq in Hown.
-    exact Hown.
-  }
-  eapply find_app.
-  exact Hfind_t.
-Qed.
-
-Lemma override_parent_method_preserved : forall parent_methods own_methods m
-  (Hnone : gget_method own_methods m = None),
-  gget_method (override parent_methods own_methods) m = gget_method parent_methods m.
-Proof.
-  intros parent_methods own_methods m Hnone.
-  unfold override, gget_method.
-  induction own_methods as [|h t IH].
-  - (* own_methods = [] *)
-    simpl.
-    induction parent_methods as [|h t IH].
-    -- simpl. reflexivity.
-    -- simpl. 
-    destruct (eq_method_name (mname (msignature h)) m) eqn:Heq.
-    --- (* eq_method_name returns true *)
-      reflexivity.
-    --- (* eq_method_name returns false *)
-      exact IH.
-  - (* own_methods = h :: t *)
-    simpl in Hnone |- *.
-    destruct (eq_method_name (mname (msignature h)) m) eqn:Heq.
-    + (* Found in h - contradiction *)
-      discriminate Hnone.
-    + (* Not in h, continue *)
-    assert (Hfind_t_none : find (fun mdef => eq_method_name (mname (msignature mdef)) m) t = None).
-    {
-      unfold gget_method in Hnone.
-      exact Hnone.
-    }
-    rewrite find_app_none.
-    -- (* Show find on t returns None *)
-      exact Hfind_t_none.
-    -- (* Show filters are equivalent *)
-      apply find_filter_equiv.
-      intro pmdef.
-      intro Hin.
-      rewrite Bool.negb_orb.
-      rewrite Bool.andb_true_iff.
-      split.
-    --- (* Show ~~eq_method_name(pmdef, h) = true *)
-      rewrite Bool.negb_true_iff.
-      assert (Hneq : mname (msignature pmdef) <> mname (msignature h)).
-      {
-        intro Heq_names.
-        rewrite Heq_names in H.
-        rewrite H in Heq.
-        discriminate.
-      }
-      destruct (eq_method_name (mname (msignature pmdef)) (mname (msignature h))) eqn:Heq_pmdef_h.
-      +++ (* eq_method_name returns true - contradiction *)
-        exfalso.
-        apply Hneq.
-        apply Nat.eqb_eq in Heq_pmdef_h.
-        exact Heq_pmdef_h.
-      +++ (* eq_method_name returns false - this is what we want *)
-        reflexivity.
-    --- (* Show ~~existsb(...) = true *)
-      rewrite Bool.negb_true_iff.
-      destruct (existsb (fun omdef => eq_method_name (mname (msignature pmdef)) (mname (msignature omdef))) t) eqn:Hexistsb.
-      +++ (* existsb returns true - contradiction *)
-        exfalso.
-        apply existsb_exists in Hexistsb.
-        destruct Hexistsb as [omdef [Hin_t Heq_names]].
-        (* pmdef matches m, and omdef has same name as pmdef, so omdef matches m *)
-        assert (Homdef_m : eq_method_name (mname (msignature omdef)) m = true).
-        {
-          apply Nat.eqb_eq in H.
-          apply Nat.eqb_eq in Heq_names.
-          rewrite <- Heq_names.
-          apply Nat.eqb_eq.
-          exact H.
-        }
-        (* This contradicts that find on t returns None *)
-        unfold gget_method in Hnone.
-        assert (Hcontra : find (fun mdef => eq_method_name (mname (msignature mdef)) m) t <> None).
-        {
-          assert (Hfind_exists : exists x, find (fun mdef => eq_method_name (mname (msignature mdef)) m) t = Some x).
-          {
-            apply find_some_iff.
-            exists omdef.
-            split; [exact Hin_t | exact Homdef_m].
-          }
-          intro Hcontra.
-          destruct Hfind_exists as [x Hfind_x].
-          rewrite Hfind_x in Hcontra.
-          discriminate.
-        }
-        rewrite Hfind_t_none in Hcontra.
-        apply Hcontra.
-        reflexivity.
-      +++ (* existsb returns false - this is what we want *)
-        reflexivity.
-Qed.
-
-Lemma override_preserves_param_count : forall CT C parent_methods own_methods m mdef mdef'
-  (Hwf_ct   : wf_class_table CT)
-  (Hcollect : CollectMethods CT C (override parent_methods own_methods))
-  (Hown     : gget_method own_methods m = Some mdef)
-  (Hoverride : gget_method (override parent_methods own_methods) m = Some mdef'),
-  dom (mparams (msignature mdef)) = dom (mparams (msignature mdef')).
-Proof.
-  intros CT C parent_methods own_methods m mdef mdef' Hwf_ct Hcollect Hown Hoverride.
-  have Hfound := override_own_method_found parent_methods own_methods m mdef Hown.
-  rewrite Hfound in Hoverride.
-  injection Hoverride as Heq.
-  subst mdef'.
-  reflexivity.
-Qed.
-
 Lemma parent_implies_strict_ordering : forall CT C D cdef_C
   (Hwf    : wf_class_table CT)
   (Hcdom  : C < dom CT)
@@ -1569,53 +1035,6 @@ Proof.
     + split; [exact Hfind_D | split; [exact Hin_D | exact Hwf_D]].
 Qed.
 
-Lemma method_name_unique_implies_equal : forall methods mdef1 mdef2
-  (Hnodup    : NoDup (map (fun mdef => mname (msignature mdef)) methods))
-  (Hin1      : In mdef1 methods)
-  (Hin2      : In mdef2 methods)
-  (Hname_eq  : mname (msignature mdef1) = mname (msignature mdef2)),
-  mdef1 = mdef2.
-Proof.
-  intros methods mdef1 mdef2 Hnodup Hin1 Hin2 Hname_eq.
-  induction methods as [|h t IH].
-  - (* methods = [] *)
-    contradiction.
-  - (* methods = h :: t *)
-    simpl in Hnodup.
-    inversion Hnodup; subst.
-    simpl in Hin1, Hin2.
-    destruct Hin1 as [Heq1 | Hin1_t], Hin2 as [Heq2 | Hin2_t].
-    + (* Both are h *)
-      rewrite <- Heq1, <- Heq2. reflexivity.
-    + (* mdef1 = h, mdef2 in t *)
-      exfalso.
-      subst mdef1.
-      apply H1.
-      rewrite  Hname_eq.
-      apply (in_map (fun mdef => mname (msignature mdef))).
-      exact Hin2_t.
-    + (* mdef1 in t, mdef2 = h *)
-      exfalso.
-      subst mdef2.
-      apply H1.
-      rewrite <- Hname_eq.
-      apply (in_map (fun mdef => mname (msignature mdef))).
-      exact Hin1_t.
-    + (* Both in t *)
-      apply IH; auto.
-Qed.
-
-Lemma override_local_precedence : forall parent_methods own_methods m mdef
-  (Hown : gget_method own_methods m = Some mdef),
-  gget_method (override parent_methods own_methods) m = Some mdef.
-Proof.
-  intros parent_methods own_methods m mdef Hown.
-  unfold override.
-  unfold gget_method in *.
-  apply find_app.
-  exact Hown.
-Qed.
-
 Lemma method_inheritance_exists : forall CT C D m mdef
   (Hwf_ct : wf_class_table CT)
   (Hsub   : base_subtype CT C D)
@@ -1728,35 +1147,6 @@ Proof.
         eapply find_overriding_method_deterministic with (C:=D); eauto.
       }
       subst. constructor.
-Qed.
-
-Lemma method_signature_refinement_name : forall CT child parent,
-  method_signature_refinement CT child parent ->
-  mname child = mname parent.
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine.
-  - reflexivity.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat; tauto
-    end.
-  - congruence.
-Qed.
-
-Lemma method_signature_refinement_scope : forall CT child parent,
-  method_signature_refinement CT child parent ->
-  method_scope_subtype (mscope child) (mscope parent).
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine.
-  - constructor.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [-> _]]; constructor
-    end.
-  - eapply method_subtyping_trans; eauto.
 Qed.
 
 Lemma method_signature_refinement_scope_eq : forall CT child parent,
@@ -2350,20 +1740,6 @@ Proof.
   destruct Hparent as [Hparent | [Hparent | [Hparent | Hparent]]];
     rewrite Hparent in Hsub;
     destruct (sqtype child);
-    inversion Hsub; subst; auto.
-Qed.
-
-Lemma q_subtype_concrete_or_rdm_or_bot :
-  forall child parent,
-    q_subtype child parent ->
-    is_concrete_or_rdm_or_bot parent ->
-    is_concrete_or_rdm_or_bot child.
-Proof.
-  intros child parent Hsub Hparent.
-  unfold is_concrete_or_rdm_or_bot in *.
-  destruct Hparent as [Hparent | [Hparent | [Hparent | Hparent]]];
-    rewrite Hparent in Hsub;
-    destruct child;
     inversion Hsub; subst; auto.
 Qed.
 

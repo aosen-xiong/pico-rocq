@@ -54,17 +54,6 @@ Proof.
       try discriminate; reflexivity.
 Qed.
 
-Corollary concrete_state_field_write_requires_mutable_receiver :
-  forall CT sΓ x f y sΓ',
-    stmt_typing CT sΓ ConcreteState (SFldWrite x f y) sΓ' ->
-    exists Tx,
-      static_getType sΓ x = Some Tx /\
-      sqtype Tx = Mut.
-Proof.
-  intros. eapply concrete_assignability_field_write_requires_mutable_receiver; eauto.
-  left. reflexivity.
-Qed.
-
 Corollary transitive_state_field_write_requires_mutable_receiver :
   forall CT sΓ x f y sΓ',
     stmt_typing CT sΓ TransitiveState (SFldWrite x f y) sΓ' ->
@@ -74,15 +63,6 @@ Corollary transitive_state_field_write_requires_mutable_receiver :
 Proof.
   intros. eapply concrete_assignability_field_write_requires_mutable_receiver; eauto.
   right. reflexivity.
-Qed.
-
-(** The CS/TS assignability policy is a strengthening of the AS/RS policy. *)
-Corollary concrete_state_write_is_abstract_state_write :
-  forall q a,
-    vpa_assignability_cs_ts q a = Assignable ->
-    vpa_assignability q a = Assignable.
-Proof.
-  exact concrete_assignable_implies_assignable.
 Qed.
 
 (** No field write checked with concrete assignability can target an immutable
@@ -133,34 +113,4 @@ Corollary transitive_state_write_cannot_target_immutable :
 Proof.
   intros. eapply concrete_assignability_write_cannot_target_immutable; eauto.
   right. reflexivity.
-Qed.
-
-(** Runtime lookup refines static lookup because well-formedness relates the
-    runtime receiver class to its static base type. *)
-Lemma runtime_and_static_method_signatures_refine :
-  forall CT sΓ rΓ h y loc Ty runtimeClass m mdefRuntime mdefStatic,
-    wf_r_config CT sΓ rΓ h ->
-    static_getType sΓ y = Some Ty ->
-    runtime_getVal rΓ y = Some (Iot loc) ->
-    r_basetype h loc = Some runtimeClass ->
-    FindMethodWithName CT runtimeClass m mdefRuntime ->
-    FindMethodWithName CT (sctype Ty) m mdefStatic ->
-    method_signature_refinement CT
-      (msignature mdefRuntime) (msignature mdefStatic).
-Proof.
-  intros CT sΓ rΓ h y loc Ty runtimeClass m mdefRuntime mdefStatic
-    Hwf Hget_y Hval_y Hbase Hfind_runtime Hfind_static.
-  have Hwf_copy := Hwf.
-  destruct (wf_config_variable_typable CT sΓ rΓ h y loc Ty Hwf Hget_y Hval_y)
-    as [qcontext Htypable].
-  unfold r_basetype in Hbase.
-  destruct (runtime_getObj h loc) as [obj|] eqn:Hobj; try discriminate.
-  injection Hbase as Hclass_eq; subst runtimeClass.
-  unfold wf_r_typable, r_type in Htypable.
-  rewrite Hobj in Htypable.
-  destruct Htypable as [Hbase_sub _].
-  simpl in Hbase_sub.
-  unfold wf_r_config in Hwf_copy.
-  destruct Hwf_copy as [Hclass _].
-  eapply method_signature_refines_subtype; eauto.
 Qed.

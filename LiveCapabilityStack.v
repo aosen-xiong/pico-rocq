@@ -48,58 +48,6 @@ Definition live_capability_set
   (active : watched_frame) (stack : list watched_boundary) : Ensemble Loc :=
   fun location => live_capability_reachable CT h active stack location.
 
-Lemma boundary_entry_capability_root_is_caller_live :
-  forall CT h boundary below root,
-    frame_capability_root
-      (mk_watched_frame
-        (call_authority boundary.(boundary_caller).(frame_authority)
-          boundary.(boundary_receiver_view))
-        boundary.(boundary_callee_entry_senv)
-        boundary.(boundary_callee_entry_renv)) root ->
-    In Loc
-      (live_capability_set CT h boundary.(boundary_caller) below) root.
-Proof.
-  intros CT h boundary below root Hroot.
-  exists root. split.
-  - left. exact (boundary_capability_origins boundary root Hroot).
-  - constructor.
-Qed.
-
-(** Updating an [RDM] destination in an immutable-authority frame cannot add a
-    capability root.  This is the root-level fact needed by the pending-return
-    invariant: a capability that survives an immutable call pop already
-    belonged to the suspended caller context; the returned [RDM] variable is
-    not silently treated as mutable authority. *)
-Lemma immutable_rdm_update_live_capability_included :
-  forall CT h sGamma rGamma stack destination destination_type value,
-    static_getType sGamma destination = Some destination_type ->
-    sqtype destination_type = RDM ->
-    Included Loc
-      (live_capability_set CT h
-        (mk_watched_frame Imm_r sGamma
-          (update_r_env_value rGamma destination value)) stack)
-      (live_capability_set CT h
-        (mk_watched_frame Imm_r sGamma rGamma) stack).
-Proof.
-  intros CT h sGamma rGamma stack destination destination_type value
-    Hdestination Hrdm location [root [Hroot Hreachable]].
-  exists root. split; [|exact Hreachable].
-  destruct Hroot as [Hactive | [boundary [Hin Hboundary]]].
-  - destruct Hactive as
-      [variable [variable_type [Htype [Hvalue Hcapability]]]].
-    destruct (Nat.eq_dec variable destination) as [Heq | Hneq].
-    + subst variable. rewrite Hdestination in Htype. injection Htype as <-.
-      rewrite Hrdm in Hcapability.
-      unfold capability_in_context in Hcapability.
-      destruct Hcapability as [Hbad | [_ Hbad]]; discriminate.
-    + left. exists variable, variable_type. repeat split; try assumption.
-      have Hunchanged := runtime_getVal_update_diff rGamma destination variable
-        value.
-      rewrite Hvalue in Hunchanged.
-      symmetry. apply Hunchanged. congruence.
-  - right. exists boundary. split; assumption.
-Qed.
-
 Definition protected_zone_before_cutoff
   (Z : Ensemble Loc) (cutoff : Loc) : Prop :=
   forall location, In Loc Z location -> location < cutoff.
@@ -331,44 +279,6 @@ Proof.
     + intros location Hin.
       eapply reachable_locations_from_initial_env_dom; eauto.
     + simpl. exact I.
-Qed.
-
-(** The heap-wide part of a history is independent of the currently active
-    frame.  Reactivating a suspended caller therefore needs only the caller's
-    environment facts, root inclusion, authority soundness, and its RDM color
-    condition; all heap closure and separation facts are reused. *)
-Lemma authority_component_history_reframe :
-  forall CT P Z M cutoff source_authority source_senv source_renv
-    target_authority target_senv target_renv h,
-    authority_component_history_state CT P Z M cutoff source_authority
-      source_senv source_renv h ->
-    zone_env_safe Z target_senv target_renv ->
-    env_is_confined P cutoff target_renv ->
-    authority_env_roots_in target_authority M target_senv target_renv ->
-    authority_context_sound h target_renv target_authority ->
-    component_colors_separated CT h M Z ->
-    active_rdm_component_colors_separated CT h M Z target_senv target_renv ->
-    authority_component_history_state CT P Z M cutoff target_authority
-      target_senv target_renv h.
-Proof.
-  intros CT P Z M cutoff source_authority source_senv source_renv
-    target_authority target_senv target_renv h
-    [[Hcontains [Hsource_zone [[Hsource_env Hheap_confined]
-      [Hclosed [Hruntime [Hsource_mut_roots Havoid]]]]]]
-      [Hsource_roots [Hsource_sound Hsource_colors]]]
-    Htarget_zone Htarget_env Htarget_roots Htarget_sound Htarget_components
-    Htarget_active.
-  split.
-  - refine (conj Hcontains (conj Htarget_zone
-      (conj (conj Htarget_env Hheap_confined)
-        (conj Hclosed (conj Hruntime (conj _ Havoid)))))).
-    + intros root Hmutroot. apply Htarget_roots.
-      destruct Hmutroot as [x [T [Htype [Hvalue Hmut]]]].
-      exists x, T. repeat split; try assumption.
-      unfold capability_in_context. left. exact Hmut.
-  - split; [exact Htarget_roots|].
-    split; [exact Htarget_sound|].
-    split; assumption.
 Qed.
 
 (** Reframing and shrinking commute when the target frame uses a smaller
@@ -744,32 +654,6 @@ Proof.
     eapply caller_roots_remain_live_after_call_push; eauto.
 Qed.
 
-(** A successful safe call cannot manufacture authority at return.  If the
-    destination type is capability-bearing in the caller, then the method
-    body's (non-bottom) return type is capability-bearing under the authority
-    transferred to the callee. *)
-Lemma safe_call_result_capability_reflects_to_body_return :
-  forall caller_authority receiver_q body_return_q declared_return_q result_q,
-    q_subtype body_return_q declared_return_q ->
-    q_subtype
-      (vpa_mutability_qq_readonly_state receiver_q declared_return_q) result_q ->
-    receiver_q <> Bot ->
-    body_return_q <> Bot ->
-    capability_in_context caller_authority result_q ->
-    capability_in_context
-      (call_authority caller_authority receiver_q) body_return_q.
-Proof.
-  intros caller_authority receiver_q body_return_q declared_return_q result_q
-    Hbody_sub Hresult_sub Hreceiver_nonbottom Hreturn_nonbottom
-    Hresult_capability.
-  destruct caller_authority, receiver_q, body_return_q, declared_return_q,
-    result_q; simpl in *; try contradiction;
-    repeat match goal with
-    | H : q_subtype _ _ |- _ => inversion H; subst; clear H
-    end;
-    unfold capability_in_context in *; try solve [intuition congruence].
-Qed.
-
 Lemma readonly_adaptation_to_mut_nonbottom :
   forall receiver_q return_q,
     receiver_q <> Bot ->
@@ -905,30 +789,6 @@ Proof.
       have Hbody_bot : sqtype body_return_type = Bot.
       { inversion Hbody_q; subst; reflexivity. }
       contradiction.
-Qed.
-
-Lemma safe_call_return_destination_is_safe :
-  forall caller_authority receiver_q body_return_q declared_return_q result_q,
-    q_subtype body_return_q declared_return_q ->
-    q_subtype
-      (vpa_mutability_qq_readonly_state receiver_q declared_return_q) result_q ->
-    receiver_q <> Bot ->
-    body_return_q <> Bot ->
-    is_nonmutable_qualifier body_return_q ->
-    ~ capability_in_context
-      (call_authority caller_authority receiver_q) body_return_q ->
-    is_nonmutable_qualifier result_q.
-Proof.
-  intros caller_authority receiver_q body_return_q declared_return_q result_q
-    Hbody_sub Hresult_sub Hreceiver_nonbottom Hreturn_nonbottom Hreturn_safe
-    Hreturn_not_capability.
-  destruct caller_authority, receiver_q, body_return_q, declared_return_q,
-    result_q; simpl in *; try contradiction;
-    repeat match goal with
-    | H : q_subtype _ _ |- _ => inversion H; subst; clear H
-    end;
-    unfold is_nonmutable_qualifier, capability_in_context in *;
-    try solve [intuition congruence].
 Qed.
 
 (** The qualifier reflection above lifts to runtime frames: a non-null return

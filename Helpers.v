@@ -56,43 +56,6 @@ Qed.
 Definition runtime_lookup_list (rΓ: r_env): list Loc -> option (list value) :=
   fun l => mapM (fun x => runtime_getVal rΓ x) l.
 
-Lemma mapM_Some_forall :
-  forall {A B} (f : A -> option B) xs ys,
-    mapM f xs = Some ys ->
-    Forall (fun x => exists y, f x = Some y) xs.
-Proof.
-  intros A B f xs.
-  induction xs as [|x xs IH]; intros ys Hmap.
-  - simpl in Hmap. inversion Hmap; subst. constructor.
-  - simpl in Hmap.
-    destruct (f x) eqn:Hfx; try discriminate.
-    destruct (mapM f xs) eqn:Hxsm; try discriminate.
-    inversion Hmap; subst.
-    constructor.
-    + eauto.  (* from Hfx *)
-    + eapply IH; eauto.
-Qed.
-
-Lemma mapM_None_exists :
-  forall {A B} (f : A -> option B) xs,
-    mapM f xs = None ->
-    exists x, List.In x xs /\ f x = None.
-Proof.
-  intros A B f xs.
-  (* Generalize the hypothesis before induction *)
-  revert f.
-  induction xs as [|x xs IH]; intros f Hmap; simpl in Hmap.
-  - discriminate.
-  - destruct (f x) eqn:Hfx.
-    + destruct (mapM f xs) eqn:Hmxs.
-      * discriminate.
-      * (* failure in tail *)
-        destruct (IH f Hmxs) as [x' [Hin Hnone]].
-        exists x'. split; [right; exact Hin | exact Hnone].
-    + (* failure at head *)
-      exists x. split; [left; reflexivity | exact Hfx].
-Qed.
-
 (* ------------------------------------------------------------------------ *)
 (** ** Local hints *)
 Local Hint Unfold runtime_getObj runtime_getVal static_getType: updates.
@@ -150,12 +113,6 @@ Proof.
   exact Hl.
 Qed.
 
-Lemma static_getType_update_same:
-  forall sΓ l T, l < dom sΓ -> static_getType ([l ↦ T]sΓ) l = Some T.
-Proof.
-  eauto using update_same.
-Qed.
-
 Lemma update_diff :
   forall X p p' v (l: list X),
     p <> p' ->
@@ -186,14 +143,6 @@ Proof.
   eapply update_diff; exact Hneq.
 Qed.
 
-Lemma static_getType_update_diff:
-  forall sΓ l l' T,
-    l <> l' ->
-    static_getType ([l ↦ T]sΓ) l' = static_getType sΓ l'.
-Proof.
-  eauto using update_diff.
-Qed.
-
 Lemma update_length :
   forall X p v (l: list X),
     length ([p ↦ v]l) = length l.
@@ -220,14 +169,6 @@ Proof.
   intros. eapply nth_error_None; eauto.
 Qed.
 Global Hint Resolve gget_not_dom: updates.
-
-Lemma gget_In :
-  forall {X : Type} (l : list X) (C : Loc) x,
-    gget l C = Some x -> List.In x l.
-Proof.
-  unfold gget.
-  intros. eapply nth_error_In; eauto.
-Qed.
 
 Lemma runtime_getObj_dom:
   forall l O h, runtime_getObj h l = Some O -> l < dom h.
@@ -306,53 +247,9 @@ Proof.
   exfalso. eapply nth_error_None in Heqo. lia.
 Qed.
 
-Lemma getVal_Some : forall ρ f,
-    f < dom ρ ->
-    exists v, getVal ρ f = Some v.
-Proof.
-  intros.
-  destruct (getVal ρ f) as [|] eqn:?; eauto.
-  exfalso. eapply nth_error_None in Heqo. lia.
-Qed.
-
-Lemma static_getType_Some : forall sΓ l,
-    l < dom sΓ ->
-    exists T, static_getType sΓ l = Some T.
-Proof.
-  intros.
-  destruct (static_getType sΓ l) as [|] eqn:?; eauto.
-  exfalso. eapply nth_error_None in Heqo. lia.
-Qed.
-
 
 (* ------------------------------------------------------------------------ *)
 (** ** Assignments *)
-
-(* This function tries to add the new field of index x to an existing object, and does nothing if
-the object already exists with not the right number of fields *)
-Definition assign_new l x v h : option heap :=
-  match (runtime_getObj h l) with
-  | Some (mkObj C ω) => if (x =? length ω) then
-                    Some [ l ↦ (mkObj C (ω++[v])) ]h
-                  else
-                    Some [ l ↦ (mkObj C [x ↦ v]ω) ]h
-  | None => None (* Error : adding a field to non-existing object *)
-end.
-
-Lemma assign_new_dom:
-  forall h l x v h',
-    assign_new l x v h = Some h' ->
-    dom h = dom h'.
-Proof.
-  unfold assign_new; steps; try rewrite update_length; done.
-Qed.
-
-(* Update heap with update in local env : update an already-existing field of an existing object *)
-Definition assign l x v h : heap :=
-  match (runtime_getObj h l) with
-  | Some (mkObj C ω) => [ l ↦ (mkObj C [x ↦ v]ω)] h
-  | None => h (* ? *)
-  end.
 
 
 
@@ -385,17 +282,6 @@ Proof.
   induction Σ; steps.
 Qed.
 Global Hint Resolve static_getType_last: core.
-
-Lemma static_getType_last2 :
-  forall Σ T l,
-    l < (dom Σ) ->
-    static_getType (Σ++[T]) l = static_getType Σ l.
-Proof.
-  induction Σ; simpl; intros; try lia.
-  destruct l;
-    steps;
-    eauto with lia.
-Qed.
 
 
 Lemma runtime_getVal_last :
@@ -450,16 +336,6 @@ Proof.
     lia.
 Qed.
 
-Lemma gget_None : forall {A : Type} (l : list A) (n : nat),
-  n >= length l ->
-  gget l n = None.
-Proof.
-  intros A l n H.
-  unfold gget.
-  apply nth_error_None.
-  exact H.
-Qed.
-
 (* Find a class declaration in the class table *)
 Definition find_class (CT : class_table) (C : class_name) : option class_def :=
     gget CT C.
@@ -468,15 +344,6 @@ Lemma find_class_dom : forall CT C x,
   find_class CT C = Some x -> C < dom CT.
 Proof.
   intros. unfold find_class in H. apply gget_dom in H. exact H.
-Qed.
-
-Lemma find_class_not_dom: forall CT C,
-  find_class CT C = None -> C >= dom CT.
-Proof.
-  intros CT C H.
-  unfold find_class in H.
-  apply gget_not_dom in H.
-  exact H.
 Qed.
 
 Lemma find_class_Some : forall CT C,
@@ -488,73 +355,12 @@ Proof.
   exact H.
 Qed.
 
-Lemma find_class_None : forall CT C,
-  C >= dom CT -> find_class CT C = None.
-Proof.
-  intros CT C H.
-  unfold find_class.
-  apply gget_None.
-  exact H.
-Qed.
-
 (* Class bound look up in the class table  *)
 Definition bound (CT : class_table) (C : class_name) : option q_c :=
   match find_class CT C with
   | Some decl => Some (class_qualifier (signature decl))
   | None => None
   end.
-
-Lemma bound_some_dom : forall CT C q,
-  bound CT C = Some q -> C < dom CT.
-Proof.
-  intros CT C q H.
-  unfold bound in H.
-  destruct (find_class CT C) as [decl|] eqn:Hfind; [|discriminate].
-  apply find_class_dom in Hfind.
-  exact Hfind.
-Qed.
-
-Lemma bound_dom_some : forall CT C,
-  C < dom CT -> exists q, bound CT C = Some q.
-Proof.
-  intros CT C H.
-  unfold bound.
-  assert (Hfind : exists decl, find_class CT C = Some decl).
-  {
-    unfold find_class.
-    apply gget_Some.
-    exact H.
-  }
-  destruct Hfind as [decl Hfind].
-  rewrite Hfind.
-  exists (class_qualifier (signature decl)).
-  reflexivity.
-Qed.
-
-Lemma bound_none_geq_dom : forall CT C,
-  C >= dom CT -> bound CT C = None.
-Proof.
-  intros CT C H.
-  unfold bound.
-  assert (Hfind : find_class CT C = None).
-  {
-    unfold find_class.
-    apply gget_None.
-    exact H.
-  }
-  rewrite Hfind.
-  reflexivity.
-Qed.
-
-Lemma bound_none_dom : forall CT C,
-  bound CT C = None -> C >= dom CT.
-Proof.
-  intros CT C H.
-  unfold bound in H.
-  destruct (find_class CT C) as [decl|] eqn:Hfind; [discriminate|].
-  apply find_class_not_dom in Hfind.
-  exact Hfind.
-Qed.
 
 Lemma Forall_update : forall {A : Type} (P : A -> Prop) (l : list A) (n : nat) (v : A),
   Forall P l ->

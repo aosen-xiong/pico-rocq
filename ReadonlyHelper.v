@@ -59,30 +59,6 @@ Proof.
   discriminate.
 Qed.
 
-Lemma adapted_subtype_safe_implies_safe :
-  forall CT T_sub T_Receiver T_super
-         (Hsub : qualified_type_subtype CT T_sub (vpa_mutability_tt_readonly_state T_Receiver T_super))
-         (Hsafe_sub : is_nonmutable_qualifier (sqtype T_sub)),
-    is_nonmutable_qualifier (sqtype T_super).
-Proof.
-  intros.
-  unfold is_nonmutable_qualifier in *.
-  apply qualified_type_subtype_q_subtype in Hsub.
-  unfold vpa_mutability_tt_readonly_state in Hsub.
-  destruct (sqtype T_Receiver) eqn: Hreceiver;
-  destruct (sqtype T_super) eqn: HSuper;
-  destruct Hsafe_sub as [Hrd | [Hlost| [HRDM | HImm]]];
-  try rewrite Hrd in Hsub;
-  try rewrite Hlost in Hsub;
-  try rewrite HRDM in Hsub;
-  try rewrite HImm in Hsub;
-  try rewrite <- H in Hsub;
-  inversion Hsub; subst; auto.
-  all: try rewrite HSuper in H; try rewrite HSuper in H1; try discriminate.
-  all: try simpl in Hsub.
-  all: try easy.
-Qed.
-
 Lemma reachable_dom :
   forall h l_src l_dst
     (Hreach : reachable h l_src l_dst),

@@ -96,21 +96,6 @@ Definition boundary_rdm_origins (boundary : watched_boundary) :
     boundary.(boundary_caller).(frame_renv) :=
   boundary_rdm_origin _ _ _ _ boundary.(boundary_origins).
 
-Definition boundary_capability_origins (boundary : watched_boundary) :
-  capability_roots_reflect_through_view boundary.(boundary_caller)
-    boundary.(boundary_receiver_view)
-    boundary.(boundary_callee_entry_senv)
-    boundary.(boundary_callee_entry_renv) :=
-  boundary_capability_origin _ _ _ _ boundary.(boundary_origins).
-
-Definition mk_watched_boundary
-  (caller : watched_frame) (entry_senv : s_env) (entry_renv : r_env)
-  (receiver_view : q)
-  (origins : call_boundary_origins caller receiver_view entry_senv
-    entry_renv) : watched_boundary :=
-  build_watched_boundary caller entry_senv entry_renv receiver_view 0 Bot Bot 0
-    origins.
-
 Definition mk_watched_call_boundary
   (caller : watched_frame) (entry_senv : s_env) (entry_renv : r_env)
   (receiver_view : q) (return_var : var) (result_qualifier : q)
