@@ -68,9 +68,10 @@ Top-level theorem entry points:
   type qualifier. Rocq represents it in the common qualifier datatype, but
   `wf_stypeuse` and non-reflexive `Lost` subtyping prevent direct `Lost` type
   uses in well-formed static environments.
-- The RS/TS method-call preservation theorems package the non-mutable receiver
-  and formal-parameter premise across all possible dynamic targets through
-  `dispatch_has_no_mutable_roots`.
+- The RS/TS preservation theorems carry no explicit non-mutability premise:
+  `wf_method` requires `signature_has_no_mutable_roots` for every RS/TS-scoped
+  method, so the condition holds for every possible dynamic target by class-table
+  well-formedness (discharged via `wf_method_readonly_roots`).
 
 ## Toolchain
 
