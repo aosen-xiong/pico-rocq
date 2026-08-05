@@ -448,56 +448,6 @@ Proof.
           sGamma mt rGamma h T x sGamma' Hwf Hcomponent Htyping Hnone)).
 Qed.
 
-Lemma authority_history_after_field_write :
-  forall CT P Z M cutoff authority sGamma mt rGamma h x f y rGamma' h'
-    sGamma',
-    wf_r_config CT sGamma rGamma h ->
-    authority_component_history_state CT P Z M cutoff authority
-      sGamma rGamma h ->
-    component_colors_separated CT h M Z ->
-    active_rdm_component_colors_separated CT h M Z sGamma rGamma ->
-    stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    readonly_state_method_scope mt ->
-    eval_stmt CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
-    exists M',
-      Included Loc M M' /\
-      authority_component_history_state CT P Z M' cutoff authority
-        sGamma' rGamma' h'.
-Proof.
-  intros CT P Z M cutoff authority sGamma mt rGamma h x f y rGamma' h'
-    sGamma' Hwf [Hforward [Hroots [Hsound Hcolors]]]
-    Hcomponents Hactive Htyping Hscope Heval.
-  assert (HsGamma : sGamma' = sGamma) by (inversion Htyping; reflexivity).
-  assert (HrGamma : rGamma' = rGamma) by (inversion Heval; reflexivity).
-  subst sGamma' rGamma'.
-  have Hcomponent : component_forward_history_state CT P Z M cutoff
-      sGamma rGamma h.
-  { split.
-    - eapply directed_authority_history_with_rdm; [exact Hforward|].
-      eapply active_component_colors_imply_rdm_separation; eauto.
-    - split; assumption. }
-  destruct (component_forward_history_after_field_write CT P Z M cutoff
-    sGamma mt rGamma h x f y rGamma h' sGamma Hwf Hcomponent
-    (proj2 (proj2 Hcomponent)) Htyping Hscope Heval)
-    as [M' [Hincl Hcomponent']].
-  exists M'. split; [exact Hincl|].
-  destruct Hcomponent' as [Hforward' [Hcomponents' Hactive']].
-  split.
-  - eapply forward_history_implies_directed_authority_history.
-    exact Hforward'.
-  - split.
-    + intros root [z [T [Htype [Hval Hcap]]]].
-      inversion Heval; subst. apply Hincl. apply Hroots.
-      exists z, T. repeat split; assumption.
-    + split.
-      * intros Hauth. specialize (Hsound Hauth).
-        destruct Hsound as [this [Hthis Hmut]].
-        exists this. split; [exact Hthis|].
-        inversion Heval; subst. rewrite r_muttype_update_field_preserve.
-        exact Hmut.
-      * split; assumption.
-Qed.
-
 Lemma mutable_authority_matches_runtime_receiver :
   forall h rGamma this qthis,
     authority_context_sound h rGamma Mut_r ->
