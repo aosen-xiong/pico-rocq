@@ -29,6 +29,11 @@ ForwardCapabilityHistory.v
 AuthorityHistory.v
 WatchedFrames.v
 LiveCapabilityStack.v
+PotentialCapabilityCore.v
+PotentialCapabilityAtomic.v
+PotentialCapabilityPrivate.v
+PotentialCapabilityResume.v
+PotentialCapabilityRDMPop.v
 PotentialCapability.v
 ProtectedFieldPreservation.v
 ReadonlyNoMutation.v

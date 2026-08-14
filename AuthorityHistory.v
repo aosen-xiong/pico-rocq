@@ -18,12 +18,78 @@ Definition authority_env_roots_in
       capability_in_context authority (sqtype T)) ->
     In Loc M root.
 
+(** Authority controls which RDM roots are capabilities, but not which RDM
+    roots may be joined by a future write.  ReadonlyState may update an
+    Assignable RDM field; such a write must not leak a protected reference
+    into a component retained by a suspended mutable caller.  Component and
+    active-frame colors are therefore unconditional. *)
+Definition authority_component_colors
+  (CT : class_table) (h : heap) (authority : q_r)
+  (M Z : Ensemble Loc) (sGamma : s_env) (rGamma : r_env) : Prop :=
+  component_colors_separated CT h M Z /\
+  active_rdm_component_colors_separated CT h M Z sGamma rGamma.
+
+(** The unconditional part of the history contains only facts about actual
+    capabilities and actual protected state.  It deliberately excludes every
+    condition whose purpose is to anticipate a future RDM write. *)
+Definition directed_authority_history_state
+  (CT : class_table) (P Z M : Ensemble Loc) (cutoff : Loc)
+  (sGamma : s_env) (rGamma : r_env) (h : heap) : Prop :=
+  protected_zone_contains P Z /\
+  zone_env_safe Z sGamma rGamma /\
+  state_is_confined P cutoff rGamma h /\
+  mutable_heap_closed CT h M /\
+  mutable_members_runtime_mut h M /\
+  env_mut_roots_in M sGamma rGamma /\
+  (forall l, In Loc M l -> ~ In Loc Z l).
+
+Lemma forward_history_implies_directed_authority_history :
+  forall CT P Z M cutoff sGamma rGamma h,
+    forward_history_state CT P Z M cutoff sGamma rGamma h ->
+    directed_authority_history_state CT P Z M cutoff sGamma rGamma h.
+Proof.
+  intros CT P Z M cutoff sGamma rGamma h
+    [Hcontains [Hzone [Hconfined [Hclosed [Hruntime
+      [Hroots [Havoid Hrdm]]]]]]].
+  exact (conj Hcontains (conj Hzone (conj Hconfined
+    (conj Hclosed (conj Hruntime (conj Hroots Havoid)))))).
+Qed.
+
+Lemma directed_authority_history_with_rdm :
+  forall CT P Z M cutoff sGamma rGamma h,
+    directed_authority_history_state CT P Z M cutoff sGamma rGamma h ->
+    rdm_capability_zone_separated CT h M Z sGamma rGamma ->
+    forward_history_state CT P Z M cutoff sGamma rGamma h.
+Proof.
+  intros CT P Z M cutoff sGamma rGamma h
+    [Hcontains [Hzone [Hconfined [Hclosed [Hruntime
+      [Hroots Havoid]]]]]] Hrdm.
+  exact (conj Hcontains (conj Hzone (conj Hconfined
+    (conj Hclosed (conj Hruntime (conj Hroots (conj Havoid Hrdm))))))).
+Qed.
+
 Definition authority_component_history_state
   (CT : class_table) (P Z M : Ensemble Loc) (cutoff : Loc)
   (authority : q_r) (sGamma : s_env) (rGamma : r_env) (h : heap) : Prop :=
-  component_forward_history_state CT P Z M cutoff sGamma rGamma h /\
+  directed_authority_history_state CT P Z M cutoff sGamma rGamma h /\
   authority_env_roots_in authority M sGamma rGamma /\
-  authority_context_sound h rGamma authority.
+  authority_context_sound h rGamma authority /\
+  authority_component_colors CT h authority M Z sGamma rGamma.
+
+Lemma mutable_authority_component_history :
+  forall CT P Z M cutoff authority sGamma rGamma h,
+    authority_component_history_state CT P Z M cutoff authority
+      sGamma rGamma h ->
+    component_forward_history_state CT P Z M cutoff sGamma rGamma h.
+Proof.
+  intros CT P Z M cutoff authority sGamma rGamma h
+    [Hdirected [Hroots [Hsound Hcolors]]].
+  destruct Hcolors as [Hcomponents Hactive].
+  split.
+  - eapply directed_authority_history_with_rdm; [exact Hdirected|].
+    eapply active_component_colors_imply_rdm_separation; eauto.
+  - split; assumption.
+Qed.
 
 Definition extend_capability_after_new_authority
   (M : Ensemble Loc) (authority : q_r) (qc : q_c) (fresh : Loc) :
@@ -72,18 +138,24 @@ Proof.
   intros CT sGamma rGamma h Hwf Henv.
   have Hcomponent := initial_component_forward_history CT sGamma rGamma h
     Hwf Henv.
-  have Hcomponent_copy := Hcomponent.
   destruct Hcomponent as
-    [[Hcontains [Hzone [Hconfined [Hclosed [Hruntime
-      [Hmutroots [Havoid Hforwardcolors]]]]]]]
-      [Hcomponents Hactive]].
-  split; [exact Hcomponent_copy|]. split.
-  - intros root [x [T [Htype [Hval Hcap]]]].
-    destruct Hcap as [Hmut | [Hrdm Hbad]].
-    + apply Hmutroots.
-      exists x, T. repeat split; assumption.
-    + discriminate.
-  - intros Hbad. discriminate.
+    [Hforward [Hcomponents Hactive]].
+  have Hforward_copy := Hforward.
+  destruct Hforward as
+    [Hcontains [Hzone [Hconfined [Hclosed [Hruntime
+      [Hmutroots Havoid]]]]]].
+  split.
+  - eapply forward_history_implies_directed_authority_history.
+    exact Hforward_copy.
+  - split.
+    + intros root [x [T [Htype [Hval Hcap]]]].
+      destruct Hcap as [Hmut | [Hrdm Hbad]].
+      * apply Hmutroots.
+        exists x, T. repeat split; assumption.
+      * discriminate.
+    + split.
+      * intros Hbad. discriminate.
+      * split; assumption.
 Qed.
 
 Lemma authority_expression_capability_in_history :
@@ -99,11 +171,11 @@ Lemma authority_expression_capability_in_history :
     In Loc M l.
 Proof.
   intros P Z M cutoff CT authority sGamma mt rGamma h e l T Hwf
-    [Hcomponent [Hroots Hsound]] Hretained Heval Htyping Hscope Hcap.
-  destruct Hcomponent as
-    [[Hcontains [Henv [Hconfined [Hclosed [Hruntime
-      [Hmutroots [Havoid Hseparated]]]]]]]
-      [Hcomponents Hactive]].
+    [Hforward [Hroots [Hsound Hcolors]]]
+    Hretained Heval Htyping Hscope Hcap.
+  destruct Hforward as
+    [Hcontains [Henv [Hconfined [Hclosed [Hruntime
+      [Hmutroots Havoid]]]]]].
   inversion Heval; subst.
   - inversion Htyping; subst.
     apply Hroots. exists x, T. repeat split; assumption.
@@ -131,6 +203,153 @@ Proof.
         eapply runtime_static_mut_field_edge; eauto.
 Qed.
 
+Lemma directed_expression_into_zone_has_safe_type :
+  forall P Z M cutoff CT sGamma mt rGamma h e l T,
+    wf_r_config CT sGamma rGamma h ->
+    directed_authority_history_state CT P Z M cutoff sGamma rGamma h ->
+    retained_heap_closed CT h M ->
+    eval_expr CT rGamma h e (Iot l) OK rGamma h ->
+    expr_has_type CT sGamma mt e T ->
+    readonly_state_method_scope mt ->
+    In Loc Z l ->
+    is_nonmutable_qualifier (sqtype T).
+Proof.
+  intros P Z M cutoff CT sGamma mt rGamma h e l T Hwf
+    [Hcontains [Henv [Hconfined [Hclosed [Hruntime
+      [Hmutroots Havoid]]]]]] Hretained Heval Htyping Hscope HinZ.
+  inversion Heval; subst.
+  - inversion Htyping; subst.
+    destruct (sqtype T) eqn:Hq; unfold is_nonmutable_qualifier; auto.
+    + exfalso. apply (Havoid l).
+      * apply Hmutroots. exists x, T. repeat split; assumption.
+      * exact HinZ.
+    + exfalso.
+      destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
+        as [this [qcontext [Hthis [_ Hqcontext]]]].
+      unfold wf_r_config in Hwf.
+      destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
+      have Hxdom := Hget. apply static_getType_dom in Hxdom.
+      specialize (Hcorr this qcontext Hthis Hqcontext x Hxdom T Hget).
+      rewrite Hval in Hcorr.
+      eapply typable_nonnull_not_bot; eauto.
+  - inversion Htyping; subst.
+    + exfalso. destruct Hmt; subst; destruct Hscope; congruence.
+    + destruct (sqtype T0) eqn:Hreceiver;
+        destruct (mutability (ftype fDef)) eqn:Hfieldq;
+        simpl; unfold is_nonmutable_qualifier; auto.
+      * exfalso. apply (Havoid l).
+        -- eapply Hretained.
+          ++ apply Hmutroots. exists x, T0.
+             split; [exact Hget_x|]. split; [exact Hval|exact Hreceiver].
+          ++ eapply runtime_static_mut_field_edge; eauto.
+        -- exact HinZ.
+      * exfalso. apply (Havoid l).
+        -- eapply Hclosed.
+          ++ apply Hmutroots. exists x, T0.
+             split; [exact Hget_x|]. split; [exact Hval|exact Hreceiver].
+          ++ eapply runtime_static_rdm_edge; eauto.
+        -- exact HinZ.
+      * exfalso.
+        destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
+          as [this [qcontext [Hthis [_ Hqcontext]]]].
+        unfold wf_r_config in Hwf.
+        destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
+        have Hxdom := Hget_x. apply static_getType_dom in Hxdom.
+        specialize (Hcorr this qcontext Hthis Hqcontext x Hxdom T0 Hget_x).
+        rewrite Hval in Hcorr.
+        eapply typable_nonnull_not_bot; eauto.
+Qed.
+
+Lemma directed_history_after_assignment :
+  forall CT P Z M cutoff sGamma mt rGamma h x e old value,
+    wf_r_config CT sGamma rGamma h ->
+    directed_authority_history_state CT P Z M cutoff sGamma rGamma h ->
+    retained_heap_closed CT h M ->
+    stmt_typing CT sGamma mt (SVarAss x e) sGamma ->
+    readonly_state_method_scope mt ->
+    runtime_getVal rGamma x = Some old ->
+    eval_expr CT rGamma h e value OK rGamma h ->
+    directed_authority_history_state CT P Z M cutoff sGamma
+      (update_r_env_value rGamma x value) h.
+Proof.
+  intros CT P Z M cutoff sGamma mt rGamma h x e old value Hwf Hstate
+    Hretained Htyping Hscope Hx Heval.
+  destruct Hstate as
+    [Hcontains [Henv [[Hconfenv Hconfheap] [Hclosed [Hruntime
+      [Hmutroots Havoid]]]]]].
+  inversion Htyping; subst.
+  assert (Hxdom : x < dom (vars rGamma)).
+  { apply static_getType_dom in Hget_x.
+    unfold wf_r_config in Hwf.
+    destruct Hwf as [_ [_ [_ [_ [Hlength _]]]]]. lia. }
+  refine (conj Hcontains (conj _ (conj _ (conj Hclosed
+    (conj Hruntime (conj _ Havoid)))))).
+  - intros z l Tz Htype_z Hval_z HinZ.
+    destruct (Nat.eq_dec z x) as [->|Hneq].
+    + rewrite Hget_x in Htype_z. injection Htype_z as <-.
+      destruct value as [|result].
+      * rewrite runtime_getVal_update_same in Hval_z; auto. discriminate.
+      * rewrite runtime_getVal_update_same in Hval_z; auto.
+        injection Hval_z as <-.
+        have Hsafe_result := directed_expression_into_zone_has_safe_type
+          P Z M cutoff CT sGamma mt rGamma h e result Te Hwf
+          (conj Hcontains (conj Henv (conj (conj Hconfenv Hconfheap)
+            (conj Hclosed (conj Hruntime (conj Hmutroots Havoid))))))
+          Hretained Heval Htype_e Hscope HinZ.
+        eapply subtype_safe_implies_safe; eauto.
+    + rewrite runtime_getVal_update_diff in Hval_z; auto.
+      eapply Henv; eauto.
+  - split; [|exact Hconfheap].
+    apply env_confined_update; [exact Hconfenv|].
+    destruct value as [|result]; [trivial|].
+    eapply eval_expr_preserves_confinement; eauto. split; assumption.
+  - intros root Hroot.
+    destruct (assignment_mut_root_has_old_ancestor CT sGamma mt rGamma h
+      x e old value Hwf Htyping Hscope Hx Heval root Hroot)
+      as [old_root [Holdroot Holdreach]].
+    eapply retained_heap_closed_reachable with (source := old_root).
+    + exact Hretained.
+    + exact Holdreach.
+    + apply Hmutroots. exact Holdroot.
+Qed.
+
+Lemma directed_history_after_local :
+  forall CT P Z M cutoff sGamma mt rGamma h T x sGamma',
+    wf_r_config CT sGamma rGamma h ->
+    directed_authority_history_state CT P Z M cutoff sGamma rGamma h ->
+    stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
+    runtime_getVal rGamma x = None ->
+    directed_authority_history_state CT P Z M cutoff sGamma'
+      (set_vars rGamma (vars rGamma ++ [Null_a])) h.
+Proof.
+  intros CT P Z M cutoff sGamma mt rGamma h T x sGamma' Hwf Hstate
+    Htyping Hrnone.
+  inversion Htyping; subst.
+  destruct Hstate as
+    [Hcontains [Henv [[Hconfenv Hconfheap] [Hclosed [Hruntime
+      [Hmutroots Havoid]]]]]].
+  unfold wf_r_config in Hwf.
+  destruct Hwf as [_ [_ [_ [_ [Hlength _]]]]].
+  refine (conj Hcontains (conj _ (conj _ (conj Hclosed
+    (conj Hruntime (conj _ Havoid)))))).
+  - intros y l Ty Htype Hval HinZ.
+    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T y Ty l
+      Hlength Htype Hval) as [Holdtype Holdval].
+    eapply Henv; eauto.
+  - split; [|exact Hconfheap].
+    intros y l Hval.
+    destruct (Nat.eq_dec y (dom (vars rGamma))) as [->|Hneq].
+    + rewrite runtime_getVal_last in Hval. discriminate.
+    + assert (Hy : y < dom (vars rGamma)).
+      { apply runtime_getVal_dom in Hval. simpl in Hval.
+        rewrite length_app in Hval. simpl in Hval. lia. }
+      rewrite runtime_getVal_last2 in Hval; auto. eapply Hconfenv; eauto.
+  - intros root [y [Ty [Htype [Hval Hmut]]]].
+    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T y Ty root
+      Hlength Htype Hval) as [Holdtype Holdval].
+    apply Hmutroots. exists y, Ty. repeat split; assumption.
+Qed.
+
 Lemma authority_history_after_assignment :
   forall CT P Z M cutoff authority sGamma mt rGamma h x e old value,
     wf_r_config CT sGamma rGamma h ->
@@ -145,9 +364,10 @@ Lemma authority_history_after_assignment :
       (update_r_env_value rGamma x value) h.
 Proof.
   intros CT P Z M cutoff authority sGamma mt rGamma h x e old value Hwf
-    [Hcomponent [Hroots Hsound]] Hretained Htyping Hscope Hx Heval.
+    [Hforward [Hroots [Hsound Hcolors]]]
+    Hretained Htyping Hscope Hx Heval.
   split.
-  - eapply component_forward_history_after_assignment; eauto.
+  - eapply directed_history_after_assignment; eauto.
   - split.
     + intros root [y [Ty [Htype [Hval Hcap]]]].
       destruct (Nat.eq_dec y x) as [->|Hneq].
@@ -171,15 +391,25 @@ Proof.
           with (P := P) (Z := Z) (cutoff := cutoff) (CT := CT)
             (authority := authority) (sGamma := sGamma) (mt := mt)
             (rGamma := rGamma) (h := h) (e := e) (T := Te); eauto.
-        exact (conj Hcomponent (conj Hroots Hsound)).
+        exact (conj Hforward (conj Hroots (conj Hsound Hcolors))).
       * rewrite runtime_getVal_update_diff in Hval; auto.
         apply Hroots. exists y, Ty. repeat split; assumption.
-    + intros Hauth.
-      specialize (Hsound Hauth).
-      destruct Hsound as [this [Hthis Hmut]]. exists this. split; [|exact Hmut].
-      inversion Htyping; subst.
-      unfold update_r_env_value. destruct rGamma; simpl in *.
-      rewrite get_this_var_mapping_update_nonzero; assumption.
+    + split.
+      * intros Hauth.
+        specialize (Hsound Hauth).
+        destruct Hsound as [this [Hthis Hmut]].
+        exists this. split; [|exact Hmut].
+        inversion Htyping; subst.
+        unfold update_r_env_value. destruct rGamma; simpl in *.
+        rewrite get_this_var_mapping_update_nonzero; assumption.
+      * have Hcomponent : component_forward_history_state CT P Z M cutoff
+            sGamma rGamma h.
+        { apply mutable_authority_component_history with
+            (authority := authority).
+          exact (conj Hforward (conj Hroots (conj Hsound Hcolors))). }
+        exact (proj2 (component_forward_history_after_assignment CT P Z M
+          cutoff sGamma mt rGamma h x e old value Hwf Hcomponent Hretained
+          Htyping Hscope Hx Heval)).
 Qed.
 
 Lemma authority_history_after_local :
@@ -193,9 +423,9 @@ Lemma authority_history_after_local :
       (set_vars rGamma (vars rGamma ++ [Null_a])) h.
 Proof.
   intros CT P Z M cutoff authority sGamma mt rGamma h T x sGamma' Hwf
-    [Hcomponent [Hroots Hsound]] Htyping Hnone.
+    [Hforward [Hroots [Hsound Hcolors]]] Htyping Hnone.
   split.
-  - eapply component_forward_history_after_local; eauto.
+  - eapply directed_history_after_local; eauto.
   - split.
     + intros root [y [Ty [Htype [Hval Hcap]]]].
       inversion Htyping; subst.
@@ -204,40 +434,18 @@ Proof.
       destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T y Ty root
         Hlength Htype Hval) as [Holdtype Holdval].
       apply Hroots. exists y, Ty. repeat split; assumption.
-    + intros Hauth. specialize (Hsound Hauth).
-      destruct Hsound as [this [Hthis Hmut]]. exists this. split; [|exact Hmut].
-      simpl. rewrite get_this_var_mapping_app_null_last. exact Hthis.
-Qed.
-
-Lemma authority_history_after_field_write :
-  forall CT P Z M cutoff authority sGamma mt rGamma h x f y rGamma' h'
-    sGamma',
-    wf_r_config CT sGamma rGamma h ->
-    authority_component_history_state CT P Z M cutoff authority
-      sGamma rGamma h ->
-    stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
-    readonly_state_method_scope mt ->
-    eval_stmt CT rGamma h (SFldWrite x f y) OK rGamma' h' ->
-    exists M',
-      Included Loc M M' /\
-      authority_component_history_state CT P Z M' cutoff authority
-        sGamma' rGamma' h'.
-Proof.
-  intros CT P Z M cutoff authority sGamma mt rGamma h x f y rGamma' h'
-    sGamma' Hwf [Hcomponent [Hroots Hsound]] Htyping Hscope Heval.
-  assert (HsGamma : sGamma' = sGamma) by (inversion Htyping; reflexivity).
-  assert (HrGamma : rGamma' = rGamma) by (inversion Heval; reflexivity).
-  subst sGamma' rGamma'.
-  destruct (component_forward_history_after_field_write CT P Z M cutoff
-    sGamma mt rGamma h x f y rGamma h' sGamma Hwf Hcomponent Htyping
-    Hscope Heval) as [M' [Hincl Hcomponent']].
-  exists M'. split; [exact Hincl|]. split; [exact Hcomponent'|]. split.
-  - intros root [z [T [Htype [Hval Hcap]]]].
-    inversion Heval; subst. apply Hincl. apply Hroots.
-    exists z, T. repeat split; assumption.
-  - intros Hauth. specialize (Hsound Hauth).
-    destruct Hsound as [this [Hthis Hmut]]. exists this. split; [exact Hthis|].
-    inversion Heval; subst. rewrite r_muttype_update_field_preserve. exact Hmut.
+    + split.
+      * intros Hauth. specialize (Hsound Hauth).
+        destruct Hsound as [this [Hthis Hmut]].
+        exists this. split; [|exact Hmut].
+        simpl. rewrite get_this_var_mapping_app_null_last. exact Hthis.
+      * have Hcomponent : component_forward_history_state CT P Z M cutoff
+            sGamma rGamma h.
+        { apply mutable_authority_component_history with
+            (authority := authority).
+          exact (conj Hforward (conj Hroots (conj Hsound Hcolors))). }
+        exact (proj2 (component_forward_history_after_local CT P Z M cutoff
+          sGamma mt rGamma h T x sGamma' Hwf Hcomponent Htyping Hnone)).
 Qed.
 
 Lemma mutable_authority_matches_runtime_receiver :
@@ -339,9 +547,9 @@ Lemma authority_new_extension_closed :
 Proof.
   intros CT P Z M cutoff authority sGamma mt rGamma h x qc C args sGamma'
     vals qruntime Hwf
-    [[[Hcontains [Hzone [Hconfined [Hclosed [Hruntime
-      [Hmutroots [Havoid Hforwardcolors]]]]]]]
-      [Hcomponents Hactive]] [Hroots Hsound]]
+    [[Hcontains [Hzone [Hconfined [Hclosed [Hruntime
+      [Hmutroots Havoid]]]]]]
+      [Hroots [Hsound Hcolors]]]
     Htyping Hvals source target [Hsource | [Hcap Hsourcefresh]] Hedge.
   - destruct (mutable_edge_after_append CT h
       (mkObj (mkruntime_type qruntime C) vals) source target Hedge) as
@@ -373,6 +581,7 @@ Lemma authority_component_colors_after_new :
     wf_r_config CT sGamma rGamma h ->
     authority_component_history_state CT P Z M cutoff authority
       sGamma rGamma h ->
+    component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     runtime_lookup_list rGamma args = Some vals ->
     ~ In Loc Z (dom h) ->
@@ -382,12 +591,13 @@ Lemma authority_component_colors_after_new :
 Proof.
   intros CT P Z M cutoff authority sGamma mt rGamma h x qc C args sGamma'
     vals qruntime Hwf
-    [Hcomponent [Hroots Hsound]] Htyping Hvals HfreshZ
+    [Hforward [Hroots [Hsound Hcolors]]] Hcomponent
+    Htyping Hvals HfreshZ
     capability protected [Hcapability | [Hcap Hcapfresh]] Hprotected
     Hconnected.
   - have Hexisting := component_colors_after_new_existing_sets CT P Z M
       cutoff sGamma mt rGamma h x qc C args sGamma' vals qruntime Hwf
-      Hcomponent Htyping Hvals HfreshZ.
+      Hcomponent (proj2 (proj2 Hcomponent)) Htyping Hvals HfreshZ.
     exact (Hexisting capability protected Hcapability Hprotected Hconnected).
   - subst capability.
     assert (Hfresh_touches : component_touches CT
@@ -399,7 +609,7 @@ Proof.
     have HtargetM : In Loc M target.
     { apply Hroots. destruct Htarget as [z [T [Htype [Hval Hqual]]]].
       exists z, T. repeat split; try assumption. rewrite Hqual. exact Hcap. }
-    destruct Hcomponent as [Hforward [Hcomponents Hactive]].
+    destruct Hcomponent as [Hcomponent_forward [Hcomponents Hactive]].
     eapply separated_components_cannot_touch_both with (root := target).
     + exact Hcomponents.
     + exists target. split; [exact HtargetM|apply mutable_connected_refl].
@@ -412,6 +622,7 @@ Lemma authority_active_colors_after_new :
     wf_r_config CT sGamma rGamma h ->
     authority_component_history_state CT P Z M cutoff authority
       sGamma rGamma h ->
+    component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     runtime_lookup_list rGamma args = Some vals ->
     ~ In Loc Z (dom h) ->
@@ -421,13 +632,13 @@ Lemma authority_active_colors_after_new :
       sGamma' (update_r_env_value rGamma x (Iot (dom h))).
 Proof.
   intros CT P Z M cutoff authority sGamma mt rGamma h x qc C args sGamma'
-    vals qruntime Hwf Hstate Htyping Hvals HfreshZ.
+    vals qruntime Hwf Hstate Hcomponent Htyping Hvals HfreshZ.
   destruct authority.
   - have Hpostroots := authority_env_roots_after_new CT M Mut_r sGamma mt
       rGamma h x qc C args sGamma' Hwf (proj1 (proj2 Hstate)) Htyping.
     have Hcomponents := authority_component_colors_after_new CT P Z M cutoff
       Mut_r sGamma mt rGamma h x qc C args sGamma' vals qruntime Hwf Hstate
-      Htyping Hvals HfreshZ.
+      Hcomponent Htyping Hvals HfreshZ.
     intros capability_root zone_root Hcaproot Hcapability Hzoneroot
       [protected [Hprotected Hzoneconnected]].
     have HzoneM : In Loc
@@ -439,8 +650,8 @@ Proof.
   - have Heq := authority_extension_matches_static_mut_extension M Imm_r qc
       (dom h) (ltac:(left; discriminate)).
     have Hstatic := active_rdm_colors_after_new CT P Z M cutoff sGamma mt
-      rGamma h x qc C args sGamma' vals qruntime Hwf (proj1 Hstate) Htyping
-      Hvals HfreshZ.
+      rGamma h x qc C args sGamma' vals qruntime Hwf Hcomponent
+      (proj2 (proj2 Hcomponent)) Htyping Hvals HfreshZ.
     intros capability_root zone_root Hcaproot
       [capability [Hcapability Hcapconnected]] Hzoneroot Hzonetouch.
     eapply Hstatic with (capability_root := capability_root)
@@ -481,6 +692,7 @@ Lemma authority_history_after_new :
     wf_r_config CT sGamma rGamma h ->
     authority_component_history_state CT P Z M cutoff authority
       sGamma rGamma h ->
+    component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     cutoff <= dom h ->
     ~ In Loc Z (dom h) ->
@@ -491,11 +703,10 @@ Lemma authority_history_after_new :
         sGamma' rGamma' h'.
 Proof.
   intros CT P Z M cutoff authority sGamma mt rGamma h x qc C args rGamma'
-    h' sGamma' Hwf Hstate Htyping Hcutoff HfreshZ Heval.
-  have Hcomponent := proj1 Hstate.
+    h' sGamma' Hwf Hstate Hcomponent Htyping Hcutoff HfreshZ Heval.
   have Hcomponent_base := component_forward_history_after_new CT P Z M cutoff
-    sGamma mt rGamma h x qc C args rGamma' h' sGamma' Hwf Hcomponent Htyping
-    Hcutoff HfreshZ Heval.
+    sGamma mt rGamma h x qc C args rGamma' h' sGamma' Hwf Hcomponent
+    (proj2 (proj2 Hcomponent)) Htyping Hcutoff HfreshZ Heval.
   inversion Heval; subst.
   assert (HsGamma : sGamma' = sGamma) by (inversion Htyping; reflexivity).
   subst sGamma'.
@@ -517,42 +728,42 @@ Proof.
     Hargs.
   have Hruntime' := authority_new_extension_runtime_mutable h M authority
     rGamma qc C vals qthisr qruntime l1
-    (proj1 (proj2 (proj2 (proj2 (proj2 (proj1 (proj1 Hstate)))))))
-    (proj2 (proj2 Hstate)) Hthis Hmut (ltac:(unfold qruntime; reflexivity)).
+    (proj1 (proj2 (proj2 (proj2 (proj2 (proj1 Hstate))))))
+    (proj1 (proj2 (proj2 Hstate))) Hthis Hmut
+    (ltac:(unfold qruntime; reflexivity)).
   have Hroots' := authority_env_roots_after_new CT M authority sGamma mt
     rGamma h x qc C args sGamma Hwf (proj1 (proj2 Hstate)) Htyping.
   have Hcomponents' := authority_component_colors_after_new CT P Z M cutoff
     authority sGamma mt rGamma h x qc C args sGamma vals qruntime Hwf Hstate
-    Htyping Hargs HfreshZ.
+    Hcomponent Htyping Hargs HfreshZ.
   have Hactive' := authority_active_colors_after_new CT P Z M cutoff
     authority sGamma mt rGamma h x qc C args sGamma vals qruntime Hwf Hstate
-    Htyping Hargs HfreshZ.
+    Hcomponent Htyping Hargs HfreshZ.
   have Hcontext' := authority_context_sound_after_new CT authority sGamma mt
     rGamma h x qc C args sGamma vals qthisr qruntime l1 Hwf
-    (proj2 (proj2 Hstate)) Htyping Hthis Hmut.
+    (proj1 (proj2 (proj2 Hstate))) Htyping Hthis Hmut.
   destruct Hbase_state as
     [[Hcontains' [Hzone' [Hconfined' [Hbaseclosed [Hbaseruntime
       [Hbasemutroots [Hbaseavoid Hbaseforwardcolors]]]]]]]
       [Hbasecomponents Hbaseactive]].
   destruct Hstate as
-    [[[Hcontains [Hzone [Hconfined [Hclosed [Hruntime
-      [Hmutroots [Havoid Hforwardcolors]]]]]]]
-      [Hcomponents Hactive]] [Hroots Hcontext]].
+    [[Hcontains [Hzone [Hconfined [Hclosed [Hruntime
+      [Hmutroots Havoid]]]]]]
+      [Hroots [Hcontext Hcolors]]].
   rewrite Hnewenv.
   split.
-  - split.
-    + refine (conj Hcontains' (conj Hzone' (conj Hconfined'
-        (conj Hclosed' (conj Hruntime' (conj _ (conj _ _))))))).
-      * intros root Hroot. apply Hroots'.
-        destruct Hroot as [z [T [Htype [Hval Hmutq]]]].
-        exists z, T. repeat split; try assumption.
-        unfold capability_in_context. left. exact Hmutq.
-      * intros location [Hold | [Hcap ->]].
-        -- eapply Havoid; eauto.
-        -- exact HfreshZ.
-      * eapply active_component_colors_imply_rdm_separation; eauto.
-    + split; assumption.
-  - split; assumption.
+  - refine (conj Hcontains' (conj Hzone' (conj Hconfined'
+      (conj Hclosed' (conj Hruntime' (conj _ _)))))).
+    + intros root Hroot. apply Hroots'.
+      destruct Hroot as [z [T [Htype [Hval Hmutq]]]].
+      exists z, T. repeat split; try assumption.
+      unfold capability_in_context. left. exact Hmutq.
+    + intros location [Hold | [Hcap ->]].
+      * eapply Havoid; eauto.
+      * exact HfreshZ.
+  - split; [exact Hroots'|].
+    split; [exact Hcontext'|].
+    split; assumption.
 Qed.
 
 Lemma safe_call_callee_authority_roots :
@@ -575,7 +786,8 @@ Lemma safe_call_callee_authority_roots :
 Proof.
   intros CT P Z M cutoff caller_authority sGamma mt rGamma h x m y args
     sGamma' vals ly cy runtime_mdef Ty Hwf
-    [Hcomponent [Hroots Hsound]] Htyping Hscope Hgety Hval Hbase Hfind
+    [Hforward [Hroots [Hsound Hcolors]]]
+    Htyping Hscope Hgety Hval Hbase Hfind
     Hargs root [z [T [Htype [Hrootval Hcap]]]].
   destruct Hcap as [Hmut | [Hrdm Hcallee_mut]].
   - apply Hroots.
@@ -594,8 +806,7 @@ Proof.
     destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x m y
       args sGamma' vals ly cy runtime_mdef root Hwf Htyping Hscope Hval Hbase
       Hfind Hargs Hrootrdm) as
-      [[Ty0 [Hgety0 [Hshape Hcallerroot]]] |
-       [Ty0 [Hgety0 [Hro Hroot]]]].
+      [Ty0 [Hgety0 [[Hshape Hcallerroot] | [Hro [Hrooteq Hro_origin]]]]].
     + assert (Ty0 = Ty) by congruence. subst Ty0.
       apply Hroots. destruct Hcallerroot as
         [caller_var [CallerT [Hcaller_type [Hcaller_val Hcaller_qual]]]].
@@ -627,13 +838,13 @@ Lemma safe_call_callee_authority_context :
 Proof.
   intros CT P Z M cutoff caller_authority sGamma mt rGamma h x m y args
     sGamma' vals ly cy runtime_mdef Ty Hwf
-    [Hcomponent [Hroots Hsound]] Htyping Hscope Hgety Hval Hbase Hfind
+    [Hforward [Hroots [Hsound Hcolors]]]
+    Htyping Hscope Hgety Hval Hbase Hfind
     Hargs Hcallee_mut.
   exists ly. split; [reflexivity|].
-  destruct Hcomponent as
-    [[Hcontains [Hzone [Hconfined [Hclosed [Hruntime
-      [Hmutroots [Havoid Hforwardcolors]]]]]]]
-      [Hcomponents Hactive]].
+  destruct Hforward as
+    [Hcontains [Hzone [Hconfined [Hclosed [Hruntime
+      [Hmutroots Havoid]]]]]].
   apply Hruntime. apply Hroots.
   exists y, Ty. repeat split; try assumption.
   eapply safe_call_receiver_authority_reflects.
@@ -648,6 +859,7 @@ Lemma authority_history_enter_call :
     wf_r_config CT sGamma rGamma h ->
     authority_component_history_state CT P Z M cutoff caller_authority
       sGamma rGamma h ->
+    component_forward_history_state CT P Z M cutoff sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
     readonly_state_method_scope mt ->
     static_getType sGamma y = Some Ty ->
@@ -662,12 +874,19 @@ Lemma authority_history_enter_call :
       (mkr_env (Iot ly :: vals)) h.
 Proof.
   intros CT P Z M cutoff caller_authority sGamma mt rGamma h x m y args
-    sGamma' vals ly cy runtime_mdef Ty Hwf Hstate Htyping Hscope Hgety Hval
-    Hbase Hfind Hargs.
+    sGamma' vals ly cy runtime_mdef Ty Hwf Hstate Hcomponent Htyping Hscope
+    Hgety Hval Hbase Hfind Hargs.
+  have Hcomponent_post := safe_call_callee_component_forward_history CT P Z M
+    cutoff sGamma mt rGamma h x m y args sGamma' vals ly cy runtime_mdef
+    Hwf Htyping Hscope Hcomponent (proj2 (proj2 Hcomponent)) Hval Hbase Hfind
+    Hargs.
+  destruct Hcomponent_post as [Hforward_post [Hcomponents_post Hactive_post]].
   split.
-  - eapply safe_call_callee_component_forward_history; eauto.
-    exact (proj1 Hstate).
+  - eapply forward_history_implies_directed_authority_history.
+    exact Hforward_post.
   - split.
     + eapply safe_call_callee_authority_roots; eauto.
-    + eapply safe_call_callee_authority_context; eauto.
+    + split.
+      * eapply safe_call_callee_authority_context; eauto.
+      * split; assumption.
 Qed.

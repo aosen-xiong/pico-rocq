@@ -51,6 +51,12 @@ Proof. reflexivity. Qed.
 
 Definition vpa_mutability_stype_fld_readonly_state (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
+    (* Important: an RDM field cannot be used to publish a mutable value
+       through a readonly alias.  In particular, [RO |> RDM_f = Lost], not
+       [RO].  This distinction is essential in the flexible-override
+       call-return proof: an RS callee whose signature has no [Mut] roots
+       cannot use an [RO] parameter to place a fresh [Mut] result into an old
+       retained-capability path. *)
     | RO, RDM_f => Lost
     | q1, RDM_f => q1
     | _, Imm_f => Imm
@@ -61,6 +67,26 @@ Definition vpa_mutability_stype_fld_readonly_state (q1: q)(q2 : q_f) : q :=
 
 Example vpa_mutability_field_readonly_state_mut_mut :
   vpa_mutability_stype_fld_readonly_state Mut Mut_f = Mut.
+Proof. reflexivity. Qed.
+
+(** A readonly alias cannot publish a mutable value through a [Mut_f]
+    field, even when that field is explicitly assignable.  Assignability
+    controls whether the slot may be updated; this equation independently
+    prevents a [Mut] right-hand side from flowing through the readonly
+    receiver. *)
+Example vpa_mutability_field_readonly_state_ro_mut_is_lost :
+  vpa_mutability_stype_fld_readonly_state RO Mut_f = Lost.
+Proof. reflexivity. Qed.
+
+(* Regression fact for capability proofs: do not replace the result below
+   with [RO].  Reading an [RDM_f] field through an [RO] receiver loses the
+   field's mutability authority. *)
+Example vpa_mutability_field_readonly_state_ro_rdm_is_lost :
+  vpa_mutability_stype_fld_readonly_state RO RDM_f = Lost.
+Proof. reflexivity. Qed.
+
+Example vpa_mutability_field_readonly_state_rdm_rdm :
+  vpa_mutability_stype_fld_readonly_state RDM RDM_f = RDM.
 Proof. reflexivity. Qed.
 
 (* Viewpoint adaptation of assignability qualifiers *)

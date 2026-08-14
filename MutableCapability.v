@@ -300,30 +300,6 @@ Proof.
       exact Hsource_mut.
 Qed.
 
-Lemma written_rdm_field_is_mutable_edge :
-  forall CT h lx old f oldvalue target D fdef,
-    runtime_getObj h lx = Some old ->
-    getVal old.(fields_map) f = Some oldvalue ->
-    base_subtype CT (rctype (rt_type old)) D ->
-    sf_def_rel CT D f fdef ->
-    mutability (ftype fdef) = RDM_f ->
-    mutable_edge CT (update_field h lx f (Iot target)) lx target.
-Proof.
-  intros CT h lx old f oldvalue target D fdef Hobj Holdfield Hsub Hfd Hrdm.
-  eapply mutable_edge_rdm with
-    (o := set_fields_map old (update f (Iot target) (fields_map old)))
-    (f := f) (D := D) (fdef := fdef).
-  - unfold update_field. rewrite Hobj.
-    have Hlxdom := Hobj. apply runtime_getObj_dom in Hlxdom.
-    rewrite runtime_getObj_update_same; auto.
-  - have Hfdom := Holdfield. apply getVal_dom in Hfdom.
-    simpl. unfold getVal.
-    rewrite update_same; auto.
-  - simpl. exact Hsub.
-  - exact Hfd.
-  - exact Hrdm.
-Qed.
-
 
 
 Lemma retained_reachable_after_field_update :

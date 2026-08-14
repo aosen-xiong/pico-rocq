@@ -58,16 +58,20 @@ Top-level theorem entry points:
   `wf_stypeuse`. [WellformednessRegression.v](WellformednessRegression.v)
   exercises both formerly divergent field/constructor cases and supplies
   a positive runtime-configuration witness.
-- The paper's full method-overriding rule uses viewpoint-adapted variance. The
-  Rocq development intentionally mechanizes invariant overriding: if a subclass
-  method overrides a parent method, the signatures must be syntactically equal.
+- Method overriding specializes the explicit receiver through the overriding
+  class bound: the class-adapted inherited receiver must be a subtype of the
+  overriding receiver. Method scope remains invariant; returns are covariant,
+  and ordinary parameters are contravariant, after class-bound viewpoint
+  adaptation. Call typing checks the corresponding behavioral-subtyping
+  obligations for every method that a runtime subtype can select.
 - The paper treats `Lost` as a helper qualifier rather than a programmer-written
   type qualifier. Rocq represents it in the common qualifier datatype, but
   `wf_stypeuse` and non-reflexive `Lost` subtyping prevent direct `Lost` type
   uses in well-formed static environments.
-- The method-call preservation theorems package the non-mutable declared
-  receiver and formal-parameter premises through
-  `signature_has_no_mutable_roots`.
+- The RS/TS preservation theorems carry no explicit non-mutability premise:
+  `wf_method` requires `signature_has_no_mutable_roots` for every RS/TS-scoped
+  method, so the condition holds for every possible dynamic target by class-table
+  well-formedness (discharged via `wf_method_readonly_roots`).
 
 ## Toolchain
 

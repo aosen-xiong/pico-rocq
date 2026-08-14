@@ -25,8 +25,8 @@ Lemma active_mut_root_cannot_be_protected :
     False.
 Proof.
   intros CT P Z cutoff h authority sGamma rGamma stack x T location
-    [Hlive Hseparated] Htype Hvalue Hmut HinP.
-  have Hcomponent := proj1 (proj1 Hlive).
+    [Hlive [Hseparated _]] Htype Hvalue Hmut HinP.
+  have Hcomponent := proj1 Hlive.
   have Hforward := proj1 Hcomponent.
   have Hcontains : protected_zone_contains P Z := proj1 Hforward.
   apply (Hseparated location location).
@@ -109,9 +109,10 @@ Proof.
     inversion Htyping; subst.
     + destruct Hsafe as [Hrs | Hts]; subst mt;
         destruct Hscope as [Has | [Hcs _]]; discriminate.
-    + have Hsignature : msignature runtime_mdef = msignature mdef.
-      { eapply runtime_call_signature_agrees; eauto. }
-      rewrite Hsignature.
+    + have Hscope_eq :
+        mscope (msignature runtime_mdef) = mscope (msignature mdef).
+      { eapply runtime_call_scope_eq; eauto. }
+      rewrite Hscope_eq.
       eapply concrete_assignability_submethod; eauto.
 Qed.
 
@@ -184,9 +185,9 @@ Proof.
       proj1 (proj1 (proj2 (proj1 Hstate))).
     destruct (safe_typed_call_static_result CT sGamma mt rΓ h x m y zs
       sGamma' ly cy mdef Hcaller_wf Htyping Hsafe Hval_y Hbase Hfind_method)
-      as [destination_type [receiver_type
+      as [destination_type [receiver_type [static_mdef
         [HsGamma [Hdestination_not_receiver [Hdestination_type
-          [Hreceiver_type Hresult_sub]]]]]].
+          [Hreceiver_type Hresult_sub]]]]]]].
     subst sGamma'.
     have Hcallee_safe := safe_typed_call_target_method_safe CT sGamma mt rΓ
       h x m y zs sGamma ly cy mdef Hcaller_wf Htyping Hsafe Hval_y Hbase
@@ -199,7 +200,7 @@ Proof.
     destruct (potential_history_enter_call CT P Z cutoff authority sGamma mt
       rΓ h stack x m y zs sGamma vals ly cy mdef receiver_type Hstate
       Htyping Hsafe Hreceiver_type Hval_y Hbase Hfind_method Hargs) as
-      [origins Hentry].
+      [origins [entry_destination_type [_ Hentry]]].
     have Hcallee_protected :=
       safe_typed_call_preserves_protected_field_condition CT sGamma mt rΓ h
         x m y zs sGamma ly cy mdef C protected_field Hcaller_wf Htyping Hsafe

@@ -243,38 +243,6 @@ Proof.
         -- exact (Hnone y Hin HPy).
 Defined.
 
-Lemma reachable_locations_from_initial_env_dec : forall h rΓ l,
-  {Ensembles.In Loc (reachable_locations_from_initial_env h rΓ) l} +
-  {~ Ensembles.In Loc (reachable_locations_from_initial_env h rΓ) l}.
-Proof.
-  intros h rΓ l.
-  unfold Ensembles.In, reachable_locations_from_initial_env.
-  set (root_reaches := fun x =>
-    exists l_root,
-      runtime_getVal rΓ x = Some (Iot l_root) /\ reachable h l_root l).
-  assert (Hroot_dec : forall x, {root_reaches x} + {~ root_reaches x}).
-  {
-    intro x. unfold root_reaches.
-    destruct (runtime_getVal rΓ x) as [v|] eqn:Hval.
-    2:{ right. intros [l_root [Hsome _]]. discriminate. }
-    destruct v as [|l_root].
-    - right. intros [l_root [Hsome _]]. discriminate.
-    - destruct (reachable_dec h l_root l) as [Hreach|Hnotreach].
-      + left. exists l_root. split; [reflexivity|exact Hreach].
-      + right. intros [l_root' [Hsome Hreach]].
-        injection Hsome as <-. contradiction.
-  }
-  destruct (find_in_list_dec root_reaches Hroot_dec
-    (seq 0 (List.length rΓ.(vars)))) as [Hex|Hnone].
-  - left. destruct Hex as [x [_ Hroot]]. exists x. exact Hroot.
-  - right. intros [x [l_root [Hval Hreach]]].
-    apply (Hnone x).
-    + apply in_seq. split; [lia|].
-      unfold runtime_getVal in Hval.
-      apply nth_error_Some. rewrite Hval. discriminate.
-    + exists l_root. split; assumption.
-Qed.
-
 (* PICO expression evaluation *)
 Inductive eval_expr : class_table -> r_env -> heap -> expr -> value -> eval_result -> r_env -> heap -> Prop :=
   (* evalutate null expression  *)
@@ -741,23 +709,6 @@ Proof.
       subst. exact (IHeval_stmt2 _ _ _ Heval2).
 Qed.
 
-Lemma r_type_dom : forall h loc rqt
-  (Hrtype : r_type h loc = Some rqt),
-  loc < dom h.
-Proof.
-  intros h loc rqt H.
-  unfold r_type in H.
-  destruct (runtime_getObj h loc) as [o|] eqn:Hobj.
-  - (* Some case *)
-    unfold runtime_getObj in Hobj.
-    apply nth_error_Some.
-    rewrite Hobj.
-    discriminate.
-  - (* None case *)
-    simpl in H.
-    discriminate H.
-Qed.
-
 Lemma qualifier_typable_subtype : forall CT qr T1 T2 qcontext
   (Hsub   : qualified_type_subtype CT T1 T2)
   (Hqual1 : qualifier_typable_context qr (sqtype T1) qcontext),
@@ -827,16 +778,6 @@ Proof.
       reflexivity.
 Qed.
 
-Lemma r_muttype_of_r_type : forall h loc rqt
-  (Hr : r_type h loc = Some rqt),
-  r_muttype h loc = Some (rqtype rqt).
-Proof.
-  intros h loc rqt Hr.
-  unfold r_type in Hr. unfold r_muttype.
-  destruct (runtime_getObj h loc) as [o|] eqn:Hobj; [|discriminate Hr].
-  inversion Hr; subst. reflexivity.
-Qed.
-
 Lemma vpa_mutability_tt_sctype_abstract_state : forall Tthis T,
   sctype (vpa_mutability_tt_abstract_state Tthis T) = sctype T.
 Proof.
@@ -844,15 +785,6 @@ Proof.
   unfold vpa_mutability_tt_abstract_state.
   destruct T as [q c]. simpl.
   destruct (sqtype Tthis); destruct q; simpl; reflexivity.
-Qed.
-
-Lemma vpa_preserve_basetype_subtype_abstract_state : forall CT Tthis T1 T2
-  (Hsub : base_subtype CT (sctype (vpa_mutability_tt_abstract_state Tthis T1)) (sctype (vpa_mutability_tt_abstract_state Tthis T2))),
-  base_subtype CT (sctype T1) (sctype T2).
-Proof.
-  intros CT Tthis T1 T2 Hsub.
-  rewrite !vpa_mutability_tt_sctype_abstract_state in Hsub.
-  exact Hsub.
 Qed.
 
 Lemma vpa_mutability_tt_sctype_readonly_state : forall Tthis T,
@@ -864,118 +796,7 @@ Proof.
   destruct (sqtype Tthis); destruct q; simpl; reflexivity.
 Qed.
 
-Lemma vpa_preserve_basetype_subtype_readonly_state : forall CT Tthis T1 T2
-  (Hsub : base_subtype CT (sctype (vpa_mutability_tt_readonly_state Tthis T1)) (sctype (vpa_mutability_tt_readonly_state Tthis T2))),
-  base_subtype CT (sctype T1) (sctype T2).
-Proof.
-  intros CT Tthis T1 T2 Hsub.
-  (* apply qualified_type_subtype_base_subtype in Hsub. *)
-  rewrite !vpa_mutability_tt_sctype_readonly_state in Hsub.
-  exact Hsub.
-Qed.
-
 (* Both directions cannot be proved here. *)
-(* q_subtype (sqtype (vpa_mutability_tt Tthis T1)) (sqtype (vpa_mutability_tt Tthis T2)) <->
-q_subtype (sqtype T1) (sqtype T2). *)
-
-Lemma wf_r_typable_adapted_subtype_abstract_state : forall CT sΓ rΓ h Tthis locthis loc T1 T2 qcontext
-  (HwfConfig        : wf_heap CT h)
-  (HThisType        : get_this_qualified_type sΓ = Some Tthis)
-  (HThisVal         : get_this_var_mapping (vars rΓ) = Some locthis)
-  (HthisMutability  : r_muttype h locthis = Some qcontext)
-  (* wf_r_typable CT h locthis Tthis qcontext -> *)
-  (Hthistypablity   : qualifier_typable_context qcontext (sqtype Tthis) qcontext)
-  (Hwf              : wf_r_typable CT h loc T1 qcontext)
-  (Hsub             : qualified_type_subtype CT (vpa_mutability_tt_abstract_state Tthis T1) (vpa_mutability_tt_abstract_state Tthis T2)),
-  wf_r_typable CT h loc T2 qcontext.
-Proof.
-  intros CT sΓ rΓ h Tthis locthis loc T1 T2 qcontext HwfConfig HThisType HThisVal HthisMutability Hthistypablity Hwf Hsub.
-  unfold wf_r_typable in *.
-  destruct (r_type h loc) as [rt|] eqn:Hrtype; [|contradiction].
-  split.
-- (* Base type equality *)
-  destruct Hwf as [Hbase _].
-  apply qualified_type_subtype_base_subtype in Hsub.
-  assert (base_subtype CT (sctype T1) (sctype T2)).
-  {
-    eapply vpa_preserve_basetype_subtype_abstract_state; eauto.
-  }
-  eapply base_trans; [exact Hbase | exact H].
-- destruct Hwf as [_ Hqualifier].
-  unfold wf_r_config in HwfConfig.
-  apply qualified_type_subtype_q_subtype in Hsub.
-  assert (exists Tthis, r_type h locthis = Some Tthis).
-  {
-    unfold r_muttype in HthisMutability.
-    destruct (runtime_getObj h locthis) eqn: save; [|easy].
-    unfold r_type.
-    rewrite save.
-    eauto.
-  }
-  destruct H as [Tthistype HThisRuntimeType].
-  assert(qcontext = rqtype Tthistype).
-  {
-    unfold r_muttype in HthisMutability.
-    unfold r_type in HThisRuntimeType.
-    destruct (runtime_getObj h locthis) eqn: save; [|easy].
-    inversion HThisRuntimeType; subst.
-    inversion HthisMutability; reflexivity.
-  }
-  unfold qualifier_typable_context in *; unfold vpa_mutability_runtime in *; unfold vpa_mutability_tt_abstract_state in *.
-  destruct (rqtype rt) eqn: qt; destruct qcontext eqn: qrthis; destruct (sqtype Tthis) eqn: qsthis; destruct (sqtype T1) eqn: qt1; destruct (sqtype T2) eqn: qt2; simpl in *; try easy.
-  all: try rewrite qt1 in Hsub; try rewrite qt2 in Hsub; try constructor; try easy.
-  all: inversion Hsub; easy.
-Qed.
-
-Lemma wf_r_typable_adapted_subtype_readonly_state : forall CT sΓ rΓ h Tthis locthis loc T1 T2 qcontext
-  (HwfConfig        : wf_heap CT h)
-  (HThisType        : get_this_qualified_type sΓ = Some Tthis)
-  (HThisVal         : get_this_var_mapping (vars rΓ) = Some locthis)
-  (HthisMutability  : r_muttype h locthis = Some qcontext)
-  (* wf_r_typable CT h locthis Tthis qcontext -> *)
-  (Hthistypablity   : qualifier_typable_context qcontext (sqtype Tthis) qcontext)
-  (Hwf              : wf_r_typable CT h loc T1 qcontext)
-  (Hsub             : qualified_type_subtype CT (vpa_mutability_tt_readonly_state Tthis T1) (vpa_mutability_tt_readonly_state Tthis T2)),
-  wf_r_typable CT h loc T2 qcontext.
-Proof.
-  intros CT sΓ rΓ h Tthis locthis loc T1 T2 qcontext HwfConfig HThisType HThisVal HthisMutability Hthistypablity Hwf Hsub.
-  unfold wf_r_typable in *.
-  destruct (r_type h loc) as [rt|] eqn:Hrtype; [|contradiction].
-  split.
-- (* Base type equality *)
-  destruct Hwf as [Hbase _].
-  apply qualified_type_subtype_base_subtype in Hsub.
-  assert (base_subtype CT (sctype T1) (sctype T2)).
-  {
-    eapply vpa_preserve_basetype_subtype_readonly_state; eauto.
-  }
-  eapply base_trans; [exact Hbase | exact H].
-- destruct Hwf as [_ Hqualifier].
-  unfold wf_r_config in HwfConfig.
-  apply qualified_type_subtype_q_subtype in Hsub.
-  assert (exists Tthis, r_type h locthis = Some Tthis).
-  {
-    unfold r_muttype in HthisMutability.
-    destruct (runtime_getObj h locthis) eqn: save; [|easy].
-    unfold r_type.
-    rewrite save.
-    eauto.
-  }
-  destruct H as [Tthistype HThisRuntimeType].
-  assert(qcontext = rqtype Tthistype).
-  {
-    unfold r_muttype in HthisMutability.
-    unfold r_type in HThisRuntimeType.
-    destruct (runtime_getObj h locthis) eqn: save; [|easy].
-    inversion HThisRuntimeType; subst.
-    inversion HthisMutability; reflexivity.
-  }
-  unfold qualifier_typable_context in *; unfold vpa_mutability_runtime in *; unfold vpa_mutability_tt_readonly_state in *.
-  destruct (rqtype rt) eqn: qt; destruct qcontext eqn: qrthis; destruct (sqtype Tthis) eqn: qsthis; destruct (sqtype T1) eqn: qt1; destruct (sqtype T2) eqn: qt2; simpl in *; try easy.
-  all: try rewrite qt1 in Hsub; try rewrite qt2 in Hsub; try constructor; try easy.
-  all: inversion Hsub; easy.
-Qed.
-
 Lemma Forall2_nth_error_prop : forall {A B : Type} (P : A -> B -> Prop) (l1 : list A) (l2 : list B) (n : nat) (a : A) (b : B)
   (Hforall2 : Forall2 P l1 l2)
   (Hnth1    : nth_error l1 n = Some a)
@@ -1078,86 +899,6 @@ Proof.
   apply nth_error_app1. exact Hloc.
 Qed.
 
-Lemma heap_extension_preserves_wf_r_typable : forall CT h obj loc T qcontext
-  (Hwf : wf_r_typable CT h loc T qcontext),
-  wf_r_typable CT (h ++ [obj]) loc T qcontext.
-Proof.
-  intros CT h obj loc T qcontext Hwf.
-  unfold wf_r_typable in *.
-  destruct (r_type h loc) as [rqt|] eqn:Hrtype; [|contradiction].
-  (* destruct (get_this_var_mapping (vars rΓ)) as [ι'|] eqn:Hthis; [|contradiction]. *)
-  (* destruct (r_muttype h ι') as [q|] eqn:Hmut; [|contradiction]. *)
-  
-  assert (Hrtype_ext : r_type (h ++ [obj]) loc = Some rqt).
-  {
-    unfold r_type in *.
-    assert (Hloc_dom : loc < dom h).
-    {
-      unfold r_type in Hrtype.
-      destruct (runtime_getObj h loc) as [o|] eqn:Hobj; [|discriminate].
-      apply runtime_getObj_dom in Hobj. exact Hobj.
-    }
-    rewrite heap_extension_preserves_objects; assumption.
-  }
-  rewrite Hrtype_ext.
-  exact Hwf.
-Qed.
-
-(* 3. Subtyping Properties *)
-Lemma q_subtype_refl : forall q
-  (Hneq : q <> Lost),
-  q_subtype q q.
-Proof.
-  intros q Hneq.
-  apply q_refl. exact Hneq.
-Qed.
-
-(* 4. Forall2 Manipulation Lemmas *)
-Lemma Forall2_trans {A B C : Type} (P : A -> B -> Prop) (Q : B -> C -> Prop) (R : A -> C -> Prop) :
-  forall l1 l2 l3
-  (Htrans : forall a b c, P a b -> Q b c -> R a c)
-  (HP     : Forall2 P l1 l2)
-  (HQ     : Forall2 Q l2 l3),
-  Forall2 R l1 l3.
-Proof.
-  intros l1 l2 l3 Htrans HP HQ.
-  generalize dependent l3. generalize dependent l1.
-  induction l2 as [|b l2' IH]; intros l1 HP l3 HQ.
-  - inversion HP; subst. inversion HQ; subst. constructor.
-  - inversion HP; subst. inversion HQ; subst.
-    constructor.
-    + apply Htrans with b; assumption.
-    + apply IH; assumption.
-Qed.
-
-Lemma Forall2_map : forall {A B C} (f : B -> C) (P : A -> C -> Prop) l1 l2
-  (H : Forall2 (fun a b => P a (f b)) l1 l2),
-  Forall2 P l1 (map f l2).
-Proof.
-  intros A B C f P l1 l2 H.
-  induction H.
-  - constructor.
-  - simpl. constructor; assumption.
-Qed.
-
-(* 5. Field Access and Update Lemmas *)
-Lemma field_update_preserves_other_fields : forall (fields : list value) f v f'
-  (Hneq : f <> f'),
-  getVal (update f v fields) f' = getVal fields f'.
-Proof.
-  intros fields f v f' Hneq.
-  unfold getVal.
-  apply update_diff. exact Hneq.
-Qed.
-
-Lemma field_update_preserves_length : forall (fields : list value) f v
-  (Hbound : f < List.length fields),
-  List.length (update f v fields) = List.length fields.
-Proof.
-  intros fields f v Hbound.
-  apply update_length.
-Qed.
-
 (* evaluation preserves runtime type on heap. *)
 Lemma runtime_preserves_r_type_heap : forall CT rΓ h loc C h' vals s rΓ'
   (Hobj  : runtime_getObj h loc = Some {| rt_type := C; fields_map := vals |})
@@ -1193,63 +934,6 @@ Lemma Forall2_length : forall {A B} (P : A -> B -> Prop) l1 l2
 Proof.
   intros A B P l1 l2 H.
   induction H; [reflexivity | simpl; f_equal; assumption].
-Qed.
-
-Lemma Forall_nth_error_wf_class : forall CT CT' C def
-  (Hforall : Forall (wf_class CT) CT')
-  (Hfind   : find_class CT' C = Some def),
-  wf_class CT def.
-Proof.
-  intros CT CT' C def Hforall Hfind.
-  generalize dependent C.
-  induction CT' as [|cdef CT'' IH]; intros C Hfind.
-  - simpl in Hfind.   exfalso.
-  destruct C; simpl in Hfind; discriminate.
-  - simpl in Hfind.
-    destruct C as [|C'].
-    + injection Hfind as Heq. subst def.
-      inversion Hforall; subst.
-      exact H1.
-    + inversion Hforall; subst.
-    apply IH with (C := C').
-    * exact H2.
-    * exact Hfind.
-Qed.
-
-Lemma find_class_wf_class : forall CT C def
-  (Hwf_ct : wf_class_table CT)
-  (Hfind  : find_class CT C = Some def),
-  wf_class CT def.
-Proof.
-  intros CT C def Hwf_ct Hfind.
-  unfold wf_class_table in Hwf_ct.
-  (* Use induction on CT to find the class at position C *)
-  generalize dependent C.
-  induction CT as [|cdef CT' IH]; intros C Hfind.
-  - (* Empty CT case *)
-  exfalso.
-  destruct C; simpl in Hfind; discriminate.
-
-  - (* Non-empty CT case *)
-    simpl in Hfind.
-    destruct C as [|C'].
-    + (* C = 0, so def = cdef *)
-      injection Hfind as Heq. subst def.
-      inversion Hwf_ct; subst.
-      inversion H; subst.
-      exact H3.
-    + (* C = S C', recurse *)
-      inversion Hwf_ct; subst.
-      assert (Hfind_CT' : find_class CT' C' = Some def).
-      {
-        simpl in Hfind.
-        exact Hfind.
-      }
-
-      apply (Forall_nth_error_wf_class (cdef :: CT') CT' C' def).
-      * inversion H; subst.
-      exact H4.
-      * exact Hfind_CT'.
 Qed.
 
 (* Expression Evaluation Preservation *)
@@ -1834,23 +1518,4 @@ Proof.
     + (* Show vs is well-formed *)
       apply IH.
       reflexivity.
-Qed.
-
-Lemma method_frame_vals_wf : forall CT rΓ h ly vals0 zs cy
-  (Hwf_renv : wf_renv CT rΓ h)
-  (Hly_base : r_basetype h ly = Some cy)
-  (Hlookup  : runtime_lookup_list rΓ zs = Some vals0),
-  Forall (fun value => match value with
-    | Null_a => True
-    | Iot loc => match runtime_getObj h loc with Some _ => True | None => False end
-    end) (Iot ly :: vals0).
-Proof.
-  intros CT rΓ h ly vals0 zs cy Hwf_renv Hly_base Hlookup.
-  constructor.
-  - (* First element: Iot ly *)
-    simpl.
-    unfold r_basetype in Hly_base.
-    destruct (runtime_getObj h ly) as [obj|] eqn:Hobj; [trivial | discriminate Hly_base].
-  - (* Rest of the list: vals0 *)
-    eapply runtime_lookup_list_preserves_wf_values; eauto.
 Qed.

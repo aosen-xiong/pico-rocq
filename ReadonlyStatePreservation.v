@@ -264,12 +264,6 @@ Proof.
   eapply readonly_field_write_preservation_with_end; eauto.
 Qed.
 
-(** The declared receiver and formal parameters provide no direct mutable
-    authority. *)
-Definition signature_has_no_mutable_roots (msig : method_sig) : Prop :=
-  is_nonmutable_qualifier (sqtype (mreceiver msig)) /\
-  Forall (fun T => is_nonmutable_qualifier (sqtype T)) (mparams msig).
-
 Lemma callee_frame_respects_protected_set :
   forall CT h ly vals msig
     (Hwf : wf_r_config CT
@@ -330,9 +324,9 @@ Proof.
 Qed.
 
 (** A successful typed call exposes one well-formed, well-typed dynamic
-    callee frame.  The dynamically selected signature agrees with the static
-    signature, so signature-level safety transfers without repeating dynamic
-    dispatch and inheritance reasoning in each state-preservation theorem. *)
+    callee frame.  The dynamically selected signature refines the static
+    signature, while the explicit closed-world premise transfers root safety
+    across dynamic dispatch. *)
 Lemma successful_typed_safe_call_body :
   forall CT sΓ mt rΓ h x method y args sΓ' rΓfinal hfinal
          Ty static_mdef vals receiver,
@@ -343,10 +337,10 @@ Lemma successful_typed_safe_call_body :
     eval_stmt CT rΓ h (SCall x method y args) OK rΓfinal hfinal ->
     runtime_getVal rΓ y = Some (Iot receiver) ->
     runtime_lookup_list rΓ args = Some vals ->
-    signature_has_no_mutable_roots (msignature static_mdef) ->
     readonly_state_method_scope mt ->
     exists runtime_mdef body_sΓ' body_rΓ',
-      msignature runtime_mdef = msignature static_mdef /\
+      method_signature_refinement CT
+        (msignature runtime_mdef) (msignature static_mdef) /\
       stmt_typing CT
         (mreceiver (msignature runtime_mdef) ::
           mparams (msignature runtime_mdef))
@@ -364,7 +358,7 @@ Lemma successful_typed_safe_call_body :
 Proof.
   intros CT sΓ mt rΓ h x method y args sΓ' rΓfinal hfinal
     Ty static_mdef vals receiver Hstatic Hfind_static Hwf Htyping Heval
-    Hreceiver Hargs Hsafe Hcaller_scope.
+    Hreceiver Hargs Hcaller_scope.
   inversion Heval; subst; try discriminate.
   have Hreceiver_eq : receiver = ly.
   { rewrite Hval_y in Hreceiver. injection Hreceiver as <-. reflexivity. }
@@ -374,11 +368,23 @@ Proof.
   subst vals0.
   destruct Hfind as [Hfind_runtime Hbody].
   subst mbody.
-  have Hsignature : msignature mdef = msignature static_mdef.
-  { eapply runtime_call_signature_agrees; eauto. }
+  have Hsignature :
+    method_signature_refinement CT
+      (msignature mdef) (msignature static_mdef).
+  { eapply runtime_call_signature_refines; eauto. }
+  have Hruntime_sub : base_subtype CT cy (sctype Ty).
+  { eapply runtime_value_base_subtype; eauto. }
   have Hruntime_scope :
     readonly_state_method_scope (mscope (msignature mdef)).
   { eapply safe_typed_call_target_method_safe; eauto. }
+  have Hruntime_dom : cy < dom CT.
+  { exact (proj1 (base_subtype_domain CT cy (sctype Ty) Hruntime_sub)). }
+  destruct (method_lookup_in_wellformed_inherited CT cy method mdef
+    (proj1 Hwf) Hruntime_dom Hfind_runtime) as
+    [declaring_class [declaring_def
+      [Hdeclaring_sub [Hdeclaring_find [Hdeclaring_member Hmethod_wf]]]]].
+  have Hsafe : signature_has_no_mutable_roots (msignature mdef).
+  { eapply wf_method_readonly_roots; eauto. }
   have Hruntime_subscope : method_scope_subtype (mscope (msignature mdef)) mt.
   {
     have Htyping_copy := Htyping.
@@ -386,9 +392,10 @@ Proof.
     - destruct Hcaller_scope as [Hrs | Hts]; subst mt;
         destruct Hscope as [Has | [Hcs _]]; discriminate.
     - assert (Ty0 = Ty) by congruence. subst Ty0.
-      have Htyping_signature : msignature mdef = msignature mdef0.
-      { eapply runtime_call_signature_agrees; eauto. }
-      rewrite Htyping_signature. exact Hmt_sub.
+      have Hscope_eq :
+        mscope (msignature mdef) = mscope (msignature mdef0).
+      { eapply runtime_call_scope_eq; eauto. }
+      rewrite Hscope_eq. exact Hmt_sub.
   }
   destruct (typed_call_has_wf_callee_frame CT sΓ mt rΓ h x method y args
     sΓ' vals receiver cy mdef Hwf Htyping Hval_y Hbase Hfind_runtime Hargs0)
@@ -399,7 +406,7 @@ Proof.
   split; [exact Hframe_wf|].
   split; [exact Heval_body|].
   split.
-  - rewrite Hsignature. exact Hsafe.
+  - exact Hsafe.
   - split; assumption.
 Qed.
 
@@ -418,18 +425,17 @@ Lemma readonly_state_preservation_with_end :
     (HinP: Ensembles.In Loc (reachable_locations_from_vals h (Iot ly :: vals)) loc_arg)
     (Harg_obj : runtime_getObj h loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg))
     (Harg_obj' : runtime_getObj h' loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg'))
-    (Hassign : sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA)
-    (Hall_readonly : signature_has_no_mutable_roots (msignature mdef)),
+    (Hassign : sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA),
     nth_error vals_arg f = nth_error vals_arg' f.
   Proof.
   intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
     loc_arg C anyrq vals_arg vals_arg' f Hstmt Hstatic_type Hmethod_lookup
     Hwf Htyping Hreadonly_scope Heval Hget_y Hget_zs HinP Harg_obj
-    Harg_obj' Hassign Hall_readonly.
+    Harg_obj' Hassign.
   subst stmt.
   destruct (successful_typed_safe_call_body CT sΓ mt rΓ h x mindex y zs
     sΓ' rΓ' h' Ty mdef vals ly Hstatic_type Hmethod_lookup Hwf Htyping
-    Heval Hget_y Hget_zs Hall_readonly Hreadonly_scope)
+    Heval Hget_y Hget_zs Hreadonly_scope)
     as [runtime_mdef [body_sΓ' [body_rΓ'
       [Hsignature [Hbody_typed [Hframe_wf
         [Hbody_eval [Hbody_safe [Hbody_scope Hbody_subscope]]]]]]]]].
@@ -462,15 +468,14 @@ Theorem readonly_state_preservation :
     (Hget_zs : runtime_lookup_list rΓ zs = Some vals)
     (HinP: Ensembles.In Loc (reachable_locations_from_vals h (Iot ly :: vals)) loc_arg)
     (Harg_obj : runtime_getObj h loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg))
-    (Hassign : sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA)
-    (Hall_readonly : signature_has_no_mutable_roots (msignature mdef)),
+    (Hassign : sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA),
     exists vals_arg',
       runtime_getObj h' loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg') /\
       nth_error vals_arg f = nth_error vals_arg' f.
 Proof.
   intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
     loc_arg C anyrq vals_arg f Hstmt Hstatic_type Hmethod_lookup Hwf Htyping
-    Hreadonly_scope Heval Hget_y Hget_zs HinP Harg_obj Hassign Hall_readonly.
+    Hreadonly_scope Heval Hget_y Hget_zs HinP Harg_obj Hassign.
   destruct (runtime_preserves_r_type_heap CT rΓ h loc_arg
     (mkruntime_type anyrq C) h' vals_arg stmt rΓ' Harg_obj Heval)
     as [vals_arg' Harg_obj'].

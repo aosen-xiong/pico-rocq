@@ -53,16 +53,6 @@ Proof.
   - exact IHHreach1.
 Qed.
 
-Lemma reachable_target_dom : forall h l0 l1,
-  reachable h l0 l1 -> l1 < dom h.
-Proof.
-  intros h l0 l1 Hreach.
-  induction Hreach.
-  - exact Hdom.
-  - exact Hdom.
-  - exact IHHreach2.
-Qed.
-
 Inductive edge_path (h : heap) : Loc -> Loc -> list Loc -> Prop :=
   | edge_path_nil : forall l,
       edge_path h l l []

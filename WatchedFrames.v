@@ -15,6 +15,13 @@ Record watched_frame : Type := mk_watched_frame {
   frame_renv : r_env
 }.
 
+Definition frame_capability_root
+  (frame : watched_frame) (root : Loc) : Prop :=
+  exists x T,
+    static_getType frame.(frame_senv) x = Some T /\
+    runtime_getVal frame.(frame_renv) x = Some (Iot root) /\
+    capability_in_context frame.(frame_authority) (sqtype T).
+
 Definition rdm_roots_reflect_through_view
   (receiver_view : q)
   (callee_senv : s_env) (callee_renv : r_env)
@@ -33,6 +40,27 @@ Definition rdm_roots_reflect_through_view
     | Bot => False
     end.
 
+Definition capability_roots_reflect_through_view
+  (caller : watched_frame) (receiver_view : q)
+  (callee_senv : s_env) (callee_renv : r_env) : Prop :=
+  forall root,
+    frame_capability_root
+      (mk_watched_frame
+        (call_authority caller.(frame_authority) receiver_view)
+        callee_senv callee_renv) root ->
+    frame_capability_root caller root.
+
+Record call_boundary_origins
+  (caller : watched_frame) (receiver_view : q)
+  (callee_senv : s_env) (callee_renv : r_env) : Prop := {
+  boundary_rdm_origin :
+    rdm_roots_reflect_through_view receiver_view
+      callee_senv callee_renv caller.(frame_senv) caller.(frame_renv);
+  boundary_capability_origin :
+    capability_roots_reflect_through_view caller receiver_view
+      callee_senv callee_renv
+}.
+
 (** Intraprocedural provenance is directional: a current RDM root either has
     an old RDM ancestor through RDM fields, or is a fresh allocation handled by
     the allocation case. *)
@@ -46,16 +74,36 @@ Definition rdm_roots_descend_from
       typed_root RDM old_senv old_renv old_root /\
       mutable_reachable CT h old_root root.
 
-Record watched_boundary : Type := mk_watched_boundary {
+Record watched_boundary : Type := build_watched_boundary {
   boundary_caller : watched_frame;
   boundary_callee_entry_senv : s_env;
   boundary_callee_entry_renv : r_env;
   boundary_receiver_view : q;
-  boundary_rdm_origins :
-    rdm_roots_reflect_through_view boundary_receiver_view
+  boundary_return_var : var;
+  boundary_result_qualifier : q;
+  boundary_callee_return_qualifier : q;
+  boundary_entry_cutoff : Loc;
+  boundary_origins :
+    call_boundary_origins boundary_caller boundary_receiver_view
       boundary_callee_entry_senv boundary_callee_entry_renv
-      boundary_caller.(frame_senv) boundary_caller.(frame_renv)
 }.
+
+Definition boundary_rdm_origins (boundary : watched_boundary) :
+  rdm_roots_reflect_through_view boundary.(boundary_receiver_view)
+    boundary.(boundary_callee_entry_senv)
+    boundary.(boundary_callee_entry_renv)
+    boundary.(boundary_caller).(frame_senv)
+    boundary.(boundary_caller).(frame_renv) :=
+  boundary_rdm_origin _ _ _ _ boundary.(boundary_origins).
+
+Definition mk_watched_call_boundary
+  (caller : watched_frame) (entry_senv : s_env) (entry_renv : r_env)
+  (receiver_view : q) (return_var : var) (result_qualifier : q)
+  (callee_return_qualifier : q) (entry_cutoff : Loc)
+  (origins : call_boundary_origins caller receiver_view entry_senv
+    entry_renv) : watched_boundary :=
+  build_watched_boundary caller entry_senv entry_renv receiver_view
+    return_var result_qualifier callee_return_qualifier entry_cutoff origins.
 
 (** This is the PICO call-boundary analogue of roDOT's call case for mutable
     reachability preservation: a capability-bearing callee formal is traced
@@ -88,7 +136,7 @@ Lemma boundary_entry_rdm_root_by_view :
     end.
 Proof.
   intros boundary root Hroot.
-  exact (boundary.(boundary_rdm_origins) root Hroot).
+  exact (boundary_rdm_origins boundary root Hroot).
 Qed.
 
 Definition watched_frame_colors
@@ -119,8 +167,8 @@ Proof.
   destruct (safe_call_callee_rdm_root_origin CT sGamma mt rGamma h x m y
     args sGamma' vals ly cy runtime_mdef root Hwf Htyping Hscope
     Hreceiver_value Hbase Hfind Hargs Hroot) as
-    [[Ty' [Hreceiver_type' [Hview Hcaller_root]]] |
-     [Ty' [Hreceiver_type' [Hreadonly Hroot_receiver]]]].
+    [Ty' [Hreceiver_type' [[Hview Hcaller_root] |
+      [Hro [Hrooteq Hro_root]]]]].
   - rewrite Hreceiver_type in Hreceiver_type'.
     injection Hreceiver_type' as <-.
     destruct Hview as [Hmut | [Himm | Hrdm]].
@@ -129,9 +177,8 @@ Proof.
     + rewrite Hrdm in Hcaller_root |- *. exact Hcaller_root.
   - rewrite Hreceiver_type in Hreceiver_type'.
     injection Hreceiver_type' as <-.
-    rewrite Hreadonly. exists ly. split; [reflexivity|]. split.
-    + exact Hroot_receiver.
-    + subst root. exists y, Ty. repeat split; assumption.
+    rewrite Hro. exists ly. split; [reflexivity|].
+    split; [exact Hrooteq | exact Hro_root].
 Qed.
 
 Lemma rdm_roots_descend_after_assignment :
