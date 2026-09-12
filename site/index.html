@@ -17,6 +17,7 @@
         abstract, and class polymorphic immutability.
       </p>
       <nav class="links" aria-label="Project links">
+        <a href="https://github.com/aosen-xiong/pico-rocq">Source repository</a>
         <a href="proofs/index.html">Proof documentation</a>
         <a href="#claims">Claim map</a>
         <a href="#build">Build instructions</a>
@@ -57,7 +58,7 @@
             </tr>
             <tr>
               <td>Viewpoint adaptation</td>
-              <td><code>vpa_mutability_tt_abs_imm</code>, <code>vpa_assignability</code></td>
+              <td><code>vpa_mutability_tt_abstract_state</code>, <code>vpa_assignability</code></td>
               <td><a href="proofs/ViewpointAdaptation.html">ViewpointAdaptation.v</a></td>
             </tr>
             <tr>
@@ -71,24 +72,34 @@
               <td><a href="proofs/Bigstep.html">Bigstep.v</a></td>
             </tr>
             <tr>
-              <td>Theorem 1: preservation</td>
-              <td><code>preservation_pico</code></td>
-              <td><a href="proofs/Preservation.html">Preservation.v</a></td>
+              <td>Theorem 1: preservation and mutation safety</td>
+              <td><code>preservation_pico</code>, <code>well_typed_no_mutation_exp</code></td>
+              <td><a href="proofs/Preservation.html">Preservation.v</a>, <a href="proofs/WFNOMutationEXP.html">WFNOMutationEXP.v</a></td>
             </tr>
             <tr>
-              <td>Theorems 2 and 3: abstract immutability</td>
-              <td><code>shallow_immutability_pico</code>, <code>deep_immutability_pico</code></td>
-              <td><a href="proofs/DeepImmutability.html">DeepImmutability.v</a></td>
+              <td>Theorem 2: shallow abstract immutability</td>
+              <td><code>shallow_abstract_immutability</code></td>
+              <td><a href="proofs/AbstractStatePreservation.html">AbstractStatePreservation.v</a></td>
             </tr>
             <tr>
-              <td>Theorem 4: safe readonly</td>
-              <td><code>readonly_method_call_preserves_arguments</code></td>
-              <td><a href="proofs/ReadonlySafety.html">ReadonlySafety.v</a></td>
+              <td>Theorem 3 (AS clause): abstract-state preservation</td>
+              <td><code>abstract_state_preservation</code></td>
+              <td><a href="proofs/AbstractStatePreservation.html">AbstractStatePreservation.v</a></td>
             </tr>
             <tr>
-              <td>Theorem 5: concrete immutability</td>
-              <td><code>ConcreteImmutability</code></td>
-              <td><a href="proofs/ConcreteImmutability.html">ConcreteImmutability.v</a></td>
+              <td>Theorem 3 (CS clause): concrete-state preservation</td>
+              <td><code>concrete_state_preservation</code></td>
+              <td><a href="proofs/ConcreteStatePreservation.html">ConcreteStatePreservation.v</a></td>
+            </tr>
+            <tr>
+              <td>Theorem 4 (RS clause): readonly-state preservation</td>
+              <td><code>readonly_state_preservation</code></td>
+              <td><a href="proofs/ReadonlyStatePreservation.html">ReadonlyStatePreservation.v</a></td>
+            </tr>
+            <tr>
+              <td>Theorem 4 (TS clause): transitive-state preservation</td>
+              <td><code>transitive_state_preservation</code></td>
+              <td><a href="proofs/TransitiveStatePreservation.html">TransitiveStatePreservation.v</a></td>
             </tr>
           </tbody>
         </table>
