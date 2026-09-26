@@ -2,6 +2,7 @@ From Stdlib Require Import List Lia.
 Import ListNotations.
 
 Require Import Syntax Helpers Typing Subtyping Bigstep Properties Preservation.
+Require Import Reachability AbstractStatePreservation.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCacheTyping.
 
 (** * Abstract Noninterference for Derivation Methods
@@ -572,4 +573,313 @@ Proof.
   - (* null guard *)
     inversion Xrun2; subst; try congruence.
     repeat split; auto.
+Qed.
+
+(** ** Replaying a derivation in an agreeing heap
+
+    Noninterference compares two runs that both exist.  Stability also needs
+    the converse direction: a derivation run in one heap can be replayed, with
+    the same outcome and environment, in any heap that agrees on the public
+    abstract state. *)
+
+Lemma deriv_expr_simulation :
+  forall CT sΓ rΓ h1 h2 P e v r rΓ1 h1',
+    ts_expr_reads_only_stable CT sΓ e ->
+    wf_r_config CT sΓ rΓ h1 ->
+    abs_agree CT P h1 h2 ->
+    env_in P rΓ ->
+    eval_expr CT rΓ h1 e v r rΓ1 h1' ->
+    eval_expr CT rΓ h2 e v r rΓ h2.
+Proof.
+  intros CT sΓ rΓ h1 h2 P e v r rΓ1 h1' Hexpr Hwf Hagree Hpub Heval.
+  destruct Hexpr; inversion Heval; subst.
+  - constructor.
+  - constructor. assumption.
+  - constructor.
+  - have Hv := Hpub x v0 Hval.
+    destruct (Hagree v0 Hv) as (rt & fs1 & fs2 & Hobj1 & Hobj2 & Hfields).
+    rewrite Hobj1 in Hobj. injection Hobj as <-.
+    have Hsub : class_subtype CT (rctype rt) C.
+    { eapply runtime_value_class_subtype;
+        [exact Hwf | exact Hget_x | exact Href | exact Hval |].
+      unfold r_basetype. rewrite Hobj1. reflexivity. }
+    destruct (Hfields f (abstract_field_subtype CT (rctype rt) C f Hsub
+      Hstable)) as [Heq _].
+    eapply EBS_Field; [exact Hval | exact Hobj2 |].
+    simpl in Hfield |- *. rewrite <- Heq. exact Hfield.
+  - apply EBS_Field_NPE. assumption.
+Qed.
+
+Theorem derivation_simulation :
+  forall CT D,
+    derivation_table CT D ->
+    forall rΓ h1 s r rΓ1 h1',
+      eval_stmt CT rΓ h1 s r rΓ1 h1' ->
+      forall sΓ mt sΓ' h2 P,
+        deriv_stmt CT D sΓ s sΓ' ->
+        stmt_typing CT sΓ mt s sΓ' ->
+        wf_r_config CT sΓ rΓ h1 ->
+        abs_agree CT P h1 h2 ->
+        env_in P rΓ ->
+        h1' = h1 /\ eval_stmt CT rΓ h2 s r rΓ1 h2 /\ env_in P rΓ1.
+Proof.
+  intros CT D Htable rΓ h1 s r rΓ1 h1' Hrun.
+  induction Hrun;
+    intros sΓ mt sΓ_out h2 P Xderiv Xtyp Xwf Xagree Xpub;
+    inversion Xderiv; subst.
+  - (* skip *)
+    repeat split; [constructor | assumption].
+  - (* local declaration *)
+    repeat split.
+    + constructor. assumption.
+    + apply env_in_append_default. assumption.
+  - (* assignment *)
+    have Hsim : eval_expr CT rΓ h2 e v2 OK rΓ h2.
+    { eapply deriv_expr_simulation; eauto. }
+    edestruct deriv_expr_noninterference as (_ & _ & Hin);
+      [exact Hexpr | exact Xwf | exact Xagree | exact Xpub | exact Heval |
+       exact Hsim |].
+    repeat split.
+    + eapply SBS_Assign; eassumption.
+    + apply env_in_update; assumption.
+  - (* assignment raising NPE *)
+    repeat split; [| assumption].
+    eapply SBS_Assign_NPE; [eassumption |].
+    eapply deriv_expr_simulation; eauto.
+  (* Calls: the receiver is public, so the second heap dispatches to the same
+     method, whose body is replayed by induction. *)
+  - destruct Hfind as [Hfind_m Hbody_eq]. subst.
+    have Hly : P ly := Xpub y ly Hval_y.
+    have Hsub : class_subtype CT cy Cy :=
+      runtime_value_class_subtype CT _ rΓ h y Ty Cy ly cy
+        Xwf Hget_y Href Hval_y Hbase.
+    destruct (Htable mdef (Hdispatch cy mdef Hsub Hfind_m))
+      as [sΓd Hbody_deriv].
+    destruct (typed_call_has_wf_callee_frame CT _ _ rΓ h x m y zs _
+      vals ly cy mdef Xwf Xtyp Hval_y Hbase Hfind_m Hargs)
+      as [sΓt [Hbody_typ Hframe_wf]].
+    have Hsame := deriv_stmt_typing_env CT D _ _ _ _ _ Hbody_deriv Hbody_typ.
+    subst sΓd.
+    have Hframe_pub := env_in_call_frame P rΓ zs vals ly Xpub Hly Hargs.
+    destruct (IHHrun Htable _ _ _ h2 P Hbody_deriv Hbody_typ Hframe_wf Xagree
+      Hframe_pub) as (Hh & Hbody2 & Hpub_body).
+    subst.
+    repeat split.
+    + eapply SBS_Call; eauto.
+      rewrite (abs_agree_basetype _ _ _ _ ly Xagree Hly). exact Hbase.
+    + apply env_in_update; [assumption |].
+      intros l ->. exact (Hpub_body _ l Hretval).
+  - repeat split; [| assumption].
+    apply SBS_Call_NPE. assumption.
+  - destruct Hfind as [Hfind_m Hbody_eq]. subst.
+    have Hly : P ly := Xpub y ly Hval_y.
+    have Hsub : class_subtype CT cy Cy :=
+      runtime_value_class_subtype CT _ rΓ h y Ty Cy ly cy
+        Xwf Hget_y Href Hval_y Hbase.
+    destruct (Htable mdef (Hdispatch cy mdef Hsub Hfind_m))
+      as [sΓd Hbody_deriv].
+    destruct (typed_call_has_wf_callee_frame CT _ _ rΓ h x m y zs _
+      vals ly cy mdef Xwf Xtyp Hval_y Hbase Hfind_m Hargs)
+      as [sΓt [Hbody_typ Hframe_wf]].
+    have Hsame := deriv_stmt_typing_env CT D _ _ _ _ _ Hbody_deriv Hbody_typ.
+    subst sΓd.
+    have Hframe_pub := env_in_call_frame P rΓ zs vals ly Xpub Hly Hargs.
+    destruct (IHHrun Htable _ _ _ h2 P Hbody_deriv Hbody_typ Hframe_wf Xagree
+      Hframe_pub) as (Hh & Hbody2 & Hpub_body).
+    subst.
+    repeat split; [| assumption].
+    eapply SBS_Call_NPE_Body; eauto.
+    rewrite (abs_agree_basetype _ _ _ _ ly Xagree Hly). exact Hbase.
+  - destruct Hfind as [Hfind_m Hbody_eq]. subst.
+    have Hly : P ly := Xpub y ly Hval_y.
+    have Hsub : class_subtype CT cy Cy :=
+      runtime_value_class_subtype CT _ rΓ h y Ty Cy ly cy
+        Xwf Hget_y Href Hval_y Hbase.
+    destruct (Htable mdef (Hdispatch cy mdef Hsub Hfind_m))
+      as [sΓd Hbody_deriv].
+    destruct (typed_call_has_wf_callee_frame CT _ _ rΓ h x m y zs _
+      vals ly cy mdef Xwf Xtyp Hval_y Hbase Hfind_m Hargs)
+      as [sΓt [Hbody_typ Hframe_wf]].
+    have Hsame := deriv_stmt_typing_env CT D _ _ _ _ _ Hbody_deriv Hbody_typ.
+    subst sΓd.
+    have Hframe_pub := env_in_call_frame P rΓ zs vals ly Xpub Hly Hargs.
+    destruct (IHHrun Htable _ _ _ h2 P Hbody_deriv Hbody_typ Hframe_wf Xagree
+      Hframe_pub) as (Hh & Hbody2 & Hpub_body).
+    subst.
+    repeat split; [| assumption].
+    eapply SBS_Call_MUTATIONEXP_Body; eauto.
+    rewrite (abs_agree_basetype _ _ _ _ ly Xagree Hly). exact Hbase.
+  (* Sequences *)
+  - inversion Xtyp; subst.
+    have Hmid := deriv_stmt_typing_env CT D _ _ _ _ _ Hderiv1 Htype1. subst.
+    destruct (IHHrun1 Htable _ _ _ h2 P Hderiv1 Htype1 Xwf Xagree Xpub)
+      as (Hh1 & Hrun1' & Hpub1).
+    subst.
+    have Hmid_wf := preservation_pico CT _ _ _ _ _ _ _ _ Xwf Htype1 Hrun1.
+    destruct (IHHrun2 Htable _ _ _ h2 P Hderiv2 Htype2 Hmid_wf Xagree Hpub1)
+      as (Hh2 & Hrun2' & Hpub2).
+    subst.
+    repeat split; [| assumption].
+    eapply SBS_Seq; eassumption.
+  - inversion Xtyp; subst.
+    have Hmid := deriv_stmt_typing_env CT D _ _ _ _ _ Hderiv1 Htype1. subst.
+    destruct (IHHrun Htable _ _ _ h2 P Hderiv1 Htype1 Xwf Xagree Xpub)
+      as (Hh1 & Hrun1' & Hpub1).
+    subst.
+    repeat split; [| assumption].
+    apply SBS_Seq_NPE_first. assumption.
+  - inversion Xtyp; subst.
+    have Hmid := deriv_stmt_typing_env CT D _ _ _ _ _ Hderiv1 Htype1. subst.
+    destruct (IHHrun1 Htable _ _ _ h2 P Hderiv1 Htype1 Xwf Xagree Xpub)
+      as (Hh1 & Hrun1' & Hpub1).
+    subst.
+    have Hmid_wf := preservation_pico CT _ _ _ _ _ _ _ _ Xwf Htype1 Hrun1.
+    destruct (IHHrun2 Htable _ _ _ h2 P Hderiv2 Htype2 Hmid_wf Xagree Hpub1)
+      as (Hh2 & Hrun2' & Hpub2).
+    subst.
+    repeat split; [| assumption].
+    eapply SBS_Seq_NPE_second; eassumption.
+  - inversion Xtyp; subst.
+    have Hmid := deriv_stmt_typing_env CT D _ _ _ _ _ Hderiv1 Htype1. subst.
+    destruct (IHHrun Htable _ _ _ h2 P Hderiv1 Htype1 Xwf Xagree Xpub)
+      as (Hh1 & Hrun1' & Hpub1).
+    subst.
+    repeat split; [| assumption].
+    apply SBS_Seq_MUTATIONEXP_first. assumption.
+  - inversion Xtyp; subst.
+    have Hmid := deriv_stmt_typing_env CT D _ _ _ _ _ Hderiv1 Htype1. subst.
+    destruct (IHHrun1 Htable _ _ _ h2 P Hderiv1 Htype1 Xwf Xagree Xpub)
+      as (Hh1 & Hrun1' & Hpub1).
+    subst.
+    have Hmid_wf := preservation_pico CT _ _ _ _ _ _ _ _ Xwf Htype1 Hrun1.
+    destruct (IHHrun2 Htable _ _ _ h2 P Hderiv2 Htype2 Hmid_wf Xagree Hpub1)
+      as (Hh2 & Hrun2' & Hpub2).
+    subst.
+    repeat split; [| assumption].
+    eapply SBS_Seq_MUTATIONEXP_second; eassumption.
+  (* Zero tests *)
+  - inversion Xtyp; subst.
+    edestruct (IHHrun Htable) as (Hh & Hrun' & Hpub');
+      [exact Hzero | eassumption | exact Xwf | exact Xagree | exact Xpub |].
+    subst.
+    repeat split; [| assumption].
+    eapply SBS_IfZero; eassumption.
+  - inversion Xtyp; subst.
+    edestruct (IHHrun Htable) as (Hh & Hrun' & Hpub');
+      [exact Hnonzero | eassumption | exact Xwf | exact Xagree | exact Xpub |].
+    subst.
+    repeat split; [| assumption].
+    eapply SBS_IfNonzero; eassumption.
+  - repeat split; [| assumption].
+    apply SBS_IfZero_NPE. assumption.
+Qed.
+
+(** ** Stability of the abstract state
+
+    PICO's abstract-state preservation theorem says a well-typed statement
+    never changes the non-[Assign] fields of objects reachable through
+    abstract state from an immutable root.  In the vocabulary of this file:
+    the heap before and after the statement agree on that reachable set. *)
+
+Lemma wf_heap_field_location_dom :
+  forall CT h l o f l',
+    wf_heap CT h ->
+    runtime_getObj h l = Some o ->
+    nth_error (fields_map o) f = Some (Iot l') ->
+    l' < dom h.
+Proof.
+  intros CT h l o f l' Hheap Hobj Hfield.
+  have Hdom := runtime_getObj_dom l o h Hobj.
+  have Hwf := Hheap l Hdom.
+  unfold wf_obj in Hwf. rewrite Hobj in Hwf.
+  destruct Hwf as [_ [field_defs [_ [Hlen Hfields]]]].
+  assert (Hf : f < length field_defs).
+  { rewrite <- Hlen. apply nth_error_Some. rewrite Hfield. discriminate. }
+  destruct (nth_error_Some_exists field_defs f Hf) as [fdef Hfdef].
+  have Hentry := Forall2_nth_error _ _ _ _ _ _ Hfields Hfield Hfdef.
+  simpl in Hentry.
+  destruct (runtime_getObj h l') as [o'|] eqn:Hl'; [|contradiction].
+  exact (runtime_getObj_dom l' o' h Hl').
+Qed.
+
+Lemma reachable_abs_target_dom :
+  forall CT h l0 l1,
+    reachable_abs CT h l0 l1 ->
+    l1 < dom h.
+Proof.
+  intros CT h l0 l1 Hreach.
+  induction Hreach; assumption.
+Qed.
+
+Theorem abstract_state_agreement_preserved :
+  forall CT sΓ mt rΓ h s rΓ' h' sΓ' root C0 vals0,
+    runtime_getObj h root = Some (mkObj (mkruntime_type Imm_r C0) vals0) ->
+    wf_r_config CT sΓ rΓ h ->
+    stmt_typing CT sΓ mt s sΓ' ->
+    eval_stmt CT rΓ h s OK rΓ' h' ->
+    abs_agree CT (reachable_abs CT h root) h h'.
+Proof.
+  intros CT sΓ mt rΓ h s rΓ' h' sΓ' root C0 vals0 Hroot Hwf Htyping Heval
+    l Hreach.
+  have Hdom := reachable_abs_target_dom CT h root l Hreach.
+  destruct (runtime_getObj_Some h l Hdom) as [rt [fs1 Hobj1]].
+  destruct rt as [qr C].
+  destruct (runtime_preserves_r_type_heap CT rΓ h l (mkruntime_type qr C) h'
+    fs1 s rΓ' Hobj1 Heval) as [fs2 Hobj2].
+  exists (mkruntime_type qr C), fs1, fs2.
+  split; [exact Hobj1 |].
+  split; [exact Hobj2 |].
+  intros f [Hmut Hassign].
+  simpl in Hmut, Hassign.
+  split.
+  - unfold getVal.
+    eapply abstract_state_preservation_with_end;
+      [exact Hroot | exact Hreach | exact Hwf | exact Htyping | exact Heval |
+       exact Hobj1 | exact Hobj2 |].
+    destruct Hassign as [Hrda | Hfinal]; [right | left]; assumption.
+  - intros l' Hl'.
+    have Hheap : wf_heap CT h by (destruct Hwf as [_ [Hheap _]]; exact Hheap).
+    eapply reachable_abs_trans; [exact Hreach |].
+    eapply reachable_abs_step;
+      [| exact Hobj1 | exact Hl' | exact Hmut | exact Hassign].
+    eapply wf_heap_field_location_dom; [exact Hheap | exact Hobj1 | exact Hl'].
+Qed.
+
+(** ** Stability of derived values
+
+    A derivation that reads only the abstract state reachable from an
+    immutable root gives the same result after any well-typed statement as it
+    did before: it can be replayed in the later heap, and every run there
+    agrees with the earlier one.  So the set of valid cache values, which is
+    defined by the derivation's result, never changes. *)
+Corollary derivation_result_stable :
+  forall CT D sΓ mt rΓ h s rΓ' h' sΓ' root C0 vals0,
+    derivation_table CT D ->
+    runtime_getObj h root = Some (mkObj (mkruntime_type Imm_r C0) vals0) ->
+    wf_r_config CT sΓ rΓ h ->
+    stmt_typing CT sΓ mt s sΓ' ->
+    eval_stmt CT rΓ h s OK rΓ' h' ->
+    forall sΓd mtd sΓd' d rΓd rd rΓd' hd,
+      deriv_stmt CT D sΓd d sΓd' ->
+      stmt_typing CT sΓd mtd d sΓd' ->
+      wf_r_config CT sΓd rΓd h ->
+      env_in (reachable_abs CT h root) rΓd ->
+      eval_stmt CT rΓd h d rd rΓd' hd ->
+      eval_stmt CT rΓd h' d rd rΓd' h' /\
+      (forall rd2 rΓd2 hd2,
+        eval_stmt CT rΓd h' d rd2 rΓd2 hd2 ->
+        rd2 = rd /\ rΓd2 = rΓd').
+Proof.
+  intros CT D sΓ mt rΓ h s rΓ' h' sΓ' root C0 vals0 Htable Hroot Hwf Htyping
+    Heval sΓd mtd sΓd' d rΓd rd rΓd' hd Hderiv Hdtyp Hdwf Hpub Hrun.
+  have Hagree := abstract_state_agreement_preserved CT sΓ mt rΓ h s rΓ' h' sΓ'
+    root C0 vals0 Hroot Hwf Htyping Heval.
+  destruct (derivation_simulation CT D Htable rΓd h d rd rΓd' hd Hrun
+    sΓd mtd sΓd' h' _ Hderiv Hdtyp Hdwf Hagree Hpub) as (_ & Hrun' & _).
+  split; [exact Hrun' |].
+  intros rd2 rΓd2 hd2 Hrun2.
+  destruct (derivation_noninterference CT D Htable rΓd h d rd rΓd' hd Hrun
+    sΓd mtd sΓd' h' _ rd2 rΓd2 hd2 Hderiv Hdtyp Hdwf Hagree Hpub Hrun2)
+    as (Hr & Henv & _).
+  split; symmetry; assumption.
 Qed.
