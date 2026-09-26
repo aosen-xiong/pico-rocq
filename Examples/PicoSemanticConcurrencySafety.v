@@ -150,7 +150,7 @@ Definition pico_hash_thread_safe (control : pico_core_expr) : Prop :=
 
 Definition pico_hash_pool_inv (cfg : pico_pool_config) : Prop :=
   pico_hash_provider_inv pico_hash_concurrent_CT pico_hash_concurrent_receiver
-    pico_hash_witness_function pico_hash_concurrent_value
+    pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value
     (pool_state cfg) /\
   Forall pico_hash_thread_safe (pool_threads cfg).
 
@@ -158,7 +158,7 @@ Lemma pico_hash_initial_history_read_shape :
   forall state V v V',
     pico_hash_provider_inv pico_hash_concurrent_CT
       pico_hash_concurrent_receiver
-      pico_hash_witness_function pico_hash_concurrent_value state ->
+      pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value state ->
     @wm_read history_cache_memory_model (pcs_weak state) V
       (pico_hash_concurrent_receiver, hash_cache_field) v V' ->
     v = Int 0 \/ v = Int pico_hash_concurrent_value.
@@ -240,31 +240,35 @@ Qed.
 
 Lemma pico_hash_provider_receiver_class : forall state,
   pico_hash_provider_inv pico_hash_concurrent_CT pico_hash_concurrent_receiver
-    pico_hash_witness_function pico_hash_concurrent_value state ->
+    pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value state ->
   r_basetype (pcs_heap state) pico_hash_concurrent_receiver =
     Some pico_hash_witness_class.
 Proof.
-  intros [h sigma] [Hagree [Hrepr Hhist]].
-  destruct Hrepr as
-    [o [cache_value [abstract_values [rt
-      [Hobj [Hfields [Hhash [Htype Hdecl]]]]]]]].
-  destruct Hagree as [_ Htypes].
-  pose proof (Htypes pico_hash_concurrent_receiver o Hobj) as Htype_object.
-  rewrite Htype in Htype_object. inversion Htype_object; subst rt.
-  pose proof (pico_hash_concurrent_cache_owner_unique _ Hdecl) as Hclass.
-  unfold r_basetype. rewrite Hobj. simpl. rewrite Hclass. reflexivity.
+  intros [h sigma] (_ & (_ & _ & Habs & _) & _).
+  assert (Hdom : pico_hash_concurrent_receiver <
+      dom pico_hash_concurrent_initial_heap)
+    by (unfold pico_hash_concurrent_receiver, pico_hash_concurrent_initial_heap;
+        simpl; lia).
+  destruct (Habs pico_hash_concurrent_receiver
+    (Reachability.reachable_abs_heap _ _ _ Hdom))
+    as (rt & fs0 & fs & Hobj0 & Hobj & _).
+  unfold pico_hash_concurrent_initial_heap, pico_hash_concurrent_receiver,
+    pico_hash_witness_object, runtime_getObj in Hobj0.
+  simpl in Hobj0. inversion Hobj0; subst rt fs0.
+  unfold r_basetype. cbn [pcs_heap] in Hobj |- *.
+  rewrite Hobj. reflexivity.
 Qed.
 
 Theorem pico_hash_phase_step_preserves :
   forall phase state control' state',
     pico_hash_provider_inv pico_hash_concurrent_CT
       pico_hash_concurrent_receiver
-      pico_hash_witness_function pico_hash_concurrent_value state ->
+      pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value state ->
     @pico_core_step history_cache_memory_model pico_hash_concurrent_CT
       (pico_hash_phase_control phase) state control' state' ->
     pico_hash_provider_inv pico_hash_concurrent_CT
       pico_hash_concurrent_receiver
-      pico_hash_witness_function pico_hash_concurrent_value state' /\
+      pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value state' /\
     pico_hash_thread_safe control'.
 Proof.
   intros phase state control' state' Hinv Hstep.
@@ -465,7 +469,7 @@ Theorem pico_hash_pool_preserves_stable_abs : forall cfg,
       (pico_hash_cache_adapter pico_hash_concurrent_receiver)
       (pico_concrete_hash_semimm pico_hash_concurrent_CT
         pico_hash_concurrent_receiver
-        pico_hash_witness_function pico_hash_concurrent_value)
+        pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value)
       (pool_state cfg))
     pico_hash_concurrent_value.
 Proof.
@@ -477,7 +481,7 @@ Proof.
       (pico_hash_cache_adapter pico_hash_concurrent_receiver)
       (pico_concrete_hash_semimm pico_hash_concurrent_CT
         pico_hash_concurrent_receiver
-        pico_hash_witness_function pico_hash_concurrent_value)
+        pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value)
       (pool_state cfg) Hstate).
 Qed.
 
@@ -536,7 +540,7 @@ Theorem pico_two_hash_invocations_benign_race :
     pico_hash_concurrent_CT pico_hash_concurrent_initial_pool
     (pico_hash_provider_inv pico_hash_concurrent_CT
       pico_hash_concurrent_receiver
-      pico_hash_witness_function pico_hash_concurrent_value)
+      pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value)
     pico_hash_result_ok.
 Proof.
   split; [exact pico_two_hash_invocations_exhibit_race |].
@@ -559,7 +563,7 @@ Theorem pico_two_hash_invocations_semimm_benign_race :
       (pico_hash_cache_adapter pico_hash_concurrent_receiver)
       (pico_concrete_hash_semimm pico_hash_concurrent_CT
         pico_hash_concurrent_receiver
-        pico_hash_witness_function pico_hash_concurrent_value))
+        pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value))
     pico_hash_result_ok.
 Proof.
   exact pico_two_hash_invocations_benign_race.

@@ -121,7 +121,7 @@ Theorem pico_hash_published_plain_jam_benign_race :
         (pico_hash_cache_adapter pico_hash_concurrent_receiver)
         (pico_concrete_hash_semimm pico_hash_concurrent_CT
           pico_hash_concurrent_receiver
-          pico_hash_witness_function pico_hash_concurrent_value))
+          pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value))
       pico_hash_result_ok /\
   pico_hash_race_access_schedule /\
   pico_jam_realization pico_hash_race_accesses pico_hash_jam_execution /\

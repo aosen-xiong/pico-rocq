@@ -206,44 +206,10 @@ Qed.
 
 Theorem pico_hash_source_allocation_establishes_provider_inv :
   pico_hash_provider_inv pico_hash_concurrent_CT pico_hash_concurrent_receiver
-    pico_hash_witness_function pico_hash_concurrent_value
+    pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value
     pico_hash_allocation_post_state.
 Proof.
-  unfold pico_hash_provider_inv, pico_hash_allocation_post_state,
-    pico_hash_allocation_pre_state.
-  split.
-  - change (heap_wm_type_agree
-      ([pico_hash_allocation_root_object] ++ [pico_hash_witness_object])
-      (pico_core_alloc_weak
-        (pico_core_alloc_weak empty_wm_state
-          pico_hash_allocation_root_object 0)
-        pico_hash_witness_object 0)).
-    apply heap_wm_type_agree_alloc.
-    change (heap_wm_type_agree
-      ([] ++ [pico_hash_allocation_root_object])
-      (pico_core_alloc_weak empty_wm_state
-        pico_hash_allocation_root_object 0)).
-    apply heap_wm_type_agree_alloc.
-    split; [reflexivity |].
-    intros loc object Hobject.
-    destruct loc; discriminate.
-  - split.
-    + exists pico_hash_witness_object, (Int 0),
-        [Int pico_hash_concurrent_value],
-        (rt_type pico_hash_witness_object).
-      split; [reflexivity |].
-      split; [reflexivity |].
-      split.
-      * unfold pico_hash_witness_function, pico_hash_concurrent_value.
-        reflexivity.
-      * split; [reflexivity | exact pico_hash_source_cache_declared].
-    + intros [] value Hin.
-      unfold pico_hash_snapshot, values_written_to, history_of,
-        pico_core_alloc_weak, pico_hash_allocation_root_object,
-        pico_hash_witness_object, empty_wm_state in Hin.
-      simpl in Hin.
-      destruct Hin as [<- | []].
-      unfold hash_cache_valid. left. reflexivity.
+  exact pico_hash_concurrent_initial_provider_inv.
 Qed.
 
 Theorem pico_hash_source_construction_establishes_observer_stable_abs :
@@ -267,7 +233,7 @@ Theorem pico_hash_source_construction_publication_ready :
     pico_hash_concurrent_CT [1]
     pico_hash_before_source_new pico_hash_after_source_new /\
   pico_hash_provider_inv pico_hash_concurrent_CT pico_hash_concurrent_receiver
-    pico_hash_witness_function pico_hash_concurrent_value
+    pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value
     pico_hash_allocation_post_state /\
   pico_observer_stable_abs
     pico_hash_concurrent_CT pico_hash_witness_class [1]
@@ -308,7 +274,7 @@ Theorem pico_hash_source_constructed_plain_jam_benign_race :
         (pico_hash_cache_adapter pico_hash_concurrent_receiver)
         (pico_concrete_hash_semimm pico_hash_concurrent_CT
           pico_hash_concurrent_receiver
-          pico_hash_witness_function pico_hash_concurrent_value))
+          pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value))
       pico_hash_result_ok /\
   pico_hash_race_access_schedule /\
   pico_jam_realization pico_hash_race_accesses pico_hash_jam_execution /\

@@ -190,6 +190,21 @@ publication witness, and JAM events are all indexed by that same receiver.
 composition by placing lifecycle and access events in one ordered execution;
 its projections recover final publication and the existing legal JAM race.
 
+The concrete hash provider's abstract hash is defined by a PICO derivation
+method, not a Rocq function on field values. `pico_hash_provider_inv` fixes a
+reference heap in which the method returns the hash on the receiver. It then
+requires every later heap to agree with that reference heap on the receiver's
+abstract footprint (`abs_agree` over `reachable_abs`). Unrelated writes, cache
+writes and allocation preserve this agreement.
+`pico_concrete_hash_provider_represents_heap` shows that the method still
+returns exactly the hash in every provider state.
+`pico_concrete_hash_cache_valid_is_derivation_value` shows that the Iris hash
+protocol's valid values are exactly the derivation-defined ones
+(`derivation_cache_value`). The witness method `pico_hash_derive_method_def`
+reads the final payload field. The cached hash method's compute step is still
+the literal `EInt 7`; the derivation justifies that literal but is not called
+by it.
+
 `pico_heap_hash_api_call_wpI` additionally assumes source call typing, method
 lookup, closed dispatch, a typed caller/state, and the verified computation
 contract before constructing the singleton semantic environment.

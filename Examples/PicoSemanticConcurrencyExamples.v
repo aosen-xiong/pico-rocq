@@ -9,6 +9,8 @@ Require Import Examples.PicoIfZeroCacheExamples
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
   PICOBridge.PicoIrisSemImmLogicalRelation PICOBridge.PicoSemanticConcurrency
   PICOBridge.PicoStableAbsPreservation.
+Require Import PICOBridge.PicoDerivationNoninterference
+  PICOBridge.PicoDerivationCache.
 
 (** * A Closed Concurrent Hash-Cache Execution
 
@@ -32,7 +34,8 @@ Definition pico_hash_concurrent_class_def : class_def :=
        {| fields :=
             [pico_hash_witness_cache_def; pico_hash_witness_payload_def];
           constructor := pico_hash_witness_constructor;
-          methods := [pico_hash_concurrent_method_def] |} |}.
+          methods :=
+            [pico_hash_concurrent_method_def; pico_hash_derive_method_def] |} |}.
 
 Definition pico_hash_concurrent_CT : class_table :=
   [pico_hash_witness_root_def; pico_hash_concurrent_class_def].
@@ -60,7 +63,8 @@ Lemma pico_hash_concurrent_find_method :
 Proof.
   eapply FOM_Here with
     (def := pico_hash_concurrent_class_def)
-    (own_methods := [pico_hash_concurrent_method_def]).
+    (own_methods :=
+      [pico_hash_concurrent_method_def; pico_hash_derive_method_def]).
   - reflexivity.
   - reflexivity.
   - reflexivity.
@@ -313,6 +317,27 @@ Proof.
       simpl in Hsuper0. discriminate.
 Qed.
 
+Lemma pico_hash_concurrent_derive_wf :
+  wf_method pico_hash_concurrent_CT pico_hash_witness_class
+    pico_hash_derive_method_def.
+Proof.
+  apply pico_hash_derive_method_wf.
+  - apply pico_hash_derive_method_typing.
+    + exact pico_hash_concurrent_wf_env1.
+    + exact pico_hash_concurrent_wf_env2.
+    + exact pico_hash_concurrent_payload_field_def.
+  - intros parent_def parent mdef_parent qc Hclass Hsuper Hbound Hfind.
+    simpl in Hclass. inversion Hclass; subst parent_def.
+    simpl in Hsuper. inversion Hsuper; subst parent.
+    inversion Hfind; subst.
+    + simpl in Hfind0. inversion Hfind0; subst def.
+      unfold pico_hash_witness_root_def in Hget_method.
+      simpl in Hget_method. discriminate.
+    + simpl in Hfind0. inversion Hfind0; subst def.
+      unfold pico_hash_witness_root_def in Hsuper0.
+      simpl in Hsuper0. discriminate.
+Qed.
+
 Lemma pico_hash_concurrent_class_table_wf :
   wf_class_table pico_hash_concurrent_CT.
 Proof.
@@ -351,9 +376,12 @@ Proof.
                                  [reflexivity | discriminate].
                           **** constructor.
            ++ split.
-              ** constructor; [exact pico_hash_concurrent_method_wf | constructor].
+              ** constructor; [exact pico_hash_concurrent_method_wf |].
+                 constructor; [exact pico_hash_concurrent_derive_wf | constructor].
               ** split.
-                 --- constructor; [simpl; tauto | constructor].
+                 --- constructor.
+                     +++ simpl. intros [Heq | []]. discriminate.
+                     +++ constructor; [simpl; tauto | constructor].
                  --- exists
                       [pico_hash_witness_cache_def;
                        pico_hash_witness_payload_def].
@@ -386,16 +414,129 @@ Proof.
   split; [exact pico_hash_concurrent_cache_field_def | reflexivity].
 Qed.
 
+Lemma pico_hash_concurrent_find_derive :
+  FindMethodWithName pico_hash_concurrent_CT pico_hash_witness_class
+    pico_hash_derive_method pico_hash_derive_method_def.
+Proof.
+  eapply FOM_Here with
+    (def := pico_hash_concurrent_class_def)
+    (own_methods :=
+      [pico_hash_concurrent_method_def; pico_hash_derive_method_def]).
+  - reflexivity.
+  - reflexivity.
+  - reflexivity.
+Qed.
+
+Lemma pico_hash_concurrent_derivation_table :
+  derivation_table pico_hash_concurrent_CT pico_hash_derivations.
+Proof.
+  exact (pico_hash_derivation_table pico_hash_concurrent_CT
+    pico_hash_concurrent_payload_field_def).
+Qed.
+
+Lemma pico_hash_concurrent_heap_wf :
+  wf_heap pico_hash_concurrent_CT pico_hash_concurrent_initial_heap.
+Proof.
+  unfold wf_heap. intros loc Hloc.
+  unfold pico_hash_concurrent_initial_heap in Hloc. simpl in Hloc.
+  destruct loc as [| [| loc]]; [| | lia].
+  - unfold wf_obj, runtime_getObj, pico_hash_concurrent_initial_heap,
+      pico_hash_concurrent_owner. simpl.
+    split.
+    + unfold wf_rtypeuse, bound. simpl.
+      split; [unfold pico_hash_witness_root, pico_hash_concurrent_CT; simpl; lia
+             | trivial].
+    + exists (@nil field_def). split.
+      * eapply CF_Object with (def := pico_hash_witness_root_def);
+          reflexivity.
+      * split; [reflexivity | constructor].
+  - unfold wf_obj, runtime_getObj, pico_hash_concurrent_initial_heap,
+      pico_hash_witness_object. simpl.
+    split.
+    + unfold wf_rtypeuse, bound. simpl.
+      split; [unfold pico_hash_witness_class, pico_hash_concurrent_CT; simpl; lia
+             | trivial].
+    + exists [pico_hash_witness_cache_def; pico_hash_witness_payload_def].
+      split; [exact pico_hash_concurrent_collect_fields |].
+      split; [reflexivity |].
+      repeat constructor; reflexivity.
+Qed.
+
+Lemma pico_hash_concurrent_config_wf :
+  wf_r_config pico_hash_concurrent_CT [pico_hash_witness_receiver_type]
+    (mkr_env [Iot pico_hash_concurrent_receiver])
+    pico_hash_concurrent_initial_heap.
+Proof.
+  unfold wf_r_config.
+  split; [exact pico_hash_concurrent_class_table_wf |].
+  split; [exact pico_hash_concurrent_heap_wf |].
+  split.
+  - unfold wf_renv, pico_hash_concurrent_initial_heap,
+      pico_hash_concurrent_receiver. simpl.
+    split; [lia |]. split.
+    + exists 1. split; reflexivity || lia.
+    + constructor; [simpl; trivial | constructor].
+  - split.
+    + exact pico_hash_concurrent_wf_env1.
+    + split; [reflexivity |].
+      intros receiver qcontext Hreceiver Hmut i Hi T Htype.
+      simpl in Hreceiver. inversion Hreceiver; subst receiver.
+      unfold pico_hash_concurrent_initial_heap, pico_hash_witness_object,
+        r_muttype, runtime_getObj in Hmut. simpl in Hmut.
+      inversion Hmut; subst qcontext.
+      destruct i; [|simpl in Hi; lia].
+      simpl in Htype. inversion Htype; subst T. simpl.
+      unfold wf_r_typable, r_type, pico_hash_concurrent_initial_heap,
+        pico_hash_witness_object, runtime_getObj. simpl.
+      split.
+      * apply base_ref. apply class_refl.
+        unfold pico_hash_witness_class. simpl. lia.
+      * trivial.
+Qed.
+
+Lemma pico_hash_concurrent_ready :
+  derivation_ready pico_hash_concurrent_CT pico_hash_derivations
+    pico_hash_derive_method pico_hash_concurrent_initial_heap
+    pico_hash_concurrent_receiver.
+Proof.
+  exists pico_hash_witness_class, pico_hash_derive_method_def.
+  split; [reflexivity |].
+  split; [exact pico_hash_concurrent_find_derive |].
+  split; [reflexivity |].
+  split; [reflexivity |].
+  exact pico_hash_concurrent_config_wf.
+Qed.
+
+(** The PICO derivation method returns the concurrent example's hash. *)
+Lemma pico_hash_concurrent_derived :
+  derived_by pico_hash_concurrent_CT pico_hash_derive_method
+    pico_hash_concurrent_initial_heap pico_hash_concurrent_receiver
+    (Int pico_hash_concurrent_value).
+Proof.
+  eapply pico_hash_derive_by with
+    (rt := mkruntime_type Imm_r pico_hash_witness_class) (c := Int 0).
+  - reflexivity.
+  - exact pico_hash_concurrent_find_derive.
+Qed.
+
 Theorem pico_hash_concurrent_initial_provider_inv :
   pico_hash_provider_inv pico_hash_concurrent_CT pico_hash_concurrent_receiver
-    pico_hash_witness_function pico_hash_concurrent_value
+    pico_hash_derive_method pico_hash_concurrent_initial_heap
+    pico_hash_concurrent_value
     pico_hash_concurrent_initial_state.
 Proof.
-  unfold pico_hash_provider_inv, pico_hash_concurrent_receiver,
-    pico_hash_concurrent_initial_state, pico_hash_concurrent_initial_heap,
-    pico_hash_concurrent_initial_weak.
-  split.
-  - change (heap_wm_type_agree
+  unfold pico_hash_concurrent_initial_state.
+  apply (pico_hash_provider_inv_at_reference pico_hash_concurrent_CT
+    pico_hash_derivations).
+  - exact pico_hash_concurrent_derivation_table.
+  - exact pico_hash_concurrent_ready.
+  - exact pico_hash_concurrent_derived.
+  - exists (rt_type pico_hash_witness_object),
+      (fields_map pico_hash_witness_object).
+    split; [reflexivity | exact pico_hash_concurrent_cache_declared].
+  - unfold pico_hash_concurrent_initial_heap,
+      pico_hash_concurrent_initial_weak.
+    change (heap_wm_type_agree
       ([pico_hash_concurrent_owner] ++ [pico_hash_witness_object])
       (pico_core_alloc_weak
         (pico_core_alloc_weak empty_wm_state pico_hash_concurrent_owner 0)
@@ -407,19 +548,14 @@ Proof.
     apply heap_wm_type_agree_alloc.
     split; [reflexivity |].
     intros loc object Hobject. destruct loc; discriminate.
-  - split.
-    + exists pico_hash_witness_object, (Int 0), [Int 7],
-        (rt_type pico_hash_witness_object).
-      split; [reflexivity |].
-      split; [reflexivity |].
-      split; [reflexivity |].
-      split; [reflexivity | exact pico_hash_concurrent_cache_declared].
-    + intros [] value Hin.
-      unfold pico_hash_snapshot, values_written_to, history_of,
-        pico_core_alloc_weak, pico_hash_concurrent_owner,
-        pico_hash_witness_object, empty_wm_state in Hin.
-      simpl in Hin. destruct Hin as [<- | []].
-      unfold hash_cache_valid. left. reflexivity.
+  - intros [] value Hin.
+    unfold pico_hash_snapshot, values_written_to, history_of,
+      pico_hash_concurrent_initial_heap, pico_hash_concurrent_initial_weak,
+      pico_hash_concurrent_receiver,
+      pico_core_alloc_weak, pico_hash_concurrent_owner,
+      pico_hash_witness_object, empty_wm_state in Hin.
+    simpl in Hin. destruct Hin as [<- | []].
+    unfold hash_cache_valid. left. reflexivity.
 Qed.
 
 Lemma pico_hash_concurrent_valid_value :
@@ -436,7 +572,7 @@ Theorem pico_hash_concurrent_valid_write_preserves_provider :
   forall h h' sigma sigma' V V',
     pico_hash_provider_inv pico_hash_concurrent_CT
       pico_hash_concurrent_receiver
-      pico_hash_witness_function pico_hash_concurrent_value
+      pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value
       (mkPicoCoreState h sigma) ->
     h' = update_field h pico_hash_concurrent_receiver hash_cache_field
       (Int pico_hash_concurrent_value) ->
@@ -445,7 +581,7 @@ Theorem pico_hash_concurrent_valid_write_preserves_provider :
       (Int pico_hash_concurrent_value) ->
     pico_hash_provider_inv pico_hash_concurrent_CT
       pico_hash_concurrent_receiver
-      pico_hash_witness_function pico_hash_concurrent_value
+      pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value
       (mkPicoCoreState h' sigma').
 Proof.
   intros h h' sigma sigma' V V' Hinv Hheap Hwrite.
@@ -455,7 +591,7 @@ Proof.
     (pico_hash_cache_adapter pico_hash_concurrent_receiver)
     (pico_concrete_hash_semimm pico_hash_concurrent_CT
       pico_hash_concurrent_receiver
-      pico_hash_witness_function pico_hash_concurrent_value)
+      pico_hash_derive_method pico_hash_concurrent_initial_heap pico_hash_concurrent_value)
     h h' sigma sigma' V V' pico_hash_concurrent_receiver hash_cache_field
     (Int pico_hash_concurrent_value) HashField
     (Int pico_hash_concurrent_value)

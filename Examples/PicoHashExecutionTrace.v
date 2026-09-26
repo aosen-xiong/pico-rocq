@@ -681,7 +681,7 @@ Theorem pico_hash_witness_double_read_callable_uninhabited :
         (pico_core_semimm_worldI hash_cache_protocol
           pico_hash_stable_abs 7 (pico_hash_cache_adapter 0)
           (pico_concrete_hash_semimm pico_hash_witness_CT 0
-            pico_hash_witness_function 7))
+            pico_hash_derive_method pico_hash_witness_initial_heap 7))
         (pico_hash_method_contract 7)
         (pico_double_read_hash_method_def
           pico_hash_witness_receiver_type 0 7)) ->
@@ -692,7 +692,7 @@ Proof.
     history_cache_memory_model history_cache_memory_model_progress
     pico_hash_witness_CT (pico_hash_cache_adapter 0) 7
     (pico_concrete_hash_semimm pico_hash_witness_CT 0
-      pico_hash_witness_function 7)
+      pico_hash_derive_method pico_hash_witness_initial_heap 7)
     pico_hash_witness_receiver_type 0
     pico_hash_witness_bad_heap pico_hash_witness_bad_weak 0
     0 0 0 Sigma Hpre Hcache).
