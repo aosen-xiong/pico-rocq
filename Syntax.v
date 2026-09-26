@@ -191,6 +191,17 @@ Proof.
   intros T l. unfold default_value. destruct (sbase T); discriminate.
 Qed.
 
+(** Close a goal whose context equates a default value with a location. *)
+Ltac default_not_location :=
+  match goal with
+  | H : Some (default_value ?T) = Some (Iot ?l) |- _ =>
+      exfalso; injection H as H; exact (default_value_not_location T l H)
+  | H : default_value ?T = Iot ?l |- _ =>
+      exfalso; exact (default_value_not_location T l H)
+  | H : Some (Iot ?l) = Some (default_value ?T) |- _ =>
+      exfalso; injection H as H; exact (default_value_not_location T l (eq_sym H))
+  end.
+
 (** Variable Mapping *)
 Definition var_mapping   := list value.
 

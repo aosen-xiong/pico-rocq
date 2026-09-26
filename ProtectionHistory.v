@@ -141,16 +141,17 @@ Proof.
   eapply safe_call_callee_mut_variable_origin; eauto.
 Qed.
 
-Lemma appended_null_nonnull_lookup_is_old :
-  forall sGamma rGamma Tnew x Tx l,
+Lemma appended_nonlocation_lookup_is_old :
+  forall sGamma rGamma Tnew initial x Tx l,
+    (forall location, initial <> Iot location) ->
     dom sGamma = dom (vars rGamma) ->
     static_getType (sGamma ++ [Tnew]) x = Some Tx ->
-    runtime_getVal (set_vars rGamma (vars rGamma ++ [Null_a])) x =
+    runtime_getVal (set_vars rGamma (vars rGamma ++ [initial])) x =
       Some (Iot l) ->
     static_getType sGamma x = Some Tx /\
     runtime_getVal rGamma x = Some (Iot l).
 Proof.
-  intros sGamma rGamma Tnew x Tx l Hlength Htype Hval.
+  intros sGamma rGamma Tnew initial x Tx l Hnonlocation Hlength Htype Hval.
   have Htype_extended := Htype.
   have Hval_extended := Hval.
   assert (Hxextended : x < S (dom (vars rGamma))).
@@ -158,7 +159,9 @@ Proof.
     rewrite length_app in Hval. simpl in Hval. lia. }
   assert (Hxold : x < dom (vars rGamma)).
   { destruct (Nat.eq_dec x (dom (vars rGamma))) as [->|Hneq].
-    - rewrite runtime_getVal_last in Hval_extended. discriminate.
+    - rewrite runtime_getVal_last in Hval_extended.
+      injection Hval_extended as Hbad.
+      exfalso. exact (Hnonlocation l Hbad).
     - lia. }
   split.
   - change (nth_error sGamma x = Some Tx).
@@ -166,8 +169,24 @@ Proof.
     assert (Hxs : x < length sGamma) by lia.
     have Happ := nth_error_app1 sGamma [Tnew] Hxs.
     rewrite Happ in Htype_extended. exact Htype_extended.
-  - have Hsame := runtime_getVal_last2 rGamma x Null_a Hxold.
+  - have Hsame := runtime_getVal_last2 rGamma x initial Hxold.
     exact (eq_trans (eq_sym Hsame) Hval_extended).
+Qed.
+
+(** A location read from an environment extended by a local declaration was
+    already present: the fresh slot holds a default value, never a location. *)
+Lemma appended_default_nonnull_lookup_is_old :
+  forall sGamma rGamma Tnew x Tx l,
+    dom sGamma = dom (vars rGamma) ->
+    static_getType (sGamma ++ [Tnew]) x = Some Tx ->
+    runtime_getVal (set_vars rGamma (vars rGamma ++ [default_value Tnew])) x =
+      Some (Iot l) ->
+    static_getType sGamma x = Some Tx /\
+    runtime_getVal rGamma x = Some (Iot l).
+Proof.
+  intros sGamma rGamma Tnew x Tx l.
+  apply appended_nonlocation_lookup_is_old.
+  exact (default_value_not_location Tnew).
 Qed.
 
 Lemma mut_expression_result_has_mutable_root :
@@ -800,7 +819,7 @@ Proof.
     { apply static_getType_dom in Hget_x.
       unfold wf_r_config in Hwf.
       destruct Hwf as [_ [_ [_ [_ [Hlength _]]]]]. lia. }
-    destruct value as [|l].
+    destruct value as [|l|n].
     + have Hsame := runtime_getVal_update_same rGamma x Null_a Hxdom.
       rewrite Hsame in Hval_z. discriminate.
     + have Hsame := runtime_getVal_update_same rGamma x (Iot l) Hxdom.
@@ -812,6 +831,8 @@ Proof.
       have Hmut_e := nonnull_subtype_to_mut_is_mut
         CT h l Te Tx qcontext Htypable Hsub Hmut_z.
       eapply mut_expression_result_has_mutable_root; eauto.
+    + have Hsame := runtime_getVal_update_same rGamma x (Int n) Hxdom.
+      rewrite Hsame in Hval_z. discriminate.
   - rewrite runtime_getVal_update_diff in Hval_z; auto.
     exists root. split.
     + exists z, Tz. repeat split; assumption.
@@ -840,7 +861,7 @@ Proof.
     { apply static_getType_dom in Hget_x.
       unfold wf_r_config in Hwf.
       destruct Hwf as [_ [_ [_ [_ [Hlength _]]]]]. lia. }
-    destruct value as [|l].
+    destruct value as [|l|n].
     + have Hsame := runtime_getVal_update_same rGamma x Null_a Hxdom.
       rewrite Hsame in Hval_z. discriminate.
     + have Hsame := runtime_getVal_update_same rGamma x (Iot l) Hxdom.
@@ -852,6 +873,8 @@ Proof.
       have Hrdm_e := nonnull_subtype_to_rdm_is_rdm
         CT h l Te Tx qcontext Htypable Hsub Hrdm_z.
       eapply rdm_expression_result_has_rdm_root; eauto.
+    + have Hsame := runtime_getVal_update_same rGamma x (Int n) Hxdom.
+      rewrite Hsame in Hval_z. discriminate.
   - rewrite runtime_getVal_update_diff in Hval_z; auto.
     exists root. split.
     + exists z, Tz. repeat split; assumption.

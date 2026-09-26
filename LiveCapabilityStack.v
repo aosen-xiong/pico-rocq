@@ -360,7 +360,7 @@ Proof.
   - split; [exact Hnonempty|]. split.
     + exists receiver. split; [exact Hreceiver|lia].
     + eapply Forall_impl; [|exact Hvalues].
-      intros entry Hentry. destruct entry as [|location]; [exact I|].
+      intros entry Hentry. destruct entry as [|location|?n]; [exact I| |exact I].
       destruct (runtime_getObj h location) as [old_object|] eqn:Hold;
         try contradiction.
       have Hlocation_dom := Hold. apply runtime_getObj_dom in Hlocation_dom.
@@ -377,7 +377,7 @@ Proof.
     have Hentry := Hcorr receiver qcontext Hreceiver Hthis_mut i Hi sqt Hsqt.
     destruct (runtime_getVal rGamma i) as [entry|] eqn:Hvalue;
       [|exact Hentry].
-    destruct entry as [|location]; [exact I|].
+    destruct entry as [|location|?n]; [exact I| |exact Hentry].
     unfold wf_r_typable in Hentry |- *.
     destruct (r_type h location) as [runtime_type|] eqn:Holdtype;
       try contradiction.
@@ -1578,7 +1578,7 @@ Lemma local_capability_root_is_old :
     runtime_getVal rGamma x = None ->
     frame_capability_root
       (mk_watched_frame authority sGamma'
-        (set_vars rGamma (vars rGamma ++ [Null_a]))) root ->
+        (set_vars rGamma (vars rGamma ++ [default_value T]))) root ->
     frame_capability_root
       (mk_watched_frame authority sGamma rGamma) root.
 Proof.
@@ -1587,7 +1587,7 @@ Proof.
   inversion Htyping; subst.
   unfold wf_r_config in Hwf.
   destruct Hwf as [_ [_ [_ [_ [Hlength _]]]]].
-  destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T y Ty root
+  destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T y Ty root
     Hlength Htype Hvalue) as [Holdtype Holdvalue].
   exists y, Ty. repeat split; assumption.
 Qed.
@@ -1599,7 +1599,7 @@ Lemma local_live_reachability_is_old :
     runtime_getVal rGamma x = None ->
     live_capability_reachable CT h
       (mk_watched_frame authority sGamma'
-        (set_vars rGamma (vars rGamma ++ [Null_a]))) stack location ->
+        (set_vars rGamma (vars rGamma ++ [default_value T]))) stack location ->
     live_capability_reachable CT h
       (mk_watched_frame authority sGamma rGamma) stack location.
 Proof.
@@ -1902,7 +1902,7 @@ Lemma live_history_after_local :
     runtime_getVal rGamma x = None ->
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma'
-        (set_vars rGamma (vars rGamma ++ [Null_a]))) stack h.
+        (set_vars rGamma (vars rGamma ++ [default_value T]))) stack h.
 Proof.
   intros CT P Z cutoff authority sGamma mt rGamma h stack T x sGamma'
     [Hhistory [[Hwf Hstack_wf]
@@ -1914,47 +1914,47 @@ Proof.
     cutoff authority sGamma mt rGamma h T x sGamma' Hwf Hhistory
     Htyping Hnone.
   have Hstmt : eval_stmt CT rGamma h (SLocal T x) OK
-      (set_vars rGamma (vars rGamma ++ [Null_a])) h.
+      (set_vars rGamma (vars rGamma ++ [default_value T])) h.
   { apply SBS_Local. exact Hnone. }
   have Hpost_wf := preservation_pico CT sGamma mt rGamma h
-    (SLocal T x) (set_vars rGamma (vars rGamma ++ [Null_a])) h sGamma'
+    (SLocal T x) (set_vars rGamma (vars rGamma ++ [default_value T])) h sGamma'
     Hwf Htyping Hstmt.
   assert (Hframes_wf : live_frames_wf CT h
       (mk_watched_frame authority sGamma'
-        (set_vars rGamma (vars rGamma ++ [Null_a]))) stack).
+        (set_vars rGamma (vars rGamma ++ [default_value T]))) stack).
   { split; assumption. }
   assert (Hframes_sound : live_frames_authority_sound h
       (mk_watched_frame authority sGamma'
-        (set_vars rGamma (vars rGamma ++ [Null_a]))) stack).
+        (set_vars rGamma (vars rGamma ++ [default_value T]))) stack).
   { split.
     - exact (proj1 (proj2 (proj2 Hbig))).
     - exact Hstack_sound. }
   have Hincluded : Included Loc
       (live_capability_set CT h
         (mk_watched_frame authority sGamma'
-          (set_vars rGamma (vars rGamma ++ [Null_a]))) stack)
+          (set_vars rGamma (vars rGamma ++ [default_value T]))) stack)
       (live_capability_set CT h
         (mk_watched_frame authority sGamma rGamma) stack).
   { intros location Hlocation.
     eapply local_live_reachability_is_old; eauto. }
   have Hclosed := live_capability_set_forward_closed CT h
     (mk_watched_frame authority sGamma'
-      (set_vars rGamma (vars rGamma ++ [Null_a]))) stack.
+      (set_vars rGamma (vars rGamma ++ [default_value T]))) stack.
   have Hruntime := live_capability_members_runtime_mutable CT h
     (mk_watched_frame authority sGamma'
-      (set_vars rGamma (vars rGamma ++ [Null_a]))) stack
+      (set_vars rGamma (vars rGamma ++ [default_value T]))) stack
     Hframes_wf Hframes_sound.
   have Hroots := active_authority_roots_are_live CT h
     (mk_watched_frame authority sGamma'
-      (set_vars rGamma (vars rGamma ++ [Null_a]))) stack.
+      (set_vars rGamma (vars rGamma ++ [default_value T]))) stack.
   have Hsmall := authority_component_history_shrink_before_initialization CT P Z
     (live_capability_set CT h
       (mk_watched_frame authority sGamma rGamma) stack)
     (live_capability_set CT h
       (mk_watched_frame authority sGamma'
-        (set_vars rGamma (vars rGamma ++ [Null_a]))) stack)
+        (set_vars rGamma (vars rGamma ++ [default_value T]))) stack)
     cutoff authority sGamma'
-    (set_vars rGamma (vars rGamma ++ [Null_a])) h
+    (set_vars rGamma (vars rGamma ++ [default_value T])) h
     Hbig Hincluded Hclosed Hruntime Hroots.
   split; [exact Hsmall|]. split; [exact Hframes_wf|].
   split; [exact Hframes_sound|]. split; [exact Hcutoff|].

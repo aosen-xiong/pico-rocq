@@ -26,6 +26,13 @@ Proof.
   intros vs. destruct vs; reflexivity.
 Qed.
 
+Lemma get_this_var_mapping_app_default_last : forall vs T,
+  get_this_var_mapping (vs ++ [default_value T]) = get_this_var_mapping vs.
+Proof.
+  intros vs T. destruct vs; [unfold default_value; destruct (sbase T)|];
+    reflexivity.
+Qed.
+
 Lemma get_this_var_mapping_update_vars_app_null : forall rΓ,
   get_this_var_mapping (vars (set_vars rΓ (vars rΓ ++ [Null_a])))
   = get_this_var_mapping (vars rΓ).

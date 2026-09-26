@@ -552,7 +552,7 @@ Lemma typed_runtime_rdm_field_write_subtyping :
     readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getObj h lx = Some old ->
-    base_subtype CT (rctype (rt_type old)) D ->
+    class_subtype CT (rctype (rt_type old)) D ->
     sf_def_rel CT D f runtime_fd ->
     mutability (ftype runtime_fd) = RDM_f ->
     exists Tx Ty,
@@ -568,34 +568,28 @@ Proof.
   inversion Htyping; subst.
   - exfalso. destruct Hscope; congruence.
   - exfalso. destruct Hscope; congruence.
-  - assert (Hbase : base_subtype CT (rctype (rt_type old)) (sctype Tx)).
-    { destruct (extract_receiver_from_wf_config CT _ rGamma h Hwf)
-        as [thisloc [qcontext [Hrthis [_ Hrcontext]]]].
-      unfold wf_r_config in Hwf.
-      destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
-      have Hxdom := Hget_x. apply static_getType_dom in Hxdom.
-      specialize (Hcorr thisloc qcontext Hrthis Hrcontext x Hxdom Tx Hget_x).
-      rewrite Hvalx in Hcorr.
-      unfold wf_r_typable, r_type in Hcorr. rewrite Hobj in Hcorr.
-      exact (proj1 Hcorr). }
+  - assert (Hbase : class_subtype CT (rctype (rt_type old)) C).
+    { eapply runtime_value_class_subtype with (y := x) (Ty := Tx) (ly := lx).
+      - exact Hwf.
+      - exact Hget_x.
+      - exact Href.
+      - exact Hvalx.
+      - unfold r_basetype. rewrite Hobj. reflexivity. }
     assert (runtime_fd = fieldT).
     { eapply field_defs_agree_at_runtime_subtype with
-        (C := rctype (rt_type old)) (D1 := D) (D2 := sctype Tx); eauto. }
+        (C := rctype (rt_type old)) (D1 := D) (D2 := C); eauto. }
     subst runtime_fd. exists Tx, Ty. repeat split; try assumption.
     rewrite Hruntime_rdm in Hsub. exact Hsub.
-  - assert (Hbase : base_subtype CT (rctype (rt_type old)) (sctype Tx)).
-    { destruct (extract_receiver_from_wf_config CT _ rGamma h Hwf)
-        as [thisloc [qcontext [Hrthis [_ Hrcontext]]]].
-      unfold wf_r_config in Hwf.
-      destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
-      have Hxdom := Hget_x. apply static_getType_dom in Hxdom.
-      specialize (Hcorr thisloc qcontext Hrthis Hrcontext x Hxdom Tx Hget_x).
-      rewrite Hvalx in Hcorr.
-      unfold wf_r_typable, r_type in Hcorr. rewrite Hobj in Hcorr.
-      exact (proj1 Hcorr). }
+  - assert (Hbase : class_subtype CT (rctype (rt_type old)) C).
+    { eapply runtime_value_class_subtype with (y := x) (Ty := Tx) (ly := lx).
+      - exact Hwf.
+      - exact Hget_x.
+      - exact Href.
+      - exact Hvalx.
+      - unfold r_basetype. rewrite Hobj. reflexivity. }
     assert (runtime_fd = fieldT).
     { eapply field_defs_agree_at_runtime_subtype with
-        (C := rctype (rt_type old)) (D1 := D) (D2 := sctype Tx); eauto. }
+        (C := rctype (rt_type old)) (D1 := D) (D2 := C); eauto. }
     subst runtime_fd. exists Tx, Ty. repeat split; try assumption.
     rewrite Hruntime_rdm in Hsub. exact Hsub.
 Qed.
@@ -607,7 +601,7 @@ Lemma typed_runtime_mut_field_write_subtyping :
     readonly_state_method_scope mt ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getObj h lx = Some old ->
-    base_subtype CT (rctype (rt_type old)) D ->
+    class_subtype CT (rctype (rt_type old)) D ->
     sf_def_rel CT D f runtime_fd ->
     mutability (ftype runtime_fd) = Mut_f ->
     exists Tx Ty,
@@ -623,34 +617,28 @@ Proof.
   inversion Htyping; subst.
   - exfalso. destruct Hscope; congruence.
   - exfalso. destruct Hscope; congruence.
-  - assert (Hbase : base_subtype CT (rctype (rt_type old)) (sctype Tx)).
-    { destruct (extract_receiver_from_wf_config CT _ rGamma h Hwf)
-        as [thisloc [qcontext [Hrthis [_ Hrcontext]]]].
-      unfold wf_r_config in Hwf.
-      destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
-      have Hxdom := Hget_x. apply static_getType_dom in Hxdom.
-      specialize (Hcorr thisloc qcontext Hrthis Hrcontext x Hxdom Tx Hget_x).
-      rewrite Hvalx in Hcorr.
-      unfold wf_r_typable, r_type in Hcorr. rewrite Hobj in Hcorr.
-      exact (proj1 Hcorr). }
+  - assert (Hbase : class_subtype CT (rctype (rt_type old)) C).
+    { eapply runtime_value_class_subtype with (y := x) (Ty := Tx) (ly := lx).
+      - exact Hwf.
+      - exact Hget_x.
+      - exact Href.
+      - exact Hvalx.
+      - unfold r_basetype. rewrite Hobj. reflexivity. }
     assert (runtime_fd = fieldT).
     { eapply field_defs_agree_at_runtime_subtype with
-        (C := rctype (rt_type old)) (D1 := D) (D2 := sctype Tx); eauto. }
+        (C := rctype (rt_type old)) (D1 := D) (D2 := C); eauto. }
     subst runtime_fd. exists Tx, Ty. repeat split; try assumption.
     rewrite Hruntime_mut in Hsub. exact Hsub.
-  - assert (Hbase : base_subtype CT (rctype (rt_type old)) (sctype Tx)).
-    { destruct (extract_receiver_from_wf_config CT _ rGamma h Hwf)
-        as [thisloc [qcontext [Hrthis [_ Hrcontext]]]].
-      unfold wf_r_config in Hwf.
-      destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
-      have Hxdom := Hget_x. apply static_getType_dom in Hxdom.
-      specialize (Hcorr thisloc qcontext Hrthis Hrcontext x Hxdom Tx Hget_x).
-      rewrite Hvalx in Hcorr.
-      unfold wf_r_typable, r_type in Hcorr. rewrite Hobj in Hcorr.
-      exact (proj1 Hcorr). }
+  - assert (Hbase : class_subtype CT (rctype (rt_type old)) C).
+    { eapply runtime_value_class_subtype with (y := x) (Ty := Tx) (ly := lx).
+      - exact Hwf.
+      - exact Hget_x.
+      - exact Href.
+      - exact Hvalx.
+      - unfold r_basetype. rewrite Hobj. reflexivity. }
     assert (runtime_fd = fieldT).
     { eapply field_defs_agree_at_runtime_subtype with
-        (C := rctype (rt_type old)) (D1 := D) (D2 := sctype Tx); eauto. }
+        (C := rctype (rt_type old)) (D1 := D) (D2 := C); eauto. }
     subst runtime_fd. exists Tx, Ty. repeat split; try assumption.
     rewrite Hruntime_mut in Hsub. exact Hsub.
 Qed.
@@ -740,23 +728,18 @@ Lemma typed_field_write_runtime_field_agreement :
     stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
     runtime_getVal rGamma x = Some (Iot lx) ->
     runtime_getObj h lx = Some old ->
-    exists Tx fieldT,
+    exists Tx C fieldT,
       static_getType sGamma x = Some Tx /\
-      sf_def_rel CT (sctype Tx) f fieldT /\
-      base_subtype CT (rctype (rt_type old)) (sctype Tx).
+      sbase Tx = TRef C /\
+      sf_def_rel CT C f fieldT /\
+      class_subtype CT (rctype (rt_type old)) C.
 Proof.
   intros CT sGamma mt rGamma h x f y lx old sGamma' Hwf Htyping Hvalx Hobj.
   inversion Htyping; subst.
-  all: exists Tx, fieldT; repeat split; try assumption.
-  all: destruct (extract_receiver_from_wf_config CT _ rGamma h Hwf)
-    as [thisloc [qcontext [Hrthis [_ Hrcontext]]]].
-  all: unfold wf_r_config in Hwf.
-  all: destruct Hwf as [_ [_ [_ [_ [_ Hcorr]]]]].
-  all: have Hxdom := Hget_x; apply static_getType_dom in Hxdom.
-  all: specialize (Hcorr thisloc qcontext Hrthis Hrcontext x Hxdom Tx Hget_x).
-  all: rewrite Hvalx in Hcorr.
-  all: unfold wf_r_typable, r_type in Hcorr; rewrite Hobj in Hcorr.
-  all: exact (proj1 Hcorr).
+  all: exists Tx, C, fieldT; repeat split; try assumption.
+  all: eapply runtime_value_class_subtype with (y := x) (Ty := Tx) (ly := lx).
+  all: try exact Hwf; try exact Hget_x; try exact Href; try exact Hvalx.
+  all: unfold r_basetype; rewrite Hobj; reflexivity.
 Qed.
 
 Lemma active_component_colors_imply_rdm_separation :
@@ -1419,7 +1402,8 @@ Proof.
   - intros z l Tz Htype_z Hval_z HinZ.
     destruct (Nat.eq_dec z x) as [->|Hneq].
     + rewrite Hget_x in Htype_z. injection Htype_z as <-.
-      destruct value as [|result].
+      destruct value as [|result|?n];
+        [| |rewrite runtime_getVal_update_same in Hval_z; auto; discriminate].
       * rewrite runtime_getVal_update_same in Hval_z; auto. discriminate.
       * rewrite runtime_getVal_update_same in Hval_z; auto.
         injection Hval_z as <-.
@@ -1434,7 +1418,7 @@ Proof.
       eapply Henv; eauto.
   - split; [|exact Hconfheap].
     apply env_confined_update; [exact Hconfenv|].
-    destruct value as [|result]; [trivial|].
+    destruct value as [|result|?n]; [trivial| |trivial].
     eapply eval_expr_preserves_confinement; eauto. split; assumption.
   - intros root Hroot.
     destruct (assignment_mut_root_has_old_ancestor CT sGamma mt rGamma h
@@ -1467,7 +1451,7 @@ Lemma forward_history_after_local :
     stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
     runtime_getVal rGamma x = None ->
     forward_history_state CT P Z M cutoff sGamma'
-      (set_vars rGamma (vars rGamma ++ [Null_a])) h.
+      (set_vars rGamma (vars rGamma ++ [default_value T])) h.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h T x sGamma' Hwf Hstate
     Htyping Hrnone.
@@ -1480,27 +1464,27 @@ Proof.
   refine (conj Hcontains (conj _ (conj _ (conj Hclosed
     (conj Hruntime (conj _ (conj Havoid _))))))).
   - intros y l Ty Htype Hval HinZ.
-    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T y Ty l
+    destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T y Ty l
       Hlength Htype Hval) as [Holdtype Holdval].
     eapply Henv; eauto.
   - split; [|exact Hconfheap].
     intros y l Hval.
     destruct (Nat.eq_dec y (dom (vars rGamma))) as [->|Hneq].
-    + rewrite runtime_getVal_last in Hval. discriminate.
+    + rewrite runtime_getVal_last in Hval. default_not_location.
     + assert (Hy : y < dom (vars rGamma)).
       { apply runtime_getVal_dom in Hval. simpl in Hval.
         rewrite length_app in Hval. simpl in Hval. lia. }
       rewrite runtime_getVal_last2 in Hval; auto. eapply Hconfenv; eauto.
   - intros root [y [Ty [Htype [Hval Hmut]]]].
-    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T y Ty root
+    destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T y Ty root
       Hlength Htype Hval) as [Holdtype Holdval].
     apply Hmutroots. exists y, Ty. repeat split; assumption.
   - intros capability_root zone_root
       [[yc [Tc [Htypec [Hvalc Hrdmc]]]] [cap_target [Hcapreach HcapM]]]
       [[yz [Tz [Htypez [Hvalz Hrdmz]]]] [zone_target [Hzonereach HzoneZ]]].
-    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T yc Tc
+    destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T yc Tc
       capability_root Hlength Htypec Hvalc) as [Holdtypec Holdvalc].
-    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T yz Tz
+    destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T yz Tz
       zone_root Hlength Htypez Hvalz) as [Holdtypez Holdvalz].
     eapply Hcolors with (capability_root := capability_root)
       (zone_root := zone_root).
@@ -1555,7 +1539,7 @@ Lemma active_rdm_colors_after_local_preserved :
     stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
     runtime_getVal rGamma x = None ->
     active_rdm_component_colors_separated CT h M Z sGamma'
-      (set_vars rGamma (vars rGamma ++ [Null_a])).
+      (set_vars rGamma (vars rGamma ++ [default_value T])).
 Proof.
   intros CT M Z sGamma mt rGamma h T x sGamma' Hwf Hactive Htyping
     Hnone.
@@ -1565,9 +1549,9 @@ Proof.
   intros capability_root zone_root
     [yc [Tc [Htypec [Hvalc Hrdmc]]]] Hcapcomponent
     [yz [Tz [Htypez [Hvalz Hrdmz]]]] Hzonecomponent.
-  destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T yc Tc
+  destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T yc Tc
     capability_root Hlength Htypec Hvalc) as [Holdtypec Holdvalc].
-  destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T yz Tz
+  destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T yz Tz
     zone_root Hlength Htypez Hvalz) as [Holdtypez Holdvalz].
   eapply Hactive with (capability_root := capability_root)
     (zone_root := zone_root).
@@ -1604,7 +1588,7 @@ Lemma component_forward_history_after_local :
     stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
     runtime_getVal rGamma x = None ->
     component_forward_history_state CT P Z M cutoff sGamma'
-      (set_vars rGamma (vars rGamma ++ [Null_a])) h.
+      (set_vars rGamma (vars rGamma ++ [default_value T])) h.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h T x sGamma' Hwf
     [Hforward [Hcomponents Hactive_stored]] Htyping Hrnone.
