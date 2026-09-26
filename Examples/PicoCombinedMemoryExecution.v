@@ -1,4 +1,4 @@
-From Stdlib Require Import List.
+From Stdlib Require Import List PeanoNat.
 Import ListNotations.
 
 Require Import Syntax Typing Core.GenericDerivedCache.
@@ -173,7 +173,52 @@ Proof.
     unfold pico_hash_combined_actions; simpl; solve_combined_before.
 Qed.
 
-(** The final-field story covers an actual read: each payload read happens
+Theorem pico_hash_combined_execution_legal :
+  combined_memory_execution_legal pico_hash_combined_actions
+    pico_hash_jam_rf pico_hash_after_both_acquire.
+Proof.
+  refine {| combined_publication_is_legal :=
+              pico_hash_combined_publication_replay;
+            combined_jam_is_plain_legal := _;
+            combined_freezes_follow_construction :=
+              pico_hash_combined_freeze_follows_construction;
+            combined_accesses_follow_acquire :=
+              pico_hash_combined_accesses_follow_acquire |}.
+  rewrite pico_hash_combined_jam_projection.
+  exact pico_hash_jam_execution_plain_legal.
+Qed.
+
+(** The receiver's only final field is the payload. *)
+Definition pico_hash_final_fields (loc : Loc) : list var :=
+  if Nat.eqb loc pico_hash_concurrent_receiver then [1] else [].
+
+Lemma pico_hash_combined_final_fields_initialized :
+  combined_final_fields_initialized pico_hash_final_fields
+    pico_hash_combined_actions.
+Proof.
+  intros loc snapshot f Hfreeze Hf.
+  unfold pico_hash_combined_actions in Hfreeze. simpl in Hfreeze.
+  repeat destruct Hfreeze as [Hfreeze | Hfreeze];
+    try discriminate; try contradiction.
+  inversion Hfreeze; subst loc snapshot.
+  unfold pico_hash_final_fields in Hf. simpl in Hf.
+  destruct Hf as [<- | []].
+  exists pico_hash_jam_payload_init.
+  split; [unfold pico_hash_combined_actions; simpl; tauto |].
+  split; [reflexivity |].
+  split; [reflexivity |].
+  split; [unfold pico_hash_combined_actions; solve_combined_before |].
+  split; [exists 0; split; reflexivity |].
+  intros write Hin Hwrite Haddr.
+  unfold pico_hash_combined_actions in Hin. simpl in Hin.
+  repeat destruct Hin as [Hin | Hin]; try contradiction; subst write;
+    unfold jam_is_write in Hwrite; simpl in Hwrite, Haddr;
+    try reflexivity; try (inversion Haddr; fail);
+    destruct Hwrite as [Hw | Hw]; discriminate.
+Qed.
+
+(** The final-field story covers an actual read.  By the general
+    [combined_final_field_read_sees_snapshot], each payload read happens
     after its thread acquired the published receiver, reads from the
     constructor's initialization, and returns the frozen snapshot value. *)
 Theorem pico_hash_combined_payload_reads_observe_snapshot :
@@ -191,28 +236,26 @@ Theorem pico_hash_combined_payload_reads_observe_snapshot :
     In (jam_event_value event) pico_hash_combined_snapshot.
 Proof.
   intros event Hin Hread Haddr.
-  unfold pico_hash_combined_actions in Hin. simpl in Hin.
-  repeat destruct Hin as [Hin | Hin]; try contradiction; subst event;
-    simpl in Hread, Haddr; try discriminate; try (inversion Haddr; fail).
-  - split; [unfold pico_hash_combined_actions; simpl; solve_combined_before |].
-    split; [constructor | left; reflexivity].
-  - split; [unfold pico_hash_combined_actions; simpl; solve_combined_before |].
-    split; [constructor | left; reflexivity].
-Qed.
-
-Theorem pico_hash_combined_execution_legal :
-  combined_memory_execution_legal pico_hash_combined_actions
-    pico_hash_jam_rf pico_hash_after_both_acquire.
-Proof.
-  refine {| combined_publication_is_legal :=
-              pico_hash_combined_publication_replay;
-            combined_jam_is_plain_legal := _;
-            combined_freezes_follow_construction :=
-              pico_hash_combined_freeze_follows_construction;
-            combined_accesses_follow_acquire :=
-              pico_hash_combined_accesses_follow_acquire |}.
-  rewrite pico_hash_combined_jam_projection.
-  exact pico_hash_jam_execution_plain_legal.
+  destruct (combined_final_field_read_sees_snapshot pico_hash_final_fields
+    pico_hash_combined_actions pico_hash_jam_rf pico_hash_after_both_acquire
+    event pico_hash_concurrent_receiver 1
+    pico_hash_combined_execution_legal
+    pico_hash_combined_final_fields_initialized Hin Hread Haddr
+    (or_introl eq_refl)) as
+    (snapshot & init & Hbefore & _ & Hfrozen & Hrf & Hinit_before & Hvalue).
+  assert (Hsnapshot : snapshot = pico_hash_combined_snapshot).
+  { unfold final_snapshot_frozen, pico_hash_after_both_acquire in Hfrozen.
+    simpl in Hfrozen. injection Hfrozen as <-. reflexivity. }
+  subst snapshot.
+  assert (Hinit : init = pico_hash_jam_payload_init).
+  { unfold jam_reads_from, combined_jam_execution in Hrf. simpl in Hrf.
+    inversion Hrf; subst; try reflexivity;
+      simpl in Haddr; inversion Haddr. }
+  subst init.
+  split; [exact Hbefore |].
+  split; [exact Hrf |].
+  destruct Hvalue as (i & _ & Hnth).
+  exact (nth_error_In _ _ Hnth).
 Qed.
 
 (** The construction event denotes the exact allocation/freeze transition

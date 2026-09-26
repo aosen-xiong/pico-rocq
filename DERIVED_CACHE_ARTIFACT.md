@@ -217,9 +217,18 @@ Their access lists include each thread's payload read. The race schedule,
 the JAM execution, the combined trace and the JLS fragment all record six
 accesses in the same order: two cache reads, two payload reads, two cache
 writes. The constructor initializes both the cache and the payload.
-`pico_hash_combined_payload_reads_observe_snapshot` shows each payload read
-follows its thread's acquire of the published receiver, reads from the
-constructor's initialization, and returns the frozen snapshot value. The race
+`combined_final_field_read_sees_snapshot` is the general final-field
+guarantee for combined executions. Its extra condition,
+`combined_final_fields_initialized`, says each final field of a frozen
+location has exactly one write: the constructor's initialization, before the
+freeze, with the snapshot's value. So no final field is written after its
+freeze. Under that condition, every plain read of a final field follows its
+thread's acquire of the location, reads from that initialization, and returns
+the field's value in the acquired snapshot, which is the frozen snapshot.
+`pico_hash_combined_payload_reads_observe_snapshot` is its instance for the
+hash receiver, whose only final field is the payload. The condition is checked
+on the concrete trace; it is not yet derived from PICO typing, and the JLS
+fragment's legality does not include it. The race
 schedule is still existential: the scheduler steps between listed accesses
 are not proved to be free of other accesses. `pico_pool_access_trace` is the
 relation that would make the list complete.
