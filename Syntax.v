@@ -40,17 +40,28 @@ Inductive a : Type :=
   | Final
   | RDA.
 
+(* Source bases distinguish primitive values from object references.  The
+   qualifier remains uniform; static well-formedness later restricts [TInt]
+   to [Imm]. *)
+Inductive base_type : Type :=
+  | TInt
+  | TRef : class_name -> base_type.
+
 (* Qualified type  *)
 Record qualified_type := {
   sqtype: q; (* Type qualifier *)
-  sctype: class_name; (* Class name *)
+  sbase: base_type;
 }.
+
+Definition int_type : qualified_type :=
+  Build_qualified_type Imm TInt.
 
 Definition s_env := list qualified_type.
 
 Inductive expr : Type :=
   | ENull : expr
   | EVar : var -> expr
+  | EInt : nat -> expr
   | EField : var -> var -> expr.
 
 Inductive stmt: Type :=
@@ -61,12 +72,13 @@ Inductive stmt: Type :=
   | SNew: var -> q_c -> class_name -> list var -> stmt (* x = new q_c C(y1, ..., yn) *)
   | SCall: var -> var -> method_name -> list var -> stmt (* x = y.m(z1, ..., zn) *)
   (* | SCast: var -> q -> class_name -> var -> stmt x = (q C) y  *)
-  | SSeq: stmt -> stmt -> stmt. (* s1; s2 *)
+  | SSeq: stmt -> stmt -> stmt (* s1; s2 *)
+  | SIfZero: var -> stmt -> stmt -> stmt.
 
 Record field_type := {
   assignability: a;
   mutability: q_f;
-  f_base_type : class_name;
+  f_base_type : base_type;
 }.
 
 (* Field declaration with assignability and mutability *)
@@ -164,7 +176,20 @@ Definition Loc : Type := nat.
 (** Runtime Value *)
 Inductive value : Type :=
   | Null_a : value
-  | Iot: Loc -> value.
+  | Iot: Loc -> value
+  | Int: nat -> value.
+
+Definition default_value (T : qualified_type) : value :=
+  match sbase T with
+  | TInt => Int 0
+  | TRef _ => Null_a
+  end.
+
+Lemma default_value_not_location :
+  forall T l, default_value T <> Iot l.
+Proof.
+  intros T l. unfold default_value. destruct (sbase T); discriminate.
+Qed.
 
 (** Variable Mapping *)
 Definition var_mapping   := list value.

@@ -5,7 +5,7 @@ Import ListNotations.
 Require Import Syntax Helpers Typing Subtyping ViewpointAdaptation.
 
 Definition ex_type (q : q) : qualified_type :=
-  Build_qualified_type q 0.
+  Build_qualified_type q (TRef 0).
 
 Definition ex_ctor_sig : constructor_sig :=
   {|

@@ -11,7 +11,7 @@ Definition vpa_mutability_qq_abstract_state (q1: q)(q2 : q) : q :=
 Definition vpa_mutability_tt_abstract_state (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   Build_qualified_type
     (vpa_mutability_qq_abstract_state (sqtype t1) (sqtype t2))
-    (sctype t2).
+    (sbase t2).
 
 Definition vpa_mutability_stype_fld_abstract_state (q1: q)(q2 : q_f) : q :=
   match q1, q2 with
@@ -36,7 +36,7 @@ Definition vpa_mutability_qq_readonly_state (q1: q)(q2 : q) : q :=
 Definition vpa_mutability_tt_readonly_state (t1: qualified_type)(t2 : qualified_type) : qualified_type :=
   Build_qualified_type
     (vpa_mutability_qq_readonly_state (sqtype t1) (sqtype t2))
-    (sctype t2).
+    (sbase t2).
 
 Example vpa_mutability_readonly_state_mut_mut :
   vpa_mutability_qq_readonly_state Mut Mut = Mut.

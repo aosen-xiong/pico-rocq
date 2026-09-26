@@ -97,7 +97,7 @@ Qed.
 
 (* Transitive field inheritance via subtyping *)
 Lemma field_inheritance_subtyping : forall CT C D f fdef
-  (Hsub    : base_subtype CT C D)
+  (Hsub    : class_subtype CT C D)
   (Hlookup : FieldLookup CT D f fdef),
   FieldLookup CT C f fdef.
 Proof.
@@ -123,7 +123,7 @@ Qed.
 
 (* Corollary for all field properties *)
 Lemma sf_def_subtyping : forall CT C D f fdef
-  (Hsub    : base_subtype CT C D)
+  (Hsub    : class_subtype CT C D)
   (Hlookup : sf_def_rel CT D f fdef),
   sf_def_rel CT C f fdef.
 Proof.
@@ -133,7 +133,7 @@ Proof.
 Qed.
 
 Lemma sf_assignability_subtyping : forall CT C D f a
-  (Hsub    : base_subtype CT C D)
+  (Hsub    : class_subtype CT C D)
   (Hlookup : sf_assignability_rel CT D f a),
   sf_assignability_rel CT C f a.
 Proof.
@@ -257,15 +257,19 @@ Inductive CollectMethods : class_table -> class_name -> list method_def -> Prop 
  
 (* STATIC WELLFORMEDNESS CONDITION *)
 (* Well-formedness of type use *)
-Definition wf_stypeuse (CT : class_table) (q_use: q) (c: class_name) : Prop :=
-  match bound CT c with
-  | Some q_bound =>
+Definition wf_stypeuse (CT : class_table) (q_use: q) (base: base_type) : Prop :=
+  match base with
+  | TInt => q_use = Imm
+  | TRef c =>
+      match bound CT c with
+      | Some q_bound =>
                   (* Lost is an internal helper qualifier. Since Lost is not
                      reflexive in q_subtype, this condition prevents direct
                      Lost type uses in well-formed static environments. *)
                   q_subtype (vpa_mutability_bound q_use q_bound) q_use /\
                    c < dom CT
-  | None => False (* or False, depending on your semantics *)
+      | None => False
+      end
   end.
 
 Definition qf2q (qf : q_f) : q :=
@@ -286,12 +290,12 @@ Definition wf_field (CT : class_table) (fdef: field_def) : Prop :=
 Definition wf_senv (CT : class_table) (sΓ : s_env) : Prop :=
   (* The first variable is the receiver and should always be present *)
   dom sΓ > 0 /\
-  Forall (fun T => wf_stypeuse CT (sqtype T) (sctype T)) sΓ.
+  Forall (fun T => wf_stypeuse CT (sqtype T) (sbase T)) sΓ.
 
-Lemma senv_var_domain : forall CT sΓ i T
+Lemma senv_var_wf : forall CT sΓ i T
   (Hwf_senv : wf_senv CT sΓ)
   (Hnth     : nth_error sΓ i = Some T),
-  sctype T < dom CT.
+  wf_stypeuse CT (sqtype T) (sbase T).
 Proof.
   intros CT sΓ i T Hwf_senv Hnth.
   unfold wf_senv in Hwf_senv.
@@ -301,10 +305,21 @@ Proof.
     apply nth_error_Some. rewrite Hnth. discriminate.
   }
   eapply Forall_nth_error in Hforall_wf; eauto.
-  unfold wf_stypeuse in Hforall_wf.
-  destruct (bound CT (sctype T)) as [qc|] eqn:Hbound.
-  - destruct Hforall_wf as [_ Hdom]. exact Hdom.
-  - contradiction Hforall_wf.
+Qed.
+
+Lemma senv_var_ref_domain : forall CT sΓ i T C
+  (Hwf_senv : wf_senv CT sΓ)
+  (Hnth     : nth_error sΓ i = Some T)
+  (Href     : sbase T = TRef C),
+  C < dom CT.
+Proof.
+  intros CT sΓ i T C Hwf_senv Hnth Href.
+  pose proof (senv_var_wf CT sΓ i T Hwf_senv Hnth) as Hwf.
+  rewrite Href in Hwf.
+  unfold wf_stypeuse in Hwf.
+  destruct (bound CT C) as [qc|] eqn:Hbound.
+  - destruct Hwf as [_ Hdom]. exact Hdom.
+  - contradiction Hwf.
 Qed.
 
 Inductive FindMethodWithName : class_table -> class_name -> method_name -> method_def -> Prop :=
@@ -384,7 +399,7 @@ Inductive expr_has_type : class_table -> s_env -> method_scope -> expr -> qualif
   | ET_Null : forall CT Γ mt q class_name
       (Hwf  : wf_senv CT Γ)
       (Hdom : class_name < dom CT),
-      expr_has_type CT Γ mt ENull (Build_qualified_type q class_name)
+      expr_has_type CT Γ mt ENull (Build_qualified_type q (TRef class_name))
 
   (* Variable typing *)
   | ET_Var : forall CT Γ mt x T
@@ -392,11 +407,17 @@ Inductive expr_has_type : class_table -> s_env -> method_scope -> expr -> qualif
       (Hget : static_getType Γ x = Some T),
       expr_has_type CT Γ mt (EVar x) T
 
+  (* Integer literal typing *)
+  | ET_Int : forall CT Γ mt n
+      (Hwf : wf_senv CT Γ),
+      expr_has_type CT Γ mt (EInt n) int_type
+
   (* Field access typing — AbstractState scope *)
-  | ET_Field_abstract_state : forall CT Γ mt x T fDef f
+  | ET_Field_abstract_state : forall CT Γ mt x T C fDef f
       (Hwf      : wf_senv CT Γ)
       (Hget_x   : static_getType Γ x = Some T)
-      (Hfld_def : sf_def_rel CT (sctype T) f fDef)
+      (Href     : sbase T = TRef C)
+      (Hfld_def : sf_def_rel CT C f fDef)
       (Hmt      : mt = AbstractState \/ mt = ConcreteState),
       expr_has_type CT Γ mt (EField x f)
         (Build_qualified_type
@@ -404,10 +425,11 @@ Inductive expr_has_type : class_table -> s_env -> method_scope -> expr -> qualif
           (f_base_type (ftype fDef)))
 
   (* Field access typing — ReadonlyState / TransitiveState scope *)
-  | ET_Field_readonly_state : forall CT Γ mt x T fDef f
+  | ET_Field_readonly_state : forall CT Γ mt x T C fDef f
       (Hwf      : wf_senv CT Γ)
       (Hget_x   : static_getType Γ x = Some T)
-      (Hfld_def : sf_def_rel CT (sctype T) f fDef)
+      (Href     : sbase T = TRef C)
+      (Hfld_def : sf_def_rel CT C f fDef)
       (Hmt      : mt = ReadonlyState \/ mt = TransitiveState),
       expr_has_type CT Γ mt (EField x f)
         (Build_qualified_type
@@ -425,14 +447,14 @@ Definition qc2q (qi : q_c) : q :=
 Definition vpa_mutability_constructor_param (qc : q_c) (T : qualified_type) : qualified_type :=
   Build_qualified_type
     (vpa_mutability_qq_abstract_state (qc2q qc) (sqtype T))
-    (sctype T).
+    (sbase T).
 
 (** Class-bound adaptation used only at an override boundary.  Lookup itself
     returns the selected declaration unchanged. *)
 Definition vpa_mutability_override (qc : q_c) (T : qualified_type) : qualified_type :=
   Build_qualified_type
     (vpa_mutability_qq_abstract_state (qc2q qc) (sqtype T))
-    (sctype T).
+    (sbase T).
 
 (** Viewpoint-adapted behavioral subtyping for one override.  Scope remains
     invariant.  The return is covariant; the receiver and ordinary parameters
@@ -460,11 +482,11 @@ Inductive method_signature_refinement
     (CT : class_table) : method_sig -> method_sig -> Prop :=
   | msr_refl : forall msig,
       method_signature_refinement CT msig msig
-  | msr_override : forall qc overrider overridden,
-      bound CT (sctype (mreceiver overrider)) = Some qc ->
-      base_subtype CT
-        (sctype (mreceiver overrider))
-        (sctype (mreceiver overridden)) ->
+  | msr_override : forall qc C D overrider overridden,
+      sbase (mreceiver overrider) = TRef C ->
+      sbase (mreceiver overridden) = TRef D ->
+      bound CT C = Some qc ->
+      class_subtype CT C D ->
       wf_senv CT (mreceiver overrider :: mparams overrider) ->
       method_override_compatible CT qc overrider overridden ->
       method_signature_refinement CT overrider overridden
@@ -500,7 +522,7 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
   (* Local variable declaration *)
   | ST_Local : forall CT sΓ mt T x sΓ'
       (Hwf       : wf_senv CT sΓ)
-      (Hwf_T     : wf_stypeuse CT (sqtype T) (sctype T))
+      (Hwf_T     : wf_stypeuse CT (sqtype T) (sbase T))
       (Hnone     : static_getType sΓ x = None)
       (Henv'     : sΓ' = sΓ ++ [T])
       (Hget_x    : static_getType sΓ' x = Some T),
@@ -517,13 +539,14 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
       stmt_typing CT sΓ mt (SVarAss x e) sΓ
 
   (* Field write — AbstractState scope *)
-  | ST_FldWrite_abstract_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
+  | ST_FldWrite_abstract_state : forall CT sΓ x f y Tx Ty Tthis C fieldT a
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
       (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfld_def    : sf_def_rel CT (sctype Tx) f fieldT)
-      (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
+      (Href        : sbase Tx = TRef C)
+      (Hfld_def    : sf_def_rel CT C f fieldT)
+      (Hassign_rel : sf_assignability_rel CT C f a)
       (Hsub        : qualified_type_subtype CT Ty
                        (Build_qualified_type
                          (vpa_mutability_stype_fld_abstract_state (sqtype Tx) (mutability (ftype fieldT)))
@@ -532,13 +555,14 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
       stmt_typing CT sΓ AbstractState (SFldWrite x f y) sΓ
 
   (* Field write — ConcreteState uses AS mutability and TS assignability *)
-  | ST_FldWrite_concrete_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
+  | ST_FldWrite_concrete_state : forall CT sΓ x f y Tx Ty Tthis C fieldT a
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
       (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfld_def    : sf_def_rel CT (sctype Tx) f fieldT)
-      (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
+      (Href        : sbase Tx = TRef C)
+      (Hfld_def    : sf_def_rel CT C f fieldT)
+      (Hassign_rel : sf_assignability_rel CT C f a)
       (Hsub        : qualified_type_subtype CT Ty
                        (Build_qualified_type
                          (vpa_mutability_stype_fld_abstract_state (sqtype Tx) (mutability (ftype fieldT)))
@@ -547,13 +571,14 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
       stmt_typing CT sΓ ConcreteState (SFldWrite x f y) sΓ
 
   (* Field write — ReadonlyState scope *)
-  | ST_FldWrite_readonly_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
+  | ST_FldWrite_readonly_state : forall CT sΓ x f y Tx Ty Tthis C fieldT a
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
       (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfld_def    : sf_def_rel CT (sctype Tx) f fieldT)
-      (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
+      (Href        : sbase Tx = TRef C)
+      (Hfld_def    : sf_def_rel CT C f fieldT)
+      (Hassign_rel : sf_assignability_rel CT C f a)
       (Hsub        : qualified_type_subtype CT Ty
                        (Build_qualified_type
                          (vpa_mutability_stype_fld_readonly_state (sqtype Tx) (mutability (ftype fieldT)))
@@ -562,13 +587,14 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
       stmt_typing CT sΓ ReadonlyState (SFldWrite x f y) sΓ
 
   (* Field write — TransitiveState scope *)
-  | ST_FldWrite_transitive_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
+  | ST_FldWrite_transitive_state : forall CT sΓ x f y Tx Ty Tthis C fieldT a
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
       (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfld_def    : sf_def_rel CT (sctype Tx) f fieldT)
-      (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
+      (Href        : sbase Tx = TRef C)
+      (Hfld_def    : sf_def_rel CT C f fieldT)
+      (Hassign_rel : sf_assignability_rel CT C f a)
       (Hsub        : qualified_type_subtype CT Ty
                        (Build_qualified_type
                          (vpa_mutability_stype_fld_readonly_state (sqtype Tx) (mutability (ftype fieldT)))
@@ -587,17 +613,18 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
       (Hqc         : vpa_mutability_bound (qc2q qc) (cqualifier consig) = qc2q qc)
       (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg T)
                        argtypes (map (vpa_mutability_constructor_param qc) consig.(cparams)))
-      (Hresult_sub : qualified_type_subtype CT (Build_qualified_type (qc2q qc) C) Tx),
+      (Hresult_sub : qualified_type_subtype CT (Build_qualified_type (qc2q qc) (TRef C)) Tx),
       stmt_typing CT sΓ mt (SNew x qc C args) sΓ
 
   (* Method call — AbstractState scope *)
-  | ST_Call : forall CT sΓ mt x m y args argtypes Tthis Tx Ty mdef
+  | ST_Call : forall CT sΓ mt x m y args argtypes Tthis Tx Ty C mdef
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
       (Hget_args   : static_getType_list sΓ args = Some argtypes)
       (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfind_m     : FindMethodWithName CT (sctype Ty) m mdef)
+      (Href        : sbase Ty = TRef C)
+      (Hfind_m     : FindMethodWithName CT C m mdef)
       (Hnot_rcv    : x <> 0)
       (Hret_sub    : qualified_type_subtype CT (vpa_mutability_tt_abstract_state Ty (mret (msignature mdef))) Tx)
       (Hrcv_sub    : qualified_type_subtype CT Ty
@@ -605,8 +632,8 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
                          (mreceiver (msignature mdef)))
                      \/ (sqtype Ty = RO /\
                          mdef.(msignature).(mreceiver).(sqtype) = RDM /\
-                         base_subtype CT (sctype Ty)
-                           mdef.(msignature).(mreceiver).(sctype)))
+                         base_subtype CT (sbase Ty)
+                           mdef.(msignature).(mreceiver).(sbase)))
       (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_abstract_state Ty T))
                        argtypes (mparams (msignature mdef)))
       (Hscope      : mt = AbstractState \/
@@ -614,13 +641,14 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
       stmt_typing CT sΓ mt (SCall x m y args) sΓ
 
   (* Method call — ReadonlyState / TransitiveState scope *)
-  | ST_Call_readonly_state : forall CT sΓ mt x m y args argtypes Tthis Tx Ty mdef
+  | ST_Call_readonly_state : forall CT sΓ mt x m y args argtypes Tthis Tx Ty C mdef
       (Hwf         : wf_senv CT sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
       (Hget_args   : static_getType_list sΓ args = Some argtypes)
       (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfind_m     : FindMethodWithName CT (sctype Ty) m mdef)
+      (Href        : sbase Ty = TRef C)
+      (Hfind_m     : FindMethodWithName CT C m mdef)
       (Hnot_rcv    : x <> 0)
       (Hmt_not_abs : mdef.(msignature).(mscope) <> AbstractState)
       (Hmt_not_cs  : mdef.(msignature).(mscope) <> ConcreteState)
@@ -630,8 +658,8 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
                          (mreceiver (msignature mdef)))
                      \/ (sqtype Ty = RO /\
                          mdef.(msignature).(mreceiver).(sqtype) = RDM /\
-                         base_subtype CT (sctype Ty)
-                           mdef.(msignature).(mreceiver).(sctype)))
+                         base_subtype CT (sbase Ty)
+                           mdef.(msignature).(mreceiver).(sbase)))
       (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_readonly_state Ty T))
                        argtypes (mparams (msignature mdef)))
       (Hmt_not_abs2 : mt <> AbstractState)
@@ -645,6 +673,15 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
       (Htype1 : stmt_typing CT sΓ mt s1 sΓ')
       (Htype2 : stmt_typing CT sΓ' mt s2 sΓ''),
       stmt_typing CT sΓ mt (SSeq s1 s2) sΓ''
+
+  (* Integer zero test; both branches must agree on the output environment *)
+  | ST_IfZero : forall CT sΓ mt x Tx s_zero s_nonzero sΓ'
+      (Hwf      : wf_senv CT sΓ)
+      (Hget_x   : static_getType sΓ x = Some Tx)
+      (Hint     : sbase Tx = TInt)
+      (Hzero    : stmt_typing CT sΓ mt s_zero sΓ')
+      (Hnonzero : stmt_typing CT sΓ mt s_nonzero sΓ'),
+      stmt_typing CT sΓ mt (SIfZero x s_zero s_nonzero) sΓ'
 .
 
 Lemma stmt_typing_wf_env : forall CT sΓ mt stmt sΓ'
@@ -669,7 +706,7 @@ Definition wf_constructor (CT : class_table) (c : class_name) (ctor : constructo
   bound CT c = Some (cqualifier ctor) /\
   
   (* 2. Parameter types are well-formed *)
-  Forall (fun T => wf_stypeuse CT (sqtype T) (sctype T)) (cparams ctor) /\
+  Forall (fun T => wf_stypeuse CT (sqtype T) (sbase T)) (cparams ctor) /\
   
   (* 3. Parameter count matches field count *)
   exists field_defs, 
@@ -681,7 +718,7 @@ Definition wf_constructor (CT : class_table) (c : class_name) (ctor : constructo
     qualified_type_subtype CT
       (vpa_mutability_constructor_param (cqualifier ctor) param_type)
       {| sqtype := vpa_mutability_constructor_fld (cqualifier ctor) (mutability (ftype field_def));
-         sctype := f_base_type (ftype field_def) |})
+         sbase := f_base_type (ftype field_def) |})
     (cparams ctor) field_defs.
 
 Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : Prop :=
@@ -690,7 +727,7 @@ Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : P
   let methodbody := mbody mdef in
   let mbodystmt := mbody_stmt methodbody in
   let sΓ := msig.(mreceiver) :: msig.(mparams) in
-  wf_stypeuse CT (sqtype (mret msig)) (sctype (mret msig)) /\
+  wf_stypeuse CT (sqtype (mret msig)) (sbase (mret msig)) /\
   exists sΓ' mbodyrettype,
     stmt_typing CT sΓ mscope mbodystmt sΓ' /\
     let mbodyretvar := mreturn methodbody in
@@ -703,13 +740,13 @@ Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : P
       bound CT C = Some qc ->
       FindMethodWithName CT parent (mname msig) mdef_parent ->
       method_override_compatible CT qc msig (msignature mdef_parent)) /\
-    sctype (mreceiver msig) = C /\
+    sbase (mreceiver msig) = TRef C /\
     (readonly_state_method_scope mscope ->
       signature_has_no_mutable_roots msig).
 
 Lemma wf_method_receiver_class : forall CT C mdef,
   wf_method CT C mdef ->
-  sctype (mreceiver (msignature mdef)) = C.
+  sbase (mreceiver (msignature mdef)) = TRef C.
 Proof.
   intros CT C mdef Hwf.
   unfold wf_method in Hwf; simpl in Hwf.
@@ -996,14 +1033,14 @@ Lemma method_lookup_in_wellformed_inherited: forall CT C m mdef
   (Hwf_ct  : wf_class_table CT)
   (Hdom    : C < dom CT)
   (Hlookup : FindMethodWithName CT C m mdef),
-  exists D ddef, base_subtype CT C D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef.
+  exists D ddef, class_subtype CT C D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef.
 Proof.
   intros CT C m mdef Hwf_ct Hdom Hlookup.
   induction C as [C IH] using lt_wf_ind.
   inversion Hlookup; subst.
   - (* FOM_Here case *)
     exists C, def.
-    split; [apply base_refl; exact Hdom | split; [exact Hfind | split]].
+    split; [apply class_refl; exact Hdom | split; [exact Hfind | split]].
     + unfold gget_method in Hget_method.
       apply find_some in Hget_method.
       destruct Hget_method as [Hin _].
@@ -1025,8 +1062,8 @@ Proof.
       [D [ddef [Hsub [Hfind_D [Hin_D Hwf_D]]]]].
     exists D, ddef.
     split.
-    + eapply base_trans.
-      * eapply base_extends; eauto.
+    + eapply class_trans.
+      * eapply class_extends; eauto.
         unfold parent_lookup.
         rewrite Hfind.
         simpl.
@@ -1037,7 +1074,7 @@ Qed.
 
 Lemma method_inheritance_exists : forall CT C D m mdef
   (Hwf_ct : wf_class_table CT)
-  (Hsub   : base_subtype CT C D)
+  (Hsub   : class_subtype CT C D)
   (Hfind  : FindMethodWithName CT D m mdef),
   exists mdef', FindMethodWithName CT C m mdef'.
 Proof.
@@ -1046,7 +1083,7 @@ Proof.
   induction Hsub; intros mdef Hfind.
   - (* Reflexive *) exists mdef. exact Hfind.
   - (* Transitive *)
-    assert (HD_dom : D < dom CT) by (eapply base_subtype_domain; eauto).
+    assert (HD_dom : D < dom CT) by (eapply class_subtype_domain; eauto).
     apply IHHsub2 in Hfind; auto.
     destruct Hfind as [mdef_D HfindD].
     apply IHHsub1 in HfindD; auto.
@@ -1060,7 +1097,7 @@ Qed.
 
 Lemma method_signature_refines_subtype : forall CT C D m mdef1 mdef2
   (Hwf_ct : wf_class_table CT)
-  (Hsub   : base_subtype CT C D)
+  (Hsub   : class_subtype CT C D)
   (Hfind1 : FindMethodWithName CT C m mdef1)
   (Hfind2 : FindMethodWithName CT D m mdef2),
   method_signature_refinement CT (msignature mdef1) (msignature mdef2).
@@ -1072,7 +1109,7 @@ Proof.
     assert (mdef1 = mdef2) by (eapply find_overriding_method_deterministic; eauto).
     subst. constructor.
   - (* Transitive *)
-    assert (HD_dom : D < dom CT) by (eapply base_subtype_domain; eauto).
+    assert (HD_dom : D < dom CT) by (eapply class_subtype_domain; eauto).
     (* Method m exists in E, and D <: E, so by inheritance m must exist in D *)
     assert (Hexists_D : exists mdef_D, FindMethodWithName CT D m mdef_D).
     {
@@ -1108,18 +1145,18 @@ Proof.
       (unfold wf_class_table in Hwf_ct;
        destruct Hwf_ct as [_ [_ [_ Hcname]]];
        apply Hcname; exact Hfind).
-    eapply msr_override with (qc := qC).
-    { rewrite Hreceiver_base. rewrite HC0_eq.
-      unfold bound. rewrite Hfind. reflexivity. }
-    { destruct (method_lookup_in_wellformed_inherited
-          CT D m mdef2 Hwf_ct Hdom_D Hfind2)
-        as [E [edef [HDE [HfindE [HinE HwfE]]]]].
-      unfold wf_method in HwfE; simpl in HwfE.
-      destruct HwfE as
-        [_ [sΓE [retE [_ [_ [_ [_ [_ [Hreceiver_E _]]]]]]]]].
-      rewrite Hreceiver_base. rewrite HC0_eq. rewrite Hreceiver_E.
-      eapply base_trans.
-      - eapply base_extends; eauto.
+    destruct (method_lookup_in_wellformed_inherited
+        CT D m mdef2 Hwf_ct Hdom_D Hfind2)
+      as [E [edef [HDE [HfindE [HinE HwfE]]]]].
+    unfold wf_method in HwfE; simpl in HwfE.
+    destruct HwfE as
+      [_ [sΓE [retE [_ [_ [_ [_ [_ [Hreceiver_E _]]]]]]]]].
+    eapply msr_override with (qc := qC) (C := C) (D := E).
+    { rewrite Hreceiver_base. rewrite HC0_eq. reflexivity. }
+    { exact Hreceiver_E. }
+    { unfold bound. rewrite Hfind. reflexivity. }
+    { eapply class_trans.
+      - eapply class_extends; eauto.
         unfold parent_lookup. rewrite Hfind. exact Hparent.
       - exact HDE. }
     { eapply stmt_typing_wf_env. exact Hmethod_body. }
@@ -1743,19 +1780,22 @@ Proof.
     inversion Hsub; subst; auto.
 Qed.
 
-Lemma method_signature_refinement_receiver_base : forall CT child parent,
+Lemma method_signature_refinement_receiver_base : forall CT child parent C,
   method_signature_refinement CT child parent ->
-  sctype (mreceiver child) < dom CT ->
-  base_subtype CT
-    (sctype (mreceiver child))
-    (sctype (mreceiver parent)).
+  sbase (mreceiver child) = TRef C ->
+  C < dom CT ->
+  exists D,
+    sbase (mreceiver parent) = TRef D /\
+    class_subtype CT C D.
 Proof.
-  intros CT child parent Hrefine Hdom.
-  induction Hrefine.
-  - apply base_refl. exact Hdom.
-  - assumption.
-  - have Hchild_middle := IHHrefine1 Hdom.
-    eapply base_trans; [exact Hchild_middle|].
-    apply IHHrefine2.
-    eapply base_subtype_domain; eauto.
+  intros CT child parent C Hrefine.
+  revert C.
+  induction Hrefine; intros C0 Hchild Hdom.
+  - exists C0. split; [exact Hchild | apply class_refl; exact Hdom].
+  - rewrite H in Hchild. injection Hchild as <-.
+    exists D. split; assumption.
+  - destruct (IHHrefine1 C0 Hchild Hdom) as [M [Hmiddle HCM]].
+    destruct (IHHrefine2 M Hmiddle) as [P [Hparent HMP]].
+    { eapply class_subtype_domain; eauto. }
+    exists P. split; [exact Hparent | eapply class_trans; eauto].
 Qed.
