@@ -9,7 +9,7 @@ Require Import Iris.GenericCacheGhostState.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
   PICOBridge.PicoIrisCoreInvariant PICOBridge.PicoIrisSemImmOperations
   PICOBridge.PicoIrisSemImmLogicalRelation PICOBridge.PicoIrisSemanticAPI
-  PICOBridge.PicoCacheTyping.
+  PICOBridge.PicoCacheTyping PICOBridge.PicoIrisTypingFundamental.
 Require Import Reachability PICOBridge.PicoDerivationNoninterference
   PICOBridge.PicoDerivationCache.
 Require DerivedCache.
@@ -428,6 +428,48 @@ Proof.
            exact (Hvalid HashField value Hin).
 Defined.
 
+(** ** Computing the hash by reading the payload
+
+    The cached hash method can compute its value by reading the receiver's
+    final payload field instead of assigning a literal.  The provider's
+    footprint histories make every weak read of that field return the
+    reference value. *)
+Definition pico_hash_read_compute_stmt : stmt :=
+  SVarAss cache_tmp (EField cache_receiver 1).
+
+Lemma pico_hash_read_compute_step_inv `{CacheMemoryModel} :
+  forall CT rGamma V K h sigma next state' receiver hash_value,
+    runtime_getVal rGamma cache_receiver = Some (Iot receiver) ->
+    (forall v, List.In v (values_written_to sigma (receiver, 1)) ->
+      v = Int hash_value) ->
+    pico_core_step CT (CoreRun rGamma pico_hash_read_compute_stmt V K)
+      (mkPicoCoreState h sigma) next state' ->
+    exists V',
+      next = CoreRun
+        (set_vars rGamma (update cache_tmp (Int hash_value) (vars rGamma)))
+        SSkip V' K /\
+      state' = mkPicoCoreState h sigma.
+Proof.
+  intros CT rGamma V K h sigma next state' receiver hash_value Hreceiver
+    Honly Hstep.
+  unfold pico_hash_read_compute_stmt in Hstep.
+  inversion Hstep; subst.
+  - match goal with
+    | Hy : runtime_getVal _ cache_receiver = Some (Iot ?ly),
+      Hr : wm_read _ _ (?ly, _) ?v ?V1 |- _ =>
+        rewrite Hreceiver in Hy; injection Hy as <-;
+        destruct (wm_read_from_history _ _ _ _ _ Hr) as (msg & Hin & Hval);
+        assert (Hv : v = Int hash_value)
+          by (apply Honly; unfold values_written_to;
+              rewrite <- Hval; apply List.in_map; exact Hin);
+        rewrite Hv; exists V1; split; reflexivity
+    end.
+  - match goal with
+    | Hn : runtime_getVal _ cache_receiver = Some Null_a |- _ =>
+        rewrite Hreceiver in Hn; discriminate
+    end.
+Qed.
+
 Section concrete_hash_api.
   Context `{Hmem : CacheMemoryModel}.
   Context `{Hprogress : @CacheMemoryModelProgress Hmem}.
@@ -603,6 +645,114 @@ Section concrete_hash_api.
       + iPureIntro. exact Hstate_final.
       + iPureIntro. exact Hextend.
       + iPureIntro. unfold contract in Hpost. exact Hpost.
+  Qed.
+
+  (** The payload read is a derived computation for the concrete provider:
+      from any frame whose receiver is the provider's receiver, it stores the
+      provider's hash in [cache_tmp] and leaves the state unchanged. *)
+  Lemma pico_hash_read_computationI receiver m h0 hash_value
+      (Hfoot : pico_hash_abstract_field CT h0 receiver (receiver, 1))
+      (Hpayload : DerivedCache.field_read h0 receiver 1 (Int hash_value)) :
+    ⊢ pico_derived_computation_atI CT
+      (pico_core_semimm_worldI hash_cache_protocol pico_hash_stable_abs
+        hash_value (pico_hash_cache_adapter receiver)
+        (pico_concrete_hash_semimm CT receiver m h0 hash_value))
+      (pico_hash_cache_receiver (pico_hash_cache_adapter receiver))
+      pico_hash_read_compute_stmt cache_tmp (Int hash_value).
+  Proof.
+    iModIntro.
+    iIntros (rGamma loc [h sigma] V K E Phi old)
+      "%Hreceiver %Hok %Hold Hworld Hown Hnext".
+    destruct (pico_hash_cache_adapter_some receiver (loc, hash_cache_field)
+      HashField Hok) as [Haddr _].
+    unfold pico_hash_cache_addr in Haddr. injection Haddr as ->.
+    iDestruct "Hworld" as (gamma) "[%Hinv Hsem]".
+    have Hprovider : pico_hash_provider_inv CT receiver m h0 hash_value
+      (mkPicoCoreState h sigma) := Hinv.
+    destruct Hprovider as (_ & (_ & _ & _ & Hhist & _) & _).
+    destruct (Hhist receiver 1 (Int hash_value) Hfoot Hpayload)
+      as [Hnonempty Honly].
+    assert (Hhistory : history_of sigma (receiver, 1) <> []).
+    { intros Hnil. apply Hnonempty. unfold values_written_to.
+      rewrite Hnil. reflexivity. }
+    destruct (wm_read_nonempty sigma V (receiver, 1) Hhistory)
+      as (v & V1 & Hread).
+    assert (Hready : exists next state',
+      pico_core_step CT (CoreRun rGamma pico_hash_read_compute_stmt V K)
+        (mkPicoCoreState h sigma) next state').
+    { eexists _, _. unfold pico_hash_read_compute_stmt.
+      eapply PCS_AssignField; [exact Hold | exact Hreceiver | exact Hread]. }
+    iApply (pico_core_ownP_wp_from_direct_step_contI CT E Phi _ _ Hready
+      with "Hown [Hsem Hnext]").
+    iNext. iIntros (next state') "%Hactual Hown".
+    destruct (pico_hash_read_compute_step_inv CT rGamma V K h sigma next state'
+      receiver hash_value Hreceiver Honly Hactual) as (V2 & -> & ->).
+    iApply ("Hnext" $! V2 with "[Hsem] Hown").
+    iExists gamma. iFrame "Hsem". iPureIntro. exact Hinv.
+  Qed.
+
+  Lemma pico_hash_read_ts_computationI receiver m h0 hash_value
+      C receiver_type
+      (Hreceiver_base : sbase receiver_type = TRef C)
+      (Hpayload_abstract : abstract_field CT C 1)
+      (Hfoot : pico_hash_abstract_field CT h0 receiver (receiver, 1))
+      (Hpayload : DerivedCache.field_read h0 receiver 1 (Int hash_value)) :
+    ⊢ pico_ts_derived_computation_atI CT
+      (pico_core_semimm_worldI hash_cache_protocol pico_hash_stable_abs
+        hash_value (pico_hash_cache_adapter receiver)
+        (pico_concrete_hash_semimm CT receiver m h0 hash_value))
+      (pico_hash_cache_receiver (pico_hash_cache_adapter receiver))
+      ts_no_calls [receiver_type; int_type; int_type]
+      [receiver_type; int_type; int_type]
+      pico_hash_read_compute_stmt cache_tmp (Int hash_value).
+  Proof.
+    iSplit.
+    - iPureIntro. constructor.
+      eapply TSERO_Field with (T := receiver_type) (C := C);
+        [reflexivity | exact Hreceiver_base | exact Hpayload_abstract].
+    - iApply pico_hash_read_computationI; assumption.
+  Qed.
+
+  (** The cached hash method that reads its payload is installed as a
+      callable and exported API method with no separate computation
+      premise. *)
+  Theorem pico_heap_hash_read_callable_api_wfI
+      receiver m h0 hash_value C receiver_type method
+      (Htyping : stmt_typing CT [receiver_type] AbstractState
+        (pico_hash_method_stmt_with pico_hash_read_compute_stmt)
+        [receiver_type; int_type; int_type])
+      (Hreceiver : sbase receiver_type = TRef C)
+      (Hoverride : forall parent_def parent mdef_parent qc,
+        find_class CT C = Some parent_def ->
+        super (signature parent_def) = Some parent ->
+        bound CT C = Some qc ->
+        FindMethodWithName CT parent method mdef_parent ->
+        method_override_compatible CT qc
+          (pico_hash_method_signature receiver_type method)
+          (msignature mdef_parent))
+      (Hcache_runtime : PicoHashCacheRuntimeAssignable CT receiver_type)
+      (Hpayload_abstract : abstract_field CT C 1)
+      (Hfoot : pico_hash_abstract_field CT h0 receiver (receiver, 1))
+      (Hpayload : DerivedCache.field_read h0 receiver 1 (Int hash_value)) :
+    ⊢ pico_callable_method_wfI CT
+      (pico_core_semimm_worldI hash_cache_protocol pico_hash_stable_abs
+        hash_value (pico_hash_cache_adapter receiver)
+        (pico_concrete_hash_semimm CT receiver m h0 hash_value))
+      C (pico_hash_method_def_with receiver_type method
+          pico_hash_read_compute_stmt)
+      (pico_hash_method_contract_at receiver hash_value) ∗
+    pico_exported_methodI CT
+      (pico_core_semimm_worldI hash_cache_protocol pico_hash_stable_abs
+        hash_value (pico_hash_cache_adapter receiver)
+        (pico_concrete_hash_semimm CT receiver m h0 hash_value))
+      (pico_hash_method_contract_at receiver hash_value)
+      (pico_hash_method_def_with receiver_type method
+        pico_hash_read_compute_stmt).
+  Proof.
+    iApply (pico_heap_hash_callable_api_wfI receiver m h0 hash_value C
+      receiver_type method pico_hash_read_compute_stmt Htyping Hreceiver
+      Hoverride Hcache_runtime).
+    iApply pico_hash_read_ts_computationI; eassumption.
   Qed.
 End concrete_hash_api.
 
