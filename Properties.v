@@ -4289,6 +4289,63 @@ Proof.
   - auto.
 Qed.
 
+(** Reference results stay references along a refinement chain. *)
+Lemma refinement_preserves_ref_return :
+  forall CT child parent,
+    method_signature_refinement CT child parent ->
+    (exists C, sbase (mret child) = TRef C) ->
+    exists D, sbase (mret parent) = TRef D.
+Proof.
+  intros CT child parent Hrefine.
+  induction Hrefine; intros [Cret Hchild].
+  - exists Cret. exact Hchild.
+  - match goal with
+    | Hcompat : method_override_compatible CT _ overrider overridden |- _ =>
+        unfold method_override_compatible in Hcompat;
+        destruct Hcompat as [_ [_ [Hreturn _]]]
+    end.
+    apply qualified_type_subtype_base_subtype in Hreturn.
+    unfold vpa_mutability_override in Hreturn. simpl in Hreturn.
+    rewrite Hchild in Hreturn.
+    destruct (base_subtype_from_ref _ _ _ Hreturn) as [Dret [HD _]].
+    exists Dret. exact HD.
+  - eauto.
+Qed.
+
+(** Parameters are contravariant: a reference parameter of the overridden
+    signature is a reference parameter of every refining signature. *)
+Lemma refinement_preserves_ref_parameter :
+  forall CT child parent,
+    method_signature_refinement CT child parent ->
+    forall i Tparent Tchild,
+      nth_error (mparams parent) i = Some Tparent ->
+      nth_error (mparams child) i = Some Tchild ->
+      (exists C, sbase Tparent = TRef C) ->
+      exists D, sbase Tchild = TRef D.
+Proof.
+  intros CT child parent Hrefine.
+  induction Hrefine; intros i Tparent Tchild Hparent Hchild [Cp HC].
+  - rewrite Hparent in Hchild. injection Hchild as <-. exists Cp. exact HC.
+  - match goal with
+    | Hcompat : method_override_compatible CT _ overrider overridden |- _ =>
+        unfold method_override_compatible in Hcompat;
+        destruct Hcompat as [_ [_ [_ [Hparams _]]]]
+    end.
+    have Hsub := Forall2_nth_error _ _ _ _ _ _ Hparams Hparent Hchild.
+    apply qualified_type_subtype_base_subtype in Hsub.
+    unfold vpa_mutability_override in Hsub. simpl in Hsub.
+    rewrite HC in Hsub.
+    destruct (base_subtype_from_ref _ _ _ Hsub) as [Dp [HD _]].
+    exists Dp. exact HD.
+  - have Hlength := method_signature_refinement_params_length CT
+      middle parent Hrefine2.
+    assert (Hi : i < length (mparams middle)).
+    { rewrite Hlength. apply nth_error_Some. rewrite Hparent. discriminate. }
+    destruct (nth_error_Some_exists (mparams middle) i Hi) as [Tmiddle Hmiddle].
+    eapply IHHrefine1; [exact Hmiddle | exact Hchild |].
+    eapply IHHrefine2; [exact Hparent | exact Hmiddle | exists Cp; exact HC].
+Qed.
+
 Lemma refinement_preserves_return_typability :
   forall CT h loc cy qcontext child parent,
     method_signature_refinement CT child parent ->

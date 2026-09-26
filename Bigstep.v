@@ -750,6 +750,23 @@ Proof.
     repeat split; reflexivity.
 Qed.
 
+Lemma r_type_dom : forall h loc rqt
+  (Hrtype : r_type h loc = Some rqt),
+  loc < dom h.
+Proof.
+  intros h loc rqt H.
+  unfold r_type in H.
+  destruct (runtime_getObj h loc) as [o|] eqn:Hobj.
+  - (* Some case *)
+    unfold runtime_getObj in Hobj.
+    apply nth_error_Some.
+    rewrite Hobj.
+    discriminate.
+  - (* None case *)
+    simpl in H.
+    discriminate H.
+Qed.
+
 Lemma qualifier_typable_subtype : forall CT qr T1 T2 qcontext
   (Hsub   : qualified_type_subtype CT T1 T2)
   (Hqual1 : qualifier_typable_context qr (sqtype T1) qcontext),
