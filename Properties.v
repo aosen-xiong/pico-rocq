@@ -4266,6 +4266,29 @@ Proof.
     eapply IHHrefine1; eauto.
 Qed.
 
+(** Integer results are preserved along a refinement chain: a covariant
+    override of an integer-returning method must itself return an integer. *)
+Lemma refinement_preserves_int_return :
+  forall CT child parent,
+    method_signature_refinement CT child parent ->
+    sbase (mret child) = TInt ->
+    sbase (mret parent) = TInt.
+Proof.
+  intros CT child parent Hrefine.
+  induction Hrefine; intros Hint.
+  - exact Hint.
+  - match goal with
+    | Hcompat : method_override_compatible CT _ overrider overridden |- _ =>
+        unfold method_override_compatible in Hcompat;
+        destruct Hcompat as [_ [_ [Hreturn _]]]
+    end.
+    apply qualified_type_subtype_base_subtype in Hreturn.
+    unfold vpa_mutability_override in Hreturn. simpl in Hreturn.
+    rewrite Hint in Hreturn.
+    exact (base_subtype_from_int _ _ Hreturn).
+  - auto.
+Qed.
+
 Lemma refinement_preserves_return_typability :
   forall CT h loc cy qcontext child parent,
     method_signature_refinement CT child parent ->
