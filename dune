@@ -2,9 +2,9 @@
  (alias default)
  (deps
   _RocqProject
-  (glob_files *.v))
+  (glob_files_rec *.v))
  (action
   (progn
-   (run sh -c "rm -f ./*.vo ./*.vos ./*.vok ./*.glob ./CoqMakefile ./CoqMakefile.conf ./.CoqMakefile.d ./.Makefile.d")
+   (run sh -c "find . -type f \\( -name '*.vo' -o -name '*.vos' -o -name '*.vok' -o -name '*.glob' \\) -delete; rm -f ./CoqMakefile ./CoqMakefile.conf ./.CoqMakefile.d ./.Makefile.d")
    (run coq_makefile -f _RocqProject -o CoqMakefile)
    (run make -f CoqMakefile))))
