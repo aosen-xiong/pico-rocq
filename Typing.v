@@ -1780,22 +1780,26 @@ Proof.
     inversion Hsub; subst; auto.
 Qed.
 
-Lemma method_signature_refinement_receiver_base : forall CT child parent C,
+Lemma method_signature_refinement_receiver_base : forall CT child parent,
   method_signature_refinement CT child parent ->
-  sbase (mreceiver child) = TRef C ->
-  C < dom CT ->
-  exists D,
-    sbase (mreceiver parent) = TRef D /\
-    class_subtype CT C D.
+  wf_base_type CT (sbase (mreceiver child)) ->
+  base_subtype CT
+    (sbase (mreceiver child))
+    (sbase (mreceiver parent)).
 Proof.
-  intros CT child parent C Hrefine.
-  revert C.
-  induction Hrefine; intros C0 Hchild Hdom.
-  - exists C0. split; [exact Hchild | apply class_refl; exact Hdom].
-  - rewrite H in Hchild. injection Hchild as <-.
-    exists D. split; assumption.
-  - destruct (IHHrefine1 C0 Hchild Hdom) as [M [Hmiddle HCM]].
-    destruct (IHHrefine2 M Hmiddle) as [P [Hparent HMP]].
-    { eapply class_subtype_domain; eauto. }
-    exists P. split; [exact Hparent | eapply class_trans; eauto].
+  intros CT child parent Hrefine Hdom.
+  induction Hrefine.
+  - destruct (sbase (mreceiver msig)) as [|C].
+    + apply base_int.
+    + apply base_ref. apply class_refl. exact Hdom.
+  - match goal with
+    | Hchild : sbase (mreceiver overrider) = TRef _,
+      Hparent : sbase (mreceiver overridden) = TRef _ |- _ =>
+        rewrite Hchild; rewrite Hparent
+    end.
+    apply base_ref. assumption.
+  - have Hchild_middle := IHHrefine1 Hdom.
+    eapply base_trans; [exact Hchild_middle|].
+    apply IHHrefine2.
+    eapply base_subtype_domain; eauto.
 Qed.

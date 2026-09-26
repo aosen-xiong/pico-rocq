@@ -75,7 +75,7 @@ Proof.
         subst anyf.
         assert (Heq_assign : Final = Assignable).
         {
-          eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact Hfinal | exact Hassign_rel].
+          eapply sf_assignability_consistent_subtype; [exact Hclasstable | eapply base_ref_class_subtype; [exact base|eassumption] | exact Hfinal | exact Hassign_rel].
         }
         discriminate.
       }
@@ -110,7 +110,7 @@ Proof.
         subst anyf.
         assert (Heq_assign : RDA = Assignable).
         {
-          eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact Hrda | exact Hassign_rel].
+          eapply sf_assignability_consistent_subtype; [exact Hclasstable | eapply base_ref_class_subtype; [exact base|eassumption] | exact Hrda | exact Hassign_rel].
         }
         discriminate.
       }
@@ -177,7 +177,7 @@ Proof.
         subst anyf.
         assert (Heq_assign : Final = Assignable).
         {
-          eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact Hfinal | exact Hassign_rel].
+          eapply sf_assignability_consistent_subtype; [exact Hclasstable | eapply base_ref_class_subtype; [exact base|eassumption] | exact Hfinal | exact Hassign_rel].
         }
         discriminate.
       }
@@ -212,7 +212,7 @@ Proof.
         subst anyf.
         assert (Heq_assign : RDA = Assignable).
         {
-          eapply sf_assignability_consistent_subtype; [exact Hclasstable | exact base | exact Hrda | exact Hassign_rel].
+          eapply sf_assignability_consistent_subtype; [exact Hclasstable | eapply base_ref_class_subtype; [exact base|eassumption] | exact Hrda | exact Hassign_rel].
         }
         discriminate.
       }
@@ -329,9 +329,10 @@ Qed.
     across dynamic dispatch. *)
 Lemma successful_typed_safe_call_body :
   forall CT sΓ mt rΓ h x method y args sΓ' rΓfinal hfinal
-         Ty static_mdef vals receiver,
+         Ty Cy static_mdef vals receiver,
     static_getType sΓ y = Some Ty ->
-    FindMethodWithName CT (sctype Ty) method static_mdef ->
+    sbase Ty = TRef Cy ->
+    FindMethodWithName CT Cy method static_mdef ->
     wf_r_config CT sΓ rΓ h ->
     stmt_typing CT sΓ mt (SCall x method y args) sΓ' ->
     eval_stmt CT rΓ h (SCall x method y args) OK rΓfinal hfinal ->
@@ -357,7 +358,8 @@ Lemma successful_typed_safe_call_body :
       method_scope_subtype (mscope (msignature runtime_mdef)) mt.
 Proof.
   intros CT sΓ mt rΓ h x method y args sΓ' rΓfinal hfinal
-    Ty static_mdef vals receiver Hstatic Hfind_static Hwf Htyping Heval
+    Ty Cy static_mdef vals receiver Hstatic Hreceiver_class Hfind_static Hwf
+    Htyping Heval
     Hreceiver Hargs Hcaller_scope.
   inversion Heval; subst; try discriminate.
   have Hreceiver_eq : receiver = ly.
@@ -372,13 +374,13 @@ Proof.
     method_signature_refinement CT
       (msignature mdef) (msignature static_mdef).
   { eapply runtime_call_signature_refines; eauto. }
-  have Hruntime_sub : base_subtype CT cy (sctype Ty).
-  { eapply runtime_value_base_subtype; eauto. }
+  have Hruntime_sub : class_subtype CT cy Cy.
+  { eapply runtime_value_class_subtype; eauto. }
   have Hruntime_scope :
     readonly_state_method_scope (mscope (msignature mdef)).
   { eapply safe_typed_call_target_method_safe; eauto. }
   have Hruntime_dom : cy < dom CT.
-  { exact (proj1 (base_subtype_domain CT cy (sctype Ty) Hruntime_sub)). }
+  { exact (proj1 (class_subtype_domain CT cy Cy Hruntime_sub)). }
   destruct (method_lookup_in_wellformed_inherited CT cy method mdef
     (proj1 Hwf) Hruntime_dom Hfind_runtime) as
     [declaring_class [declaring_def
@@ -411,11 +413,12 @@ Proof.
 Qed.
 
 Lemma readonly_state_preservation_with_end :
-  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
+  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty Cy mdef zs vals ly
          loc_arg C anyrq vals_arg vals_arg' f
     (Hstmt : stmt = (SCall x mindex y zs))
     (Hstatic_type : static_getType sΓ y = Some Ty)
-    (Hmethod_lookup : FindMethodWithName CT (sctype Ty) mindex mdef)
+    (Hreceiver_class : sbase Ty = TRef Cy)
+    (Hmethod_lookup : FindMethodWithName CT Cy mindex mdef)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
     (Hreadonly_scope : readonly_state_method_scope mt)
@@ -428,13 +431,13 @@ Lemma readonly_state_preservation_with_end :
     (Hassign : sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA),
     nth_error vals_arg f = nth_error vals_arg' f.
   Proof.
-  intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
-    loc_arg C anyrq vals_arg vals_arg' f Hstmt Hstatic_type Hmethod_lookup
+  intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty Cy mdef zs vals ly
+    loc_arg C anyrq vals_arg vals_arg' f Hstmt Hstatic_type Hreceiver_class Hmethod_lookup
     Hwf Htyping Hreadonly_scope Heval Hget_y Hget_zs HinP Harg_obj
     Harg_obj' Hassign.
   subst stmt.
   destruct (successful_typed_safe_call_body CT sΓ mt rΓ h x mindex y zs
-    sΓ' rΓ' h' Ty mdef vals ly Hstatic_type Hmethod_lookup Hwf Htyping
+    sΓ' rΓ' h' Ty Cy mdef vals ly Hstatic_type Hreceiver_class Hmethod_lookup Hwf Htyping
     Heval Hget_y Hget_zs Hreadonly_scope)
     as [runtime_mdef [body_sΓ' [body_rΓ'
       [Hsignature [Hbody_typed [Hframe_wf
@@ -455,11 +458,12 @@ Qed.
 (** Public RS guarantee with final-object existence and runtime type derived
     from the successful call evaluation. *)
 Theorem readonly_state_preservation :
-  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
+  forall CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty Cy mdef zs vals ly
          loc_arg C anyrq vals_arg f
     (Hstmt : stmt = (SCall x mindex y zs))
     (Hstatic_type : static_getType sΓ y = Some Ty)
-    (Hmethod_lookup : FindMethodWithName CT (sctype Ty) mindex mdef)
+    (Hreceiver_class : sbase Ty = TRef Cy)
+    (Hmethod_lookup : FindMethodWithName CT Cy mindex mdef)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ mt stmt sΓ')
     (Hreadonly_scope : readonly_state_method_scope mt)
@@ -473,8 +477,8 @@ Theorem readonly_state_preservation :
       runtime_getObj h' loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg') /\
       nth_error vals_arg f = nth_error vals_arg' f.
 Proof.
-  intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
-    loc_arg C anyrq vals_arg f Hstmt Hstatic_type Hmethod_lookup Hwf Htyping
+  intros CT sΓ mt rΓ h stmt rΓ' h' sΓ' x y mindex Ty Cy mdef zs vals ly
+    loc_arg C anyrq vals_arg f Hstmt Hstatic_type Hreceiver_class Hmethod_lookup Hwf Htyping
     Hreadonly_scope Heval Hget_y Hget_zs HinP Harg_obj Hassign.
   destruct (runtime_preserves_r_type_heap CT rΓ h loc_arg
     (mkruntime_type anyrq C) h' vals_arg stmt rΓ' Harg_obj Heval)

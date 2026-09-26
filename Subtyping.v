@@ -203,6 +203,19 @@ Proof.
     split; [exact Hb3 | eapply class_trans; eauto].
 Qed.
 
+(** A reference base below a static reference type yields the class-level
+    subtyping fact that field and method lookup need. *)
+Lemma base_ref_class_subtype : forall CT C T D,
+  base_subtype CT (TRef C) (sbase T) ->
+  sbase T = TRef D ->
+  class_subtype CT C D.
+Proof.
+  intros CT C T D Hsub Href.
+  rewrite Href in Hsub.
+  destruct (base_subtype_from_ref CT C (TRef D) Hsub) as [D' [HD' Hclass]].
+  injection HD' as <-. exact Hclass.
+Qed.
+
 Lemma base_subtype_from_int : forall CT b,
   base_subtype CT TInt b ->
   b = TInt.

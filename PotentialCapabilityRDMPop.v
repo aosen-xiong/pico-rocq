@@ -322,15 +322,16 @@ Qed.
     channel-free call entry applies. *)
 Lemma refined_mut_return_call_has_channel_free_entry_shape :
   forall CT sGamma mt rGamma h x method receiver args vals
-    receiver_location receiver_type destination_type body_return_type
-    runtime_mdef static_mdef,
+    receiver_location receiver_type receiver_class destination_type
+    body_return_type runtime_mdef static_mdef,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x method receiver args) sGamma ->
     readonly_state_method_scope mt ->
     static_getType sGamma receiver = Some receiver_type ->
     runtime_getVal rGamma receiver = Some (Iot receiver_location) ->
     runtime_lookup_list rGamma args = Some vals ->
-    FindMethodWithName CT (sctype receiver_type) method static_mdef ->
+    sbase receiver_type = TRef receiver_class ->
+    FindMethodWithName CT receiver_class method static_mdef ->
     qualified_type_subtype CT body_return_type
       (mret (msignature runtime_mdef)) ->
     method_signature_refinement CT
@@ -347,8 +348,8 @@ Lemma refined_mut_return_call_has_channel_free_entry_shape :
          (mreceiver (msignature static_mdef))) \/
      (sqtype receiver_type = RO /\
       sqtype (mreceiver (msignature static_mdef)) = RDM /\
-      base_subtype CT (sctype receiver_type)
-        (sctype (mreceiver (msignature static_mdef))))) ->
+      base_subtype CT (sbase receiver_type)
+        (sbase (mreceiver (msignature static_mdef))))) ->
     signature_has_no_mutable_roots (msignature runtime_mdef) ->
     sqtype (mreceiver (msignature runtime_mdef)) = RO /\
     (forall root,
@@ -358,9 +359,10 @@ Lemma refined_mut_return_call_has_channel_free_entry_shape :
           (mkr_env (Iot receiver_location :: vals)) root).
 Proof.
   intros CT sGamma mt rGamma h x method receiver args vals
-    receiver_location receiver_type destination_type body_return_type
-    runtime_mdef static_mdef
-    Hwf Htyping Hscope Hreceiver_type Hreceiver_value Hargs Hfind_static
+    receiver_location receiver_type receiver_class destination_type
+    body_return_type runtime_mdef static_mdef
+    Hwf Htyping Hscope Hreceiver_type Hreceiver_value Hargs Hreceiver_class
+    Hfind_static
     Hbody_sub Hrefine Hresult_sub Hreceiver_nonbottom
     Hdestination_rdm Hbody_mut Hreceiver_sub Hsignature_safe.
   destruct (refined_call_rdm_result_classifies_body_return CT receiver_type
@@ -701,14 +703,15 @@ Qed.
 
 (** Base-subtype extraction for a variable's heap object. *)
 Lemma typed_var_object_base_subtype :
-  forall CT sGamma rGamma h y T w o,
+  forall CT sGamma rGamma h y T C w o,
     wf_r_config CT sGamma rGamma h ->
     static_getType sGamma y = Some T ->
+    sbase T = TRef C ->
     runtime_getVal rGamma y = Some (Iot w) ->
     runtime_getObj h w = Some o ->
-    base_subtype CT (rctype (rt_type o)) (sctype T).
+    class_subtype CT (rctype (rt_type o)) C.
 Proof.
-  intros CT sGamma rGamma h y T w o Hwf Htype Hvalue Hobj.
+  intros CT sGamma rGamma h y T C w o Hwf Htype Href Hvalue Hobj.
   destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf) as
     [receiver [context [Hreceiver [_ Hcontext]]]].
   unfold wf_r_config in Hwf.
@@ -719,7 +722,10 @@ Proof.
   rewrite Hvalue in Hcorrespondence.
   unfold wf_r_typable, r_type in Hcorrespondence.
   rewrite Hobj in Hcorrespondence.
-  exact (proj1 Hcorrespondence).
+  have Hbase := proj1 Hcorrespondence. simpl in Hbase.
+  rewrite Href in Hbase.
+  destruct (base_subtype_from_ref _ _ _ Hbase) as [C' [HC' Hsub]].
+  injection HC' as <-. exact Hsub.
 Qed.
 
 (** ** Per-statement preservation of the partition *)
@@ -785,7 +791,7 @@ Proof.
         (mutability (ftype fDef)) = RDM).
     { rewrite Heq. exact Hkind. }
     have Hheap : wf_heap CT h := proj1 (proj2 Hwf).
-    have Hbase : base_subtype CT (rctype (rt_type o)) (sctype T).
+    have Hbase : class_subtype CT (rctype (rt_type o)) C.
     { eapply typed_var_object_base_subtype; eauto. }
     destruct (readonly_state_field_read_mutable_inversion _ _ Hkind') as
       [[Hz_mut Hfm] | [Hz_rdm Hfm]].
@@ -836,10 +842,11 @@ Proof.
     Htyping Heval Hstitch Hsides Hpool.
   have Huse := proj1 (rs_pool_sided_spec _ _ _ _ _ _) Hpool.
   inversion Heval; subst.
-  assert (Hstatic : exists Tx Ty fieldT,
+  assert (Hstatic : exists Tx Ty C fieldT,
       static_getType sGamma x = Some Tx /\
       static_getType sGamma y = Some Ty /\
-      sf_def_rel CT (sctype Tx) f fieldT /\
+      sbase Tx = TRef C /\
+      sf_def_rel CT C f fieldT /\
       qualified_type_subtype CT Ty
         (Build_qualified_type
           (vpa_mutability_stype_fld_readonly_state (sqtype Tx)
@@ -848,9 +855,10 @@ Proof.
       sGamma' = sGamma).
   { inversion Htyping; subst;
       try (destruct Hscope as [Hbad | Hbad]; discriminate).
-    - exists Tx, Ty, fieldT. repeat split; assumption.
-    - exists Tx, Ty, fieldT. repeat split; assumption. }
-  destruct Hstatic as [Tx [Ty [fieldT [Hget_x [Hget_y [Hfld [Hsub ->]]]]]]].
+    - exists Tx, Ty, C, fieldT. repeat split; assumption.
+    - exists Tx, Ty, C, fieldT. repeat split; assumption. }
+  destruct Hstatic as
+    [Tx [Ty [C [fieldT [Hget_x [Hget_y [Href [Hfld [Hsub ->]]]]]]]]].
   have Hlocdom : loc_x < dom h.
   { eapply runtime_getObj_dom. eassumption. }
   split; [|split].
@@ -866,8 +874,8 @@ Proof.
     + eapply Hsides; eauto.
     + (* the written slot: u = loc_x, val_y = Iot v *)
       subst val_y.
-      have Hbase_x : base_subtype CT (rctype (rt_type o)) (sctype Tx).
-      { eapply typed_var_object_base_subtype; eauto. }
+      have Hbase_x : class_subtype CT (rctype (rt_type o)) C.
+      { eapply typed_var_object_base_subtype with (y := x) (T := Tx) (w := loc_x); eauto. }
       have Hfd_C : FieldLookup CT (rctype (rt_type o)) f fdef'.
       { eapply field_inheritance_subtyping; [exact Hbase' | exact Hfd']. }
       have Hft_C : FieldLookup CT (rctype (rt_type o)) f fieldT.
@@ -906,7 +914,7 @@ Lemma rs_sides_after_local :
     length sGamma = length (vars rGamma) ->
     rs_pool_sided h0 S side sGamma rGamma h ->
     rs_pool_sided h0 S side (sGamma ++ [T])
-      (set_vars rGamma (vars rGamma ++ [Null_a])) h.
+      (set_vars rGamma (vars rGamma ++ [default_value T])) h.
 Proof.
   intros h0 S side sGamma rGamma h T Hlen Hpool.
   have Huse := proj1 (rs_pool_sided_spec _ _ _ _ _ _) Hpool.
@@ -917,17 +925,17 @@ Proof.
   destruct (lt_dec x (length (vars rGamma))) as [Hlt | Hge].
   - assert (Hts : nth_error (sGamma ++ [T]) x = nth_error sGamma x).
     { apply nth_error_app1. lia. }
-    assert (Hvs : nth_error (vars rGamma ++ [Null_a]) x
+    assert (Hvs : nth_error (vars rGamma ++ [default_value T]) x
                   = nth_error (vars rGamma) x).
     { apply nth_error_app1. lia. }
     rewrite Hts in Htype. rewrite Hvs in Hvalue.
     eapply Huse; eauto.
-  - assert (Hvs : nth_error (vars rGamma ++ [Null_a]) x
-                  = nth_error [Null_a] (x - length (vars rGamma))).
+  - assert (Hvs : nth_error (vars rGamma ++ [default_value T]) x
+                  = nth_error [default_value T] (x - length (vars rGamma))).
     { apply nth_error_app2. lia. }
     rewrite Hvs in Hvalue.
     destruct (x - length (vars rGamma)) as [|k]; simpl in Hvalue;
-      [discriminate | destruct k; simpl in Hvalue; discriminate].
+      [default_not_location | destruct k; simpl in Hvalue; discriminate].
 Qed.
 
 (** [r_muttype] is stable on the left of a heap append. *)
@@ -978,7 +986,7 @@ Lemma rs_new_object_mut_field_arg_is_pool_member :
     stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
     runtime_lookup_list rGamma args = Some vals ->
     getVal vals f = Some (Iot v) ->
-    base_subtype CT C D ->
+    class_subtype CT C D ->
     sf_def_rel CT D f fdef ->
     (mutability (ftype fdef) = RDM_f \/ mutability (ftype fdef) = Mut_f) ->
     r_muttype h v = Some Mut_r ->
@@ -1216,7 +1224,7 @@ Lemma rs_pool_sided_call_entry :
     (qualified_type_subtype CT Ty
        (vpa_mutability_tt_readonly_state Ty (mreceiver static_sig)) \/
      (sqtype Ty = RO /\ sqtype (mreceiver static_sig) = RDM /\
-      base_subtype CT (sctype Ty) (sctype (mreceiver static_sig)))) ->
+      base_subtype CT (sbase Ty) (sbase (mreceiver static_sig)))) ->
     Forall2 (fun arg T => qualified_type_subtype CT arg
         (vpa_mutability_tt_readonly_state Ty T))
       argtypes (mparams static_sig) ->
@@ -1587,9 +1595,9 @@ Proof.
     subst mbody mstmt mret. subst.
     destruct (safe_typed_call_static_result CT sGamma mt rΓ h x m y zs
       sGamma' ly cy mdef Hwf Htyping Hscope Hval_y Hbase Hfind_method)
-      as [destination_type [receiver_type [static_mdef
+      as [destination_type [receiver_type [receiver_class [static_mdef
         [HsGamma [Hx_nonzero [Hdestination_type [Hreceiver_type
-          [Hfind_static [Hrefine [Hret_sub Hrcv_sub]]]]]]]]]].
+          [Hreceiver_class [Hfind_static [Hrefine [Hret_sub Hrcv_sub]]]]]]]]]]]].
     subst sGamma'.
     have Hcallee_scope := safe_typed_call_target_method_safe CT sGamma mt rΓ
       h x m y zs sGamma ly cy mdef Hwf Htyping Hscope Hval_y Hbase
@@ -1678,6 +1686,12 @@ Proof.
       destruct (Hgrow1 l Hin1) as [HinS | Hge];
         [left; exact HinS | right; exact Hge]. }
     split; [exact Hstitch2|]. split; [exact Hsides2|]. exact Hpool2.
+  - (* if-zero *)
+    inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* if-nonzero *)
+    inversion Htyping; subst.
+    eapply IHHeval; eauto.
 Qed.
 
 (** Stack-shape auxiliaries for the per-edge lemma. *)

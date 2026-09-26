@@ -56,12 +56,13 @@ Proof.
       proj1 (proj1 (proj2 (proj1 Hstate))).
     destruct (safe_typed_call_static_result CT sGamma mt rΓ h x m y zs
       sGamma' ly cy mdef Hcaller_wf Htyping Hsafe Hval_y Hbase Hfind_method)
-      as [destination_type [receiver_type [static_mdef Hstatic_result]]].
+      as [destination_type [receiver_type [receiver_class [static_mdef
+        Hstatic_result]]]].
     destruct Hstatic_result as
       [HsGamma [Hdestination_not_receiver [Hdestination_type
-        [Hreceiver_type [Hfind_static
+        [Hreceiver_type [Hreceiver_class [Hfind_static
           [Hsignature_refinement
-            [Hresult_sub Hstatic_receiver_sub]]]]]]].
+            [Hresult_sub Hstatic_receiver_sub]]]]]]]].
     subst sGamma'.
     have Hcallee_safe := safe_typed_call_target_method_safe CT sGamma mt rΓ
       h x m y zs sGamma ly cy mdef Hcaller_wf Htyping Hsafe Hval_y Hbase
@@ -108,15 +109,28 @@ Proof.
         update_r_env_value rΓ x retval).
     { destruct rΓ. reflexivity. }
     rewrite Hupdate in Hcaller_final_wf |- *.
-    destruct retval as [|return_location].
-    + eapply potential_history_leave_call_null with
-        (caller_h := h) (destination_type := destination_type)
-        (receiver_type := receiver_type)
-        (entry_senv := mreceiver (msignature mdef) ::
-          mparams (msignature mdef))
-        (entry_renv := mkr_env (Iot ly :: vals))
-        (origins := origins) (callee_senv := method_end)
-        (callee_renv := rΓ'') (callee_h := h'); eauto.
+    (* A null or integer result is not a location; only a returned location
+       needs the call-result reflection argument. *)
+    destruct retval as [|return_location|n];
+      [ eapply potential_history_leave_call_nonlocation with
+          (caller_h := h) (destination_type := destination_type)
+          (receiver_type := receiver_type)
+          (entry_senv := mreceiver (msignature mdef) ::
+            mparams (msignature mdef))
+          (entry_renv := mkr_env (Iot ly :: vals))
+          (origins := origins) (callee_senv := method_end)
+          (callee_renv := rΓ'') (callee_h := h');
+          [intros ? ?; discriminate | eauto ..]
+      |
+      | eapply potential_history_leave_call_nonlocation with
+          (caller_h := h) (destination_type := destination_type)
+          (receiver_type := receiver_type)
+          (entry_senv := mreceiver (msignature mdef) ::
+            mparams (msignature mdef))
+          (entry_renv := mkr_env (Iot ly :: vals))
+          (origins := origins) (callee_senv := method_end)
+          (callee_renv := rΓ'') (callee_h := h');
+          [intros ? ?; discriminate | eauto ..] ].
     + refine (potential_history_leave_call CT P Z cutoff authority sGamma rΓ
         h stack x destination_type y ly receiver_type
         (mreceiver (msignature mdef) :: mparams (msignature mdef))
@@ -298,9 +312,10 @@ Proof.
            exfalso.
            (* the callee entry is channel-free *)
            destruct (refined_mut_return_call_has_channel_free_entry_shape CT
-             sGamma mt rΓ h x m y zs vals ly receiver_type destination_type
-             body_return_type mdef static_mdef Hcaller_wf Htyping Hsafe
-             Hreceiver_type Hval_y Hargs Hfind_static Hbody_sub
+             sGamma mt rΓ h x m y zs vals ly receiver_type receiver_class
+             destination_type body_return_type mdef static_mdef Hcaller_wf
+             Htyping Hsafe Hreceiver_type Hval_y Hargs Hreceiver_class
+             Hfind_static Hbody_sub
              Hsignature_refinement Hresult_sub Hreceiver_nonbottom
              Hdestination_rdm Hbody_mut Hstatic_receiver_sub Hsignature_safe)
              as [Hreceiver_ro Hno_rdm_roots].
@@ -461,5 +476,11 @@ Proof.
     + eapply (IHHeval1 eq_refl Heval1 P); eauto.
     + exact Htype2.
     + exact Hsafe.
+  - (* if-zero *)
+    inversion Htyping; subst.
+    eapply (IHHeval eq_refl Heval P); eauto.
+  - (* if-nonzero *)
+    inversion Htyping; subst.
+    eapply (IHHeval eq_refl Heval P); eauto.
 }
 Qed.

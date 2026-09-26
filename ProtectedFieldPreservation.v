@@ -64,17 +64,21 @@ Proof.
     + destruct (wf_config_variable_typable CT _ rGamma h x source Tx
         Hwf Hget_x Hvalue) as [qcontext Htypable].
       unfold wf_r_typable, r_type in Htypable. rewrite Hobj in Htypable.
-      destruct Htypable as [Hbase _].
+      destruct Htypable as [Hbase _]. simpl in Hbase. rewrite Href in Hbase.
+      destruct (base_subtype_from_ref _ _ _ Hbase) as [Cs [HCs Hclass]].
+      injection HCs as <-.
       have Heq : Final = a := sf_assignability_consistent_subtype
-        CT C (sctype Tx) field Final a (proj1 Hwf) Hbase Hfinal Hassign_rel.
+        CT C _ field Final a (proj1 Hwf) Hclass Hfinal Hassign_rel.
       subst a. unfold vpa_assignability in Hassignable.
       destruct (sqtype Tx); discriminate.
     + destruct (wf_config_variable_typable CT _ rGamma h x source Tx
         Hwf Hget_x Hvalue) as [qcontext Htypable].
       unfold wf_r_typable, r_type in Htypable. rewrite Hobj in Htypable.
-      destruct Htypable as [Hbase _].
+      destruct Htypable as [Hbase _]. simpl in Hbase. rewrite Href in Hbase.
+      destruct (base_subtype_from_ref _ _ _ Hbase) as [Cs [HCs Hclass]].
+      injection HCs as <-.
       have Heq : RDA = a := sf_assignability_consistent_subtype
-        CT C (sctype Tx) field RDA a (proj1 Hwf) Hbase Hrda Hassign_rel.
+        CT C _ field RDA a (proj1 Hwf) Hclass Hrda Hassign_rel.
       subst a. unfold vpa_assignability in Hassignable.
       destruct (sqtype Tx) eqn:Hreceiver; try discriminate.
       eapply (active_mut_root_cannot_be_protected CT P Z cutoff h authority
@@ -185,9 +189,9 @@ Proof.
       proj1 (proj1 (proj2 (proj1 Hstate))).
     destruct (safe_typed_call_static_result CT sGamma mt rΓ h x m y zs
       sGamma' ly cy mdef Hcaller_wf Htyping Hsafe Hval_y Hbase Hfind_method)
-      as [destination_type [receiver_type [static_mdef
+      as [destination_type [receiver_type [receiver_class [static_mdef
         [HsGamma [Hdestination_not_receiver [Hdestination_type
-          [Hreceiver_type Hresult_sub]]]]]]].
+          [Hreceiver_type Hresult_sub]]]]]]]].
     subst sGamma'.
     have Hcallee_safe := safe_typed_call_target_method_safe CT sGamma mt rΓ
       h x m y zs sGamma ly cy mdef Hcaller_wf Htyping Hsafe Hval_y Hbase
@@ -222,4 +226,10 @@ Proof.
       location runtime_q C middle_fields fields' protected_field HinP
       Hobj_middle Hobj_end Hprotected.
     rewrite Hfirst. exact Hsecond.
+  - (* if-zero *)
+    inversion Htyping; subst.
+    eapply (IHHeval eq_refl Heval); eauto.
+  - (* if-nonzero *)
+    inversion Htyping; subst.
+    eapply (IHHeval eq_refl Heval); eauto.
 Qed.

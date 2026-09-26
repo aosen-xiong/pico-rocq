@@ -54,7 +54,7 @@ Lemma potential_history_after_local :
     runtime_getVal rGamma x = None ->
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame authority sGamma'
-        (set_vars rGamma (vars rGamma ++ [Null_a]))) stack h.
+        (set_vars rGamma (vars rGamma ++ [default_value T]))) stack h.
 Proof.
   intros CT P Z cutoff authority sGamma mt rGamma h stack T x sGamma'
     [Hlive [Hpotential Hcutoffs]] Htyping Hnone.
@@ -69,7 +69,7 @@ Proof.
   intros capability protected Hcapability Hprotected Hconnected.
   destruct (potential_connected_after_active_descent_reflects CT h authority
     sGamma rGamma sGamma'
-    (set_vars rGamma (vars rGamma ++ [Null_a])) stack
+    (set_vars rGamma (vars rGamma ++ [default_value T])) stack
     capability protected Hwf Hdescend Hconnected) as
     [Hreflected | [anchor [Hanchor_live Hanchor_path]]].
   - apply (Hpotential capability protected).
@@ -197,7 +197,7 @@ Qed.
 Lemma potential_connected_after_non_rdm_field_update_is_old :
   forall CT h active stack lx old field value C fieldT left right,
     runtime_getObj h lx = Some old ->
-    base_subtype CT (rctype (rt_type old)) C ->
+    class_subtype CT (rctype (rt_type old)) C ->
     sf_def_rel CT C field fieldT ->
     mutability (ftype fieldT) <> RDM_f ->
     mutability (ftype fieldT) <> Mut_f ->
@@ -237,27 +237,30 @@ Proof.
     eapply potential_return_edge_after_field_update_is_old; eauto.
 Qed.
 
-Lemma potential_connected_after_null_field_update_is_old :
-  forall CT h active stack lx old field left right,
+(** Writing a non-location value (null or an integer) adds no heap edge. *)
+Lemma potential_connected_after_nonlocation_field_update_is_old :
+  forall CT h active stack lx old field value left right,
+    (forall l, value <> Iot l) ->
     runtime_getObj h lx = Some old ->
-    potential_connected CT (update_field h lx field Null_a)
+    potential_connected CT (update_field h lx field value)
       active stack left right ->
     potential_connected CT h active stack left right.
 Proof.
-  intros CT h active stack lx old field left right Hobj Hconnected.
+  intros CT h active stack lx old field value left right Hnonlocation Hobj
+    Hconnected.
   eapply potential_connected_map_edges; [|exact Hconnected].
   intros edge_left edge_right [Hheap | [Hframe | Hreturn]].
   - destruct Hheap as [Hforward | Hbackward].
-    + destruct (retained_edge_after_field_update CT h lx old field Null_a
+    + destruct (retained_edge_after_field_update CT h lx old field value
         edge_left edge_right Hobj Hforward) as
         [Hold | [Hsource [Hvalue Hnew]]].
       * apply rt_step. left. left. exact Hold.
-      * discriminate.
-    + destruct (mutable_edge_after_field_update CT h lx old field Null_a
+      * exfalso. exact (Hnonlocation _ Hvalue).
+    + destruct (mutable_edge_after_field_update CT h lx old field value
         edge_right edge_left Hobj Hbackward) as
         [Hold | [Hsource [Hvalue Hnew]]].
       * apply rt_step. left. right. exact Hold.
-      * discriminate.
+      * exfalso. exact (Hnonlocation _ Hvalue).
   - apply rt_step. right. left. exact Hframe.
   - apply rt_step. right. right.
     eapply potential_return_edge_after_field_update_is_old; eauto.
@@ -266,7 +269,7 @@ Qed.
 Lemma live_capability_after_non_rdm_field_update_is_old :
   forall CT h active stack lx old field value C fieldT location,
     runtime_getObj h lx = Some old ->
-    base_subtype CT (rctype (rt_type old)) C ->
+    class_subtype CT (rctype (rt_type old)) C ->
     sf_def_rel CT C field fieldT ->
     mutability (ftype fieldT) <> RDM_f ->
     mutability (ftype fieldT) <> Mut_f ->
@@ -291,20 +294,21 @@ Proof.
         subst runtime_fd. destruct Hruntime_q; contradiction.
 Qed.
 
-Lemma live_capability_after_null_field_update_is_old :
-  forall CT h active stack lx old field location,
+Lemma live_capability_after_nonlocation_field_update_is_old :
+  forall CT h active stack lx old field value location,
+    (forall l, value <> Iot l) ->
     runtime_getObj h lx = Some old ->
-    live_capability_reachable CT (update_field h lx field Null_a)
+    live_capability_reachable CT (update_field h lx field value)
       active stack location ->
     live_capability_reachable CT h active stack location.
 Proof.
-  intros CT h active stack lx old field location Hobj
+  intros CT h active stack lx old field value location Hnonlocation Hobj
     [root [Hroot Hreachable]].
-  destruct (retained_reachable_after_field_update CT h lx old field Null_a
+  destruct (retained_reachable_after_field_update CT h lx old field value
     root location Hobj Hreachable) as
     [Hold | [written [Hvalue _]]].
   - exists root. split; assumption.
-  - discriminate.
+  - exfalso. exact (Hnonlocation _ Hvalue).
 Qed.
 
 Lemma potential_colors_after_graph_reflection :
@@ -632,21 +636,23 @@ Proof.
     proj1 (proj2 (proj2 Hlive)).
   have Hwf : wf_r_config CT sGamma rGamma h := proj1 Hframes.
   inversion Heval; subst.
-  destruct val_y as [|written].
+  destruct val_y as [|written|n].
   - eapply potential_colors_after_graph_reflection
       with (M := live_capability_set CT h
         (mk_watched_frame authority sGamma rGamma) stack).
     + intros location Hlocation.
-      eapply live_capability_after_null_field_update_is_old; eauto.
+      eapply live_capability_after_nonlocation_field_update_is_old;
+        [|eauto|eauto]; intros ? ?; discriminate.
     + intros left right Hconnected.
-      eapply potential_connected_after_null_field_update_is_old; eauto.
+      eapply potential_connected_after_nonlocation_field_update_is_old;
+        [|eauto|eauto]; intros ? ?; discriminate.
     + exact Hpotential.
   - destruct (typed_field_write_runtime_field_agreement CT sGamma mt rGamma
       h x field y loc_x o sGamma Hwf Htyping Hval_x Hobj) as
-      [Tx [fieldT [Hgetx [Hfield_definition Hruntime_base]]]].
+      [Tx [C [fieldT [Hgetx [Href [Hfield_definition Hruntime_base]]]]]].
     destruct (mutability (ftype fieldT)) eqn:Hfield_mutability.
     + destruct (typed_runtime_mut_field_write_subtyping CT sGamma mt rGamma
-        h x field y loc_x o (sctype Tx) fieldT sGamma Hwf Htyping Hscope
+        h x field y loc_x o C fieldT sGamma Hwf Htyping Hscope
         Hval_x Hobj Hruntime_base Hfield_definition Hfield_mutability) as
         [Tx' [Ty [Hgetx' [Hgety Hsub]]]].
       destruct (safe_mut_write_endpoint_qualifiers CT sGamma rGamma h x y
@@ -679,13 +685,13 @@ Proof.
           (mk_watched_frame authority sGamma rGamma) stack).
       * intros location Hlocation.
         eapply live_capability_after_non_rdm_field_update_is_old
-          with (C := sctype Tx) (fieldT := fieldT); eauto; discriminate.
+          with (C := C) (fieldT := fieldT); eauto; discriminate.
       * intros left right Hconnected.
         eapply potential_connected_after_non_rdm_field_update_is_old
-          with (C := sctype Tx) (fieldT := fieldT); eauto; discriminate.
+          with (C := C) (fieldT := fieldT); eauto; discriminate.
       * exact Hpotential.
     + destruct (typed_runtime_rdm_field_write_subtyping CT sGamma mt rGamma
-        h x field y loc_x o (sctype Tx) fieldT sGamma Hwf Htyping Hscope
+        h x field y loc_x o C fieldT sGamma Hwf Htyping Hscope
         Hval_x Hobj Hruntime_base Hfield_definition Hfield_mutability) as
         [Tx' [Ty [Hgetx' [Hgety Hsub]]]].
       have Hendpoint_shapes := safe_rdm_write_endpoint_qualifiers CT sGamma
@@ -752,11 +758,21 @@ Proof.
           (mk_watched_frame authority sGamma rGamma) stack).
       * intros location Hlocation.
         eapply live_capability_after_non_rdm_field_update_is_old
-          with (C := sctype Tx) (fieldT := fieldT); eauto; discriminate.
+          with (C := C) (fieldT := fieldT); eauto; discriminate.
       * intros left right Hconnected.
         eapply potential_connected_after_non_rdm_field_update_is_old
-          with (C := sctype Tx) (fieldT := fieldT); eauto; discriminate.
+          with (C := C) (fieldT := fieldT); eauto; discriminate.
       * exact Hpotential.
+  - eapply potential_colors_after_graph_reflection
+      with (M := live_capability_set CT h
+        (mk_watched_frame authority sGamma rGamma) stack).
+    + intros location Hlocation.
+      eapply live_capability_after_nonlocation_field_update_is_old;
+        [|eauto|eauto]; intros ? ?; discriminate.
+    + intros left right Hconnected.
+      eapply potential_connected_after_nonlocation_field_update_is_old;
+        [|eauto|eauto]; intros ? ?; discriminate.
+    + exact Hpotential.
   }
   split.
   - eapply live_history_after_field_write_given_colors; eauto.

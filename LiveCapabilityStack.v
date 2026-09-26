@@ -1286,16 +1286,17 @@ Proof.
   split; assumption.
 Qed.
 
-Lemma call_return_null_live_root_reflects_before_pop :
+Lemma call_return_nonlocation_live_root_reflects_before_pop :
   forall CT caller_authority caller_senv caller_renv caller_h stack
     destination destination_type receiver_type entry_senv entry_renv return_var
     callee_return_q origins
-    callee_senv callee_renv root,
+    callee_senv callee_renv root value,
+    (forall location, value <> Iot location) ->
     wf_r_config CT caller_senv caller_renv caller_h ->
     static_getType caller_senv destination = Some destination_type ->
     live_capability_root
       (mk_watched_frame caller_authority caller_senv
-        (update_r_env_value caller_renv destination Null_a)) stack root ->
+        (update_r_env_value caller_renv destination value)) stack root ->
     live_capability_root
       (mk_watched_frame
         (call_authority caller_authority (sqtype receiver_type))
@@ -1307,11 +1308,7 @@ Lemma call_return_null_live_root_reflects_before_pop :
         (dom caller_h) origins :: stack)
       root.
 Proof.
-  intros CT caller_authority caller_senv caller_renv caller_h stack
-    destination destination_type receiver_type entry_senv entry_renv return_var
-    callee_return_q origins
-    callee_senv callee_renv root Hcaller_wf Hdestination
-    [Hactive | [boundary [Hin Hboundary_root]]].
+  intros CT caller_authority caller_senv caller_renv caller_h stack destination destination_type receiver_type entry_senv entry_renv return_var callee_return_q origins callee_senv callee_renv root value Hnonlocation Hcaller_wf Hdestination [Hactive | [boundary [Hin Hboundary_root]]].
   - destruct Hactive as
       [variable [T [Htype [Hvalue Hcapability]]]].
     destruct (Nat.eq_dec variable destination) as [Heq | Hneq].
@@ -1322,10 +1319,11 @@ Proof.
       destruct Hcaller_wf as [_ [_ [_ [_ [Hlength Hcorr]]]]].
       assert (Hruntime_dom : destination < dom (vars caller_renv)) by lia.
       have Hupdated := runtime_getVal_update_same caller_renv destination
-        Null_a Hruntime_dom.
-      rewrite Hupdated in Hvalue. discriminate.
+        value Hruntime_dom.
+      rewrite Hupdated in Hvalue. injection Hvalue as Hbad.
+      exfalso. exact (Hnonlocation _ Hbad).
     + have Hunchanged := runtime_getVal_update_diff caller_renv destination
-        variable Null_a.
+        variable value.
       assert (Hdestination_variable : destination <> variable) by congruence.
       specialize (Hunchanged Hdestination_variable).
       rewrite Hunchanged in Hvalue.
@@ -1339,16 +1337,17 @@ Proof.
   - right. exists boundary. split; [right; exact Hin|exact Hboundary_root].
 Qed.
 
-Lemma call_return_null_live_reachability_reflects_before_pop :
+Lemma call_return_nonlocation_live_reachability_reflects_before_pop :
   forall CT h caller_authority caller_senv caller_renv caller_h stack
     destination destination_type receiver_type entry_senv entry_renv return_var
     callee_return_q origins
-    callee_senv callee_renv location,
+    callee_senv callee_renv location value,
+    (forall location, value <> Iot location) ->
     wf_r_config CT caller_senv caller_renv caller_h ->
     static_getType caller_senv destination = Some destination_type ->
     live_capability_reachable CT h
       (mk_watched_frame caller_authority caller_senv
-        (update_r_env_value caller_renv destination Null_a)) stack location ->
+        (update_r_env_value caller_renv destination value)) stack location ->
     live_capability_reachable CT h
       (mk_watched_frame
         (call_authority caller_authority (sqtype receiver_type))
@@ -1360,26 +1359,21 @@ Lemma call_return_null_live_reachability_reflects_before_pop :
         (dom caller_h) origins :: stack)
       location.
 Proof.
-  intros CT h caller_authority caller_senv caller_renv caller_h stack
-    destination destination_type receiver_type entry_senv entry_renv return_var
-    callee_return_q origins
-    callee_senv callee_renv location Hcaller_wf Hdestination
-    [root [Hroot Hreach]].
+  intros CT h caller_authority caller_senv caller_renv caller_h stack destination destination_type receiver_type entry_senv entry_renv return_var callee_return_q origins callee_senv callee_renv location value Hnonlocation Hcaller_wf Hdestination [root [Hroot Hreach]].
   exists root. split; [|exact Hreach].
-  eapply call_return_null_live_root_reflects_before_pop; eauto.
+  eapply call_return_nonlocation_live_root_reflects_before_pop; eauto.
 Qed.
 
-Lemma zone_env_safe_after_null_update :
-  forall CT Z caller_senv caller_renv caller_h destination destination_type,
+Lemma zone_env_safe_after_nonlocation_update :
+  forall CT Z caller_senv caller_renv caller_h destination destination_type value,
+    (forall location, value <> Iot location) ->
     zone_env_safe Z caller_senv caller_renv ->
     wf_r_config CT caller_senv caller_renv caller_h ->
     static_getType caller_senv destination = Some destination_type ->
     zone_env_safe Z caller_senv
-      (update_r_env_value caller_renv destination Null_a).
+      (update_r_env_value caller_renv destination value).
 Proof.
-  intros CT Z caller_senv caller_renv caller_h destination destination_type
-    Hzone Hwf Hdestination variable location variable_type Hvariable_type
-    Hvariable_value Hlocation_zone.
+  intros CT Z caller_senv caller_renv caller_h destination destination_type value Hnonlocation Hzone Hwf Hdestination variable location variable_type Hvariable_type Hvariable_value Hlocation_zone.
   destruct (Nat.eq_dec variable destination) as [Heq | Hneq].
   - subst variable.
     have Hdestination_dom := Hdestination.
@@ -1388,21 +1382,23 @@ Proof.
     destruct Hwf as [_ [_ [_ [_ [Hlength Hcorr]]]]].
     assert (Hruntime_dom : destination < dom (vars caller_renv)) by lia.
     have Hupdated := runtime_getVal_update_same caller_renv destination
-      Null_a Hruntime_dom.
-    rewrite Hupdated in Hvariable_value. discriminate.
+      value Hruntime_dom.
+    rewrite Hupdated in Hvariable_value. injection Hvariable_value as Hbad.
+      exfalso. exact (Hnonlocation _ Hbad).
   - have Hunchanged := runtime_getVal_update_diff caller_renv destination
-      variable Null_a.
+      variable value.
     assert (Hdestination_variable : destination <> variable) by congruence.
     specialize (Hunchanged Hdestination_variable).
     rewrite Hunchanged in Hvariable_value.
     eapply Hzone; eauto.
 Qed.
 
-Lemma live_history_leave_call_null_given_caller_colors :
+Lemma live_history_leave_call_nonlocation_given_caller_colors :
   forall CT P Z cutoff caller_authority caller_senv caller_renv caller_h stack
     destination destination_type receiver_type entry_senv entry_renv return_var
     callee_return_q origins
-    callee_senv callee_renv callee_h,
+    callee_senv callee_renv callee_h value,
+    (forall location, value <> Iot location) ->
     zone_env_safe Z caller_senv caller_renv ->
     env_is_confined P cutoff caller_renv ->
     wf_r_config CT caller_senv caller_renv caller_h ->
@@ -1419,29 +1415,21 @@ Lemma live_history_leave_call_null_given_caller_colors :
         (dom caller_h) origins :: stack)
       callee_h ->
     wf_r_config CT caller_senv
-      (update_r_env_value caller_renv destination Null_a) callee_h ->
+      (update_r_env_value caller_renv destination value) callee_h ->
     component_colors_separated CT callee_h
       (live_capability_set CT callee_h
         (mk_watched_frame caller_authority caller_senv
-          (update_r_env_value caller_renv destination Null_a)) stack) Z ->
+          (update_r_env_value caller_renv destination value)) stack) Z ->
     active_rdm_component_colors_separated CT callee_h
       (live_capability_set CT callee_h
         (mk_watched_frame caller_authority caller_senv
-          (update_r_env_value caller_renv destination Null_a)) stack) Z
-      caller_senv (update_r_env_value caller_renv destination Null_a) ->
+          (update_r_env_value caller_renv destination value)) stack) Z
+      caller_senv (update_r_env_value caller_renv destination value) ->
     live_authority_history_state CT P Z cutoff
       (mk_watched_frame caller_authority caller_senv
-        (update_r_env_value caller_renv destination Null_a)) stack callee_h.
+        (update_r_env_value caller_renv destination value)) stack callee_h.
 Proof.
-  intros CT P Z cutoff caller_authority caller_senv caller_renv caller_h stack
-    destination destination_type receiver_type entry_senv entry_renv return_var
-    callee_return_q origins
-    callee_senv callee_renv callee_h Hcaller_zone Hcaller_env Hcaller_wf
-    Hdestination_not_receiver Hdestination_type
-    [Hcallee_history [[Hcallee_wf Hboundary_wf]
-      [[Hcallee_sound Hboundary_sound]
-        [Hcutoff [Hzone_bound Hauthority_chain]]]]]
-    Hcaller_post_wf Hcaller_components Hcaller_colors.
+  intros CT P Z cutoff caller_authority caller_senv caller_renv caller_h stack destination destination_type receiver_type entry_senv entry_renv return_var callee_return_q origins callee_senv callee_renv callee_h value Hnonlocation Hcaller_zone Hcaller_env Hcaller_wf Hdestination_not_receiver Hdestination_type [Hcallee_history [[Hcallee_wf Hboundary_wf] [[Hcallee_sound Hboundary_sound] [Hcutoff [Hzone_bound Hauthority_chain]]]]] Hcaller_post_wf Hcaller_components Hcaller_colors.
   set (callee_frame := mk_watched_frame
     (call_authority caller_authority (sqtype receiver_type))
     callee_senv callee_renv).
@@ -1451,7 +1439,7 @@ Proof.
     return_var (sqtype destination_type) callee_return_q
     (dom caller_h) origins).
   set (caller_post := mk_watched_frame caller_authority caller_senv
-    (update_r_env_value caller_renv destination Null_a)).
+    (update_r_env_value caller_renv destination value)).
   simpl in Hauthority_chain.
   destruct Hauthority_chain as [Hcurrent_authority Htail_authority_chain].
   set (Mbig := live_capability_set CT callee_h callee_frame
@@ -1460,7 +1448,7 @@ Proof.
   have Hcaller_old_sound : authority_context_sound callee_h caller_renv
       caller_authority := Forall_inv Hboundary_sound.
   have Hcaller_post_sound := authority_context_sound_after_nonreceiver_update_live
-    callee_h caller_renv caller_authority destination Null_a
+    callee_h caller_renv caller_authority destination value
     Hcaller_old_sound Hdestination_not_receiver.
   have Htail_wf : Forall (fun boundary =>
       wf_r_config CT boundary.(boundary_caller).(frame_senv)
@@ -1479,16 +1467,17 @@ Proof.
   assert (Hincluded : Included Loc Msmall Mbig).
   { intros location Hlocation. subst Msmall Mbig caller_post callee_frame
       caller_boundary.
-    eapply call_return_null_live_reachability_reflects_before_pop with
+    eapply call_return_nonlocation_live_reachability_reflects_before_pop with
       (caller_h := caller_h) (destination_type := destination_type); eauto. }
   assert (Htarget_zone : zone_env_safe Z caller_senv
-      (update_r_env_value caller_renv destination Null_a)).
-  { eapply zone_env_safe_after_null_update; eauto. }
+      (update_r_env_value caller_renv destination value)).
+  { eapply zone_env_safe_after_nonlocation_update; eauto. }
   have Htarget_env : env_is_confined P cutoff
-      (update_r_env_value caller_renv destination Null_a).
-  { eapply env_confined_update; [exact Hcaller_env|exact I]. }
+      (update_r_env_value caller_renv destination value).
+  { eapply env_confined_update; [exact Hcaller_env|]; destruct value as [|bad|?n];
+      [exact I|exfalso; exact (Hnonlocation bad eq_refl)|exact I]. }
   assert (Htarget_roots : authority_env_roots_in caller_authority Msmall
-      caller_senv (update_r_env_value caller_renv destination Null_a)).
+      caller_senv (update_r_env_value caller_renv destination value)).
   { intros root Hroot.
     exists root. split; [left; exact Hroot|constructor]. }
   have Hclosed := live_capability_set_forward_closed CT callee_h caller_post
@@ -1499,7 +1488,7 @@ Proof.
     Msmall cutoff
     (call_authority caller_authority (sqtype receiver_type)) callee_senv
     callee_renv caller_authority caller_senv
-    (update_r_env_value caller_renv destination Null_a) callee_h
+    (update_r_env_value caller_renv destination value) callee_h
     Hcallee_history Hincluded Hclosed Hruntime Htarget_zone Htarget_env
     Htarget_roots Hcaller_post_sound Hcaller_components Hcaller_colors.
   split; [exact Hsmall|]. split; [exact Hpost_frames_wf|].
