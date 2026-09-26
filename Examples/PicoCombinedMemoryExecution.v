@@ -35,14 +35,41 @@ Definition pico_hash_after_both_acquire : final_publication_state :=
 Definition pico_hash_combined_actions : list combined_memory_action :=
   [CombinedConstruct pico_hash_concurrent_receiver pico_hash_combined_snapshot;
    CombinedAccess pico_hash_jam_init;
+   CombinedAccess pico_hash_jam_payload_init;
    CombinedFreeze pico_hash_concurrent_receiver pico_hash_combined_snapshot;
    CombinedPublish pico_hash_concurrent_receiver;
    CombinedAcquire 0 pico_hash_concurrent_receiver pico_hash_combined_snapshot;
    CombinedAcquire 1 pico_hash_concurrent_receiver pico_hash_combined_snapshot;
    CombinedAccess pico_hash_jam_read0;
    CombinedAccess pico_hash_jam_read1;
+   CombinedAccess pico_hash_jam_payload_read0;
+   CombinedAccess pico_hash_jam_payload_read1;
    CombinedAccess pico_hash_jam_write1;
    CombinedAccess pico_hash_jam_write0].
+
+(** Order facts about a concrete trace, found by walking down the list. *)
+Lemma combined_action_before_here : forall first second tail,
+  In second tail ->
+  combined_action_before first second (first :: tail).
+Proof.
+  intros first second tail Hin.
+  destruct (in_split second tail Hin) as (middle & suffix & ->).
+  exists [], middle, suffix. reflexivity.
+Qed.
+
+Lemma combined_action_before_later : forall head first second tail,
+  combined_action_before first second tail ->
+  combined_action_before first second (head :: tail).
+Proof.
+  intros head first second tail (prefix & middle & suffix & ->).
+  exists (head :: prefix), middle, suffix. reflexivity.
+Qed.
+
+Ltac solve_combined_before :=
+  repeat first
+    [ apply combined_action_before_here;
+      repeat first [apply in_eq | apply in_cons]
+    | apply combined_action_before_later ].
 
 Lemma pico_hash_source_new_realizes_combined_prefix :
   @pico_new_freeze_step history_cache_memory_model
@@ -53,20 +80,14 @@ Lemma pico_hash_source_new_realizes_combined_prefix :
       CombinedConstruct pico_hash_concurrent_receiver
         pico_hash_combined_snapshot ::
       CombinedAccess pico_hash_jam_init ::
+      CombinedAccess pico_hash_jam_payload_init ::
       CombinedFreeze pico_hash_concurrent_receiver
         pico_hash_combined_snapshot :: tail /\
     final_snapshot_frozen (pnpc_publication pico_hash_after_source_new)
       pico_hash_concurrent_receiver pico_hash_combined_snapshot.
 Proof.
   split; [exact pico_hash_source_new_freezes_final_payload |].
-  exists [CombinedPublish pico_hash_concurrent_receiver;
-    CombinedAcquire 0 pico_hash_concurrent_receiver pico_hash_combined_snapshot;
-    CombinedAcquire 1 pico_hash_concurrent_receiver pico_hash_combined_snapshot;
-    CombinedAccess pico_hash_jam_read0;
-    CombinedAccess pico_hash_jam_read1;
-    CombinedAccess pico_hash_jam_write1;
-    CombinedAccess pico_hash_jam_write0].
-  split; [reflexivity |].
+  eexists. split; [reflexivity |].
   unfold pico_hash_after_source_new, final_snapshot_frozen,
     pico_hash_combined_snapshot. simpl. reflexivity.
 Qed.
@@ -87,6 +108,8 @@ Proof.
     (middle := empty_final_publication_state).
   - constructor.
   - eapply CombinedPublicationReplayCons with
+      (middle := empty_final_publication_state); [constructor |].
+    eapply CombinedPublicationReplayCons with
       (middle := empty_final_publication_state).
     + constructor.
     + eapply CombinedPublicationReplayCons with
@@ -126,26 +149,10 @@ Lemma pico_hash_combined_freeze_follows_construction :
       pico_hash_combined_actions.
 Proof.
   intros loc snapshot Hin.
-  unfold pico_hash_combined_actions in Hin.
+  unfold pico_hash_combined_actions in Hin |- *.
   simpl in Hin.
-  destruct Hin as [Hfalse | [Hinit | [Heq | Hfalse]]].
-  - discriminate.
-  - discriminate.
-  - inversion Heq; subst.
-    unfold combined_action_before, pico_hash_combined_actions.
-    exists [], [CombinedAccess pico_hash_jam_init],
-      [CombinedPublish pico_hash_concurrent_receiver;
-       CombinedAcquire 0 pico_hash_concurrent_receiver
-         pico_hash_combined_snapshot;
-       CombinedAcquire 1 pico_hash_concurrent_receiver
-         pico_hash_combined_snapshot;
-       CombinedAccess pico_hash_jam_read0;
-       CombinedAccess pico_hash_jam_read1;
-       CombinedAccess pico_hash_jam_write1;
-       CombinedAccess pico_hash_jam_write0].
-    reflexivity.
-  - repeat destruct Hfalse as [Hfalse | Hfalse]; try discriminate.
-    contradiction.
+  repeat destruct Hin as [Hin | Hin]; try discriminate; try contradiction.
+  inversion Hin; subst. solve_combined_before.
 Qed.
 
 Lemma pico_hash_combined_accesses_follow_acquire :
@@ -160,65 +167,37 @@ Lemma pico_hash_combined_accesses_follow_acquire :
 Proof.
   intros event Hin Hnot_init.
   unfold pico_hash_combined_actions in Hin. simpl in Hin.
-  destruct Hin as [Heq | [Heq | [Heq | [Heq | [Heq | Hfalse]]]]];
-    [subst event; exfalso; apply Hnot_init; reflexivity
-    | subst event | subst event | subst event | subst event | contradiction].
-  - exists pico_hash_combined_snapshot.
-    unfold combined_action_before, pico_hash_combined_actions.
-    exists [CombinedConstruct pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot;
-            CombinedAccess pico_hash_jam_init;
-            CombinedFreeze pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot;
-            CombinedPublish pico_hash_concurrent_receiver],
-      [CombinedAcquire 1 pico_hash_concurrent_receiver
-         pico_hash_combined_snapshot],
-      [CombinedAccess pico_hash_jam_read1;
-       CombinedAccess pico_hash_jam_write1;
-       CombinedAccess pico_hash_jam_write0].
-    reflexivity.
-  - exists pico_hash_combined_snapshot.
-    unfold combined_action_before, pico_hash_combined_actions.
-    exists [CombinedConstruct pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot;
-            CombinedAccess pico_hash_jam_init;
-            CombinedFreeze pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot;
-            CombinedPublish pico_hash_concurrent_receiver;
-            CombinedAcquire 0 pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot],
-      [CombinedAccess pico_hash_jam_read0],
-      [CombinedAccess pico_hash_jam_write1;
-       CombinedAccess pico_hash_jam_write0].
-    reflexivity.
-  - exists pico_hash_combined_snapshot.
-    unfold combined_action_before, pico_hash_combined_actions.
-    exists [CombinedConstruct pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot;
-            CombinedAccess pico_hash_jam_init;
-            CombinedFreeze pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot;
-            CombinedPublish pico_hash_concurrent_receiver;
-            CombinedAcquire 0 pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot],
-      [CombinedAccess pico_hash_jam_read0;
-       CombinedAccess pico_hash_jam_read1],
-      [CombinedAccess pico_hash_jam_write0].
-    reflexivity.
-  - exists pico_hash_combined_snapshot.
-    unfold combined_action_before, pico_hash_combined_actions.
-    exists [CombinedConstruct pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot;
-            CombinedAccess pico_hash_jam_init;
-            CombinedFreeze pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot;
-            CombinedPublish pico_hash_concurrent_receiver],
-      [CombinedAcquire 1 pico_hash_concurrent_receiver
-         pico_hash_combined_snapshot;
-       CombinedAccess pico_hash_jam_read0;
-       CombinedAccess pico_hash_jam_read1;
-       CombinedAccess pico_hash_jam_write1], [].
-    reflexivity.
+  repeat destruct Hin as [Hin | Hin]; try contradiction; subst event;
+    try (exfalso; apply Hnot_init; reflexivity);
+    exists pico_hash_combined_snapshot;
+    unfold pico_hash_combined_actions; simpl; solve_combined_before.
+Qed.
+
+(** The final-field story covers an actual read: each payload read happens
+    after its thread acquired the published receiver, reads from the
+    constructor's initialization, and returns the frozen snapshot value. *)
+Theorem pico_hash_combined_payload_reads_observe_snapshot :
+  forall event,
+    In event (combined_jam_events pico_hash_combined_actions) ->
+    jam_event_kind event = JamRead ->
+    jam_event_addr event = (pico_hash_concurrent_receiver, 1) ->
+    combined_action_before
+      (CombinedAcquire (jam_event_thread event)
+        pico_hash_concurrent_receiver pico_hash_combined_snapshot)
+      (CombinedAccess event) pico_hash_combined_actions /\
+    jam_reads_from
+      (combined_jam_execution pico_hash_combined_actions pico_hash_jam_rf)
+      pico_hash_jam_payload_init event /\
+    In (jam_event_value event) pico_hash_combined_snapshot.
+Proof.
+  intros event Hin Hread Haddr.
+  unfold pico_hash_combined_actions in Hin. simpl in Hin.
+  repeat destruct Hin as [Hin | Hin]; try contradiction; subst event;
+    simpl in Hread, Haddr; try discriminate; try (inversion Haddr; fail).
+  - split; [unfold pico_hash_combined_actions; simpl; solve_combined_before |].
+    split; [constructor | left; reflexivity].
+  - split; [unfold pico_hash_combined_actions; simpl; solve_combined_before |].
+    split; [constructor | left; reflexivity].
 Qed.
 
 Theorem pico_hash_combined_execution_legal :
@@ -251,6 +230,7 @@ Theorem pico_hash_source_constructed_combined_benign_race :
       CombinedConstruct pico_hash_concurrent_receiver
         pico_hash_combined_snapshot ::
       CombinedAccess pico_hash_jam_init ::
+      CombinedAccess pico_hash_jam_payload_init ::
       CombinedFreeze pico_hash_concurrent_receiver
         pico_hash_combined_snapshot :: tail /\
     final_snapshot_frozen (pnpc_publication pico_hash_after_source_new)

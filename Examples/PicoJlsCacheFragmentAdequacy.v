@@ -20,7 +20,8 @@ Require Import MemoryModels.JMM.FinalFieldPublication
 
 Definition pico_hash_jls_cache_actions : list jls_cache_action :=
   [JlsConstructorReturn pico_hash_concurrent_receiver
-     pico_hash_combined_snapshot [pico_hash_jam_init];
+     pico_hash_combined_snapshot
+     [pico_hash_jam_init; pico_hash_jam_payload_init];
    JlsPublishReference pico_hash_concurrent_receiver;
    JlsDereferenceReference 0 pico_hash_concurrent_receiver
      pico_hash_combined_snapshot;
@@ -28,8 +29,33 @@ Definition pico_hash_jls_cache_actions : list jls_cache_action :=
      pico_hash_combined_snapshot;
    JlsPlainAccess pico_hash_jam_read0;
    JlsPlainAccess pico_hash_jam_read1;
+   JlsPlainAccess pico_hash_jam_payload_read0;
+   JlsPlainAccess pico_hash_jam_payload_read1;
    JlsPlainAccess pico_hash_jam_write1;
    JlsPlainAccess pico_hash_jam_write0].
+
+Lemma jls_cache_action_before_here : forall first second tail,
+  In second tail ->
+  jls_cache_action_before first second (first :: tail).
+Proof.
+  intros first second tail Hin.
+  destruct (in_split second tail Hin) as (middle & suffix & ->).
+  exists [], middle, suffix. reflexivity.
+Qed.
+
+Lemma jls_cache_action_before_later : forall head first second tail,
+  jls_cache_action_before first second tail ->
+  jls_cache_action_before first second (head :: tail).
+Proof.
+  intros head first second tail (prefix & middle & suffix & ->).
+  exists (head :: prefix), middle, suffix. reflexivity.
+Qed.
+
+Ltac solve_jls_before :=
+  repeat first
+    [ apply jls_cache_action_before_here;
+      repeat first [apply in_eq | apply in_cons]
+    | apply jls_cache_action_before_later ].
 
 Lemma pico_hash_jls_cache_jam_projection :
   jls_cache_jam_execution pico_hash_jls_cache_actions pico_hash_jam_rf =
@@ -85,53 +111,10 @@ Lemma pico_hash_jls_cache_accesses_follow_dereference :
 Proof.
   intros event Hin Hnot_init.
   unfold pico_hash_jls_cache_actions in Hin. simpl in Hin.
-  destruct Hin as [Heq | [Heq | [Heq | [Heq | [Heq | Hfalse]]]]];
-    [subst event; exfalso; apply Hnot_init; reflexivity
-    | subst event | subst event | subst event | subst event | contradiction].
-  - exists pico_hash_combined_snapshot.
-    unfold jls_cache_action_before, pico_hash_jls_cache_actions.
-    exists [JlsConstructorReturn pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot [pico_hash_jam_init];
-            JlsPublishReference pico_hash_concurrent_receiver],
-      [JlsDereferenceReference 1 pico_hash_concurrent_receiver
-         pico_hash_combined_snapshot],
-      [JlsPlainAccess pico_hash_jam_read1;
-       JlsPlainAccess pico_hash_jam_write1;
-       JlsPlainAccess pico_hash_jam_write0].
-    reflexivity.
-  - exists pico_hash_combined_snapshot.
-    unfold jls_cache_action_before, pico_hash_jls_cache_actions.
-    exists [JlsConstructorReturn pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot [pico_hash_jam_init];
-            JlsPublishReference pico_hash_concurrent_receiver;
-            JlsDereferenceReference 0 pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot],
-      [JlsPlainAccess pico_hash_jam_read0],
-      [JlsPlainAccess pico_hash_jam_write1;
-       JlsPlainAccess pico_hash_jam_write0].
-    reflexivity.
-  - exists pico_hash_combined_snapshot.
-    unfold jls_cache_action_before, pico_hash_jls_cache_actions.
-    exists [JlsConstructorReturn pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot [pico_hash_jam_init];
-            JlsPublishReference pico_hash_concurrent_receiver;
-            JlsDereferenceReference 0 pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot],
-      [JlsPlainAccess pico_hash_jam_read0;
-       JlsPlainAccess pico_hash_jam_read1],
-      [JlsPlainAccess pico_hash_jam_write0].
-    reflexivity.
-  - exists pico_hash_combined_snapshot.
-    unfold jls_cache_action_before, pico_hash_jls_cache_actions.
-    exists [JlsConstructorReturn pico_hash_concurrent_receiver
-              pico_hash_combined_snapshot [pico_hash_jam_init];
-            JlsPublishReference pico_hash_concurrent_receiver],
-      [JlsDereferenceReference 1 pico_hash_concurrent_receiver
-         pico_hash_combined_snapshot;
-       JlsPlainAccess pico_hash_jam_read0;
-       JlsPlainAccess pico_hash_jam_read1;
-       JlsPlainAccess pico_hash_jam_write1], [].
-    reflexivity.
+  repeat destruct Hin as [Hin | Hin]; try contradiction; subst event;
+    try (exfalso; apply Hnot_init; reflexivity);
+    exists pico_hash_combined_snapshot;
+    unfold pico_hash_jls_cache_actions; simpl; solve_jls_before.
 Qed.
 
 Lemma pico_hash_jls_constructor_initializations :
@@ -148,7 +131,7 @@ Proof.
   intros loc snapshot initial_events Hin.
   unfold pico_hash_jls_cache_actions in Hin. simpl in Hin.
   destruct Hin as [Heq | Hrest].
-  - inversion Heq; subst. constructor; [repeat split; reflexivity | constructor].
+  - inversion Heq; subst. repeat constructor.
   - repeat destruct Hrest as [Hrest | Hrest]; try discriminate.
     contradiction.
 Qed.

@@ -9,7 +9,8 @@ Require Import MemoryModels.JMM.FinalFieldPublication.
 (** * Combined Publication and JAM Executions
 
     A combined execution is one ordered trace containing object construction,
-    final-field publication, and cache-access events.  Publication replay and
+    final-field publication, and plain field-access events (cache accesses
+    and reads of final fields).  Publication replay and
     JAM legality are projections of this trace, so their temporal composition
     is explicit rather than an external conjunction of two executions. *)
 
@@ -43,7 +44,7 @@ Definition combined_action_before
     actions = prefix ++ first :: middle ++ second :: suffix.
 
 (** One action's effect on final-field publication state.  Construction and
-    cache accesses do not mutate publication metadata. [CombinedAcquire] is an
+    field accesses do not mutate publication metadata. [CombinedAcquire] is an
     abstract observation action, not a Java acquire-mode access. *)
 Inductive combined_publication_action_step :
     final_publication_state -> combined_memory_action ->

@@ -1017,6 +1017,92 @@ Proof.
   constructor.
 Qed.
 
+(** The miss branch reaches the payload read, which is a shared access, and
+    then continues to the cache write. *)
+Definition pico_hash_concurrent_compute_control : pico_core_expr :=
+  CoreRun pico_hash_concurrent_method_env pico_hash_read_compute_stmt 0
+    (KSeq (SFldWrite cache_receiver hash_cache_field cache_tmp) ::
+      pico_hash_concurrent_write_cont).
+
+Definition pico_hash_concurrent_after_compute_control : pico_core_expr :=
+  CoreRun pico_hash_concurrent_hash_env SSkip 0
+    (KSeq (SFldWrite cache_receiver hash_cache_field cache_tmp) ::
+      pico_hash_concurrent_write_cont).
+
+Lemma pico_hash_concurrent_after_read_to_compute :
+  @pico_core_steps history_cache_memory_model pico_hash_concurrent_CT
+    pico_hash_concurrent_after_read_control
+    pico_hash_concurrent_initial_state
+    pico_hash_concurrent_compute_control
+    pico_hash_concurrent_initial_state.
+Proof.
+  unfold pico_hash_concurrent_after_read_control,
+    pico_hash_concurrent_read_cont, pico_hash_concurrent_after_read_stmt,
+    pico_hash_concurrent_compute_control, pico_hash_concurrent_write_cont,
+    pico_hash_concurrent_method_env,
+    pico_hash_concurrent_initial_state, pico_local_copy_cache_branch,
+    cache_tmp, cache_result, cache_receiver, hash_cache_field,
+    pico_hash_concurrent_call_cont, set_vars.
+  simpl.
+  eapply PicoCoreStepsStep; [apply PCS_SkipSeq |].
+  eapply PicoCoreStepsStep; [apply PCS_Seq |].
+  eapply PicoCoreStepsStep; [apply PCS_IfZero; reflexivity |].
+  eapply PicoCoreStepsStep; [apply PCS_Seq |].
+  constructor.
+Qed.
+
+Lemma pico_hash_concurrent_after_compute_to_write :
+  @pico_core_steps history_cache_memory_model pico_hash_concurrent_CT
+    pico_hash_concurrent_after_compute_control
+    pico_hash_concurrent_initial_state
+    pico_hash_concurrent_write_control
+    pico_hash_concurrent_initial_state.
+Proof.
+  unfold pico_hash_concurrent_after_compute_control,
+    pico_hash_concurrent_write_control.
+  eapply PicoCoreStepsStep; [apply PCS_SkipSeq | constructor].
+Qed.
+
+Lemma pico_hash_concurrent_initial_payload_read :
+  @wm_read history_cache_memory_model pico_hash_concurrent_initial_weak 0
+    (pico_hash_concurrent_receiver, 1) (Int pico_hash_concurrent_value) 0.
+Proof.
+  split; [reflexivity |].
+  exists (mkWriteMsg (Int pico_hash_concurrent_value) 0 0).
+  split; [|reflexivity].
+  unfold pico_hash_concurrent_initial_weak, pico_hash_concurrent_receiver,
+    pico_hash_concurrent_owner, pico_hash_witness_object,
+    empty_wm_state, pico_core_alloc_weak, history_of.
+  simpl. left. reflexivity.
+Qed.
+
+(** A thread at the payload read performs a shared read of the receiver's
+    final payload and observes the hash. *)
+Lemma pico_hash_concurrent_payload_access : forall threads tid,
+  nth_error threads tid = Some pico_hash_concurrent_compute_control ->
+  @pico_pool_access history_cache_memory_model pico_hash_concurrent_CT
+    (mkPicoPoolConfig pico_hash_concurrent_initial_state threads)
+    (mkPicoAccessEvent tid PicoRead
+      (pico_hash_concurrent_receiver, 1) (Int pico_hash_concurrent_value))
+    (mkPicoPoolConfig pico_hash_concurrent_initial_state
+      (update tid pico_hash_concurrent_after_compute_control threads)).
+Proof.
+  intros threads tid Hthread.
+  unfold pico_hash_concurrent_after_compute_control,
+    pico_hash_concurrent_hash_env.
+  eapply PicoPoolRead with
+    (rGamma := pico_hash_concurrent_method_env)
+    (x := cache_tmp) (y := cache_receiver) (f := 1) (old := Int 0)
+    (V := 0) (V' := 0)
+    (h := pico_hash_concurrent_initial_heap)
+    (sigma := pico_hash_concurrent_initial_weak).
+  - reflexivity.
+  - exact Hthread.
+  - reflexivity.
+  - reflexivity.
+  - exact pico_hash_concurrent_initial_payload_read.
+Qed.
+
 Theorem pico_hash_concurrent_both_reach_writes_after_default_reads :
   exists cfg,
     @pico_pool_steps history_cache_memory_model pico_hash_concurrent_CT

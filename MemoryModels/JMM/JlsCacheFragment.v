@@ -11,8 +11,9 @@ Require Import MemoryModels.JMM.FinalFieldPublication
 
     This module isolates the Java-side actions needed by the derived-cache
     theorem: constructor completion freezes a final-field snapshot, a reference
-    is published, each invoking thread dereferences that reference, and cache
-    accesses are checked by the plain JAM semantics.
+    is published, each invoking thread dereferences that reference, and plain
+    field accesses (cache accesses and reads of final fields) are checked by
+    the plain JAM semantics.
 
     [JlsDereferenceReference] records the JLS final-field observation boundary;
     it is not a Java acquire-mode access.  This fragment deliberately omits the

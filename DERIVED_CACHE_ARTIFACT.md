@@ -213,9 +213,16 @@ takes it. `pico_hash_read_computationI` proves the payload read is such a
 computation, and `pico_hash_concurrent_method_api_wfI` installs the
 concurrent method through the Iris API with no computation premise. The
 concurrent safety, JAM, JLS and publication examples run the same method.
-Their event lists still record only the four cache-field accesses. Each
-thread's payload read happens inside the scheduler steps between those events
-and is not itself a JAM, JLS or combined-execution event.
+Their access lists include each thread's payload read. The race schedule,
+the JAM execution, the combined trace and the JLS fragment all record six
+accesses in the same order: two cache reads, two payload reads, two cache
+writes. The constructor initializes both the cache and the payload.
+`pico_hash_combined_payload_reads_observe_snapshot` shows each payload read
+follows its thread's acquire of the published receiver, reads from the
+constructor's initialization, and returns the frozen snapshot value. The race
+schedule is still existential: the scheduler steps between listed accesses
+are not proved to be free of other accesses. `pico_pool_access_trace` is the
+relation that would make the list complete.
 `PicoHashExecutionTrace` still uses the literal compute, since it is about the
 double-read bug for an arbitrary hash.
 
