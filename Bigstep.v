@@ -832,16 +832,6 @@ Proof.
     + discriminate H.
 Qed.
 
-Lemma r_muttype_of_r_type : forall h loc rqt
-  (Hr : r_type h loc = Some rqt),
-  r_muttype h loc = Some (rqtype rqt).
-Proof.
-  intros h loc rqt Hr.
-  unfold r_type in Hr. unfold r_muttype.
-  destruct (runtime_getObj h loc) as [o|] eqn:Hobj; [|discriminate Hr].
-  inversion Hr; subst. reflexivity.
-Qed.
-
 Lemma vpa_mutability_tt_sbase_abstract_state : forall Tthis T,
   sbase (vpa_mutability_tt_abstract_state Tthis T) = sbase T.
 Proof.
@@ -1102,43 +1092,6 @@ Proof.
 Qed.
 
 (* 3. Subtyping Properties *)
-Lemma q_subtype_refl : forall q
-  (Hneq : q <> Lost),
-  q_subtype q q.
-Proof.
-  intros q Hneq.
-  apply q_refl. exact Hneq.
-Qed.
-
-(* 4. Forall2 Manipulation Lemmas *)
-Lemma Forall2_trans {A B C : Type} (P : A -> B -> Prop) (Q : B -> C -> Prop) (R : A -> C -> Prop) :
-  forall l1 l2 l3
-  (Htrans : forall a b c, P a b -> Q b c -> R a c)
-  (HP     : Forall2 P l1 l2)
-  (HQ     : Forall2 Q l2 l3),
-  Forall2 R l1 l3.
-Proof.
-  intros l1 l2 l3 Htrans HP HQ.
-  generalize dependent l3. generalize dependent l1.
-  induction l2 as [|b l2' IH]; intros l1 HP l3 HQ.
-  - inversion HP; subst. inversion HQ; subst. constructor.
-  - inversion HP; subst. inversion HQ; subst.
-    constructor.
-    + apply Htrans with b; assumption.
-    + apply IH; assumption.
-Qed.
-
-Lemma Forall2_map : forall {A B C} (f : B -> C) (P : A -> C -> Prop) l1 l2
-  (H : Forall2 (fun a b => P a (f b)) l1 l2),
-  Forall2 P l1 (map f l2).
-Proof.
-  intros A B C f P l1 l2 H.
-  induction H.
-  - constructor.
-  - simpl. constructor; assumption.
-Qed.
-
-(* 5. Field Access and Update Lemmas *)
 Lemma field_update_preserves_other_fields : forall (fields : list value) f v f'
   (Hneq : f <> f'),
   getVal (update f v fields) f' = getVal fields f'.
@@ -1148,15 +1101,6 @@ Proof.
   apply update_diff. exact Hneq.
 Qed.
 
-Lemma field_update_preserves_length : forall (fields : list value) f v
-  (Hbound : f < List.length fields),
-  List.length (update f v fields) = List.length fields.
-Proof.
-  intros fields f v Hbound.
-  apply update_length.
-Qed.
-
-(* evaluation preserves runtime type on heap. *)
 Lemma runtime_preserves_r_type_heap : forall CT rΓ h loc C h' vals s rΓ'
   (Hobj  : runtime_getObj h loc = Some {| rt_type := C; fields_map := vals |})
   (Heval : eval_stmt CT rΓ h s OK rΓ' h'),
@@ -1197,76 +1141,6 @@ Proof.
   induction H; [reflexivity | simpl; f_equal; assumption].
 Qed.
 
-Lemma Forall_nth_error_wf_class : forall CT CT' C def
-  (Hforall : Forall (wf_class CT) CT')
-  (Hfind   : find_class CT' C = Some def),
-  wf_class CT def.
-Proof.
-  intros CT CT' C def Hforall Hfind.
-  generalize dependent C.
-  induction CT' as [|cdef CT'' IH]; intros C Hfind.
-  - simpl in Hfind.   exfalso.
-  destruct C; simpl in Hfind; discriminate.
-  - simpl in Hfind.
-    destruct C as [|C'].
-    + injection Hfind as Heq. subst def.
-      inversion Hforall; subst.
-      exact H1.
-    + inversion Hforall; subst.
-    apply IH with (C := C').
-    * exact H2.
-    * exact Hfind.
-Qed.
-
-Lemma find_class_wf_class : forall CT C def
-  (Hwf_ct : wf_class_table CT)
-  (Hfind  : find_class CT C = Some def),
-  wf_class CT def.
-Proof.
-  intros CT C def Hwf_ct Hfind.
-  unfold wf_class_table in Hwf_ct.
-  (* Use induction on CT to find the class at position C *)
-  generalize dependent C.
-  induction CT as [|cdef CT' IH]; intros C Hfind.
-  - (* Empty CT case *)
-  exfalso.
-  destruct C; simpl in Hfind; discriminate.
-
-  - (* Non-empty CT case *)
-    simpl in Hfind.
-    destruct C as [|C'].
-    + (* C = 0, so def = cdef *)
-      injection Hfind as Heq. subst def.
-      inversion Hwf_ct; subst.
-      inversion H; subst.
-      exact H3.
-    + (* C = S C', recurse *)
-      inversion Hwf_ct; subst.
-      assert (Hfind_CT' : find_class CT' C' = Some def).
-      {
-        simpl in Hfind.
-        exact Hfind.
-      }
-
-      apply (Forall_nth_error_wf_class (cdef :: CT') CT' C' def).
-      * inversion H; subst.
-      exact H4.
-      * exact Hfind_CT'.
-Qed.
-
-Lemma vpa_assingability_assign_cases : forall q a
-  (Hvpa : vpa_assignability q a = Assignable),
-  (a = Assignable) \/
-  (q = Mut /\ a = RDA).
-Proof.
-  intros q a Hvpa.
-  unfold vpa_assignability in Hvpa.
-  destruct q, a; simpl in Hvpa; try discriminate; auto.
-Qed.
-
-(* Expression Evaluation Preservation *)
-(** The receiver premises supply the runtime qualifier context used in the
-    non-null result. *)
 Lemma expr_eval_preservation : forall CT sΓ mt rΓ h e v rΓ' h' T ι qcontext
   (Hreceiveraddr : get_this_var_mapping (vars rΓ) = Some ι)
   (Hreceiverrmut : (r_muttype h ι) = Some qcontext)

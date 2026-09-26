@@ -282,18 +282,3 @@ Proof.
         eapply mutable_connected_trans; [exact Hlxy | exact Hywritten2].
       * exact Hlxyz.
 Qed.
-
-Lemma mutable_connected_after_nonlocation_field_update_is_old :
-  forall CT h lx old f value l1 l2,
-    runtime_getObj h lx = Some old ->
-    (forall l, value <> Iot l) ->
-    mutable_connected CT (update_field h lx f value) l1 l2 ->
-    mutable_connected CT h l1 l2.
-Proof.
-  intros CT h lx old f value l1 l2 Hobj Hnonlocation Hconnected.
-  destruct (mutable_connected_after_field_update CT h lx old f value
-    l1 l2 Hobj Hconnected) as
-    [Hold | [written [Hvalue Hbridge]]].
-  - exact Hold.
-  - exfalso. exact (Hnonlocation written Hvalue).
-Qed.
