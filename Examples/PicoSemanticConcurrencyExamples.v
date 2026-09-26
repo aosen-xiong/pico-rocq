@@ -22,8 +22,8 @@ Definition pico_hash_concurrent_method : method_name := 0.
 Definition pico_hash_concurrent_value : nat := 7.
 
 Definition pico_hash_concurrent_method_def : method_def :=
-  pico_hash_method_def pico_hash_witness_receiver_type
-    pico_hash_concurrent_method pico_hash_concurrent_value.
+  pico_hash_method_def_with pico_hash_witness_receiver_type
+    pico_hash_concurrent_method pico_hash_read_compute_stmt.
 
 Definition pico_hash_concurrent_class_def : class_def :=
   {| signature :=
@@ -186,7 +186,7 @@ Qed.
 Lemma pico_hash_concurrent_method_typing :
   stmt_typing pico_hash_concurrent_CT
     [pico_hash_witness_receiver_type] AbstractState
-    (pico_hash_method_stmt pico_hash_concurrent_value)
+    (pico_hash_method_stmt_with pico_hash_read_compute_stmt)
     [pico_hash_witness_receiver_type; int_type; int_type].
 Proof.
   assert (Hint_sub : qualified_type_subtype pico_hash_concurrent_CT
@@ -221,13 +221,24 @@ Proof.
     - exact Hint_sub. }
   assert (Hcompute : stmt_typing pico_hash_concurrent_CT
     [pico_hash_witness_receiver_type; int_type; int_type] AbstractState
-    (pico_hash_compute_stmt pico_hash_concurrent_value)
+    pico_hash_read_compute_stmt
     [pico_hash_witness_receiver_type; int_type; int_type]).
-  { unfold pico_hash_compute_stmt.
+  { unfold pico_hash_read_compute_stmt.
     eapply ST_VarAss with (Te := int_type)
       (Tthis := pico_hash_witness_receiver_type) (Tx := int_type).
     - exact pico_hash_concurrent_wf_env3.
-    - apply ET_Int. exact pico_hash_concurrent_wf_env3.
+    - change (expr_has_type pico_hash_concurrent_CT
+        [pico_hash_witness_receiver_type; int_type; int_type] AbstractState
+        (EField 0 1) (Build_qualified_type Imm TInt)).
+      eapply ET_Field_abstract_state with
+        (T := pico_hash_witness_receiver_type)
+        (C := pico_hash_witness_class)
+        (fDef := pico_hash_witness_payload_def).
+      + exact pico_hash_concurrent_wf_env3.
+      + reflexivity.
+      + reflexivity.
+      + exact pico_hash_concurrent_payload_field_def.
+      + left. reflexivity.
     - reflexivity.
     - unfold cache_tmp. discriminate.
     - reflexivity.
@@ -568,6 +579,45 @@ Proof.
     unfold hash_cache_valid. left. reflexivity.
 Qed.
 
+Lemma pico_hash_concurrent_payload_footprint :
+  pico_hash_abstract_field pico_hash_concurrent_CT
+    pico_hash_concurrent_initial_heap pico_hash_concurrent_receiver
+    (pico_hash_concurrent_receiver, 1).
+Proof.
+  split.
+  - apply Reachability.reachable_abs_heap.
+    unfold pico_hash_concurrent_receiver, pico_hash_concurrent_initial_heap.
+    simpl. lia.
+  - exists (rt_type pico_hash_witness_object),
+      (fields_map pico_hash_witness_object).
+    split; [reflexivity |].
+    exact (pico_hash_payload_abstract pico_hash_concurrent_CT
+      pico_hash_concurrent_payload_field_def).
+Qed.
+
+(** In every provider state, a weak read of the receiver's payload returns
+    the hash and leaves the view unchanged. *)
+Lemma pico_hash_concurrent_payload_read :
+  forall h sigma V v V',
+    pico_hash_provider_inv pico_hash_concurrent_CT
+      pico_hash_concurrent_receiver pico_hash_derive_method
+      pico_hash_concurrent_initial_heap pico_hash_concurrent_value
+      (mkPicoCoreState h sigma) ->
+    @wm_read history_cache_memory_model sigma V
+      (pico_hash_concurrent_receiver, 1) v V' ->
+    v = Int pico_hash_concurrent_value /\ V' = V.
+Proof.
+  intros h sigma V v V' (_ & (_ & _ & _ & Hhist & _) & _)
+    [HV (msg & Hin & Hval)].
+  destruct (Hhist pico_hash_concurrent_receiver 1
+    (Int pico_hash_concurrent_value)
+    pico_hash_concurrent_payload_footprint) as [_ Honly].
+  - exists pico_hash_witness_object. split; reflexivity.
+  - split; [| exact HV].
+    apply Honly. simpl. unfold values_written_to.
+    rewrite <- Hval. apply List.in_map. exact Hin.
+Qed.
+
 Lemma pico_hash_concurrent_valid_value :
   hash_cache_valid pico_hash_concurrent_value HashField
     (Int pico_hash_concurrent_value).
@@ -634,7 +684,7 @@ Lemma pico_hash_concurrent_call_entry
     (pico_invocation_control (pico_hash_concurrent_invocation 0))
     pico_hash_concurrent_initial_state
     (CoreRun (mkr_env [Iot pico_hash_concurrent_receiver])
-      (pico_hash_method_stmt pico_hash_concurrent_value) 0
+      (pico_hash_method_stmt_with pico_hash_read_compute_stmt) 0
       [KCall pico_hash_concurrent_caller 1 cache_result])
     pico_hash_concurrent_initial_state.
 Proof.
@@ -645,7 +695,7 @@ Proof.
     (C := pico_hash_witness_class)
     (mdef := pico_hash_concurrent_method_def)
     (body := mbody pico_hash_concurrent_method_def)
-    (mstmt := pico_hash_method_stmt pico_hash_concurrent_value)
+    (mstmt := pico_hash_method_stmt_with pico_hash_read_compute_stmt)
     (ret := cache_result)
     (vals := []).
   - reflexivity.
@@ -665,14 +715,14 @@ Lemma pico_hash_concurrent_two_calls_enter
     pool_state cfg = pico_hash_concurrent_initial_state /\
     pool_threads cfg =
       [CoreRun (mkr_env [Iot pico_hash_concurrent_receiver])
-         (pico_hash_method_stmt pico_hash_concurrent_value) 0
+         (pico_hash_method_stmt_with pico_hash_read_compute_stmt) 0
          [KCall pico_hash_concurrent_caller 1 cache_result];
        CoreRun (mkr_env [Iot pico_hash_concurrent_receiver])
-         (pico_hash_method_stmt pico_hash_concurrent_value) 0
+         (pico_hash_method_stmt_with pico_hash_read_compute_stmt) 0
          [KCall pico_hash_concurrent_caller 1 cache_result]].
 Proof.
   set (entered := CoreRun (mkr_env [Iot pico_hash_concurrent_receiver])
-    (pico_hash_method_stmt pico_hash_concurrent_value) 0
+    (pico_hash_method_stmt_with pico_hash_read_compute_stmt) 0
     [KCall pico_hash_concurrent_caller 1 cache_result]).
   exists (mkPicoPoolConfig pico_hash_concurrent_initial_state
     [entered; entered]).
@@ -701,7 +751,7 @@ Definition pico_hash_concurrent_method_env : r_env :=
 Definition pico_hash_concurrent_after_read_stmt : stmt :=
   SSeq
     (pico_local_copy_cache_branch
-      (pico_hash_compute_stmt pico_hash_concurrent_value))
+      pico_hash_read_compute_stmt)
     (SVarAss cache_result (EVar cache_tmp)).
 
 Definition pico_hash_concurrent_call_cont : pico_core_cont :=
@@ -720,7 +770,7 @@ Lemma pico_hash_concurrent_method_to_read
     `{CacheMemoryModel} :
   pico_core_steps pico_hash_concurrent_CT
     (CoreRun (mkr_env [Iot pico_hash_concurrent_receiver])
-      (pico_hash_method_stmt pico_hash_concurrent_value) 0
+      (pico_hash_method_stmt_with pico_hash_read_compute_stmt) 0
       pico_hash_concurrent_call_cont)
     pico_hash_concurrent_initial_state
     pico_hash_concurrent_read_control
@@ -758,7 +808,7 @@ Proof.
   subst entered_state entered_threads.
   set (method_control := CoreRun
     (mkr_env [Iot pico_hash_concurrent_receiver])
-    (pico_hash_method_stmt pico_hash_concurrent_value) 0
+    (pico_hash_method_stmt_with pico_hash_read_compute_stmt) 0
     pico_hash_concurrent_call_cont).
   assert (Hmethod : pico_core_steps pico_hash_concurrent_CT method_control
     pico_hash_concurrent_initial_state pico_hash_concurrent_read_control
@@ -937,9 +987,8 @@ Definition pico_hash_concurrent_write_control : pico_core_expr :=
     (SFldWrite cache_receiver hash_cache_field cache_tmp) 0
     pico_hash_concurrent_write_cont.
 
-Lemma pico_hash_concurrent_after_read_to_write
-    `{CacheMemoryModel} :
-  pico_core_steps pico_hash_concurrent_CT
+Lemma pico_hash_concurrent_after_read_to_write :
+  @pico_core_steps history_cache_memory_model pico_hash_concurrent_CT
     pico_hash_concurrent_after_read_control
     pico_hash_concurrent_initial_state
     pico_hash_concurrent_write_control
@@ -950,7 +999,7 @@ Proof.
     pico_hash_concurrent_write_control, pico_hash_concurrent_write_cont,
     pico_hash_concurrent_hash_env, pico_hash_concurrent_method_env,
     pico_hash_concurrent_initial_state, pico_local_copy_cache_branch,
-    pico_hash_compute_stmt, pico_hash_concurrent_value,
+    pico_hash_read_compute_stmt, pico_hash_concurrent_value,
     cache_tmp, cache_result, cache_receiver, hash_cache_field,
     pico_hash_concurrent_call_cont, set_vars.
   simpl.
@@ -958,8 +1007,12 @@ Proof.
   eapply PicoCoreStepsStep; [apply PCS_Seq |].
   eapply PicoCoreStepsStep; [apply PCS_IfZero; reflexivity |].
   eapply PicoCoreStepsStep; [apply PCS_Seq |].
-  eapply PicoCoreStepsStep;
-    [apply PCS_AssignInt with (old_v := Int 0); reflexivity |].
+  eapply PicoCoreStepsStep.
+  { eapply PCS_AssignField with (old_v := Int 0) (loc_y := 1) (v := Int 7);
+      [reflexivity | reflexivity |].
+    split; [reflexivity |].
+    exists (mkWriteMsg (Int 7) 0 0).
+    split; [simpl; left; reflexivity | reflexivity]. }
   eapply PicoCoreStepsStep; [apply PCS_SkipSeq |].
   constructor.
 Qed.

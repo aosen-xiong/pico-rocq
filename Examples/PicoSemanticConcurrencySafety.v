@@ -33,17 +33,17 @@ Definition pico_hash_caller_done : r_env :=
 
 Definition pico_hash_outer_tail : stmt :=
   SSeq (SLocal int_type cache_result)
-    (pico_hash_method_core_stmt pico_hash_concurrent_value).
+    (pico_hash_method_core_stmt_with pico_hash_read_compute_stmt).
 
 Definition pico_hash_final_stmt : stmt :=
   SVarAss cache_result (EVar cache_tmp).
 
 Definition pico_hash_branch_stmt : stmt :=
   pico_local_copy_cache_branch
-    (pico_hash_compute_stmt pico_hash_concurrent_value).
+    pico_hash_read_compute_stmt.
 
 Definition pico_hash_miss_stmt : stmt :=
-  SSeq (pico_hash_compute_stmt pico_hash_concurrent_value)
+  SSeq pico_hash_read_compute_stmt
     (SFldWrite cache_receiver hash_cache_field cache_tmp).
 
 Inductive pico_hash_phase : Type :=
@@ -80,7 +80,7 @@ Definition pico_hash_phase_control (phase : pico_hash_phase) :
       pico_invocation_control (pico_hash_concurrent_invocation 0)
   | HashMethod =>
       CoreRun pico_hash_env1
-        (pico_hash_method_stmt pico_hash_concurrent_value) 0
+        (pico_hash_method_stmt_with pico_hash_read_compute_stmt) 0
         pico_hash_concurrent_call_cont
   | HashLocalTmp =>
       CoreRun pico_hash_env1 (SLocal int_type cache_tmp) 0
@@ -93,15 +93,15 @@ Definition pico_hash_phase_control (phase : pico_hash_phase) :
         pico_hash_concurrent_call_cont
   | HashLocalResult =>
       CoreRun pico_hash_env2 (SLocal int_type cache_result) 0
-        (KSeq (pico_hash_method_core_stmt pico_hash_concurrent_value) ::
+        (KSeq (pico_hash_method_core_stmt_with pico_hash_read_compute_stmt) ::
           pico_hash_concurrent_call_cont)
   | HashAfterLocalResult =>
       CoreRun pico_hash_env3 SSkip 0
-        (KSeq (pico_hash_method_core_stmt pico_hash_concurrent_value) ::
+        (KSeq (pico_hash_method_core_stmt_with pico_hash_read_compute_stmt) ::
           pico_hash_concurrent_call_cont)
   | HashCore =>
       CoreRun pico_hash_env3
-        (pico_hash_method_core_stmt pico_hash_concurrent_value) 0
+        (pico_hash_method_core_stmt_with pico_hash_read_compute_stmt) 0
         pico_hash_concurrent_call_cont
   | HashRead => pico_hash_concurrent_read_control
   | HashReadZeroDone => pico_hash_concurrent_after_read_control
@@ -124,7 +124,7 @@ Definition pico_hash_phase_control (phase : pico_hash_phase) :
         pico_hash_concurrent_write_cont
   | HashCompute =>
       CoreRun pico_hash_env3
-        (pico_hash_compute_stmt pico_hash_concurrent_value) 0
+        pico_hash_read_compute_stmt 0
         (KSeq (SFldWrite cache_receiver hash_cache_field cache_tmp) ::
           pico_hash_concurrent_write_cont)
   | HashAfterCompute =>
@@ -335,8 +335,22 @@ Proof.
     split; [exact Hinv | exists HashHitSkip; reflexivity].
   - inversion Hstep; subst.
     split; [exact Hinv | exists HashCompute; reflexivity].
-  - inversion Hstep; subst.
-    split; [exact Hinv | exists HashAfterCompute; reflexivity].
+  - unfold pico_hash_read_compute_stmt in Hstep.
+    inversion Hstep; subst.
+    + match goal with
+      | Hy : runtime_getVal pico_hash_env3 cache_receiver = Some (Iot ?ly),
+        Hr : wm_read _ _ (?ly, _) _ _ |- _ =>
+          unfold pico_hash_env3, cache_receiver in Hy; simpl in Hy;
+          injection Hy as Hly; rewrite <- Hly in Hr;
+          destruct (pico_hash_concurrent_payload_read _ _ _ _ _ Hinv Hr)
+            as [-> ->]
+      end.
+      split; [exact Hinv | exists HashAfterCompute; reflexivity].
+    + match goal with
+      | Hn : runtime_getVal pico_hash_env3 cache_receiver = Some Null_a |- _ =>
+          unfold pico_hash_env3, cache_receiver in Hn; simpl in Hn;
+          discriminate
+      end.
   - inversion Hstep; subst.
     split; [exact Hinv | exists HashWrite; reflexivity].
   - inversion Hstep; subst.

@@ -201,9 +201,23 @@ returns exactly the hash in every provider state.
 `pico_concrete_hash_cache_valid_is_derivation_value` shows that the Iris hash
 protocol's valid values are exactly the derivation-defined ones
 (`derivation_cache_value`). The witness method `pico_hash_derive_method_def`
-reads the final payload field. The cached hash method's compute step is still
-the literal `EInt 7`; the derivation justifies that literal but is not called
-by it.
+reads the final payload field.
+
+The concurrent example's cached hash method computes its value the same way,
+with `pico_hash_read_compute_stmt` (`cache_tmp = this.payload`), not a literal.
+The provider invariant also records that every weak history in the footprint
+is nonempty and holds only the reference value, so every weak read of the
+payload returns the hash. `pico_derived_computation_atI` is a derived-computation
+judgment for frames whose receiver satisfies a predicate; the hash API now
+takes it. `pico_hash_read_computationI` proves the payload read is such a
+computation, and `pico_hash_concurrent_method_api_wfI` installs the
+concurrent method through the Iris API with no computation premise. The
+concurrent safety, JAM, JLS and publication examples run the same method.
+Their event lists still record only the four cache-field accesses. Each
+thread's payload read happens inside the scheduler steps between those events
+and is not itself a JAM, JLS or combined-execution event.
+`PicoHashExecutionTrace` still uses the literal compute, since it is about the
+double-read bug for an arbitrary hash.
 
 `pico_heap_hash_api_call_wpI` additionally assumes source call typing, method
 lookup, closed dispatch, a typed caller/state, and the verified computation

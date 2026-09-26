@@ -55,6 +55,7 @@ Examples/PicoSemanticCacheAPIExamples.v
 Examples/PicoConcreteHashModel.v
 Examples/PicoSemanticConcurrencyExamples.v
 Examples/PicoSemanticConcurrencySafety.v
+Examples/PicoHashPayloadReadAPI.v
 Examples/PicoJamHashAdequacy.v
 Examples/PicoFinalFieldPublicationExamples.v
 Examples/PicoConstructionPublicationExamples.v
