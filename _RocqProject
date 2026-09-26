@@ -33,6 +33,7 @@ MemoryModels/JMM/JamPublicationExecution.v
 MemoryModels/JMM/JlsCacheFragment.v
 MemoryModels/JMM/JmmCacheAdequacyInterface.v
 PICOBridge/PicoCacheTyping.v
+PICOBridge/PicoDerivationNoninterference.v
 PICOBridge/PicoIrisCoreLanguage.v
 PICOBridge/PicoSemanticConcurrency.v
 PICOBridge/PicoLabeledExecution.v
