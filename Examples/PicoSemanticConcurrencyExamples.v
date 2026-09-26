@@ -548,6 +548,16 @@ Proof.
     apply heap_wm_type_agree_alloc.
     split; [reflexivity |].
     intros loc object Hobject. destruct loc; discriminate.
+  - unfold pico_hash_concurrent_initial_heap,
+      pico_hash_concurrent_initial_weak.
+    change (pico_hash_allocated_histories
+      (([] ++ [pico_hash_concurrent_owner]) ++ [pico_hash_witness_object])
+      (pico_core_alloc_weak
+        (pico_core_alloc_weak empty_wm_state pico_hash_concurrent_owner 0)
+        pico_hash_witness_object 0)).
+    apply pico_hash_allocated_histories_alloc; [reflexivity |].
+    apply pico_hash_allocated_histories_alloc; [reflexivity |].
+    exact pico_hash_allocated_histories_empty.
   - intros [] value Hin.
     unfold pico_hash_snapshot, values_written_to, history_of,
       pico_hash_concurrent_initial_heap, pico_hash_concurrent_initial_weak,

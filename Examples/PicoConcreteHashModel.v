@@ -12,6 +12,7 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
   PICOBridge.PicoCacheTyping.
 Require Import Reachability PICOBridge.PicoDerivationNoninterference
   PICOBridge.PicoDerivationCache.
+Require DerivedCache.
 Require Import Examples.PicoSemanticCacheAPIExamples.
 
 (** * A Concrete Non-Vacuous Hash-Cache Provider *)
@@ -97,6 +98,17 @@ Definition pico_hash_abstract_field
 Definition pico_hash_object (hash_value : nat) (_ : pico_core_state) : nat :=
   hash_value.
 
+(** Every weak history in the footprint holds only the reference heap's
+    value, and is nonempty.  Field reads of the footprint therefore return
+    the reference value. *)
+Definition pico_hash_footprint_histories
+    (CT : class_table) (h0 : heap) (receiver : Loc) (sigma : wm_state) : Prop :=
+  forall l f v0,
+    pico_hash_abstract_field CT h0 receiver (l, f) ->
+    DerivedCache.field_read h0 l f v0 ->
+    values_written_to sigma (l, f) <> @nil value /\
+    forall v, List.In v (values_written_to sigma (l, f)) -> v = v0.
+
 Definition pico_hash_provider_inv
     (CT : class_table) (receiver : Loc) (m : method_name) (h0 : heap)
     (hash_value : nat) (state : pico_core_state) : Prop :=
@@ -104,6 +116,7 @@ Definition pico_hash_provider_inv
   ((exists D, derivation_table CT D /\ derivation_ready CT D m h0 receiver) /\
    derived_by CT m h0 receiver (Int hash_value) /\
    abs_agree CT (reachable_abs CT h0 receiver) h0 (pcs_heap state) /\
+   pico_hash_footprint_histories CT h0 receiver (pcs_weak state) /\
    (exists rt0 fs0,
      runtime_getObj h0 receiver = Some (mkObj rt0 fs0) /\
      derived_cache_field CT (rctype rt0) hash_cache_field)) /\
@@ -200,6 +213,101 @@ Proof.
     Hheap Hreach Hobj Habs Hl').
 Qed.
 
+(** The cache address of the receiver is outside its abstract footprint. *)
+Lemma pico_hash_cache_addr_not_footprint :
+  forall CT h0 receiver,
+    (exists rt0 fs0,
+      runtime_getObj h0 receiver = Some (mkObj rt0 fs0) /\
+      derived_cache_field CT (rctype rt0) hash_cache_field) ->
+    ~ pico_hash_abstract_field CT h0 receiver (receiver, hash_cache_field).
+Proof.
+  intros CT h0 receiver (rt0 & fs0 & Hobj0' & Hcache_field)
+    (_ & rt & fs & Hobj0 & Habs_field).
+  simpl in Hobj0, Habs_field.
+  rewrite Hobj0 in Hobj0'. injection Hobj0' as <- <-.
+  exact (derived_cache_field_not_abstract CT (rctype rt)
+    hash_cache_field Hcache_field Habs_field).
+Qed.
+
+Lemma pico_hash_footprint_histories_write_outside :
+  forall CT h0 receiver sigma sigma' V V' loc f v,
+    pico_hash_footprint_histories CT h0 receiver sigma ->
+    wm_write sigma sigma' V V' (loc, f) v ->
+    ~ pico_hash_abstract_field CT h0 receiver (loc, f) ->
+    pico_hash_footprint_histories CT h0 receiver sigma'.
+Proof.
+  intros CT h0 receiver sigma sigma' V V' loc f v Hhist [-> _] Hout
+    l g v0 Hfoot Hread.
+  assert (Hneq : (l, g) <> (loc, f)).
+  { intros Heq. rewrite Heq in Hfoot. exact (Hout Hfoot). }
+  unfold values_written_to.
+  rewrite history_of_append_write_other; [| exact Hneq].
+  exact (Hhist l g v0 Hfoot Hread).
+Qed.
+
+Lemma pico_hash_footprint_histories_alloc :
+  forall CT h0 receiver h sigma o V,
+    pico_hash_footprint_histories CT h0 receiver sigma ->
+    abs_agree CT (reachable_abs CT h0 receiver) h0 h ->
+    length h = length (wm_objs sigma) ->
+    pico_hash_footprint_histories CT h0 receiver
+      (pico_core_alloc_weak sigma o V).
+Proof.
+  intros CT h0 receiver h sigma o V Hhist Habs Hlength l g v0 Hfoot Hread.
+  destruct (Habs l (proj1 Hfoot)) as (rt & fs0 & fs & _ & Hobj & _).
+  have Hdom := runtime_getObj_dom l _ h Hobj.
+  assert (Hneq : l <> length (wm_objs sigma)) by lia.
+  unfold values_written_to, history_of, pico_core_alloc_weak; simpl.
+  apply Nat.eqb_neq in Hneq. rewrite Hneq.
+  exact (Hhist l g v0 Hfoot Hread).
+Qed.
+
+(** Weak histories created by allocating the heap [h] hold exactly the
+    allocated field values. *)
+Definition pico_hash_allocated_histories (h : heap) (sigma : wm_state) : Prop :=
+  forall l f v0, DerivedCache.field_read h l f v0 -> values_written_to sigma (l, f) = [v0].
+
+Lemma pico_hash_allocated_histories_empty :
+  pico_hash_allocated_histories [] (mkWMState [] (fun _ => [])).
+Proof.
+  intros l f v0 (o & Hobj & _).
+  unfold runtime_getObj in Hobj. destruct l; discriminate.
+Qed.
+
+Lemma pico_hash_allocated_histories_alloc :
+  forall h sigma o V,
+    length h = length (wm_objs sigma) ->
+    pico_hash_allocated_histories h sigma ->
+    pico_hash_allocated_histories (h ++ [o]) (pico_core_alloc_weak sigma o V).
+Proof.
+  intros h sigma o V Hlength Hhist l f v0 (obj & Hobj & Hget).
+  unfold values_written_to, history_of, pico_core_alloc_weak; simpl.
+  destruct (Nat.lt_ge_cases l (length h)) as [Hlt | Hge].
+  - assert (Hneq : l <> length (wm_objs sigma)) by lia.
+    apply Nat.eqb_neq in Hneq. rewrite Hneq.
+    apply (Hhist l f v0). exists obj. split; [| exact Hget].
+    unfold runtime_getObj in *. rewrite nth_error_app1 in Hobj; assumption.
+  - unfold runtime_getObj in Hobj.
+    rewrite nth_error_app2 in Hobj; [| exact Hge].
+    destruct (l - length h) as [| k] eqn:Hk.
+    + simpl in Hobj. injection Hobj as <-.
+      assert (Heq : l = length (wm_objs sigma)) by lia.
+      apply Nat.eqb_eq in Heq. rewrite Heq.
+      unfold getVal in Hget. rewrite Hget. reflexivity.
+    + simpl in Hobj. destruct k; discriminate.
+Qed.
+
+Lemma pico_hash_allocated_footprint_histories :
+  forall CT h0 receiver sigma,
+    pico_hash_allocated_histories h0 sigma ->
+    pico_hash_footprint_histories CT h0 receiver sigma.
+Proof.
+  intros CT h0 receiver sigma Halloc l f v0 _ Hread.
+  rewrite (Halloc l f v0 Hread).
+  split; [discriminate |].
+  intros v [-> | []]. reflexivity.
+Qed.
+
 (** ** The provider *)
 
 Definition pico_concrete_hash_semimm
@@ -220,7 +328,7 @@ Proof.
       as [-> ->].
     exists v. split; [reflexivity | exact Hin].
   - intros h h' sigma sigma' V V' loc f v
-      (Hagree & (Hready & Hderived & Habs & Hcache) & Hvalid)
+      (Hagree & (Hready & Hderived & Habs & Hhist & Hcache) & Hvalid)
       Hheap Hwrite Hnoncache Hunrelated.
     assert (Haddr : (loc, f) <> pico_hash_cache_addr receiver).
     { intros Heq. rewrite Heq in Hnoncache.
@@ -241,14 +349,16 @@ Proof.
       * split.
         -- split; [exact Hready |].
            split; [exact Hderived |].
+           split; [subst h'; apply abs_agree_update_field_outside;
+             [exact Habs | exact Hunrelated] |].
            split; [| exact Hcache].
-           subst h'. apply abs_agree_update_field_outside; [exact Habs |].
-           exact Hunrelated.
+           eapply pico_hash_footprint_histories_write_outside;
+             [exact Hhist | exact Hwrite | exact Hunrelated].
         -- intros [] value Hin. apply Hvalid with (k := HashField).
            unfold pico_hash_snapshot, values_written_to in *; simpl in *.
            rewrite Hhistory in Hin. exact Hin.
   - intros h h' sigma sigma' V V' loc f v k cv
-      (Hagree & (Hready & Hderived & Habs & Hcache) & Hvalid)
+      (Hagree & (Hready & Hderived & Habs & Hhist & Hcache) & Hvalid)
       Hheap Hwrite Hfield Hvalue Hcvvalid.
     destruct (pico_hash_cache_adapter_some receiver (loc, f) k Hfield)
       as [Haddr ->]. simpl in Hvalue. inversion Hvalue; subst cv.
@@ -272,14 +382,13 @@ Proof.
       * split.
         -- split; [exact Hready |].
            split; [exact Hderived |].
+           have Hout := pico_hash_cache_addr_not_footprint CT h0 receiver
+             Hcache.
+           split; [subst h'; apply abs_agree_update_field_outside;
+             [exact Habs | exact Hout] |].
            split; [| exact Hcache].
-           subst h'. apply abs_agree_update_field_outside; [exact Habs |].
-           intros (_ & rt & fs & Hobj0 & Habs_field).
-           destruct Hcache as (rt0 & fs0 & Hobj0' & Hcache_field).
-           simpl in Hobj0, Habs_field.
-           rewrite Hobj0 in Hobj0'. injection Hobj0' as <- <-.
-           exact (derived_cache_field_not_abstract CT (rctype rt)
-             hash_cache_field Hcache_field Habs_field).
+           eapply pico_hash_footprint_histories_write_outside;
+             [exact Hhist | exact Hwrite | exact Hout].
         -- intros [] value Hin.
            unfold pico_hash_snapshot, values_written_to in Hin; simpl in Hin.
            rewrite Hhistory in Hin. rewrite map_app in Hin. simpl in Hin.
@@ -287,7 +396,7 @@ Proof.
            ++ exact (Hvalid HashField value Hin).
            ++ exact Hcvvalid.
   - intros h sigma new_object V
-      (Hagree & (Hready & Hderived & Habs & Hcache) & Hvalid).
+      (Hagree & (Hready & Hderived & Habs & Hhist & Hcache) & Hvalid).
     pose proof (proj1 Hagree) as Hlength.
     change (length h = length (wm_objs sigma)) in Hlength.
     assert (Hreceiver : receiver < length h).
@@ -308,8 +417,10 @@ Proof.
       * split.
         -- split; [exact Hready |].
            split; [exact Hderived |].
+           split; [apply abs_agree_alloc; exact Habs |].
            split; [| exact Hcache].
-           apply abs_agree_alloc. exact Habs.
+           eapply pico_hash_footprint_histories_alloc;
+             [exact Hhist | exact Habs | exact Hlength].
         -- intros [] value Hin.
            unfold pico_hash_snapshot, values_written_to, history_of,
              pico_core_alloc_weak in Hin; simpl in Hin.
@@ -556,18 +667,20 @@ Lemma pico_hash_provider_inv_at_reference :
       runtime_getObj h0 receiver = Some (mkObj rt0 fs0) /\
       derived_cache_field CT (rctype rt0) hash_cache_field) ->
     heap_wm_type_agree h0 sigma ->
+    pico_hash_allocated_histories h0 sigma ->
     CacheHistSnapshotOK hash_cache_protocol
       (pico_hash_snapshot receiver (mkPicoCoreState h0 sigma)) hash_value ->
     pico_hash_provider_inv CT receiver m h0 hash_value
       (mkPicoCoreState h0 sigma).
 Proof.
   intros CT D receiver m h0 hash_value sigma Htable Hready Hderived Hcache
-    Hagree Hsnapshot.
+    Hagree Halloc Hsnapshot.
   split; [exact Hagree |].
   split; [| exact Hsnapshot].
   split; [exists D; split; assumption |].
   split; [exact Hderived |].
-  split; [| exact Hcache].
+  split; [| split; [apply pico_hash_allocated_footprint_histories;
+    exact Halloc | exact Hcache]].
   destruct Hready as (cy & mdef & _ & _ & _ & _ & _ & Hheap & _).
   exact (abs_agree_reachable_refl CT h0 receiver Hheap).
 Qed.
@@ -595,6 +708,10 @@ Proof.
     apply heap_wm_type_agree_alloc.
     split; [reflexivity |]. intros loc obj Hobj.
     unfold runtime_getObj in Hobj. destruct loc; discriminate.
+  - change (pico_hash_allocated_histories ([] ++ [o])
+      (pico_core_alloc_weak empty_wm_state o 0)).
+    apply pico_hash_allocated_histories_alloc; [reflexivity |].
+    exact pico_hash_allocated_histories_empty.
   - intros [] value Hin.
     unfold pico_hash_snapshot, values_written_to, history_of,
       pico_hash_cache_addr, pico_core_alloc_weak, empty_wm_state in Hin.
