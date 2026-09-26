@@ -546,6 +546,67 @@ Section pico_semantic_api.
     iIntros "[%Hts _]". iPureIntro.
     eapply ts_stmt_direct_shared_write_free. exact Hts.
   Qed.
+
+  (** A derived computation that may read through the method receiver.  It
+      is only run in frames whose receiver (variable 0) satisfies
+      [receiver_ok], so it may, for example, read the receiver's final
+      fields. *)
+  Definition pico_derived_computation_atI
+      (R : pico_core_state -> iProp Sigma) (receiver_ok : Loc -> Prop)
+      (compute : stmt) (target : var) (derived : value) : iProp Sigma :=
+    □ ∀ rGamma loc state V K E Phi old,
+      ⌜runtime_getVal rGamma 0 = Some (Iot loc)⌝ -∗
+      ⌜receiver_ok loc⌝ -∗
+      ⌜runtime_getVal rGamma target = Some old⌝ -∗
+      R state -∗
+      ownP state -∗
+      ▷ (∀ V',
+        R state -∗
+        ownP state -∗
+        WP CoreRun
+          (set_vars rGamma (update target derived (vars rGamma)))
+          SSkip V' K @ NotStuck; E {{ Phi }}) -∗
+      WP CoreRun rGamma compute V K @ NotStuck; E {{ Phi }}.
+
+  Definition pico_ts_derived_computation_atI
+      (R : pico_core_state -> iProp Sigma) (receiver_ok : Loc -> Prop)
+      (CallOK : ts_call_summary)
+      (sGamma sGamma' : s_env) (compute : stmt)
+      (target : var) (derived : value) : iProp Sigma :=
+    (⌜ts_stmt CT CallOK sGamma compute sGamma'⌝ ∗
+      pico_derived_computation_atI R receiver_ok compute target derived)%I.
+
+  Lemma pico_derived_computation_atI_intro
+      R receiver_ok compute target derived :
+    pico_derived_computationI R compute target derived -∗
+    pico_derived_computation_atI R receiver_ok compute target derived.
+  Proof.
+    iIntros "#Hcompute". iModIntro.
+    iIntros (rGamma loc state V K E Phi old) "%Hreceiver %Hok %Hold HR Hown Hnext".
+    iApply ("Hcompute" $! rGamma state V K E Phi old with "[] HR Hown Hnext").
+    iPureIntro. exact Hold.
+  Qed.
+
+  Lemma pico_ts_derived_computation_atI_intro
+      R receiver_ok CallOK sGamma sGamma' compute target derived :
+    pico_ts_derived_computationI
+      R CallOK sGamma sGamma' compute target derived -∗
+    pico_ts_derived_computation_atI
+      R receiver_ok CallOK sGamma sGamma' compute target derived.
+  Proof.
+    iIntros "[%Hts #Hcompute]". iSplit; [iPureIntro; exact Hts |].
+    iApply pico_derived_computation_atI_intro. iExact "Hcompute".
+  Qed.
+
+  Lemma pico_ts_derived_computation_at_direct_write_freeI
+      R receiver_ok CallOK sGamma sGamma' compute target derived :
+    pico_ts_derived_computation_atI
+      R receiver_ok CallOK sGamma sGamma' compute target derived -∗
+    ⌜direct_shared_write_free compute⌝.
+  Proof.
+    iIntros "[%Hts _]". iPureIntro.
+    eapply ts_stmt_direct_shared_write_free. exact Hts.
+  Qed.
 End pico_semantic_api.
 
 (** Pure result contract used by derived-cache APIs.  [decode_args] and

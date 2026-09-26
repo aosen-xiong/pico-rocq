@@ -450,10 +450,11 @@ Section concrete_hash_api.
           (pico_hash_method_signature receiver_type method)
           (msignature mdef_parent))
       (Hcache_runtime : PicoHashCacheRuntimeAssignable CT receiver_type) :
-    pico_ts_derived_computationI CT
+    pico_ts_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol pico_hash_stable_abs
         hash_value (pico_hash_cache_adapter receiver)
         (pico_concrete_hash_semimm CT receiver m h0 hash_value))
+      (pico_hash_cache_receiver (pico_hash_cache_adapter receiver))
       ts_no_calls [receiver_type; int_type; int_type]
       [receiver_type; int_type; int_type]
       compute cache_tmp (Int hash_value) -∗
@@ -525,10 +526,11 @@ Section concrete_hash_api.
         (pico_hash_method_def_with receiver_type method compute))
       (Hargs : runtime_lookup_list caller args = Some vals)
       (Hstate : pico_core_lr_state CT (mkPicoCoreState h sigma)) :
-    pico_ts_derived_computationI CT
+    pico_ts_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol pico_hash_stable_abs
         hash_value (pico_hash_cache_adapter receiver)
         (pico_concrete_hash_semimm CT receiver m h0 hash_value))
+      (pico_hash_cache_receiver (pico_hash_cache_adapter receiver))
       ts_no_calls [receiver_type; int_type; int_type]
       [receiver_type; int_type; int_type]
       compute cache_tmp (Int hash_value) -∗

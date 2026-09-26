@@ -295,6 +295,12 @@ Proof.
       intros [Hscope | Hscope]; discriminate.
 Qed.
 
+(** The receivers whose hash-cache field the adapter maps. *)
+Definition pico_hash_cache_receiver
+    (A : PicoCoreCacheAdapter hash_cache_protocol) (loc : Loc) : Prop :=
+  pico_core_cache_field hash_cache_protocol A (loc, hash_cache_field) =
+    Some HashField.
+
 Section pico_hash_semantic_api.
   Context `{Hmem : CacheMemoryModel}.
   Context `{Hprogress : CacheMemoryModelProgress}.
@@ -691,11 +697,15 @@ Section pico_hash_semantic_api.
       (R : pico_core_state -> iProp Sigma)
       (Phi : pico_core_val -> iProp Sigma)
       compute state rGamma V hash_value
-      (Htmp : runtime_getVal rGamma cache_tmp = Some (Int 0)) :
+      (Htmp : runtime_getVal rGamma cache_tmp = Some (Int 0))
+      receiver_ok loc
+      (Hreceiver : runtime_getVal rGamma cache_receiver = Some (Iot loc))
+      (Hok : receiver_ok loc) :
     let rGamma_hash :=
       set_vars rGamma
         (update cache_tmp (Int hash_value) (vars rGamma)) in
-    pico_derived_computationI CT R compute cache_tmp (Int hash_value) -∗
+    pico_derived_computation_atI CT R receiver_ok compute cache_tmp
+      (Int hash_value) -∗
     R state -∗
     ownP state -∗
     ▷ (∀ V', R state -∗ ownP state -∗
@@ -749,8 +759,10 @@ Section pico_hash_semantic_api.
         split; reflexivity.
       + iNext. iIntros "HR Hown".
         unfold compute_stmt.
-        iApply ("Hcompute" $! rGamma state V compute_cont top Phi (Int 0)
-          with "[] HR Hown [Hwrite]").
+        iApply ("Hcompute" $! rGamma loc state V compute_cont top Phi (Int 0)
+          with "[] [] [] HR Hown [Hwrite]").
+        * iPureIntro. exact Hreceiver.
+        * iPureIntro. exact Hok.
         * iPureIntro. exact Htmp.
         * iNext. iIntros (V') "HR Hown".
           assert (Hskip : pico_core_step CT
@@ -773,10 +785,14 @@ Section pico_hash_semantic_api.
       (R : pico_core_state -> iProp Sigma)
       (Phi : pico_core_val -> iProp Sigma)
       E compute state rGamma V caller target K hash_value
-      (Htmp : runtime_getVal rGamma cache_tmp = Some (Int 0)) :
+      (Htmp : runtime_getVal rGamma cache_tmp = Some (Int 0))
+      receiver_ok loc
+      (Hreceiver : runtime_getVal rGamma cache_receiver = Some (Iot loc))
+      (Hok : receiver_ok loc) :
     let rGamma_hash := set_vars rGamma
       (update cache_tmp (Int hash_value) (vars rGamma)) in
-    pico_derived_computationI CT R compute cache_tmp (Int hash_value) -∗
+    pico_derived_computation_atI CT R receiver_ok compute cache_tmp
+      (Int hash_value) -∗
     R state -∗ ownP state -∗
     ▷ (∀ V', R state -∗ ownP state -∗
       WP CoreRun rGamma_hash
@@ -822,8 +838,10 @@ Section pico_hash_semantic_api.
       + intros next state' Hactual. inversion Hactual; subst;
           try discriminate; try congruence; split; reflexivity.
       + iNext. iIntros "HR Hown". unfold compute_stmt.
-        iApply ("Hcompute" $! rGamma state V compute_cont E Phi (Int 0)
-          with "[] HR Hown [Hwrite]").
+        iApply ("Hcompute" $! rGamma loc state V compute_cont E Phi (Int 0)
+          with "[] [] [] HR Hown [Hwrite]").
+        * iPureIntro. exact Hreceiver.
+        * iPureIntro. exact Hok.
         * iPureIntro. exact Htmp.
         * iNext. iIntros (V') "HR Hown".
           assert (Hskip : pico_core_step CT
@@ -1213,9 +1231,10 @@ Section pico_hash_semantic_api.
         (loc, hash_cache_field) = Some HashField)
       (Hvalue : pico_core_cache_value hash_cache_protocol A HashField
         (Int hash_value) = Some (Int hash_value)) :
-    pico_derived_computationI CT
+    pico_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol
         pico_hash_stable_abs hash_value A M)
+      (pico_hash_cache_receiver A)
       compute cache_tmp (Int hash_value) -∗
     pico_core_semimm_worldI hash_cache_protocol
       pico_hash_stable_abs hash_value A M (mkPicoCoreState h sigma) -∗
@@ -1242,6 +1261,7 @@ Section pico_hash_semantic_api.
             pico_hash_stable_abs hash_value A M) entry hash_value)
         compute
         (mkPicoCoreState h sigma) rGamma V hash_value Htmp
+        (pico_hash_cache_receiver A) loc Hreceiver Hfield
         with "Hcompute Hworld Hown").
       iNext. iIntros (Vcompute) "Hworld Hown".
       set (rGamma_hash := set_vars rGamma
@@ -1307,9 +1327,10 @@ Section pico_hash_semantic_api.
       (Henv : pico_core_typed_env CT
         [receiver_type; int_type; int_type] rGamma h)
       (Hlrstate : pico_core_lr_state CT (mkPicoCoreState h sigma)) :
-    pico_derived_computationI CT
+    pico_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol
         pico_hash_stable_abs hash_value A M)
+      (pico_hash_cache_receiver A)
       compute cache_tmp (Int hash_value) -∗
     pico_core_semimm_worldI hash_cache_protocol
       pico_hash_stable_abs hash_value A M (mkPicoCoreState h sigma) -∗
@@ -1338,6 +1359,7 @@ Section pico_hash_semantic_api.
         (pico_core_semimm_worldI hash_cache_protocol
           pico_hash_stable_abs hash_value A M) Phi E compute
         (mkPicoCoreState h sigma) rGamma V caller target K hash_value Htmp
+        (pico_hash_cache_receiver A) loc Hreceiver Hfield
         with "Hcompute Hworld Hown [Hcontinue]").
       iNext. iIntros (Vcompute) "Hworld Hown".
       set (rGamma_hash := set_vars rGamma
@@ -1403,9 +1425,10 @@ Section pico_hash_semantic_api.
         pico_core_cache_value hash_cache_protocol A HashField v = Some v)
       (Hread_ready : exists v V',
         wm_read sigma V (loc, hash_cache_field) v V') :
-    pico_derived_computationI CT
+    pico_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol
         pico_hash_stable_abs hash_value A M)
+      (pico_hash_cache_receiver A)
       compute cache_tmp (Int hash_value) -∗
     pico_core_semimm_worldI hash_cache_protocol
       pico_hash_stable_abs hash_value A M (mkPicoCoreState h sigma) -∗
@@ -1572,9 +1595,10 @@ Section pico_hash_semantic_api.
       (Henv : pico_core_typed_env CT
         [receiver_type; int_type; int_type] rGamma h)
       (Hlrstate : pico_core_lr_state CT (mkPicoCoreState h sigma)) :
-    pico_derived_computationI CT
+    pico_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol
         pico_hash_stable_abs hash_value A M)
+      (pico_hash_cache_receiver A)
       compute cache_tmp (Int hash_value) -∗
     pico_core_semimm_worldI hash_cache_protocol
       pico_hash_stable_abs hash_value A M (mkPicoCoreState h sigma) -∗
@@ -1951,9 +1975,10 @@ Section pico_hash_semantic_api.
           (loc, hash_cache_field) = Some HashField)
       (Hvalue : PicoHashCacheValueAdapter A)
       (Hcache_runtime : PicoHashCacheRuntimeAssignable receiver_type) :
-    pico_ts_derived_computationI CT
+    pico_ts_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol
         pico_hash_stable_abs hash_value A M)
+      (pico_hash_cache_receiver A)
       ts_no_calls
       [receiver_type; int_type; int_type]
       [receiver_type; int_type; int_type]
@@ -1965,8 +1990,8 @@ Section pico_hash_semantic_api.
       (pico_hash_method_def_with receiver_type method compute).
   Proof.
     iIntros "#Hts_compute".
-    iPoseProof (pico_hash_ts_computation_direct_write_freeI
-      _ receiver_type compute hash_value with "Hts_compute") as "%Hwrite_free".
+    iPoseProof (pico_ts_derived_computation_at_direct_write_freeI
+      with "Hts_compute") as "%Hwrite_free".
     iDestruct "Hts_compute" as "[_ #Hcompute]".
     unfold pico_semantic_methodI; simpl.
     iModIntro.
@@ -2072,9 +2097,10 @@ Section pico_hash_semantic_api.
       (Hfield : PicoHashCacheFieldAdapter A receiver_type)
       (Hvalue : PicoHashCacheValueAdapter A)
       (Hcache_runtime : PicoHashCacheRuntimeAssignable receiver_type) :
-    pico_ts_derived_computationI CT
+    pico_ts_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol
         pico_hash_stable_abs hash_value A M)
+      (pico_hash_cache_receiver A)
       ts_no_calls [receiver_type; int_type; int_type]
       [receiver_type; int_type; int_type]
       compute cache_tmp (Int hash_value) -∗
@@ -2113,9 +2139,10 @@ Section pico_hash_semantic_api.
           (loc, hash_cache_field) = Some HashField)
       (Hvalue : PicoHashCacheValueAdapter A)
       (Hcache_runtime : PicoHashCacheRuntimeAssignable receiver_type) :
-    pico_ts_derived_computationI CT
+    pico_ts_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol
         pico_hash_stable_abs hash_value A M)
+      (pico_hash_cache_receiver A)
       ts_no_calls
       [receiver_type; int_type; int_type]
       [receiver_type; int_type; int_type]
@@ -2127,8 +2154,8 @@ Section pico_hash_semantic_api.
       (pico_hash_method_def_with receiver_type method compute).
   Proof.
     iIntros "#Hts_compute".
-    iPoseProof (pico_hash_ts_computation_direct_write_freeI
-      _ receiver_type compute hash_value with "Hts_compute") as "%Hwrite_free".
+    iPoseProof (pico_ts_derived_computation_at_direct_write_freeI
+      with "Hts_compute") as "%Hwrite_free".
     iDestruct "Hts_compute" as "[_ #Hcompute]".
     unfold pico_callable_methodI; simpl.
     iModIntro.
@@ -2238,9 +2265,10 @@ Section pico_hash_semantic_api.
       (Hfield : PicoHashCacheFieldAdapter A receiver_type)
       (Hvalue : PicoHashCacheValueAdapter A)
       (Hcache_runtime : PicoHashCacheRuntimeAssignable receiver_type) :
-    pico_ts_derived_computationI CT
+    pico_ts_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol
         pico_hash_stable_abs hash_value A M)
+      (pico_hash_cache_receiver A)
       ts_no_calls [receiver_type; int_type; int_type]
       [receiver_type; int_type; int_type]
       compute cache_tmp (Int hash_value) -∗
@@ -2289,6 +2317,7 @@ Section pico_hash_semantic_api.
     iApply (pico_hash_method_semantic_with_computationI A hash_value M
       receiver_type method (pico_hash_compute_stmt hash_value)
       Htyping Hfield Hvalue Hcache_runtime).
+    iApply pico_ts_derived_computation_atI_intro.
     iApply pico_hash_literal_ts_computationI.
   Qed.
 
@@ -2318,6 +2347,7 @@ Section pico_hash_semantic_api.
     iApply (pico_hash_method_callable_with_computationI A hash_value M
       receiver_type method (pico_hash_compute_stmt hash_value)
       Htyping Hfield Hvalue Hcache_runtime).
+    iApply pico_ts_derived_computation_atI_intro.
     iApply pico_hash_literal_ts_computationI.
   Qed.
 
@@ -2332,9 +2362,10 @@ Section pico_hash_semantic_api.
       (Hfield : PicoHashCacheFieldAdapter A receiver_type)
       (Hvalue : PicoHashCacheValueAdapter A)
       (Hcache_runtime : PicoHashCacheRuntimeAssignable receiver_type) :
-    pico_ts_derived_computationI CT
+    pico_ts_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol
         pico_hash_stable_abs hash_value A M)
+      (pico_hash_cache_receiver A)
       ts_no_calls [receiver_type; int_type; int_type]
       [receiver_type; int_type; int_type]
       compute cache_tmp (Int hash_value) -∗
@@ -2381,9 +2412,10 @@ Section pico_hash_semantic_api.
       (Hfield : PicoHashCacheFieldAdapter A receiver_type)
       (Hvalue : PicoHashCacheValueAdapter A)
       (Hcache_runtime : PicoHashCacheRuntimeAssignable receiver_type) :
-    pico_ts_derived_computationI CT
+    pico_ts_derived_computation_atI CT
       (pico_core_semimm_worldI hash_cache_protocol
         pico_hash_stable_abs hash_value A M)
+      (pico_hash_cache_receiver A)
       ts_no_calls
       [receiver_type; int_type; int_type]
       [receiver_type; int_type; int_type]
@@ -2443,6 +2475,7 @@ Section pico_hash_semantic_api.
     iApply (pico_hash_verified_computation_api_wfI A hash_value M C
       receiver_type method (pico_hash_compute_stmt hash_value)
       Htyping Hreceiver Hoverride Hfield Hvalue Hcache_runtime).
+    iApply pico_ts_derived_computation_atI_intro.
     iApply pico_hash_literal_ts_computationI.
   Qed.
 
