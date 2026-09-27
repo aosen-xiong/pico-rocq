@@ -11,7 +11,7 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
   PICOBridge.PicoIrisSemImmLogicalRelation PICOBridge.PicoIrisSemanticAPI
   PICOBridge.PicoCacheTyping PICOBridge.PicoIrisTypingFundamental.
 Require Import Reachability PICOBridge.PicoDerivationNoninterference
-  PICOBridge.PicoDerivationCache.
+  PICOBridge.PicoDerivationCache PICOBridge.PicoDerivationSmallStep.
 Require DerivedCache.
 Require Import Examples.PicoSemanticCacheAPIExamples.
 
@@ -808,6 +808,129 @@ Proof.
       * left. reflexivity.
       * right. split; [reflexivity | discriminate].
 Qed.
+
+(** ** The provider in the small-step semantics
+
+    The provider's hash is named by the derivation's result on the reference
+    heap.  In every provider state, the derivation's small-step run in the
+    core semantics returns exactly that hash. *)
+
+Lemma wf_heap_abstract_field_value :
+  forall CT h l rt fs f,
+    wf_heap CT h ->
+    runtime_getObj h l = Some (mkObj rt fs) ->
+    abstract_field CT (rctype rt) f ->
+    exists v, getVal fs f = Some v.
+Proof.
+  intros CT h l rt fs f Hheap Hobj [Hmut _].
+  have Hdom := runtime_getObj_dom l _ h Hobj.
+  have Hwf := Hheap l Hdom.
+  unfold wf_obj in Hwf. rewrite Hobj in Hwf. simpl in Hwf.
+  destruct Hwf as [_ (fields & Hcf & Hlen & _)].
+  assert (Hlook : exists fdef, FieldLookup CT (rctype rt) f fdef).
+  { destruct Hmut as [(fdef & Hl & _) | (fdef & Hl & _)];
+      exists fdef; exact Hl. }
+  destruct Hlook as [fdef Hlook].
+  inversion Hlook as [CT0 C0 fields0 f0 fdef0 Hcf0 Hget]; subst.
+  have Heq := collect_fields_deterministic_rel CT (rctype rt) fields fields0
+    Hcf Hcf0.
+  subst fields0.
+  unfold gget in Hget.
+  have Hlt := proj1 (nth_error_Some fields f) ltac:(rewrite Hget; discriminate).
+  unfold getVal.
+  destruct (nth_error fs f) as [v |] eqn:Hv; [exists v; reflexivity |].
+  apply nth_error_None in Hv. simpl in Hlen. lia.
+Qed.
+
+(** In a provider state, the footprint histories make the state
+    footprint-stable for the receiver's reachable abstract state. *)
+Lemma pico_hash_provider_footprint_stable :
+  forall CT receiver m h0 hash_value state,
+    pico_hash_provider_inv CT receiver m h0 hash_value state ->
+    footprint_stable CT (reachable_abs CT h0 receiver)
+      (pcs_heap state) (pcs_weak state).
+Proof.
+  intros CT receiver m h0 hash_value state
+    (_ & ((D & Htable & Hready) & _ & Habs & Hhist & _) & _)
+    l rt fs f Hl Hobj Habsf.
+  destruct (Habs l Hl) as (rt0 & fs0 & fs' & Hobj0 & Hobj' & Hfields).
+  rewrite Hobj in Hobj'. injection Hobj' as Hrt Hfs. subst rt0 fs'.
+  destruct Hready as (cy & mdef & _ & _ & _ & _ & _ & Hheap0 & _).
+  destruct (wf_heap_abstract_field_value CT h0 l rt fs0 f Hheap0 Hobj0 Habsf)
+    as [v0 Hv0].
+  assert (Hfoot : pico_hash_abstract_field CT h0 receiver (l, f)).
+  { split; [exact Hl |]. exists rt, fs0. split; assumption. }
+  assert (Hread : DerivedCache.field_read h0 l f v0).
+  { exists (mkObj rt fs0). split; assumption. }
+  destruct (Hhist l f v0 Hfoot Hread) as [Hne Honly].
+  destruct (Hfields f Habsf) as [Heq _].
+  split.
+  - intros v1 _. exact Hne.
+  - intros w Hin. rewrite <- Heq. rewrite Hv0. f_equal.
+    symmetry. exact (Honly w Hin).
+Qed.
+
+Section concrete_hash_small_step.
+  Context `{Hmem : CacheMemoryModel}.
+  Context `{Hprogress : @CacheMemoryModelProgress Hmem}.
+
+  (** In every provider state, the derivation's small-step run returns
+      exactly the provider's hash. *)
+  Theorem pico_concrete_hash_provider_represents_heap_ss :
+    forall CT receiver m h0 hash_value state,
+      pico_hash_provider_inv CT receiver m h0 hash_value state ->
+      derived_ss CT m state receiver (Int hash_value) /\
+      (forall w, derived_ss CT m state receiver w -> w = Int hash_value).
+  Proof.
+    intros CT receiver m h0 hash_value state Hinv.
+    have Hst := pico_hash_provider_footprint_stable CT receiver m h0 hash_value
+      state Hinv.
+    destruct Hinv as (_ & ((D & Htable & Hready) & Hderived & Habs & _ & Hcache) & _).
+    destruct Hcache as (rt0 & fs0 & Hobj0 & _).
+    have Hrecv : reachable_abs CT h0 receiver receiver :=
+      reachable_abs_heap CT h0 receiver (runtime_getObj_dom receiver _ h0 Hobj0).
+    destruct state as [h sigma]. simpl in Habs, Hst.
+    split.
+    - exact (derived_by_derived_ss CT D (reachable_abs CT h0 receiver) m h0 h
+        sigma receiver (Int hash_value) Htable Hready Hrecv Habs Hst Hderived).
+    - intros w Hw.
+      have Hby := derived_ss_derived_by CT D (reachable_abs CT h0 receiver) m h0
+        h sigma receiver w Htable Hready Hrecv Habs Hst Hw.
+      destruct Hderived as (cy & mdef & rΓ & Hbase & Hfind & Heval & Hret).
+      destruct Hby as (cy2 & mdef2 & rΓ2 & Hbase2 & Hfind2 & Heval2 & Hret2).
+      rewrite Hbase in Hbase2. injection Hbase2 as <-.
+      have Hmdef := find_method_with_name_deterministic CT cy m mdef2 mdef
+        Hfind2 Hfind.
+      subst mdef2.
+      destruct (eval_stmt_deterministic CT _ _ _ _ _ _ _ _ _ Heval Heval2)
+        as (_ & <- & _).
+      congruence.
+  Qed.
+
+  (** The Iris hash protocol is the derivation-defined protocol, stated with
+      the small-step derivation in the current state. *)
+  Theorem pico_concrete_hash_cache_valid_is_derivation_value_ss :
+    forall CT receiver m h0 hash_value state v,
+      pico_hash_provider_inv CT receiver m h0 hash_value state ->
+      hash_cache_valid hash_value HashField v <->
+      v = Int 0 \/ derived_ss CT m state receiver v.
+  Proof.
+    intros CT receiver m h0 hash_value state v Hinv.
+    destruct (pico_concrete_hash_provider_represents_heap_ss CT receiver m h0
+      hash_value state Hinv) as [Hderived Hunique].
+    unfold hash_cache_valid.
+    split.
+    - intros [Hzero | [-> _]].
+      + left. exact Hzero.
+      + right. exact Hderived.
+    - intros [Hzero | Hby].
+      + left. exact Hzero.
+      + have -> := Hunique v Hby.
+        destruct hash_value as [| n].
+        * left. reflexivity.
+        * right. split; [reflexivity | discriminate].
+  Qed.
+End concrete_hash_small_step.
 
 (** A provider state can be installed at its own reference heap. *)
 Lemma pico_hash_provider_inv_at_reference :

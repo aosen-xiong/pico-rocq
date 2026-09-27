@@ -32,14 +32,16 @@ Section small_step.
   Context `{Hmem : CacheMemoryModel}.
   Context (CT : class_table) (P : Loc -> Prop).
 
-  (** Every weak history of an abstract field of a footprint object is
-      nonempty and holds only the heap value of that field. *)
+  (** Every weak history of an abstract field of a footprint object holds
+      only the heap value of that field, and is nonempty when the field has
+      a value. *)
   Definition footprint_stable (h : heap) (sigma : wm_state) : Prop :=
     forall l rt fs f,
       P l ->
       runtime_getObj h l = Some (mkObj rt fs) ->
       abstract_field CT (rctype rt) f ->
-      values_written_to sigma (l, f) <> @nil value /\
+      (forall v0, getVal fs f = Some v0 ->
+        values_written_to sigma (l, f) <> @nil value) /\
       forall w, List.In w (values_written_to sigma (l, f)) ->
         getVal fs f = Some w.
 
@@ -161,7 +163,8 @@ Section small_step_calls.
       runtime_getVal rΓ y = Some (Iot ly) ->
       exists rt fs1,
         runtime_getObj h1 ly = Some (mkObj rt fs1) /\
-        values_written_to sigma2 (ly, f) <> @nil value /\
+        (forall v0, getVal fs1 f = Some v0 ->
+          values_written_to sigma2 (ly, f) <> @nil value) /\
         (forall v, List.In v (values_written_to sigma2 (ly, f)) ->
           getVal fs1 f = Some v) /\
         (forall l', getVal fs1 f = Some (Iot l') -> P l').
@@ -178,7 +181,7 @@ Section small_step_calls.
     destruct (Hst2 ly rt fs2 f Hly Hobj2 Habs') as [Hnonempty Honly].
     exists rt, fs1.
     split; [exact Hobj1 |].
-    split; [exact Hnonempty |].
+    split; [intros v0 Hv0; rewrite Heq in Hv0; exact (Hnonempty v0 Hv0) |].
     split; [| exact Hclosed].
     intros v Hin. rewrite Heq. exact (Honly v Hin).
   Qed.
@@ -382,14 +385,15 @@ Section small_step_calls.
             Hf : getVal (fields_map ?o) f0 = Some ?v |- _ =>
               destruct (deriv_read_transfer sΓ0' rΓ y0 f0 T C ly Hwf0 HenvP Hget
                 Href Habs Hy) as (rt & fs1 & Hobj1 & Hnonempty & Honly & _);
+              rewrite Hobj1 in Ho; injection Ho as <-;
+              simpl in Hf;
               assert (Hhist : history_of sigma2 (ly, f0) <> []);
-              [ intros Hnil; apply Hnonempty; unfold values_written_to;
+              [ intros Hnil; apply (Hnonempty _ Hf); unfold values_written_to;
                 rewrite Hnil; reflexivity |];
               destruct (wm_read_nonempty sigma2 V0 (ly, f0) Hhist)
                 as (v' & V' & Hread);
               have Hv' := Honly v' (values_written_to_read _ _ _ _ _ Hread);
-              rewrite Hobj1 in Ho; injection Ho as <-;
-              simpl in Hf; rewrite Hf in Hv'; injection Hv' as <-;
+              rewrite Hf in Hv'; injection Hv' as <-;
               exists V'; econstructor;
               [eapply PCS_AssignField; eassumption | constructor]
           end.

@@ -9,7 +9,8 @@ Require Import Examples.PicoIfZeroCacheExamples
   Examples.PicoSemanticConcurrencyExamples.
 Require Import PICOBridge.PicoIrisCoreLanguage
   PICOBridge.PicoMemoryModel PICOBridge.PicoIrisSemImmLogicalRelation
-  PICOBridge.PicoSemanticConcurrency PICOBridge.PicoStableAbsPreservation.
+  PICOBridge.PicoSemanticConcurrency PICOBridge.PicoStableAbsPreservation
+  PICOBridge.PicoDerivationSmallStep.
 
 (** * Universal Safety of the Two-Invocation Hash Pool
 
@@ -458,6 +459,25 @@ Qed.
 (** PICO's final-field discipline independently preserves the receiver's
     abstract payload across every schedule.  Unlike the hash-specific provider
     invariant, this conclusion is an instance of the generic CESK theorem. *)
+(** In every state reachable by the invocation pool, the receiver's
+    derivation method, run in the same small-step semantics, returns the hash
+    and nothing else. *)
+Theorem pico_hash_pool_derivation_returns_hash : forall cfg,
+  @pico_pool_steps history_cache_memory_model pico_hash_concurrent_CT
+    pico_hash_concurrent_initial_pool cfg ->
+  @derived_ss history_cache_memory_model pico_hash_concurrent_CT
+    pico_hash_derive_method (pool_state cfg) pico_hash_concurrent_receiver
+    (Int pico_hash_concurrent_value) /\
+  (forall w,
+    @derived_ss history_cache_memory_model pico_hash_concurrent_CT
+      pico_hash_derive_method (pool_state cfg) pico_hash_concurrent_receiver w ->
+    w = Int pico_hash_concurrent_value).
+Proof.
+  intros cfg Hsteps.
+  destruct (pico_hash_pool_steps_preserve_inv cfg Hsteps) as [Hinv _].
+  exact (pico_concrete_hash_provider_represents_heap_ss _ _ _ _ _ _ Hinv).
+Qed.
+
 Theorem pico_hash_pool_preserves_pico_abstract_state : forall cfg,
   @pico_pool_steps history_cache_memory_model pico_hash_concurrent_CT
     pico_hash_concurrent_initial_pool cfg ->
