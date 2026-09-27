@@ -192,15 +192,25 @@ its projections recover final publication and the existing legal JAM race.
 
 The concrete hash provider's abstract hash is defined by a PICO derivation
 method, not a Rocq function on field values. `pico_hash_provider_inv` fixes a
-reference heap in which the method returns the hash on the receiver. It then
-requires every later heap to agree with that reference heap on the receiver's
+reference core state (heap and weak histories) in which the method's
+small-step run (`derived_ss`) returns the hash on the receiver. It then
+requires every later heap to agree with the reference heap on the receiver's
 abstract footprint (`abs_agree` over `reachable_abs`). Unrelated writes, cache
 writes and allocation preserve this agreement.
-`pico_concrete_hash_provider_represents_heap` shows that the method still
-returns exactly the hash in every provider state.
+`pico_concrete_hash_provider_represents_heap` shows, by small-step
+noninterference, that the method's small-step run still returns exactly the
+hash in every provider state.
 `pico_concrete_hash_cache_valid_is_derivation_value` shows that the Iris hash
 protocol's valid values are exactly the derivation-defined ones
-(`derivation_cache_value`). The witness method `pico_hash_derive_method_def`
+(`derivation_cache_value_ss`).
+
+`derivation_stable_small_step` (in `PICOBridge/PicoDerivationSmallStep.v`) is
+the general form, with no typing assumption on the executed code: from a core
+state whose footprint histories hold only the heap values, any interleaving of
+core steps by any threads (`pico_core_interleaved_steps`) preserves the
+derivation's small-step value on an immutable receiver.  The core semantics
+checks runtime assignability on every write, which rejects writes to abstract
+fields of immutable objects. The witness method `pico_hash_derive_method_def`
 reads the final payload field.
 
 The concurrent example's cached hash method computes its value the same way,

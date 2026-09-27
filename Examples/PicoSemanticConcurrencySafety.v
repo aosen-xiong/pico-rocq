@@ -475,7 +475,7 @@ Theorem pico_hash_pool_derivation_returns_hash : forall cfg,
 Proof.
   intros cfg Hsteps.
   destruct (pico_hash_pool_steps_preserve_inv cfg Hsteps) as [Hinv _].
-  exact (pico_concrete_hash_provider_represents_heap_ss _ _ _ _ _ _ Hinv).
+  exact (pico_concrete_hash_provider_represents_heap _ _ _ _ _ _ Hinv).
 Qed.
 
 Theorem pico_hash_pool_preserves_pico_abstract_state : forall cfg,

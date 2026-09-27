@@ -76,10 +76,12 @@ Proof. intros receiver v. apply pico_concrete_hash_value_adapter. Qed.
 
 (** The provider's abstract hash is defined by a PICO derivation method [m],
     not by a Rocq function on field values.  The provider fixes a reference
-    heap [h0] in which [m] returns [Int hash_value] on [receiver].  Every
-    later state agrees with [h0] on the receiver's abstract footprint, the
-    abstract fields of objects reachable from [receiver] along abstract
-    fields.  Noninterference ([derived_by_transport]) then shows that [m]
+    core state [(h0, sigma0)], typically the state in which the receiver is
+    published, in which the small-step run of [m] on [receiver] returns
+    [Int hash_value].  Every later state agrees with [h0] on the receiver's
+    abstract footprint, the abstract fields of objects reachable from
+    [receiver] along abstract fields, and its footprint histories hold only
+    the reference values.  Small-step noninterference then shows that [m]
     still returns exactly [Int hash_value] in every such state. *)
 
 Definition pico_hash_snapshot (receiver : Loc) (state : pico_core_state) :
@@ -109,12 +111,14 @@ Definition pico_hash_footprint_histories
     values_written_to sigma (l, f) <> @nil value /\
     forall v, List.In v (values_written_to sigma (l, f)) -> v = v0.
 
-Definition pico_hash_provider_inv
+Definition pico_hash_provider_inv `{CacheMemoryModel}
     (CT : class_table) (receiver : Loc) (m : method_name) (h0 : heap)
     (hash_value : nat) (state : pico_core_state) : Prop :=
   heap_wm_type_agree (pcs_heap state) (pcs_weak state) /\
   ((exists D, derivation_table CT D /\ derivation_ready CT D m h0 receiver) /\
-   derived_by CT m h0 receiver (Int hash_value) /\
+   (exists sigma0,
+     footprint_stable CT (reachable_abs CT h0 receiver) h0 sigma0 /\
+     derived_ss CT m (mkPicoCoreState h0 sigma0) receiver (Int hash_value)) /\
    abs_agree CT (reachable_abs CT h0 receiver) h0 (pcs_heap state) /\
    pico_hash_footprint_histories CT h0 receiver (pcs_weak state) /\
    (exists rt0 fs0,
@@ -134,83 +138,6 @@ Proof.
   apply in_app_or in Hin. destruct Hin as [Hin | [<- | []]].
   - exact (Hok HashField value Hin).
   - exact Hvalid.
-Qed.
-
-Lemma runtime_getObj_update_field_other_general : forall h loc f v receiver,
-  loc <> receiver ->
-  runtime_getObj (update_field h loc f v) receiver = runtime_getObj h receiver.
-Proof.
-  intros h loc f v receiver Hneq. unfold update_field.
-  destruct (runtime_getObj h loc) as [o |] eqn:Hloc; [|reflexivity].
-  unfold runtime_getObj. apply update_diff. exact Hneq.
-Qed.
-
-(** ** Agreement with the reference heap *)
-
-(** A write outside the footprint keeps agreement with the reference heap. *)
-Lemma abs_agree_update_field_outside :
-  forall CT P h0 h loc f v,
-    abs_agree CT P h0 h ->
-    ~ (P loc /\
-       exists rt fs,
-         runtime_getObj h0 loc = Some (mkObj rt fs) /\
-         abstract_field CT (rctype rt) f) ->
-    abs_agree CT P h0 (update_field h loc f v).
-Proof.
-  intros CT P h0 h loc f v Hagree Hout l Hl.
-  destruct (Hagree l Hl) as (rt & fs0 & fs & Hobj0 & Hobj & Hfields).
-  exists rt, fs0.
-  destruct (Nat.eq_dec l loc) as [-> | Hneq].
-  - exists (update f v fs).
-    split; [exact Hobj0 |].
-    split.
-    + unfold update_field. rewrite Hobj.
-      apply runtime_getObj_update_same.
-      exact (runtime_getObj_dom loc _ h Hobj).
-    + intros g Habs.
-      have Hneq_f : f <> g.
-      { intros <-. apply Hout. split; [exact Hl |].
-        exists rt, fs0. split; assumption. }
-      destruct (Hfields g Habs) as [Heq Hclosed].
-      split; [| exact Hclosed].
-      rewrite Heq. unfold getVal. symmetry. apply update_diff. exact Hneq_f.
-  - exists fs.
-    split; [exact Hobj0 |].
-    split; [| exact Hfields].
-    rewrite runtime_getObj_update_field_other_general; [exact Hobj |].
-    intros Heq. apply Hneq. symmetry. exact Heq.
-Qed.
-
-Lemma abs_agree_alloc :
-  forall CT P h0 h o,
-    abs_agree CT P h0 h ->
-    abs_agree CT P h0 (h ++ [o]).
-Proof.
-  intros CT P h0 h o Hagree l Hl.
-  destruct (Hagree l Hl) as (rt & fs0 & fs & Hobj0 & Hobj & Hfields).
-  exists rt, fs0, fs.
-  split; [exact Hobj0 |].
-  split; [| exact Hfields].
-  have Hdom := runtime_getObj_dom l _ h Hobj.
-  unfold runtime_getObj in *. rewrite nth_error_app1; [exact Hobj | exact Hdom].
-Qed.
-
-Lemma abs_agree_reachable_refl :
-  forall CT h root,
-    wf_heap CT h ->
-    abs_agree CT (reachable_abs CT h root) h h.
-Proof.
-  intros CT h root Hheap l Hreach.
-  have Hdom := reachable_abs_target_dom CT h root l Hreach.
-  destruct (runtime_getObj_Some h l Hdom) as [rt [fs Hobj]].
-  exists rt, fs, fs.
-  split; [exact Hobj |].
-  split; [exact Hobj |].
-  intros f Habs.
-  split; [reflexivity |].
-  intros l' Hl'.
-  exact (reachable_abs_abstract_field_closed CT h root l rt fs f l'
-    Hheap Hreach Hobj Habs Hl').
 Qed.
 
 (** The cache address of the receiver is outside its abstract footprint. *)
@@ -310,7 +237,7 @@ Qed.
 
 (** ** The provider *)
 
-Definition pico_concrete_hash_semimm
+Definition pico_concrete_hash_semimm `{CacheMemoryModel}
     (CT : class_table) (receiver : Loc) (m : method_name) (h0 : heap)
     (hash_value : nat) :
     PicoCoreSemImmInstantiation hash_cache_protocol
@@ -756,64 +683,18 @@ Section concrete_hash_api.
   Qed.
 End concrete_hash_api.
 
-Theorem pico_concrete_hash_semimm_nonempty :
+Theorem pico_concrete_hash_semimm_nonempty `{CacheMemoryModel} :
   forall CT receiver m h0 hash_value state,
     pico_hash_provider_inv CT receiver m h0 hash_value state ->
     pcsi_state_inv hash_cache_protocol pico_hash_stable_abs hash_value
       (pico_hash_cache_adapter receiver)
       (pico_concrete_hash_semimm CT receiver m h0 hash_value) state.
-Proof. intros; exact H. Qed.
+Proof. intros CT receiver m h0 hash_value state Hinv; exact Hinv. Qed.
 
-(** In every provider state, running the derivation method on the receiver
-    returns the provider's hash, and nothing else. *)
-Theorem pico_concrete_hash_provider_represents_heap :
-  forall CT receiver m h0 hash_value state,
-    pico_hash_provider_inv CT receiver m h0 hash_value state ->
-    derived_by CT m (pcs_heap state) receiver (Int hash_value) /\
-    (forall w, derived_by CT m (pcs_heap state) receiver w ->
-               w = Int hash_value).
-Proof.
-  intros CT receiver m h0 hash_value state
-    (_ & ((D & Htable & Hready) & Hderived & Habs & _) & _).
-  apply (derived_by_transport CT D m h0 (pcs_heap state) receiver
-    (Int hash_value) Htable Hready Habs); [| exact Hderived].
-  destruct Hderived as [cy [mdef [rΓ' [Hbase _]]]].
-  have Hdom := r_basetype_dom h0 receiver cy Hbase.
-  destruct (Habs receiver (reachable_abs_heap CT h0 receiver Hdom))
-    as (rt & fs0 & fs & Hobj0 & Hobj & _).
-  unfold r_basetype. rewrite Hobj0. rewrite Hobj. reflexivity.
-Qed.
+(** ** The provider represents the derivation
 
-(** The Iris hash protocol is the derivation-defined protocol: a cache value
-    is valid for the provider exactly when it is empty or is what the
-    derivation method returns in the current heap. *)
-Theorem pico_concrete_hash_cache_valid_is_derivation_value :
-  forall CT receiver m h0 hash_value state v,
-    pico_hash_provider_inv CT receiver m h0 hash_value state ->
-    hash_cache_valid hash_value HashField v <->
-    derivation_cache_value CT m (pcs_heap state) receiver v.
-Proof.
-  intros CT receiver m h0 hash_value state v Hinv.
-  destruct (pico_concrete_hash_provider_represents_heap
-    CT receiver m h0 hash_value state Hinv) as [Hderived Hunique].
-  unfold hash_cache_valid, derivation_cache_value.
-  split.
-  - intros [Hzero | [-> _]].
-    + left. exact Hzero.
-    + right. exact Hderived.
-  - intros [Hzero | Hby].
-    + left. exact Hzero.
-    + have -> := Hunique v Hby.
-      destruct hash_value as [| n].
-      * left. reflexivity.
-      * right. split; [reflexivity | discriminate].
-Qed.
-
-(** ** The provider in the small-step semantics
-
-    The provider's hash is named by the derivation's result on the reference
-    heap.  In every provider state, the derivation's small-step run in the
-    core semantics returns exactly that hash. *)
+    In every provider state, the derivation's small-step run in the core
+    semantics returns exactly the provider's hash. *)
 
 Lemma wf_heap_abstract_field_value :
   forall CT h l rt fs f,
@@ -842,20 +723,19 @@ Proof.
   apply nth_error_None in Hv. simpl in Hlen. lia.
 Qed.
 
-(** In a provider state, the footprint histories make the state
-    footprint-stable for the receiver's reachable abstract state. *)
-Lemma pico_hash_provider_footprint_stable :
-  forall CT receiver m h0 hash_value state,
-    pico_hash_provider_inv CT receiver m h0 hash_value state ->
-    footprint_stable CT (reachable_abs CT h0 receiver)
-      (pcs_heap state) (pcs_weak state).
+(** Footprint histories that hold only the reference values make every
+    agreeing state footprint-stable for the receiver's reachable abstract
+    state. *)
+Lemma pico_hash_footprint_histories_stable :
+  forall CT receiver h0 h sigma,
+    wf_heap CT h0 ->
+    abs_agree CT (reachable_abs CT h0 receiver) h0 h ->
+    pico_hash_footprint_histories CT h0 receiver sigma ->
+    footprint_stable CT (reachable_abs CT h0 receiver) h sigma.
 Proof.
-  intros CT receiver m h0 hash_value state
-    (_ & ((D & Htable & Hready) & _ & Habs & Hhist & _) & _)
-    l rt fs f Hl Hobj Habsf.
+  intros CT receiver h0 h sigma Hheap0 Habs Hhist l rt fs f Hl Hobj Habsf.
   destruct (Habs l Hl) as (rt0 & fs0 & fs' & Hobj0 & Hobj' & Hfields).
   rewrite Hobj in Hobj'. injection Hobj' as Hrt Hfs. subst rt0 fs'.
-  destruct Hready as (cy & mdef & _ & _ & _ & _ & _ & Hheap0 & _).
   destruct (wf_heap_abstract_field_value CT h0 l rt fs0 f Hheap0 Hobj0 Habsf)
     as [v0 Hv0].
   assert (Hfoot : pico_hash_abstract_field CT h0 receiver (l, f)).
@@ -870,13 +750,26 @@ Proof.
     symmetry. exact (Honly w Hin).
 Qed.
 
+Lemma pico_hash_provider_footprint_stable `{CacheMemoryModel} :
+  forall CT receiver m h0 hash_value state,
+    pico_hash_provider_inv CT receiver m h0 hash_value state ->
+    footprint_stable CT (reachable_abs CT h0 receiver)
+      (pcs_heap state) (pcs_weak state).
+Proof.
+  intros CT receiver m h0 hash_value state
+    (_ & ((D & Htable & Hready) & _ & Habs & Hhist & _) & _).
+  destruct Hready as (cy & mdef & _ & _ & _ & _ & _ & Hheap0 & _).
+  exact (pico_hash_footprint_histories_stable CT receiver h0 _ _ Hheap0 Habs
+    Hhist).
+Qed.
+
 Section concrete_hash_small_step.
   Context `{Hmem : CacheMemoryModel}.
   Context `{Hprogress : @CacheMemoryModelProgress Hmem}.
 
   (** In every provider state, the derivation's small-step run returns
       exactly the provider's hash. *)
-  Theorem pico_concrete_hash_provider_represents_heap_ss :
+  Theorem pico_concrete_hash_provider_represents_heap :
     forall CT receiver m h0 hash_value state,
       pico_hash_provider_inv CT receiver m h0 hash_value state ->
       derived_ss CT m state receiver (Int hash_value) /\
@@ -886,39 +779,32 @@ Section concrete_hash_small_step.
     have Hst := pico_hash_provider_footprint_stable CT receiver m h0 hash_value
       state Hinv.
     destruct Hinv as (_ & ((D & Htable & Hready) & Hderived & Habs & _ & Hcache) & _).
+    destruct Hderived as (sigma0 & Hst0 & Hderived).
     destruct Hcache as (rt0 & fs0 & Hobj0 & _).
     have Hrecv : reachable_abs CT h0 receiver receiver :=
       reachable_abs_heap CT h0 receiver (runtime_getObj_dom receiver _ h0 Hobj0).
+    have Hclosed : abs_agree CT (reachable_abs CT h0 receiver) h0 h0.
+    { destruct Hready as (cy & mdef & _ & _ & _ & _ & _ & Hheap0 & _).
+      exact (abs_agree_reachable_refl CT h0 receiver Hheap0). }
     destruct state as [h sigma]. simpl in Habs, Hst.
-    split.
-    - exact (derived_by_derived_ss CT D (reachable_abs CT h0 receiver) m h0 h
-        sigma receiver (Int hash_value) Htable Hready Hrecv Habs Hst Hderived).
-    - intros w Hw.
-      have Hby := derived_ss_derived_by CT D (reachable_abs CT h0 receiver) m h0
-        h sigma receiver w Htable Hready Hrecv Habs Hst Hw.
-      destruct Hderived as (cy & mdef & rΓ & Hbase & Hfind & Heval & Hret).
-      destruct Hby as (cy2 & mdef2 & rΓ2 & Hbase2 & Hfind2 & Heval2 & Hret2).
-      rewrite Hbase in Hbase2. injection Hbase2 as <-.
-      have Hmdef := find_method_with_name_deterministic CT cy m mdef2 mdef
-        Hfind2 Hfind.
-      subst mdef2.
-      destruct (eval_stmt_deterministic CT _ _ _ _ _ _ _ _ _ Heval Heval2)
-        as (_ & <- & _).
-      congruence.
+    exact (derivation_noninterference_small_step CT D
+      (reachable_abs CT h0 receiver) m h0 sigma0 h sigma receiver
+      (Int hash_value) Htable Hready Hrecv Hclosed Habs Hst0 Hst Hderived).
   Qed.
 
-  (** The Iris hash protocol is the derivation-defined protocol, stated with
-      the small-step derivation in the current state. *)
-  Theorem pico_concrete_hash_cache_valid_is_derivation_value_ss :
+  (** The Iris hash protocol is the derivation-defined protocol: a cache
+      value is valid for the provider exactly when it is empty or is what the
+      derivation's small-step run returns in the current state. *)
+  Theorem pico_concrete_hash_cache_valid_is_derivation_value :
     forall CT receiver m h0 hash_value state v,
       pico_hash_provider_inv CT receiver m h0 hash_value state ->
       hash_cache_valid hash_value HashField v <->
-      v = Int 0 \/ derived_ss CT m state receiver v.
+      derivation_cache_value_ss CT m state receiver v.
   Proof.
     intros CT receiver m h0 hash_value state v Hinv.
-    destruct (pico_concrete_hash_provider_represents_heap_ss CT receiver m h0
+    destruct (pico_concrete_hash_provider_represents_heap CT receiver m h0
       hash_value state Hinv) as [Hderived Hunique].
-    unfold hash_cache_valid.
+    unfold hash_cache_valid, derivation_cache_value_ss.
     split.
     - intros [Hzero | [-> _]].
       + left. exact Hzero.
@@ -930,9 +816,10 @@ Section concrete_hash_small_step.
         * left. reflexivity.
         * right. split; [reflexivity | discriminate].
   Qed.
-End concrete_hash_small_step.
 
-(** A provider state can be installed at its own reference heap. *)
+(** A provider state can be installed at its own reference state.  The
+    derivation's value there may be computed by the big-step semantics; it
+    is also the value of the small-step run. *)
 Lemma pico_hash_provider_inv_at_reference :
   forall CT D receiver m h0 hash_value sigma,
     derivation_table CT D ->
@@ -950,17 +837,35 @@ Lemma pico_hash_provider_inv_at_reference :
 Proof.
   intros CT D receiver m h0 hash_value sigma Htable Hready Hderived Hcache
     Hagree Halloc Hsnapshot.
+  have Hheap : wf_heap CT h0.
+  { destruct Hready as (cy & mdef & _ & _ & _ & _ & _ & Hheap & _). exact Hheap. }
+  have Hclosed := abs_agree_reachable_refl CT h0 receiver Hheap.
+  have Hhist := pico_hash_allocated_footprint_histories CT h0 receiver sigma
+    Halloc.
+  have Hst := pico_hash_footprint_histories_stable CT receiver h0 h0 sigma
+    Hheap Hclosed Hhist.
+  destruct Hcache as (rt0 & fs0 & Hobj0 & Hcache).
+  have Hrecv : reachable_abs CT h0 receiver receiver :=
+    reachable_abs_heap CT h0 receiver (runtime_getObj_dom receiver _ h0 Hobj0).
   split; [exact Hagree |].
   split; [| exact Hsnapshot].
   split; [exists D; split; assumption |].
-  split; [exact Hderived |].
-  split; [| split; [apply pico_hash_allocated_footprint_histories;
-    exact Halloc | exact Hcache]].
-  destruct Hready as (cy & mdef & _ & _ & _ & _ & _ & Hheap & _).
-  exact (abs_agree_reachable_refl CT h0 receiver Hheap).
+  split.
+  { exists sigma. split; [exact Hst |].
+    exact (derived_by_derived_ss CT D (reachable_abs CT h0 receiver) m h0 h0
+      sigma receiver (Int hash_value) Htable Hready Hrecv Hclosed Hst Hderived). }
+  split; [exact Hclosed |].
+  split; [exact Hhist |].
+  exists rt0, fs0. split; assumption.
 Qed.
 
+End concrete_hash_small_step.
+
 Definition empty_wm_state : wm_state := mkWMState [] (fun _ => []).
+
+Section concrete_hash_initial_state.
+  Context `{Hmem : CacheMemoryModel}.
+  Context `{Hprogress : @CacheMemoryModelProgress Hmem}.
 
 Theorem pico_concrete_hash_initial_state :
   forall CT D m o initial abstract_values hash_value,
@@ -993,6 +898,7 @@ Proof.
     rewrite Hfields in Hin. simpl in Hin.
     destruct Hin as [<- | []]. exact Hvalid.
 Qed.
+End concrete_hash_initial_state.
 
 (** ** A Derivation Method for the Witness Hash
 
@@ -1555,11 +1461,11 @@ Proof.
       rewrite nth_error_nil in Htype. discriminate.
 Qed.
 
-(** After the valid write, the cache holds [Int 7] and the derivation still
-    returns [Int 7] in the current heap. *)
+(** After the valid write, the cache holds [Int 7] and the derivation's
+    small-step run still returns [Int 7] in the current state. *)
 Theorem pico_hash_witness_bad_state_cache_is_derived :
-  derivation_cache_protocol pico_hash_witness_CT pico_hash_derive_method
-    pico_hash_witness_bad_heap 0 hash_cache_field.
+  derivation_cache_protocol_ss pico_hash_witness_CT pico_hash_derive_method
+    pico_hash_witness_bad_state 0 hash_cache_field.
 Proof.
   exists (Int 7). split.
   - exists (mkObj (mkruntime_type Imm_r pico_hash_witness_class)

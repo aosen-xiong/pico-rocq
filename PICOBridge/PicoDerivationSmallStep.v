@@ -2,7 +2,8 @@ From Stdlib Require Import List Lia.
 Import ListNotations.
 
 Require Import Syntax Helpers Typing Subtyping Bigstep Properties Preservation.
-Require Import Reachability.
+Require Import Reachability AbstractStatePreservation.
+Require DerivedCache.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCacheTyping
   PICOBridge.PicoIrisCoreLanguage PICOBridge.PicoIrisCoreInvariant
   PICOBridge.PicoDerivationNoninterference PICOBridge.PicoDerivationCache.
@@ -86,6 +87,248 @@ Section small_step.
 
 End small_step.
 
+Lemma runtime_getObj_update_field_other_general : forall h loc f v receiver,
+  loc <> receiver ->
+  runtime_getObj (update_field h loc f v) receiver = runtime_getObj h receiver.
+Proof.
+  intros h loc f v receiver Hneq. unfold update_field.
+  destruct (runtime_getObj h loc) as [o |] eqn:Hloc; [|reflexivity].
+  unfold runtime_getObj. apply update_diff. exact Hneq.
+Qed.
+
+(** A write outside the footprint keeps agreement with the reference heap. *)
+Lemma abs_agree_update_field_outside :
+  forall CT P h0 h loc f v,
+    abs_agree CT P h0 h ->
+    ~ (P loc /\
+       exists rt fs,
+         runtime_getObj h0 loc = Some (mkObj rt fs) /\
+         abstract_field CT (rctype rt) f) ->
+    abs_agree CT P h0 (update_field h loc f v).
+Proof.
+  intros CT P h0 h loc f v Hagree Hout l Hl.
+  destruct (Hagree l Hl) as (rt & fs0 & fs & Hobj0 & Hobj & Hfields).
+  exists rt, fs0.
+  destruct (Nat.eq_dec l loc) as [-> | Hneq].
+  - exists (update f v fs).
+    split; [exact Hobj0 |].
+    split.
+    + unfold update_field. rewrite Hobj.
+      apply runtime_getObj_update_same.
+      exact (runtime_getObj_dom loc _ h Hobj).
+    + intros g Habs.
+      have Hneq_f : f <> g.
+      { intros <-. apply Hout. split; [exact Hl |].
+        exists rt, fs0. split; assumption. }
+      destruct (Hfields g Habs) as [Heq Hclosed].
+      split; [| exact Hclosed].
+      rewrite Heq. unfold getVal. symmetry. apply update_diff. exact Hneq_f.
+  - exists fs.
+    split; [exact Hobj0 |].
+    split; [| exact Hfields].
+    rewrite runtime_getObj_update_field_other_general; [exact Hobj |].
+    intros Heq. apply Hneq. symmetry. exact Heq.
+Qed.
+
+Lemma abs_agree_alloc :
+  forall CT P h0 h o,
+    abs_agree CT P h0 h ->
+    abs_agree CT P h0 (h ++ [o]).
+Proof.
+  intros CT P h0 h o Hagree l Hl.
+  destruct (Hagree l Hl) as (rt & fs0 & fs & Hobj0 & Hobj & Hfields).
+  exists rt, fs0, fs.
+  split; [exact Hobj0 |].
+  split; [| exact Hfields].
+  have Hdom := runtime_getObj_dom l _ h Hobj.
+  unfold runtime_getObj in *. rewrite nth_error_app1; [exact Hobj | exact Hdom].
+Qed.
+
+Lemma abs_agree_reachable_refl :
+  forall CT h root,
+    wf_heap CT h ->
+    abs_agree CT (reachable_abs CT h root) h h.
+Proof.
+  intros CT h root Hheap l Hreach.
+  have Hdom := reachable_abs_target_dom CT h root l Hreach.
+  destruct (runtime_getObj_Some h l Hdom) as [rt [fs Hobj]].
+  exists rt, fs, fs.
+  split; [exact Hobj |].
+  split; [exact Hobj |].
+  intros f Habs.
+  split; [reflexivity |].
+  intros l' Hl'.
+  exact (reachable_abs_abstract_field_closed CT h root l rt fs f l'
+    Hheap Hreach Hobj Habs Hl').
+Qed.
+
+(** ** Stability of the abstract footprint under core execution
+
+    The core semantics checks runtime assignability on every field write.  An
+    immutable object's abstract fields are never assignable at run time, and
+    every object reachable through abstract fields from an immutable root is
+    itself immutable.  So no core step, typed or not, can change the
+    footprint, and allocation touches no existing object. *)
+
+(** Any sequence of core steps, each taken by some thread's expression.
+    This is how an invocation pool, or any scheduler of core expressions,
+    changes the shared state. *)
+Inductive pico_core_interleaved_steps `{CacheMemoryModel} (CT : class_table) :
+    pico_core_state -> pico_core_state -> Prop :=
+  | PicoCoreInterleavedRefl : forall S,
+      pico_core_interleaved_steps CT S S
+  | PicoCoreInterleavedStep : forall S e e1 S1 S2,
+      pico_core_step CT e S e1 S1 ->
+      pico_core_interleaved_steps CT S1 S2 ->
+      pico_core_interleaved_steps CT S S2.
+
+Lemma pico_core_steps_interleaved `{CacheMemoryModel} :
+  forall CT e S e' S',
+    pico_core_steps CT e S e' S' ->
+    pico_core_interleaved_steps CT S S'.
+Proof.
+  intros CT e S e' S' Hsteps.
+  induction Hsteps as [e S | e S e1 S1 e2 S2 Hstep _ IH].
+  - constructor.
+  - econstructor; [exact Hstep | exact IH].
+Qed.
+
+Section small_step_stability.
+  Context `{Hmem : CacheMemoryModel}.
+  Context (CT : class_table) (P : Loc -> Prop) (h0 : heap).
+  Context (Himm : forall l, P l ->
+    exists C vals, runtime_getObj h0 l = Some (mkObj (mkruntime_type Imm_r C) vals)).
+
+  (** A write that passes the runtime assignability check does not target an
+      abstract field of a footprint object. *)
+  Lemma assignable_write_outside_footprint :
+    forall h loc o f a,
+      abs_agree CT P h0 h ->
+      runtime_getObj h loc = Some o ->
+      sf_assignability_rel CT (rctype (rt_type o)) f a ->
+      runtime_vpa_assignability (rqtype (rt_type o)) a = Assignable ->
+      ~ (P loc /\
+         exists rt fs,
+           runtime_getObj h0 loc = Some (mkObj rt fs) /\
+           abstract_field CT (rctype rt) f).
+  Proof.
+    intros h loc o f a Hagree Hobj Hassign Hrun (Hl & rt & fs & Hobj0 & Habs).
+    destruct (Himm loc Hl) as (C & vals & Hobj0').
+    rewrite Hobj0 in Hobj0'. injection Hobj0' as Hrt Hfs. subst rt fs.
+    destruct (Hagree loc Hl) as (rt' & fs0 & fs' & Hobj0'' & Hobjh & _).
+    rewrite Hobj0 in Hobj0''. injection Hobj0'' as Hrt' Hfs'. subst rt' fs0.
+    rewrite Hobj in Hobjh. injection Hobjh as ->.
+    simpl in Hassign, Hrun.
+    destruct Habs as [_ [Hrda | Hfinal]].
+    - have Heq := sf_assignability_deterministic_rel CT C f a RDA Hassign Hrda.
+      subst a. discriminate.
+    - have Heq := sf_assignability_deterministic_rel CT C f a Final Hassign Hfinal.
+      subst a. discriminate.
+  Qed.
+
+  (** Footprint stability transfers along agreement when the footprint's
+      histories are unchanged. *)
+  Lemma footprint_stable_transport :
+    forall h sigma h' sigma',
+      footprint_stable CT P h sigma ->
+      abs_agree CT P h0 h ->
+      abs_agree CT P h0 h' ->
+      (forall l rt fs g, P l ->
+        runtime_getObj h0 l = Some (mkObj rt fs) ->
+        abstract_field CT (rctype rt) g ->
+        history_of sigma' (l, g) = history_of sigma (l, g)) ->
+      footprint_stable CT P h' sigma'.
+  Proof.
+    intros h sigma h' sigma' Hst Hagree Hagree' Hhist l rt fs g Hl Hobj Habs.
+    destruct (Hagree' l Hl) as (rt0 & fs0 & fs' & Hobj0 & Hobj' & Hfields').
+    rewrite Hobj in Hobj'. injection Hobj' as Hrt Hfs. subst rt0 fs'.
+    destruct (Hagree l Hl) as (rt1 & fs1 & fsh & Hobj1 & Hobjh & Hfields).
+    rewrite Hobj0 in Hobj1. injection Hobj1 as Hrt1 Hfs1. subst rt1 fs1.
+    destruct (Hst l rt fsh g Hl Hobjh Habs) as [Hne Honly].
+    destruct (Hfields g Habs) as [Heq _].
+    destruct (Hfields' g Habs) as [Heq' _].
+    have Hh := Hhist l rt fs0 g Hl Hobj0 Habs.
+    unfold values_written_to. rewrite Hh.
+    split.
+    - intros v0 Hv0. apply (Hne v0). rewrite <- Heq. rewrite Heq'. exact Hv0.
+    - intros w Hin. rewrite <- Heq'. rewrite Heq. exact (Honly w Hin).
+  Qed.
+
+  Lemma core_step_preserves_footprint :
+    forall e h sigma e' S',
+      abs_agree CT P h0 h ->
+      heap_wm_type_agree h sigma ->
+      pico_core_step CT e (mkPicoCoreState h sigma) e' S' ->
+      abs_agree CT P h0 (pcs_heap S') /\
+      (footprint_stable CT P h sigma ->
+       footprint_stable CT P (pcs_heap S') (pcs_weak S')).
+  Proof.
+    intros e h sigma e' S' Hagree Htypes Hstep.
+    inversion Hstep; subst; simpl;
+      try (split; [exact Hagree | intros Hst; exact Hst]).
+    - (* field write *)
+      match goal with
+      | Ho : runtime_getObj h loc_x = Some ?o,
+        Hr : runtime_vpa_assignability _ _ = Assignable |- _ =>
+          rename Ho into Hobjx; rename Hr into Hrun
+      end.
+      match goal with
+      | Ha : sf_assignability_rel CT _ f _ |- _ => rename Ha into Hassign
+      end.
+      match goal with
+      | Hw : wm_write sigma _ _ _ _ _ |- _ => rename Hw into Hwrite
+      end.
+      have Hout := assignable_write_outside_footprint h loc_x o f a Hagree Hobjx
+        Hassign Hrun.
+      have Hagree' := abs_agree_update_field_outside CT P h0 h loc_x f val_y
+        Hagree Hout.
+      split; [exact Hagree' |].
+      intros Hst.
+      eapply footprint_stable_transport;
+        [exact Hst | exact Hagree | exact Hagree' |].
+      intros l' rt fs g Hl' Hobj0 Habs.
+      destruct Hwrite as [-> _].
+      apply history_of_append_write_other.
+      intros Heq. injection Heq as Hl Hg. subst l' g.
+      apply Hout. split; [exact Hl' |]. exists rt, fs. split; assumption.
+    - (* allocation *)
+      split; [apply abs_agree_alloc; exact Hagree |].
+      intros Hst.
+      eapply footprint_stable_transport;
+        [exact Hst | exact Hagree | apply abs_agree_alloc; exact Hagree |].
+      intros l rt fs g Hl Hobj0 Habs.
+      destruct (Hagree l Hl) as (rt' & fs0 & fsh & _ & Hobjh & _).
+      have Hdom := runtime_getObj_dom l _ h Hobjh.
+      destruct Htypes as [Hlen _].
+      assert (Hneq : l <> length (wm_objs sigma)) by lia.
+      unfold history_of, pico_core_alloc_weak; simpl.
+      apply Nat.eqb_neq in Hneq. rewrite Hneq. reflexivity.
+  Qed.
+
+  Lemma core_interleaved_steps_preserve_footprint :
+    forall S S',
+      pico_core_interleaved_steps CT S S' ->
+      abs_agree CT P h0 (pcs_heap S) ->
+      heap_wm_type_agree (pcs_heap S) (pcs_weak S) ->
+      abs_agree CT P h0 (pcs_heap S') /\
+      (footprint_stable CT P (pcs_heap S) (pcs_weak S) ->
+       footprint_stable CT P (pcs_heap S') (pcs_weak S')).
+  Proof.
+    intros S S' Hsteps.
+    induction Hsteps as [S | S e e1 S1 S2 Hstep Htail IH];
+      intros Hagree Htypes.
+    - split; [exact Hagree | intros Hst; exact Hst].
+    - destruct S as [h sigma].
+      destruct (core_step_preserves_footprint e h sigma e1 S1 Hagree Htypes Hstep)
+        as [Hagree1 Hst1].
+      have Htypes1 := pico_core_step_preserves_heap_wm_type_agree CT e
+        (mkPicoCoreState h sigma) e1 S1 Htypes Hstep.
+      destruct (IH Hagree1 Htypes1) as [Hagree2 Hst2].
+      split; [exact Hagree2 |].
+      intros Hst. exact (Hst2 (Hst1 Hst)).
+  Qed.
+End small_step_stability.
+
 (** ** Small-step derived values *)
 
 (** Calling derivation method [m] on receiver [o] with no arguments in core
@@ -100,6 +343,19 @@ Definition derived_ss `{CacheMemoryModel} (CT : class_table)
       (CoreRun (mkr_env [Iot o]) (mbody_stmt (mbody mdef)) V [])
       S (CoreDone OK rΓ' V') S' /\
     runtime_getVal rΓ' (mreturn (mbody mdef)) = Some v.
+
+(** The derivation-defined protocol in the core semantics: a cache value is
+    valid in state [S] when it is the unknown sentinel or what the
+    derivation's small-step run returns there. *)
+Definition derivation_cache_value_ss `{CacheMemoryModel} (CT : class_table)
+    (m : method_name) (S : pico_core_state) (o : Loc) (v : value) : Prop :=
+  v = Int 0 \/ derived_ss CT m S o v.
+
+Definition derivation_cache_protocol_ss `{CacheMemoryModel} (CT : class_table)
+    (m : method_name) (S : pico_core_state) (o : Loc) (cache_f : var) : Prop :=
+  exists v,
+    DerivedCache.field_read (pcs_heap S) o cache_f v /\
+    derivation_cache_value_ss CT m S o v.
 
 (** ** Derivations with calls
 
@@ -573,3 +829,54 @@ Section small_step_noninterference.
     Qed.
   End with_progress.
 End small_step_noninterference.
+
+(** ** Stability of derived values under core execution
+
+    The derivation's value on an immutable receiver is fixed by the core
+    state in which it is first computed.  Any core execution from that
+    state, by any number of threads in any interleaving, leaves the
+    receiver's reachable abstract footprint unchanged and its footprint
+    histories holding only the heap values, so the derivation still returns
+    that value and nothing else.  No typing of the executed code is needed:
+    the core semantics rejects every write to an abstract field of an
+    immutable object. *)
+
+Section small_step_derivation_stability.
+  Context `{Hmem : CacheMemoryModel}.
+  Context `{Hprogress : @CacheMemoryModelProgress Hmem}.
+  Context (CT : class_table) (D : method_def -> Prop).
+
+  Theorem derivation_stable_small_step :
+    forall m h0 sigma0 o C vals v S',
+      derivation_table CT D ->
+      derivation_ready CT D m h0 o ->
+      runtime_getObj h0 o = Some (mkObj (mkruntime_type Imm_r C) vals) ->
+      heap_wm_type_agree h0 sigma0 ->
+      footprint_stable CT (reachable_abs CT h0 o) h0 sigma0 ->
+      derived_ss CT m (mkPicoCoreState h0 sigma0) o v ->
+      pico_core_interleaved_steps CT (mkPicoCoreState h0 sigma0) S' ->
+      derived_ss CT m S' o v /\
+      (forall w, derived_ss CT m S' o w -> w = v).
+  Proof.
+    intros m h0 sigma0 o C vals v S' Htable Hready Hobj Htypes Hst0 Hss0
+      Hsteps.
+    have Hwf : exists sΓ rΓ, wf_r_config CT sΓ rΓ h0.
+    { destruct Hready as (cy & mdef & _ & _ & _ & _ & Hwf). eauto. }
+    destruct Hwf as (sΓ & rΓ & Hwf).
+    have Hheap : wf_heap CT h0 by (destruct Hwf as (_ & Hheap & _); exact Hheap).
+    have Hclosed := abs_agree_reachable_refl CT h0 o Hheap.
+    have Himm : forall l, reachable_abs CT h0 o l ->
+      exists C' vals', runtime_getObj h0 l =
+        Some (mkObj (mkruntime_type Imm_r C') vals').
+    { intros l Hl. eapply reachable_abs_from_imm_points_to_imm; eassumption. }
+    destruct (core_interleaved_steps_preserve_footprint CT (reachable_abs CT h0 o)
+      h0 Himm (mkPicoCoreState h0 sigma0) S' Hsteps Hclosed Htypes)
+      as [Hagree' Hst'].
+    have Ho : reachable_abs CT h0 o o.
+    { apply reachable_abs_heap. exact (runtime_getObj_dom o _ h0 Hobj). }
+    destruct S' as [h' sigma'].
+    exact (derivation_noninterference_small_step CT D (reachable_abs CT h0 o)
+      m h0 sigma0 h' sigma' o v Htable Hready Ho Hclosed Hagree' Hst0
+      (Hst' Hst0) Hss0).
+  Qed.
+End small_step_derivation_stability.
