@@ -21,29 +21,16 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCacheTyping
     states that agree on the footprint therefore proceed in lockstep, up to
     thread views.
 
-    This file covers call-free derivation bodies. *)
-
-(** ** Call-free statements *)
-
-Fixpoint stmt_call_free (s : stmt) : Prop :=
-  match s with
-  | SCall _ _ _ _ => False
-  | SSeq s1 s2 => stmt_call_free s1 /\ stmt_call_free s2
-  | SIfZero _ s1 s2 => stmt_call_free s1 /\ stmt_call_free s2
-  | _ => True
-  end.
-
-(** Two controls are equal up to thread views. *)
-Definition core_upto_view (e1 e2 : pico_core_expr) : Prop :=
-  match e1, e2 with
-  | CoreRun r1 s1 _ K1, CoreRun r2 s2 _ K2 => r1 = r2 /\ s1 = s2 /\ K1 = K2
-  | CoreDone o1 r1 _, CoreDone o2 r2 _ => o1 = o2 /\ r1 = r2
-  | _, _ => False
-  end.
+    Derivation bodies may call other derivation methods.  Runs are related
+    to big-step evaluations in a typed reference heap: a normally completing
+    small-step run decomposes into a big-step evaluation of the current
+    statement and a run of the rest of the continuation, and every big-step
+    evaluation is realized by a small-step run.  The typing facts come from
+    the big-step development. *)
 
 Section small_step.
   Context `{Hmem : CacheMemoryModel}.
-  Context (CT : class_table) (D : method_def -> Prop) (P : Loc -> Prop).
+  Context (CT : class_table) (P : Loc -> Prop).
 
   (** Every weak history of an abstract field of a footprint object is
       nonempty and holds only the heap value of that field. *)
@@ -55,31 +42,6 @@ Section small_step.
       values_written_to sigma (l, f) <> @nil value /\
       forall w, List.In w (values_written_to sigma (l, f)) ->
         getVal fs f = Some w.
-
-  (** Continuations of a call-free derivation: sequence frames only. *)
-  Inductive deriv_cont : s_env -> pico_core_cont -> Prop :=
-    | DerivContNil : forall sΓ,
-        deriv_cont sΓ []
-    | DerivContSeq : forall sΓ sΓ' mt s K,
-        deriv_stmt CT D sΓ s sΓ' ->
-        stmt_typing CT sΓ mt s sΓ' ->
-        stmt_call_free s ->
-        deriv_cont sΓ' K ->
-        deriv_cont sΓ (KSeq s :: K).
-
-  (** A control running call-free derivation code in heap [h]. *)
-  Definition deriv_control (h : heap) (e : pico_core_expr) : Prop :=
-    match e with
-    | CoreRun rΓ s _ K =>
-        exists sΓ sΓ' mt,
-          deriv_stmt CT D sΓ s sΓ' /\
-          stmt_typing CT sΓ mt s sΓ' /\
-          stmt_call_free s /\
-          wf_r_config CT sΓ rΓ h /\
-          env_in P rΓ /\
-          deriv_cont sΓ' K
-    | CoreDone _ _ _ => True
-    end.
 
   Lemma values_written_to_read :
     forall sigma V addr v V',
@@ -106,42 +68,6 @@ Section small_step.
     exists rt, fs. reflexivity.
   Qed.
 
-  (** The value of a field read of a derivation, in a footprint-stable state,
-      is the heap value of an abstract field of a footprint object. *)
-  Lemma deriv_field_read_value :
-    forall h1 sigma1 sΓ rΓ y f T C ly V v V',
-      footprint_stable h1 sigma1 ->
-      wf_r_config CT sΓ rΓ h1 ->
-      env_in P rΓ ->
-      static_getType sΓ y = Some T ->
-      sbase T = TRef C ->
-      abstract_field CT C f ->
-      runtime_getVal rΓ y = Some (Iot ly) ->
-      wm_read sigma1 V (ly, f) v V' ->
-      P ly /\
-      exists rt fs,
-        runtime_getObj h1 ly = Some (mkObj rt fs) /\
-        abstract_field CT (rctype rt) f /\
-        getVal fs f = Some v.
-  Proof.
-    intros h1 sigma1 sΓ rΓ y f T C ly V v V' Hstable Hwf Henv Hget Href
-      Habs Hval Hread.
-    have Hly := Henv y ly Hval.
-    split; [exact Hly |].
-    destruct (wf_config_env_location sΓ rΓ h1 y ly Hwf Hval)
-      as [rt [fs Hobj]].
-    have Hsub : class_subtype CT (rctype rt) C.
-    { eapply runtime_value_class_subtype;
-        [exact Hwf | exact Hget | exact Href | exact Hval |].
-      unfold r_basetype. rewrite Hobj. reflexivity. }
-    have Habs' := abstract_field_subtype CT (rctype rt) C f Hsub Habs.
-    exists rt, fs.
-    split; [exact Hobj |].
-    split; [exact Habs' |].
-    destruct (Hstable ly rt fs f Hly Hobj Habs') as [_ Honly].
-    exact (Honly v (values_written_to_read _ _ _ _ _ Hread)).
-  Qed.
-
   Lemma env_in_receiver_frame :
     forall o, P o -> env_in P (mkr_env [Iot o]).
   Proof.
@@ -156,273 +82,7 @@ Section small_step.
       pico_core_step CT (CoreDone o r V) S e S' -> False.
   Proof. intros o r V S e S' Hstep. inversion Hstep. Qed.
 
-  Ltac same_state := split; [reflexivity |]; split; [reflexivity |].
-
-  Ltac deriv_close :=
-    eexists _, _, _;
-    split; [eassumption |]; split; [eassumption |];
-    split; [eassumption |]; split; [eassumption |];
-    split; eassumption.
-
-  (** One step of call-free derivation code, taken in two footprint-agreeing
-      states from controls that differ only in their views, leaves both
-      states unchanged and yields controls that again differ only in their
-      views. *)
-  Lemma deriv_step_lockstep :
-    forall h1 sigma1 h2 sigma2 rΓ s V1 V2 K e1 S1' e2 S2',
-      abs_agree CT P h1 h2 ->
-      footprint_stable h1 sigma1 ->
-      footprint_stable h2 sigma2 ->
-      deriv_control h1 (CoreRun rΓ s V1 K) ->
-      pico_core_step CT (CoreRun rΓ s V1 K) (mkPicoCoreState h1 sigma1) e1 S1' ->
-      pico_core_step CT (CoreRun rΓ s V2 K) (mkPicoCoreState h2 sigma2) e2 S2' ->
-      S1' = mkPicoCoreState h1 sigma1 /\
-      S2' = mkPicoCoreState h2 sigma2 /\
-      core_upto_view e1 e2 /\
-      deriv_control h1 e1.
-  Proof.
-    intros h1 sigma1 h2 sigma2 rΓ s V1 V2 K e1 S1' e2 S2' Hagree Hst1 Hst2
-      (sΓ & sΓ' & mt & Hderiv & Htyp & Hcf & Hwf & Henv & Hcont) Hstep1 Hstep2.
-    inversion Hderiv; subst.
-    - (* skip *)
-      destruct K as [| [s2 | caller x ret] K].
-      + inversion Hstep1; subst. inversion Hstep2; subst.
-        same_state. split; simpl; auto.
-      + inversion Hstep1; subst. inversion Hstep2; subst.
-        same_state. split; [simpl; auto |].
-        inversion Hcont; subst. simpl. deriv_close.
-      + inversion Hcont.
-    - (* local declaration *)
-      inversion Hstep1; subst. inversion Hstep2; subst.
-      same_state. split; [simpl; auto |].
-      have Hwf' := preservation_pico CT sΓ mt rΓ h1 (SLocal T x) _ h1
-        (sΓ ++ [T]) Hwf Htyp (SBS_Local CT rΓ h1 T x ltac:(eassumption)).
-      simpl. exists (sΓ ++ [T]), (sΓ ++ [T]), mt.
-      split; [apply DS_Skip |].
-      split; [apply ST_Skip; exact (proj1 (proj2 (proj2 (proj2 Hwf')))) |].
-      split; [exact I |].
-      split; [exact Hwf' |].
-      split; [apply env_in_append_default; exact Henv | exact Hcont].
-    - (* assignment *)
-      destruct Hexpr as [| y | n | y f T C Hget Href Habs].
-      + inversion Hstep1; subst. inversion Hstep2; subst.
-        same_state. split; [simpl; auto |].
-        have Hwf' := preservation_pico CT sΓ' mt rΓ h1 (SVarAss x ENull) _ h1
-          sΓ' Hwf Htyp
-          (SBS_Assign CT rΓ h1 x ENull _ Null_a ltac:(eassumption)
-            (EBS_Null CT rΓ h1)).
-        simpl. exists sΓ', sΓ', mt.
-        split; [apply DS_Skip |].
-        split; [apply ST_Skip; exact (proj1 (proj2 (proj2 (proj2 Hwf')))) |].
-        split; [exact I |].
-        split; [exact Hwf' |].
-        split; [| exact Hcont].
-        apply env_in_update; [exact Henv |]. intros l Hl; discriminate.
-      + inversion Hstep1; subst. inversion Hstep2; subst.
-        match goal with
-        | H1 : runtime_getVal rΓ y = Some ?a,
-          H2 : runtime_getVal rΓ y = Some ?b |- _ =>
-            tryif constr_eq a b then fail
-            else (rewrite H1 in H2; injection H2 as Hab; subst)
-        end.
-        same_state. split; [simpl; auto |].
-        have Hwf' := preservation_pico CT sΓ' mt rΓ h1 (SVarAss x (EVar y)) _ h1
-          sΓ' Hwf Htyp
-          (SBS_Assign CT rΓ h1 x (EVar y) _ _ ltac:(eassumption)
-            (EBS_Val CT rΓ h1 y _ ltac:(eassumption))).
-        simpl. exists sΓ', sΓ', mt.
-        split; [apply DS_Skip |].
-        split; [apply ST_Skip; exact (proj1 (proj2 (proj2 (proj2 Hwf')))) |].
-        split; [exact I |].
-        split; [exact Hwf' |].
-        split; [| exact Hcont].
-        apply env_in_update; [exact Henv |].
-        intros l ->. eapply Henv. eassumption.
-      + inversion Hstep1; subst. inversion Hstep2; subst.
-        same_state. split; [simpl; auto |].
-        have Hwf' := preservation_pico CT sΓ' mt rΓ h1 (SVarAss x (EInt n)) _ h1
-          sΓ' Hwf Htyp
-          (SBS_Assign CT rΓ h1 x (EInt n) _ (Int n) ltac:(eassumption)
-            (EBS_Int CT rΓ h1 n)).
-        simpl. exists sΓ', sΓ', mt.
-        split; [apply DS_Skip |].
-        split; [apply ST_Skip; exact (proj1 (proj2 (proj2 (proj2 Hwf')))) |].
-        split; [exact I |].
-        split; [exact Hwf' |].
-        split; [| exact Hcont].
-        apply env_in_update; [exact Henv |]. intros l Hl; discriminate.
-      + inversion Hstep1; subst; inversion Hstep2; subst; try congruence.
-        * (* both runs read the field *)
-          match goal with
-          | Hy1 : runtime_getVal rΓ y = Some (Iot ?l1),
-            Hy2 : runtime_getVal rΓ y = Some (Iot ?l2),
-            Hr1 : wm_read sigma1 _ (?l1, f) ?v1 _,
-            Hr2 : wm_read sigma2 _ (?l2, f) ?v2 _ |- _ =>
-              assert (Hl : l2 = l1) by congruence; subst l2;
-              destruct (deriv_field_read_value h1 sigma1 sΓ' rΓ y f T C l1
-                _ v1 _ Hst1 Hwf Henv Hget Href Habs Hy1 Hr1)
-                as (Hpub & rt & fs & Hobj1 & Habs' & Hv1);
-              destruct (Hagree l1 Hpub)
-                as (rt' & fs1 & fs2 & Hobj1' & Hobj2 & Hfields);
-              rewrite Hobj1 in Hobj1'; injection Hobj1' as <- <-;
-              destruct (Hst2 l1 rt fs2 f Hpub Hobj2 Habs') as [_ Honly2];
-              have Hv2 := Honly2 v2 (values_written_to_read _ _ _ _ _ Hr2);
-              destruct (Hfields f Habs') as [Heq Hclosed];
-              assert (Hvv : v2 = v1) by congruence; subst v2;
-              same_state;
-              split; [simpl; auto |];
-              have Hwf' := preservation_pico CT sΓ' mt rΓ h1
-                (SVarAss x (EField y f)) _ h1 sΓ' Hwf Htyp
-                (SBS_Assign CT rΓ h1 x (EField y f) _ v1 ltac:(eassumption)
-                  (EBS_Field CT rΓ h1 y f l1 (mkObj rt fs) v1 Hy1 Hobj1 Hv1));
-              simpl; exists sΓ', sΓ', mt;
-              split; [apply DS_Skip |];
-              split; [apply ST_Skip; exact (proj1 (proj2 (proj2 (proj2 Hwf')))) |];
-              split; [exact I |];
-              split; [exact Hwf' |];
-              split; [| exact Hcont];
-              apply env_in_update; [exact Henv |];
-              intros l Hl; subst v1; exact (Hclosed l Hv1)
-          end.
-        * same_state. split; simpl; auto.
-    - (* sequence *)
-      inversion Hstep1; subst. inversion Hstep2; subst.
-      same_state. split; [simpl; auto |].
-      inversion Htyp; subst.
-      have Hmid := deriv_stmt_typing_env CT D _ _ _ _ _ Hderiv1 Htype1.
-      subst.
-      simpl in Hcf. destruct Hcf as [Hcf1 Hcf2].
-      simpl. eexists _, _, _.
-      split; [exact Hderiv1 |].
-      split; [exact Htype1 |].
-      split; [exact Hcf1 |].
-      split; [exact Hwf |].
-      split; [exact Henv |].
-      eapply DerivContSeq; eassumption.
-    - (* zero test *)
-      simpl in Hcf. destruct Hcf as [Hcf0 Hcf1].
-      inversion Htyp; subst.
-      inversion Hstep1; subst; inversion Hstep2; subst; try congruence;
-        same_state; split; simpl; auto; deriv_close.
-    - (* call *)
-      simpl in Hcf. contradiction.
-  Qed.
 End small_step.
-
-Section small_step_runs.
-  Context `{Hmem : CacheMemoryModel}.
-  Context (CT : class_table) (D : method_def -> Prop) (P : Loc -> Prop).
-
-  (** Runs of call-free derivation code in two footprint-agreeing states,
-      from controls equal up to views, that both complete, complete with the
-      same outcome and environment. *)
-  Theorem deriv_steps_agree :
-    forall h1 sigma1 h2 sigma2 e e' S1f S2f o1 r1 W1 o2 r2 W2,
-      abs_agree CT P h1 h2 ->
-      footprint_stable CT P h1 sigma1 ->
-      footprint_stable CT P h2 sigma2 ->
-      deriv_control CT D P h1 e ->
-      core_upto_view e e' ->
-      pico_core_steps CT e (mkPicoCoreState h1 sigma1) (CoreDone o1 r1 W1) S1f ->
-      pico_core_steps CT e' (mkPicoCoreState h2 sigma2) (CoreDone o2 r2 W2) S2f ->
-      o1 = o2 /\ r1 = r2.
-  Proof.
-    intros h1 sigma1 h2 sigma2 e e' S1f S2f o1 r1 W1 o2 r2 W2 Hagree Hst1 Hst2
-      Hctl Hview Hsteps1.
-    remember (mkPicoCoreState h1 sigma1) as S1 eqn:HS1.
-    remember (CoreDone o1 r1 W1) as ef eqn:Hef.
-    revert e' Hctl Hview.
-    induction Hsteps1 as [e S | e S e1 S1' ef S1'' Hstep Htail IH];
-      intros e' Hctl Hview Hsteps2; subst.
-    - destruct e' as [rΓ s V K | o r V]; simpl in Hview; [contradiction |].
-      destruct Hview as [<- <-].
-      inversion Hsteps2; subst.
-      + split; reflexivity.
-      + exfalso. eapply core_done_no_step; eassumption.
-    - destruct e as [rΓ s V1 K | o r V]; [| exfalso; eapply core_done_no_step; eassumption].
-      destruct e' as [rΓ' s' V2 K' | o r V]; simpl in Hview; [| contradiction].
-      destruct Hview as [<- [<- <-]].
-      inversion Hsteps2 as [| e0 S0 e2 S2' ef' S2'' Hstep2 Htail2]; subst.
-      destruct (deriv_step_lockstep CT D P h1 sigma1 h2 sigma2 rΓ s V1 V2 K
-        e1 S1' e2 S2' Hagree Hst1 Hst2 Hctl Hstep Hstep2)
-        as (-> & -> & Hview' & Hctl').
-      exact (IH eq_refl eq_refl e2 Hctl' Hview' Htail2).
-  Qed.
-
-  Section with_progress.
-    Context `{Hprogress : @CacheMemoryModelProgress Hmem}.
-
-    (** Whenever derivation code steps in one state, the same code can step
-        in any footprint-agreeing state. *)
-    Lemma deriv_step_progress :
-      forall h1 sigma1 h2 sigma2 rΓ s V1 V2 K e1 S1',
-        abs_agree CT P h1 h2 ->
-        footprint_stable CT P h1 sigma1 ->
-        footprint_stable CT P h2 sigma2 ->
-        deriv_control CT D P h1 (CoreRun rΓ s V1 K) ->
-        pico_core_step CT (CoreRun rΓ s V1 K) (mkPicoCoreState h1 sigma1) e1 S1' ->
-        exists e2 S2',
-          pico_core_step CT (CoreRun rΓ s V2 K) (mkPicoCoreState h2 sigma2) e2 S2'.
-    Proof.
-      intros h1 sigma1 h2 sigma2 rΓ s V1 V2 K e1 S1' Hagree Hst1 Hst2
-        Hctl Hstep1.
-      inversion Hstep1; subst;
-        try (eexists _, _; econstructor; eassumption);
-        destruct Hctl as (sΓ & sΓ' & mt & Hderiv & _ & Hcf & Hwf & Henv & _);
-        inversion Hderiv; subst; try (simpl in Hcf; contradiction).
-      (* field read *)
-      inversion Hexpr as [| | | y0 f0 T C Hget Href Habs]; subst.
-      destruct (deriv_field_read_value CT P h1 sigma1 sΓ' rΓ y f T C loc_y
-        _ v _ Hst1 Hwf Henv Hget Href Habs ltac:(eassumption) ltac:(eassumption))
-        as (Hpub & rt & fs & Hobj1 & Habs' & _).
-      destruct (Hagree loc_y Hpub) as (rt' & fs1 & fs2 & Hobj1' & Hobj2 & _).
-      rewrite Hobj1 in Hobj1'. injection Hobj1' as <- <-.
-      destruct (Hst2 loc_y rt fs2 f Hpub Hobj2 Habs') as [Hnonempty _].
-      assert (Hhist : history_of sigma2 (loc_y, f) <> []).
-      { intros Hnil. apply Hnonempty. unfold values_written_to.
-        rewrite Hnil. reflexivity. }
-      destruct (wm_read_nonempty sigma2 V2 (loc_y, f) Hhist) as (v2 & V2' & Hread).
-      eexists _, _. eapply PCS_AssignField; eassumption.
-    Qed.
-
-    (** A completed run in one state is matched by a completed run with the
-        same outcome and environment in any footprint-agreeing state. *)
-    Theorem deriv_steps_simulation :
-      forall h1 sigma1 h2 sigma2 e e' S1f o r W,
-        abs_agree CT P h1 h2 ->
-        footprint_stable CT P h1 sigma1 ->
-        footprint_stable CT P h2 sigma2 ->
-        deriv_control CT D P h1 e ->
-        core_upto_view e e' ->
-        pico_core_steps CT e (mkPicoCoreState h1 sigma1) (CoreDone o r W) S1f ->
-        exists W',
-          pico_core_steps CT e' (mkPicoCoreState h2 sigma2)
-            (CoreDone o r W') (mkPicoCoreState h2 sigma2).
-    Proof.
-      intros h1 sigma1 h2 sigma2 e e' S1f o r W Hagree Hst1 Hst2 Hctl Hview
-        Hsteps1.
-      remember (mkPicoCoreState h1 sigma1) as S1 eqn:HS1.
-      remember (CoreDone o r W) as ef eqn:Hef.
-      revert e' Hctl Hview.
-      induction Hsteps1 as [e S | e S e1 S1' ef S1'' Hstep Htail IH];
-        intros e' Hctl Hview; subst.
-      - destruct e' as [rΓ s V K | o' r' V']; simpl in Hview; [contradiction |].
-        destruct Hview as [<- <-].
-        exists V'. constructor.
-      - destruct e as [rΓ s V1 K | o0 r0 V0];
-          [| exfalso; eapply core_done_no_step; eassumption].
-        destruct e' as [rΓ' s' V2 K' | o0 r0 V0]; simpl in Hview; [| contradiction].
-        destruct Hview as [<- [<- <-]].
-        destruct (deriv_step_progress h1 sigma1 h2 sigma2 rΓ s V1 V2 K e1 S1'
-          Hagree Hst1 Hst2 Hctl Hstep) as (e2 & S2' & Hstep2).
-        destruct (deriv_step_lockstep CT D P h1 sigma1 h2 sigma2 rΓ s V1 V2 K
-          e1 S1' e2 S2' Hagree Hst1 Hst2 Hctl Hstep Hstep2)
-          as (-> & -> & Hview' & Hctl').
-        destruct (IH eq_refl eq_refl e2 Hctl' Hview') as (W' & Hsteps2).
-        exists W'. econstructor; eassumption.
-    Qed.
-  End with_progress.
-End small_step_runs.
 
 (** ** Small-step derived values *)
 
@@ -439,87 +99,473 @@ Definition derived_ss `{CacheMemoryModel} (CT : class_table)
       S (CoreDone OK rΓ' V') S' /\
     runtime_getVal rΓ' (mreturn (mbody mdef)) = Some v.
 
-(** The derivation selected for [o] has a call-free body. *)
-Definition derivation_call_free (CT : class_table) (m : method_name)
-    (h : heap) (o : Loc) : Prop :=
-  forall cy mdef,
-    r_basetype h o = Some cy ->
-    FindMethodWithName CT cy m mdef ->
-    stmt_call_free (mbody_stmt (mbody mdef)).
+(** ** Derivations with calls
+
+    For derivation bodies that may call other derivation methods, runs are
+    related to big-step evaluations in a typed reference heap [h1].  A
+    small-step run in a state that agrees with [h1] on [P] decomposes into a
+    run of the current statement, which is a big-step evaluation in [h1], and
+    a run of the rest of the continuation; conversely, every big-step
+    evaluation in [h1] is realized by a small-step run in such a state.  The
+    typing facts come from the big-step development, including the
+    callee-frame lemma for calls. *)
+
+Inductive core_nsteps `{CacheMemoryModel} (CT : class_table) :
+    nat -> pico_core_expr -> pico_core_state ->
+    pico_core_expr -> pico_core_state -> Prop :=
+  | CoreNStepsRefl : forall e St,
+      core_nsteps CT 0 e St e St
+  | CoreNStepsStep : forall n e St e1 St1 e2 St2,
+      pico_core_step CT e St e1 St1 ->
+      core_nsteps CT n e1 St1 e2 St2 ->
+      core_nsteps CT (S n) e St e2 St2.
+
+Lemma core_steps_nsteps `{CacheMemoryModel} :
+  forall CT e St e' St',
+    pico_core_steps CT e St e' St' <-> exists n, core_nsteps CT n e St e' St'.
+Proof.
+  intros CT e St e' St'. split.
+  - intros Hsteps. induction Hsteps as [e St | e St e1 St1 e2 St2 Hstep Htail IH].
+    + exists 0. constructor.
+    + destruct IH as [n Hn]. exists (S n). econstructor; eassumption.
+  - intros [n Hn]. induction Hn; econstructor; eassumption.
+Qed.
+
+Lemma core_steps_trans `{CacheMemoryModel} :
+  forall CT e1 S1 e2 S2 e3 S3,
+    pico_core_steps CT e1 S1 e2 S2 ->
+    pico_core_steps CT e2 S2 e3 S3 ->
+    pico_core_steps CT e1 S1 e3 S3.
+Proof.
+  intros CT e1 S1 e2 S2 e3 S3 H12 H23.
+  induction H12; [exact H23 | econstructor; eauto].
+Qed.
+
+Section small_step_calls.
+  Context `{Hmem : CacheMemoryModel}.
+  Context (CT : class_table) (D : method_def -> Prop) (P : Loc -> Prop).
+  Context (h1 h2 : heap) (sigma2 : wm_state).
+  Context (Htable : derivation_table CT D).
+  Context (Hagree : abs_agree CT P h1 h2).
+  Context (Hst2 : footprint_stable CT P h2 sigma2).
+
+  (** A field read of derivation code in the running state returns the value
+      of an abstract field of a footprint object in the reference heap. *)
+  Lemma deriv_read_transfer :
+    forall sΓ rΓ y f T C ly,
+      wf_r_config CT sΓ rΓ h1 ->
+      env_in P rΓ ->
+      static_getType sΓ y = Some T ->
+      sbase T = TRef C ->
+      abstract_field CT C f ->
+      runtime_getVal rΓ y = Some (Iot ly) ->
+      exists rt fs1,
+        runtime_getObj h1 ly = Some (mkObj rt fs1) /\
+        values_written_to sigma2 (ly, f) <> @nil value /\
+        (forall v, List.In v (values_written_to sigma2 (ly, f)) ->
+          getVal fs1 f = Some v) /\
+        (forall l', getVal fs1 f = Some (Iot l') -> P l').
+  Proof.
+    intros sΓ rΓ y f T C ly Hwf Henv Hget Href Habs Hval.
+    have Hly := Henv y ly Hval.
+    destruct (Hagree ly Hly) as (rt & fs1 & fs2 & Hobj1 & Hobj2 & Hfields).
+    have Hsub : class_subtype CT (rctype rt) C.
+    { eapply runtime_value_class_subtype;
+        [exact Hwf | exact Hget | exact Href | exact Hval |].
+      unfold r_basetype. rewrite Hobj1. reflexivity. }
+    have Habs' := abstract_field_subtype CT (rctype rt) C f Hsub Habs.
+    destruct (Hfields f Habs') as [Heq Hclosed].
+    destruct (Hst2 ly rt fs2 f Hly Hobj2 Habs') as [Hnonempty Honly].
+    exists rt, fs1.
+    split; [exact Hobj1 |].
+    split; [exact Hnonempty |].
+    split; [| exact Hclosed].
+    intros v Hin. rewrite Heq. exact (Honly v Hin).
+  Qed.
+
+  Lemma core_nsteps_done_inv :
+    forall n o r V e S S',
+      core_nsteps CT n (CoreDone o r V) S e S' ->
+      n = 0 /\ e = CoreDone o r V /\ S' = S.
+  Proof.
+    intros n o r V e S S' Hrun. inversion Hrun; subst.
+    - auto.
+    - exfalso. eapply core_done_no_step; eassumption.
+  Qed.
+
+  (** Decomposition.  A normally completing run of derivation code splits
+      into a big-step evaluation of the current statement in [h1] and a
+      shorter run of the continuation. *)
+  Lemma deriv_decompose :
+    forall N n rΓ s V K sΓ sΓ' mt rf W S',
+      n <= N ->
+      core_nsteps CT n (CoreRun rΓ s V K) (mkPicoCoreState h2 sigma2)
+        (CoreDone OK rf W) S' ->
+      deriv_stmt CT D sΓ s sΓ' ->
+      stmt_typing CT sΓ mt s sΓ' ->
+      wf_r_config CT sΓ rΓ h1 ->
+      env_in P rΓ ->
+      exists rΓ1 V1 k,
+        k <= n /\
+        eval_stmt CT rΓ h1 s OK rΓ1 h1 /\
+        env_in P rΓ1 /\
+        core_nsteps CT k (CoreRun rΓ1 SSkip V1 K) (mkPicoCoreState h2 sigma2)
+          (CoreDone OK rf W) S'.
+  Proof.
+    induction N as [| N IH];
+      intros n rΓ s V K sΓ sΓ' mt rf W S' Hle Hrun Hderiv Htyp Hwf Henv.
+    - (* a running control needs at least one step to complete *)
+      assert (n = 0) by lia. subst n. inversion Hrun.
+    - inversion Hderiv; subst.
+      + (* skip *)
+        exists rΓ, V, n. split; [lia |].
+        split; [constructor |]. split; [exact Henv | exact Hrun].
+      + (* local declaration *)
+        inversion Hrun as [| n' e0 S0 e1 S1 e2 S2 Hstep Htail]; subst.
+        inversion Hstep; subst.
+        eexists _, _, n'. split; [lia |].
+        split; [apply SBS_Local; assumption |].
+        split; [apply env_in_append_default; exact Henv | exact Htail].
+      + (* assignment *)
+        inversion Hrun as [| n' e0 S0 e1 S1 e2 S2 Hstep Htail]; subst.
+        inversion Hstep; subst.
+        * eexists _, _, n'. split; [lia |].
+          split; [eapply SBS_Assign; [eassumption | constructor] |].
+          split; [| exact Htail].
+          apply env_in_update; [exact Henv |]. intros l Hl; discriminate.
+        * eexists _, _, n'. split; [lia |].
+          split; [eapply SBS_Assign; [eassumption | constructor; eassumption] |].
+          split; [| exact Htail].
+          apply env_in_update; [exact Henv |].
+          intros l ->. eapply Henv. eassumption.
+        * eexists _, _, n'. split; [lia |].
+          split; [eapply SBS_Assign; [eassumption | constructor] |].
+          split; [| exact Htail].
+          apply env_in_update; [exact Henv |]. intros l Hl; discriminate.
+        * (* field read *)
+          inversion Hexpr as [| | | y0 f0 T C Hget Href Habs]; subst.
+          match goal with
+          | Hy : runtime_getVal rΓ y = Some (Iot ?ly),
+            Hr : wm_read sigma2 _ (?ly, f) ?v _ |- _ =>
+              destruct (deriv_read_transfer sΓ' rΓ y f T C ly Hwf Henv Hget
+                Href Habs Hy) as (rt & fs1 & Hobj1 & _ & Honly & Hclosed);
+              have Hv := Honly v (values_written_to_read _ _ _ _ _ Hr);
+              eexists _, _, n'; split; [lia |];
+              split; [eapply SBS_Assign;
+                [eassumption | eapply EBS_Field; [exact Hy | exact Hobj1 | exact Hv]] |];
+              split; [| exact Htail];
+              apply env_in_update; [exact Henv |];
+              intros l Hl; subst v; exact (Hclosed l Hv)
+          end.
+        * (* null dereference cannot complete normally *)
+          destruct (core_nsteps_done_inv _ _ _ _ _ _ _ Htail) as (_ & Heq & _).
+          discriminate.
+      + (* sequence *)
+        inversion Hrun as [| n' e0 S0 e1 S1 e2 S2 Hstep Htail]; subst.
+        inversion Hstep; subst.
+        inversion Htyp; subst.
+        have Hmid := deriv_stmt_typing_env CT D _ _ _ _ _ Hderiv1 Htype1.
+        subst.
+        destruct (IH n' rΓ s1 V (KSeq s2 :: K) sΓ _ mt rf W S' ltac:(lia) Htail
+          Hderiv1 Htype1 Hwf Henv) as (rΓ1 & V1 & k1 & Hk1 & Heval1 & Henv1 & Htail1).
+        inversion Htail1 as [| k1' e3 S3 e4 S4 e5 S5 Hstep1 Htail2]; subst.
+        inversion Hstep1; subst.
+        have Hwf1 := preservation_pico CT sΓ mt rΓ h1 s1 rΓ1 h1 _ Hwf Htype1 Heval1.
+        destruct (IH k1' rΓ1 s2 V1 K _ sΓ' mt rf W S' ltac:(lia) Htail2
+          Hderiv2 Htype2 Hwf1 Henv1) as (rΓ2 & V2 & k2 & Hk2 & Heval2 & Henv2 & Htail3).
+        exists rΓ2, V2, k2. split; [lia |].
+        split; [eapply SBS_Seq; eassumption |].
+        split; [exact Henv2 | exact Htail3].
+      + (* zero test *)
+        inversion Hrun as [| n' e0 S0 e1 S1 e2 S2 Hstep Htail]; subst.
+        inversion Htyp; subst.
+        inversion Hstep; subst.
+        * destruct (IH n' rΓ s_zero V K sΓ sΓ' mt rf W S' ltac:(lia) Htail
+            Hzero ltac:(eassumption) Hwf Henv)
+            as (rΓ1 & V1 & k & Hk & Heval & Henv1 & Htail1).
+          exists rΓ1, V1, k. split; [lia |].
+          split; [eapply SBS_IfZero; eassumption |].
+          split; [exact Henv1 | exact Htail1].
+        * destruct (IH n' rΓ s_nonzero V K sΓ sΓ' mt rf W S' ltac:(lia) Htail
+            Hnonzero ltac:(eassumption) Hwf Henv)
+            as (rΓ1 & V1 & k & Hk & Heval & Henv1 & Htail1).
+          exists rΓ1, V1, k. split; [lia |].
+          split; [eapply SBS_IfNonzero; eassumption |].
+          split; [exact Henv1 | exact Htail1].
+        * destruct (core_nsteps_done_inv _ _ _ _ _ _ _ Htail) as (_ & Heq & _).
+          discriminate.
+      + (* call *)
+        inversion Hrun as [| n' e0 S0 e1 S1 e2 S2 Hstep Htail]; subst.
+        inversion Hstep; subst.
+        * (* enter the callee *)
+          match goal with
+          | Hy : runtime_getVal rΓ y = Some (Iot _),
+            Hb : r_basetype h2 _ = Some _,
+            Hf : FindMethodWithName CT _ m _,
+            Ha : runtime_lookup_list rΓ args = Some _ |- _ =>
+              rename Hy into Hy0; rename Hb into Hb0; rename Hf into Hf0;
+              rename Ha into Ha0
+          end.
+          have Hly := Henv y loc_y Hy0.
+          assert (Hb1 : r_basetype h1 loc_y = Some C).
+          { rewrite <- (abs_agree_basetype CT P h1 h2 loc_y Hagree Hly).
+            exact Hb0. }
+          assert (Hsub : class_subtype CT C Cy).
+          { eapply runtime_value_class_subtype;
+              [exact Hwf | exact Hget_y | exact Href | exact Hy0 | exact Hb1]. }
+          have HD := Hdispatch C mdef Hsub Hf0.
+          destruct (Htable mdef HD) as [sΓd Hderivb].
+          destruct (typed_call_has_wf_callee_frame CT sΓ' mt rΓ h1 x m y args
+            sΓ' vals loc_y C mdef Hwf Htyp Hy0 Hb1 Hf0 Ha0)
+            as (sΓb & Htypb & Hwfb).
+          have Hsame := deriv_stmt_typing_env CT D _ _ _ _ _ Hderivb Htypb.
+          subst sΓd.
+          destruct (IH n' (mkr_env (Iot loc_y :: vals)) (mbody_stmt (mbody mdef))
+            V (KCall rΓ x (mreturn (mbody mdef)) :: K) _ sΓb _ rf W S'
+            ltac:(lia) Htail Hderivb Htypb Hwfb
+            (env_in_call_frame P rΓ args vals loc_y Henv Hly Ha0))
+            as (rΓb & Vb & kb & Hkb & Hevalb & Henvb & Htailb).
+          inversion Htailb as [| kb' e3 S3 e4 S4 e5 S5 Hstepr Htailr]; subst.
+          inversion Hstepr; subst.
+          match goal with
+          | Hret : runtime_getVal rΓb (mreturn (mbody mdef)) = Some ?retval |- _ =>
+              exists (set_vars rΓ (update x retval (vars rΓ))), Vb, kb';
+              split; [lia |];
+              split; [eapply SBS_Call; eauto |];
+              split; [| exact Htailr];
+              apply env_in_update; [exact Henv |];
+              intros l ->; exact (Henvb _ l Hret)
+          end.
+        * destruct (core_nsteps_done_inv _ _ _ _ _ _ _ Htail) as (_ & Heq & _).
+          discriminate.
+  Qed.
+  Section with_progress.
+    Context `{Hprogress : @CacheMemoryModelProgress Hmem}.
+
+    (** Composition.  A big-step evaluation of derivation code in [h1] is
+        realized by a small-step run in the agreeing state, which leaves the
+        state unchanged. *)
+    Lemma deriv_compose :
+      forall rΓ hh s r rΓ1 hh',
+        eval_stmt CT rΓ hh s r rΓ1 hh' ->
+        forall sΓ sΓ' mt V K,
+          hh = h1 ->
+          r = OK ->
+          deriv_stmt CT D sΓ s sΓ' ->
+          stmt_typing CT sΓ mt s sΓ' ->
+          wf_r_config CT sΓ rΓ h1 ->
+          env_in P rΓ ->
+          hh' = h1 /\
+          exists V1,
+            pico_core_steps CT (CoreRun rΓ s V K) (mkPicoCoreState h2 sigma2)
+              (CoreRun rΓ1 SSkip V1 K) (mkPicoCoreState h2 sigma2).
+    Proof.
+      intros rΓ hh s r rΓ1 hh' Heval.
+      remember CT as CTe eqn:HCT in Heval.
+      induction Heval; intros sΓ0 sΓ0' mt0 V0 K0 Hh Hr Hderiv0 Htyp0 Hwf0 HenvP;
+        subst; try discriminate; inversion Hderiv0; subst.
+      - (* skip *)
+        split; [reflexivity |]. exists V0. constructor.
+      - (* local declaration *)
+        split; [reflexivity |].
+        exists V0. econstructor; [apply PCS_Local; eassumption | constructor].
+      - (* assignment *)
+        split; [reflexivity |].
+        inversion Hexpr as [| y0 | n0 | y0 f0 T C Hget Href Habs]; subst;
+          inversion Heval; subst.
+        + exists V0. econstructor; [eapply PCS_AssignNull; eassumption | constructor].
+        + exists V0. econstructor; [eapply PCS_AssignVar; eassumption | constructor].
+        + exists V0. econstructor; [eapply PCS_AssignInt; eassumption | constructor].
+        + match goal with
+          | Hy : runtime_getVal rΓ y0 = Some (Iot ?ly),
+            Ho : runtime_getObj h1 ?ly = Some ?o,
+            Hf : getVal (fields_map ?o) f0 = Some ?v |- _ =>
+              destruct (deriv_read_transfer sΓ0' rΓ y0 f0 T C ly Hwf0 HenvP Hget
+                Href Habs Hy) as (rt & fs1 & Hobj1 & Hnonempty & Honly & _);
+              assert (Hhist : history_of sigma2 (ly, f0) <> []);
+              [ intros Hnil; apply Hnonempty; unfold values_written_to;
+                rewrite Hnil; reflexivity |];
+              destruct (wm_read_nonempty sigma2 V0 (ly, f0) Hhist)
+                as (v' & V' & Hread);
+              have Hv' := Honly v' (values_written_to_read _ _ _ _ _ Hread);
+              rewrite Hobj1 in Ho; injection Ho as <-;
+              simpl in Hf; rewrite Hf in Hv'; injection Hv' as <-;
+              exists V'; econstructor;
+              [eapply PCS_AssignField; eassumption | constructor]
+          end.
+      - (* call *)
+        destruct Hfind as [Hfind Hmbody].
+        have Hly := HenvP y ly Hval_y.
+        assert (Hb2 : r_basetype h2 ly = Some cy).
+        { rewrite (abs_agree_basetype CT P h1 h2 ly Hagree Hly). exact Hbase. }
+        assert (Hsub : class_subtype CT cy Cy).
+        { eapply runtime_value_class_subtype;
+            [exact Hwf0 | exact Hget_y | exact Href | exact Hval_y | exact Hbase]. }
+        have HD := Hdispatch cy mdef Hsub Hfind.
+        destruct (Htable mdef HD) as [sΓd Hderivb].
+        destruct (typed_call_has_wf_callee_frame CT sΓ0' mt0 rΓ h1 x m y zs
+          sΓ0' vals ly cy mdef Hwf0 Htyp0 Hval_y Hbase Hfind Hargs)
+          as (sΓb & Htypb & Hwfb).
+        have Hsame := deriv_stmt_typing_env CT D _ _ _ _ _ Hderivb Htypb.
+        subst sΓd.
+        subst.
+        destruct (IHHeval eq_refl _ _ _ V0 (KCall rΓ x (mreturn (Syntax.mbody mdef)) :: K0)
+          eq_refl eq_refl Hderivb Htypb Hwfb
+          (env_in_call_frame P rΓ zs vals ly HenvP Hly Hargs))
+          as [Hh' [Vb Hstepsb]].
+        split; [exact Hh' |].
+        exists Vb.
+        econstructor.
+        { eapply PCS_Call; [exact Hval_y | exact Hb2 | exact Hfind
+            | reflexivity | reflexivity | reflexivity | exact Hargs]. }
+        eapply core_steps_trans; [exact Hstepsb |].
+        econstructor; [apply PCS_SkipCall; exact Hretval | constructor].
+      - (* sequence *)
+        inversion Htyp0; subst.
+        have Hmid := deriv_stmt_typing_env CT D _ _ _ _ _ Hderiv1 Htype1.
+        subst.
+        destruct (IHHeval1 eq_refl _ _ _ V0 (KSeq s2 :: K0) eq_refl eq_refl Hderiv1
+          Htype1 Hwf0 HenvP) as [Hh' [V1 Hsteps1]].
+        subst h'.
+        destruct (derivation_simulation CT D Htable rΓ h1 s1 OK rΓ' h1 Heval1
+          _ _ _ h2 P Hderiv1 Htype1 Hwf0 Hagree HenvP) as (_ & _ & Henv1).
+        have Hwf1 := preservation_pico CT sΓ0 mt0 rΓ h1 s1 rΓ' h1 _ Hwf0 Htype1
+          Heval1.
+        destruct (IHHeval2 eq_refl _ _ _ V1 K0 eq_refl eq_refl Hderiv2 Htype2 Hwf1 Henv1)
+          as [Hh'' [V2 Hsteps2]].
+        split; [exact Hh'' |].
+        exists V2.
+        econstructor; [apply PCS_Seq |].
+        eapply core_steps_trans; [exact Hsteps1 |].
+        econstructor; [apply PCS_SkipSeq | exact Hsteps2].
+      - (* zero test *)
+        inversion Htyp0; subst.
+        destruct (IHHeval eq_refl _ _ _ V0 K0 eq_refl eq_refl Hzero ltac:(eassumption)
+          Hwf0 HenvP) as [Hh' [V1 Hsteps]].
+        split; [exact Hh' |]. exists V1.
+        econstructor; [apply PCS_IfZero; exact Hguard | exact Hsteps].
+      - (* nonzero test *)
+        inversion Htyp0; subst.
+        destruct (IHHeval eq_refl _ _ _ V0 K0 eq_refl eq_refl Hnonzero ltac:(eassumption)
+          Hwf0 HenvP) as [Hh' [V1 Hsteps]].
+        split; [exact Hh' |]. exists V1.
+        econstructor; [eapply PCS_IfNonzero; exact Hguard | exact Hsteps].
+    Qed.
+  End with_progress.
+End small_step_calls.
+
+(** ** Small-step derived values and noninterference *)
 
 Section small_step_noninterference.
   Context `{Hmem : CacheMemoryModel}.
-  Context `{Hprogress : @CacheMemoryModelProgress Hmem}.
   Context (CT : class_table) (D : method_def -> Prop) (P : Loc -> Prop).
 
-  Lemma derivation_entry_control :
-    forall m h o cy mdef V,
-      derivation_table CT D ->
-      derivation_ready CT D m h o ->
-      derivation_call_free CT m h o ->
-      P o ->
-      r_basetype h o = Some cy ->
-      FindMethodWithName CT cy m mdef ->
-      deriv_control CT D P h
-        (CoreRun (mkr_env [Iot o]) (mbody_stmt (mbody mdef)) V []).
-  Proof.
-    intros m h o cy mdef V Htable Hready Hcf Ho Hbase Hfind.
-    destruct (derivation_ready_body CT D m h o cy mdef Htable Hready Hbase Hfind)
-      as (sΓd & Hderiv & Htyping & Hwf).
-    exists [mreceiver (msignature mdef)], sΓd, (mscope (msignature mdef)).
-    split; [exact Hderiv |].
-    split; [exact Htyping |].
-    split; [exact (Hcf cy mdef Hbase Hfind) |].
-    split; [exact Hwf |].
-    split; [exact (env_in_receiver_frame P o Ho) |].
-    constructor.
-  Qed.
-
-  (** Small-step noninterference.  In two core states that agree on a public
-      footprint [P] containing the receiver, and whose footprint histories hold
-      only the heap values, a call-free derivation method returns the same
-      value: every result in the first state is a result in the second, and
-      the second has no other result. *)
-  Theorem derivation_noninterference_small_step :
-    forall m h1 sigma1 h2 sigma2 o v,
+  (** A normally completing small-step run of a derivation, in a state that
+      agrees with the typed reference heap [h1], returns the value the
+      big-step derivation returns in [h1]. *)
+  Theorem derived_ss_derived_by :
+    forall m h1 h2 sigma2 o v,
       derivation_table CT D ->
       derivation_ready CT D m h1 o ->
-      derivation_call_free CT m h1 o ->
       P o ->
       abs_agree CT P h1 h2 ->
-      footprint_stable CT P h1 sigma1 ->
       footprint_stable CT P h2 sigma2 ->
-      derived_ss CT m (mkPicoCoreState h1 sigma1) o v ->
-      derived_ss CT m (mkPicoCoreState h2 sigma2) o v /\
-      (forall w, derived_ss CT m (mkPicoCoreState h2 sigma2) o w -> w = v).
+      derived_ss CT m (mkPicoCoreState h2 sigma2) o v ->
+      derived_by CT m h1 o v.
   Proof.
-    intros m h1 sigma1 h2 sigma2 o v Htable Hready Hcf Ho Hagree Hst1 Hst2
-      (cy & mdef & V & rΓ' & V' & S' & Hbase & Hfind & Hsteps & Hret).
-    simpl in Hbase.
-    have Hctl := derivation_entry_control m h1 o cy mdef V Htable Hready Hcf Ho
-      Hbase Hfind.
-    have Hbase2 : r_basetype h2 o = Some cy.
-    { rewrite (abs_agree_basetype CT P h1 h2 o Hagree Ho). exact Hbase. }
-    split.
-    - destruct (deriv_steps_simulation CT D P h1 sigma1 h2 sigma2 _
-        (CoreRun (mkr_env [Iot o]) (mbody_stmt (mbody mdef)) V [])
-        S' OK rΓ' V' Hagree Hst1 Hst2 Hctl ltac:(simpl; auto) Hsteps)
-        as (W' & Hsteps2).
-      exists cy, mdef, V, rΓ', W', (mkPicoCoreState h2 sigma2).
+    intros m h1 h2 sigma2 o v Htable Hready Ho Hagree Hst2
+      (cy & mdef & V & rΓ' & V' & S' & Hbase2 & Hfind & Hsteps & Hret).
+    simpl in Hbase2.
+    have Hbase1 : r_basetype h1 o = Some cy.
+    { rewrite <- (abs_agree_basetype CT P h1 h2 o Hagree Ho). exact Hbase2. }
+    destruct (derivation_ready_body CT D m h1 o cy mdef Htable Hready Hbase1 Hfind)
+      as (sΓd & Hderiv & Htyping & Hwf).
+    destruct (proj1 (core_steps_nsteps CT _ _ _ _) Hsteps) as [n Hn].
+    destruct (deriv_decompose CT D P h1 h2 sigma2 Htable Hagree Hst2 n n
+      (mkr_env [Iot o]) (mbody_stmt (mbody mdef)) V [] _ sΓd _ rΓ' V' S'
+      ltac:(lia) Hn Hderiv Htyping Hwf (env_in_receiver_frame P o Ho))
+      as (rΓ1 & V1 & k & _ & Heval & _ & Htail).
+    inversion Htail as [| k' e0 S0 e1 S1 e2 S2 Hstep Htail']; subst.
+    inversion Hstep; subst.
+    destruct (core_nsteps_done_inv _ _ _ _ _ _ _ _ Htail') as (_ & Heq & _).
+    injection Heq as Hr1 _. subst.
+    exists cy, mdef. eexists.
+    split; [exact Hbase1 |].
+    split; [exact Hfind |].
+    split; [exact Heval | exact Hret].
+  Qed.
+
+  Section with_progress.
+    Context `{Hprogress : @CacheMemoryModelProgress Hmem}.
+
+    (** Conversely, a big-step derived value in [h1] is the result of a
+        small-step run in every agreeing, footprint-stable state. *)
+    Theorem derived_by_derived_ss :
+      forall m h1 h2 sigma2 o v,
+        derivation_table CT D ->
+        derivation_ready CT D m h1 o ->
+        P o ->
+        abs_agree CT P h1 h2 ->
+        footprint_stable CT P h2 sigma2 ->
+        derived_by CT m h1 o v ->
+        derived_ss CT m (mkPicoCoreState h2 sigma2) o v.
+    Proof.
+      intros m h1 h2 sigma2 o v Htable Hready Ho Hagree Hst2
+        (cy & mdef & rΓ' & Hbase1 & Hfind & Heval & Hret).
+      have Hbase2 : r_basetype h2 o = Some cy.
+      { rewrite (abs_agree_basetype CT P h1 h2 o Hagree Ho). exact Hbase1. }
+      destruct (derivation_ready_body CT D m h1 o cy mdef Htable Hready Hbase1 Hfind)
+        as (sΓd & Hderiv & Htyping & Hwf).
+      destruct (deriv_compose CT D P h1 h2 sigma2 Htable Hagree Hst2
+        (mkr_env [Iot o]) h1 (mbody_stmt (mbody mdef)) OK rΓ' h1 Heval
+        _ sΓd _ 0 [] eq_refl eq_refl Hderiv Htyping Hwf
+        (env_in_receiver_frame P o Ho)) as [_ [V1 Hsteps]].
+      exists cy, mdef, 0, rΓ', V1, (mkPicoCoreState h2 sigma2).
       split; [exact Hbase2 |].
       split; [exact Hfind |].
-      split; [exact Hsteps2 | exact Hret].
-    - intros w (cy2 & mdef2 & V2 & rΓ2 & V2' & S2' & Hbase2' & Hfind2 & Hsteps2
-        & Hret2).
-      simpl in Hbase2'.
-      rewrite Hbase2 in Hbase2'. injection Hbase2' as <-.
-      have Hmdef := find_method_with_name_deterministic CT cy m mdef2 mdef
-        Hfind2 Hfind.
-      subst mdef2.
-      destruct (deriv_steps_agree CT D P h1 sigma1 h2 sigma2 _
-        (CoreRun (mkr_env [Iot o]) (mbody_stmt (mbody mdef)) V2 [])
-        S' S2' OK rΓ' V' OK rΓ2 V2' Hagree Hst1 Hst2 Hctl ltac:(simpl; auto)
-        Hsteps Hsteps2) as [_ <-].
-      congruence.
-  Qed.
+      split; [| exact Hret].
+      eapply core_steps_trans; [exact Hsteps |].
+      econstructor; [apply PCS_SkipDone | constructor].
+    Qed.
+
+    (** Small-step noninterference.  In two core states whose heaps agree on a
+        footprint [P] that contains the receiver and is closed in the first
+        heap, and whose footprint histories hold only the heap values, a
+        derivation method returns the same value: every result in the first
+        state is a result in the second, and the second has no other
+        result. *)
+    Theorem derivation_noninterference_small_step :
+      forall m h1 sigma1 h2 sigma2 o v,
+        derivation_table CT D ->
+        derivation_ready CT D m h1 o ->
+        P o ->
+        abs_agree CT P h1 h1 ->
+        abs_agree CT P h1 h2 ->
+        footprint_stable CT P h1 sigma1 ->
+        footprint_stable CT P h2 sigma2 ->
+        derived_ss CT m (mkPicoCoreState h1 sigma1) o v ->
+        derived_ss CT m (mkPicoCoreState h2 sigma2) o v /\
+        (forall w, derived_ss CT m (mkPicoCoreState h2 sigma2) o w -> w = v).
+    Proof.
+      intros m h1 sigma1 h2 sigma2 o v Htable Hready Ho Hclosed Hagree Hst1 Hst2
+        Hss1.
+      have Hby := derived_ss_derived_by m h1 h1 sigma1 o v Htable Hready Ho
+        Hclosed Hst1 Hss1.
+      split.
+      - exact (derived_by_derived_ss m h1 h2 sigma2 o v Htable Hready Ho Hagree
+          Hst2 Hby).
+      - intros w Hss2.
+        have Hby2 := derived_ss_derived_by m h1 h2 sigma2 o w Htable Hready Ho
+          Hagree Hst2 Hss2.
+        destruct Hby as (cy & mdef & rΓ & Hbase & Hfind & Heval & Hret).
+        destruct Hby2 as (cy2 & mdef2 & rΓ2 & Hbase2 & Hfind2 & Heval2 & Hret2).
+        rewrite Hbase in Hbase2. injection Hbase2 as <-.
+        have Hmdef := find_method_with_name_deterministic CT cy m mdef2 mdef
+          Hfind2 Hfind.
+        subst mdef2.
+        destruct (eval_stmt_deterministic CT _ _ _ _ _ _ _ _ _ Heval Heval2)
+          as (_ & <- & _).
+        congruence.
+    Qed.
+  End with_progress.
 End small_step_noninterference.
