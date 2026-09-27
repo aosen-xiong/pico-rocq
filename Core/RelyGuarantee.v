@@ -201,4 +201,49 @@ Section rely_guarantee.
     split; [exact Hinterf |].
     eapply semimm_stable_under_rely; eassumption.
   Qed.
+
+  (** ** Derived values are determined by the abstract value
+
+      The first correctness condition, above, makes cache mutation
+      unobservable to trace-robust methods.  The second concerns fields that
+      carry an identity-like value, such as a hash code: every non-default
+      value such a field ever holds must be computed from the stable abstract
+      value.  A protocol is derived by [derive] when its only valid values are
+      the default and [derive a k]. *)
+  Definition DerivedProtocol (derive : AbsVal -> forall k, cache_val P k) : Prop :=
+    forall a k v, cache_valid P a k v -> v = cache_default P k \/ v = derive a k.
+
+  Lemma semimm_cache_value_derived :
+    forall derive a s k v,
+      DerivedProtocol derive ->
+      SemImmAt a s ->
+      In v (cs_hist s (cs_obj s) k) ->
+      v = cache_default P k \/ v = derive a k.
+  Proof.
+    intros derive a s k v Hderive [_ Hhist] Hin.
+    exact (Hderive a k v (Hhist k v Hin)).
+  Qed.
+
+  (** Under a derived protocol, every non-default value any thread can read
+      from a cache field, now or after any rely steps, is the same value: the
+      one computed from the abstract value. *)
+  Theorem derived_cache_agreement :
+    forall derive a s s' k v v',
+      DerivedProtocol derive ->
+      SemImmAt a s ->
+      CacheRely a s s' ->
+      In v (cs_hist s (cs_obj s) k) ->
+      In v' (cs_hist s' (cs_obj s') k) ->
+      v <> cache_default P k ->
+      v' <> cache_default P k ->
+      v = derive a k /\ v' = derive a k.
+  Proof.
+    intros derive a s s' k v v' Hderive Hsem Hrely Hin Hin' Hv Hv'.
+    pose proof (semimm_stable_under_rely a s s' Hsem Hrely) as Hsem'.
+    destruct (semimm_cache_value_derived derive a s k v Hderive Hsem Hin)
+      as [Heq | Heq]; [contradiction |].
+    destruct (semimm_cache_value_derived derive a s' k v' Hderive Hsem' Hin')
+      as [Heq' | Heq']; [contradiction |].
+    split; assumption.
+  Qed.
 End rely_guarantee.

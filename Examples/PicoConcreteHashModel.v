@@ -13,6 +13,7 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
 Require Import Reachability PICOBridge.PicoDerivationNoninterference
   PICOBridge.PicoDerivationCache PICOBridge.PicoDerivationSmallStep.
 Require DerivedCache.
+Require Core.RelyGuarantee.
 Require Import Examples.PicoSemanticCacheAPIExamples.
 
 (** * A Concrete Non-Vacuous Hash-Cache Provider *)
@@ -859,6 +860,32 @@ Proof.
   exists rt0, fs0. split; assumption.
 Qed.
 
+  (** The hash cache satisfies the second correctness condition: its only
+      non-default valid value is determined by the abstract hash, and every
+      non-default value ever written to the cache is what the derivation's
+      small-step run returns in the current state. *)
+  Lemma hash_cache_protocol_derived :
+    Core.RelyGuarantee.DerivedProtocol hash_cache_protocol (fun a _ => Int a).
+  Proof.
+    intros a k v [Hzero | [Heq _]]; [left | right]; assumption.
+  Qed.
+
+  Theorem pico_concrete_hash_cache_value_is_derived :
+    forall CT receiver m h0 hash_value state v,
+      pico_hash_provider_inv CT receiver m h0 hash_value state ->
+      List.In v (values_written_to (pcs_weak state)
+        (pico_hash_cache_addr receiver)) ->
+      v <> Int 0 ->
+      derived_ss CT m state receiver v.
+  Proof.
+    intros CT receiver m h0 hash_value state v Hinv Hin Hv.
+    destruct (pico_concrete_hash_provider_represents_heap CT receiver m h0
+      hash_value state Hinv) as [Hderived _].
+    destruct Hinv as (_ & _ & Hsnapshot).
+    destruct (Hsnapshot HashField v Hin) as [Hzero | [-> _]].
+    - contradiction.
+    - exact Hderived.
+  Qed.
 End concrete_hash_small_step.
 
 Definition empty_wm_state : wm_state := mkWMState [] (fun _ => []).
