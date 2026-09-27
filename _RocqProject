@@ -16,6 +16,7 @@ Bigstep.v
 WellformednessRegression.v
 DerivedCache.v
 Core/GenericCacheProtocol.v
+Core/RelyGuarantee.v
 Core/CacheLRVerticalSlice.v
 Iris/GenericCacheGhostState.v
 Iris/IrisSemanticBridge.v
