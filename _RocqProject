@@ -36,6 +36,7 @@ MemoryModels/JMM/JmmCacheAdequacyInterface.v
 PICOBridge/PicoCacheTyping.v
 PICOBridge/PicoDerivationNoninterference.v
 PICOBridge/PicoDerivationCache.v
+PICOBridge/PicoDerivationSmallStep.v
 PICOBridge/PicoIrisCoreLanguage.v
 PICOBridge/PicoSemanticConcurrency.v
 PICOBridge/PicoLabeledExecution.v
