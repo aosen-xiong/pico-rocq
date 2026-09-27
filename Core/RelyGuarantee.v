@@ -202,13 +202,43 @@ Section rely_guarantee.
     eapply semimm_stable_under_rely; eassumption.
   Qed.
 
+  (** Two calls of a trace-robust method with the same arguments, each run
+      from some state satisfying semantic immutability under arbitrary rely
+      steps, return equal results.  This is equality of results, not
+      contextual equivalence: it says nothing about observations other than
+      the returned values. *)
+  Theorem cache_method_calls_agree :
+    forall {Args Result : Type}
+      (F : AbsVal -> Args -> Result)
+      (run_with_cache_trace :
+        AbsVal -> Args -> CacheTrace P -> CacheRun P Result)
+      a args s0 s1 s2 tr t0 t1 t2 tr',
+      CacheSafeMethod P F run_with_cache_trace ->
+      SemImmAt a s0 ->
+      rg_read_phase a s0 tr s1 ->
+      rg_write_phase a s1 (run_writes (run_with_cache_trace a args tr)) s2 ->
+      SemImmAt a t0 ->
+      rg_read_phase a t0 tr' t1 ->
+      rg_write_phase a t1 (run_writes (run_with_cache_trace a args tr')) t2 ->
+      run_result (run_with_cache_trace a args tr) =
+      run_result (run_with_cache_trace a args tr').
+  Proof.
+    intros Args Result F run a args s0 s1 s2 tr t0 t1 t2 tr' Hsafe
+      Hsem0 Hreads Hwrites Hsem0' Hreads' Hwrites'.
+    destruct (cache_method_rely_guarantee F run a args s0 s1 s2 tr Hsafe Hsem0
+      Hreads Hwrites) as [Hresult _].
+    destruct (cache_method_rely_guarantee F run a args t0 t1 t2 tr' Hsafe Hsem0'
+      Hreads' Hwrites') as [Hresult' _].
+    rewrite Hresult, Hresult'. reflexivity.
+  Qed.
+
   (** ** Derived values are determined by the abstract value
 
-      The first correctness condition, above, makes cache mutation
-      unobservable to trace-robust methods.  The second concerns fields that
-      carry an identity-like value, such as a hash code: every non-default
-      value such a field ever holds must be computed from the stable abstract
-      value.  A protocol is derived by [derive] when its only valid values are
+      The first correctness condition, above, makes the results of
+      trace-robust methods independent of the cache values they read.  The
+      second concerns fields that carry an identity-like value, such as a hash
+      code: every non-default value such a field ever holds must be computed
+      from the stable abstract value.  A protocol is derived by [derive] when its only valid values are
       the default and [derive a k]. *)
   Definition DerivedProtocol (derive : AbsVal -> forall k, cache_val P k) : Prop :=
     forall a k v, cache_valid P a k v -> v = cache_default P k \/ v = derive a k.
