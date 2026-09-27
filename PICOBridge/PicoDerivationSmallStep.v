@@ -27,7 +27,11 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCacheTyping
     small-step run decomposes into a big-step evaluation of the current
     statement and a run of the rest of the continuation, and every big-step
     evaluation is realized by a small-step run.  The typing facts come from
-    the big-step development. *)
+    the big-step development.
+
+    The file also proves that the derivation's value on an immutable
+    receiver is stable under any interleaving of core steps
+    ([derivation_stable_small_step]). *)
 
 Section small_step.
   Context `{Hmem : CacheMemoryModel}.
