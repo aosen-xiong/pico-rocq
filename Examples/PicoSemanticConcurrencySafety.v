@@ -602,3 +602,105 @@ Theorem pico_two_hash_invocations_semimm_benign_race :
 Proof.
   exact pico_two_hash_invocations_benign_race.
 Qed.
+
+(** ** Any number of concurrent calls
+
+    The two-call theorem above is an instance of the rely-guarantee parallel
+    rule [pool_rely_guarantee].  Each call's assertion is its control phase;
+    every step of a call preserves the provider invariant, which is both the
+    rely and the guarantee; and the phase assertion does not depend on the
+    shared state, so it is stable under the other calls' steps.  The same
+    argument therefore covers a pool with any number of calls. *)
+
+Definition pico_hash_state_inv (state : pico_core_state) : Prop :=
+  pico_hash_provider_inv pico_hash_concurrent_CT pico_hash_concurrent_receiver
+    pico_hash_derive_method pico_hash_concurrent_initial_heap
+    pico_hash_concurrent_value state.
+
+Definition pico_hash_local (control : pico_core_expr) (_ : pico_core_state) :
+    Prop :=
+  pico_hash_thread_safe control.
+
+Definition pico_hash_guar (_ state' : pico_core_state) : Prop :=
+  pico_hash_state_inv state'.
+
+Definition pico_hash_n_call_pool (n : nat) : pico_pool_config :=
+  mkPicoPoolConfig pico_hash_concurrent_initial_state
+    (repeat (pico_hash_phase_control HashCall) n).
+
+Lemma pico_hash_own_step_guarantee : forall e S e' S',
+  pico_hash_state_inv S ->
+  pico_hash_local e S ->
+  @pico_core_step history_cache_memory_model pico_hash_concurrent_CT
+    e S e' S' ->
+  pico_hash_guar S S' /\ pico_hash_local e' S'.
+Proof.
+  intros e S e' S' Hinv [phase ->] Hstep.
+  exact (pico_hash_phase_step_preserves phase S e' S' Hinv Hstep).
+Qed.
+
+Lemma pico_hash_n_call_pool_rg_inv : forall n,
+  pool_rg_inv pico_hash_state_inv pico_hash_local (pico_hash_n_call_pool n).
+Proof.
+  intros n.
+  split; [exact pico_hash_concurrent_initial_provider_inv |].
+  simpl. apply Forall_forall.
+  intros e Hin. apply repeat_spec in Hin. subst e.
+  exists HashCall. reflexivity.
+Qed.
+
+(** Every interleaving of any number of hash calls preserves the provider's
+    semantic immutability invariant. *)
+Theorem pico_hash_n_calls_preserve_inv : forall n cfg,
+  @pico_pool_steps history_cache_memory_model pico_hash_concurrent_CT
+    (pico_hash_n_call_pool n) cfg ->
+  pico_hash_state_inv (pool_state cfg).
+Proof.
+  intros n cfg Hsteps.
+  exact (proj1 (@pool_rely_guarantee history_cache_memory_model
+    pico_hash_concurrent_CT pico_hash_state_inv pico_hash_local pico_hash_guar
+    pico_hash_own_step_guarantee
+    (fun S S' _ Hguar => Hguar)
+    (fun e S S' _ Hlocal _ => Hlocal)
+    _ cfg (pico_hash_n_call_pool_rg_inv n) Hsteps)).
+Qed.
+
+(** Every completed call, in every interleaving of any number of calls,
+    returns the hash. *)
+Theorem pico_hash_n_calls_results_correct : forall n cfg,
+  @pico_pool_steps history_cache_memory_model pico_hash_concurrent_CT
+    (pico_hash_n_call_pool n) cfg ->
+  pico_pool_results_satisfy pico_hash_result_ok cfg.
+Proof.
+  intros n cfg Hsteps.
+  eapply (@pool_rely_guarantee_results history_cache_memory_model
+    pico_hash_concurrent_CT pico_hash_state_inv pico_hash_local pico_hash_guar
+    pico_hash_own_step_guarantee
+    (fun S S' _ Hguar => Hguar)
+    (fun e S S' _ Hlocal _ => Hlocal));
+    [| exact (pico_hash_n_call_pool_rg_inv n) | exact Hsteps].
+  intros e S r _ Hlocal Hval.
+  destruct e as [rGamma stmt V K | result rGamma V]; simpl in Hval;
+    [discriminate |].
+  injection Hval as <-.
+  destruct (pico_hash_safe_done_result result rGamma V Hlocal) as [Hok Hret].
+  split; assumption.
+Qed.
+
+(** In every state reachable by any number of calls, the receiver's
+    derivation method returns the hash and nothing else. *)
+Theorem pico_hash_n_calls_derivation_returns_hash : forall n cfg,
+  @pico_pool_steps history_cache_memory_model pico_hash_concurrent_CT
+    (pico_hash_n_call_pool n) cfg ->
+  @derived_ss history_cache_memory_model pico_hash_concurrent_CT
+    pico_hash_derive_method (pool_state cfg) pico_hash_concurrent_receiver
+    (Int pico_hash_concurrent_value) /\
+  (forall w,
+    @derived_ss history_cache_memory_model pico_hash_concurrent_CT
+      pico_hash_derive_method (pool_state cfg) pico_hash_concurrent_receiver w ->
+    w = Int pico_hash_concurrent_value).
+Proof.
+  intros n cfg Hsteps.
+  exact (pico_concrete_hash_provider_represents_heap _ _ _ _ _ _
+    (pico_hash_n_calls_preserve_inv n cfg Hsteps)).
+Qed.

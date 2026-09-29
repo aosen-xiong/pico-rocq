@@ -405,3 +405,101 @@ Proof.
   intros cfg Hsteps.
   eapply pico_pool_steps_preserve_state_invariant; eauto.
 Qed.
+
+(** ** A rely-guarantee parallel rule for the invocation pool
+
+    Each installed control carries a thread-local assertion [Local].  Every
+    step of a control that satisfies its assertion is a guarantee step and
+    re-establishes the assertion; guarantee steps preserve the shared
+    invariant [Inv]; and every thread's assertion is stable under guarantee
+    steps, which are exactly the other threads' steps, so the rely is the
+    guarantee.  Then every scheduler execution, with any number of controls
+    and any interleaving, preserves the shared invariant and every thread's
+    assertion, and finished controls satisfy the result contract. *)
+
+Lemma Forall_update_map : forall {A : Type} (P Q : A -> Prop) xs tid x,
+  Forall P xs ->
+  (forall y, P y -> Q y) ->
+  Q x ->
+  Forall Q (update tid x xs).
+Proof.
+  intros A P Q xs.
+  induction xs as [|head tail IH]; intros [|tid] x Hall HPQ Hx;
+    simpl; [constructor | constructor | |].
+  - inversion Hall as [| h t Hhead Htail]; subst.
+    constructor; [exact Hx |].
+    eapply Forall_impl; [exact HPQ | exact Htail].
+  - inversion Hall as [| h t Hhead Htail]; subst.
+    constructor; [exact (HPQ head Hhead) |].
+    eapply IH; eauto.
+Qed.
+
+Section pool_rely_guarantee.
+  Context `{Hmem : CacheMemoryModel}.
+  Context (CT : class_table).
+  Context (Inv : pico_core_state -> Prop).
+  Context (Local : pico_core_expr -> pico_core_state -> Prop).
+  Context (Guar : pico_core_state -> pico_core_state -> Prop).
+
+  Hypothesis own_step_guarantee : forall e S e' S',
+    Inv S ->
+    Local e S ->
+    pico_core_step CT e S e' S' ->
+    Guar S S' /\ Local e' S'.
+
+  Hypothesis guarantee_preserves_inv : forall S S',
+    Inv S -> Guar S S' -> Inv S'.
+
+  Hypothesis local_stable : forall e S S',
+    Inv S -> Local e S -> Guar S S' -> Local e S'.
+
+  Definition pool_rg_inv (cfg : pico_pool_config) : Prop :=
+    Inv (pool_state cfg) /\
+    Forall (fun e => Local e (pool_state cfg)) (pool_threads cfg).
+
+  Lemma pool_rely_guarantee_step : forall cfg cfg',
+    pool_rg_inv cfg ->
+    pico_pool_step CT cfg cfg' ->
+    pool_rg_inv cfg'.
+  Proof.
+    intros cfg cfg' [Hinv Hlocal] Hstep.
+    inversion Hstep as [S S' threads threads' tid e e' Hnth Hcore Hupd];
+      subst; simpl in *.
+    assert (Hsel : Local e S).
+    { rewrite Forall_forall in Hlocal. apply Hlocal.
+      eapply nth_error_In. exact Hnth. }
+    destruct (own_step_guarantee e S e' S' Hinv Hsel Hcore) as [Hguar Hlocal'].
+    split; [exact (guarantee_preserves_inv S S' Hinv Hguar) |].
+    eapply Forall_update_map; [exact Hlocal | | exact Hlocal'].
+    intros y Hy. exact (local_stable y S S' Hinv Hy Hguar).
+  Qed.
+
+  (** The parallel rule: any number of controls, any interleaving. *)
+  Theorem pool_rely_guarantee : forall cfg cfg',
+    pool_rg_inv cfg ->
+    pico_pool_steps CT cfg cfg' ->
+    pool_rg_inv cfg'.
+  Proof.
+    intros cfg cfg' Hinv Hsteps.
+    induction Hsteps as [cfg0 | cfg1 cfg2 cfg3 Hstep _ IH].
+    - exact Hinv.
+    - apply IH. exact (pool_rely_guarantee_step cfg1 cfg2 Hinv Hstep).
+  Qed.
+
+  Theorem pool_rely_guarantee_results :
+    forall (ResultOK : pico_core_val -> Prop) cfg cfg',
+      (forall e S r, Inv S -> Local e S -> pico_core_to_val e = Some r ->
+         ResultOK r) ->
+      pool_rg_inv cfg ->
+      pico_pool_steps CT cfg cfg' ->
+      pico_pool_results_satisfy ResultOK cfg'.
+  Proof.
+    intros ResultOK cfg cfg' Hdone Hinit Hsteps.
+    destruct (pool_rely_guarantee cfg cfg' Hinit Hsteps) as [Hinv Hlocal].
+    unfold pico_pool_results_satisfy, pico_pool_results.
+    induction Hlocal as [| e threads He Hrest IH]; simpl; [constructor |].
+    destruct (pico_core_to_val e) as [r |] eqn:Hval.
+    - constructor; [exact (Hdone e _ r Hinv He Hval) | exact IH].
+    - exact IH.
+  Qed.
+End pool_rely_guarantee.
