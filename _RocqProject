@@ -67,12 +67,14 @@ Examples/PicoConcreteHashProvider.v
 Examples/PicoConcreteHashModel.v
 Examples/PicoSemanticConcurrencyExamples.v
 Examples/PicoSemanticConcurrencySafety.v
+Examples/PicoHashTypeSafety.v
 Examples/PicoHashPayloadReadAPI.v
 Examples/PicoJamHashAdequacy.v
 Examples/PicoFinalFieldPublicationExamples.v
 Examples/PicoConstructionPublicationExamples.v
 Examples/PicoCombinedMemoryExecution.v
 Examples/PicoJlsCacheFragmentAdequacy.v
+Examples/PicoHashExecution.v
 Examples/PicoHashExecutionTrace.v
 Examples/CacheProtocolDiversity.v
 Examples/PicoProtocolDiversityExecution.v
