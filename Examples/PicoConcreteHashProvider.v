@@ -1,4 +1,4 @@
-From Stdlib Require Import List Lia PeanoNat FunctionalExtensionality.
+From Stdlib Require Import List Lia PeanoNat.
 Import ListNotations.
 
 Require Import Syntax Helpers Subtyping Typing Bigstep Core.GenericCacheProtocol
@@ -262,8 +262,7 @@ Proof.
       congruence. }
     simpl. split; [reflexivity |].
     split.
-    + apply functional_extensionality_dep. intros [].
-      unfold pico_hash_snapshot; simpl.
+    + unfold pico_hash_snapshot; simpl.
       unfold values_written_to. rewrite Hhistory. reflexivity.
     + split.
       * subst h'. eapply heap_wm_type_agree_write_update_field; eauto.
@@ -329,8 +328,7 @@ Proof.
     assert (Hneq : receiver <> length (wm_objs sigma)) by lia.
     simpl. split; [reflexivity |].
     split.
-    + apply functional_extensionality_dep. intros [].
-      unfold pico_hash_snapshot, values_written_to, history_of,
+    + unfold pico_hash_snapshot, values_written_to, history_of,
         pico_core_alloc_weak; simpl.
       apply Nat.eqb_neq in Hneq. rewrite Hneq. reflexivity.
     + split.
