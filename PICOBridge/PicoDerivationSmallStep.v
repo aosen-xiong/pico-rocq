@@ -883,4 +883,72 @@ Section small_step_derivation_stability.
       m h0 sigma0 h' sigma' o v Htable Hready Ho Hclosed Hagree' Hst0
       (Hst' Hst0) Hss0).
   Qed.
+
+  Lemma pico_core_interleaved_steps_snoc :
+    forall S1 S2 e e' S3,
+      pico_core_interleaved_steps CT S1 S2 ->
+      pico_core_step CT e S2 e' S3 ->
+      pico_core_interleaved_steps CT S1 S3.
+  Proof.
+    intros S1 S2 e e' S3 Hsteps Hstep.
+    induction Hsteps as [S | S e0 e1 Sa Sb Hstep0 _ IH].
+    - econstructor; [exact Hstep | constructor].
+    - econstructor; [exact Hstep0 | exact (IH Hstep)].
+  Qed.
+
+  (** Derived cache write, in the core semantics.  The derivation returned
+      [v] in the reference state.  After any interleaving of core steps, a
+      successful write of [v] to field [f] of the receiver leaves the field
+      holding a value that the derivation-defined protocol accepts in the new
+      state, and every value the protocol accepted before the write is still
+      accepted after it. *)
+  Theorem derived_cache_write_small_step :
+    forall m h0 sigma0 o C vals v S rΓ x f y V V' K S' v_old,
+      derivation_table CT D ->
+      derivation_ready CT D m h0 o ->
+      runtime_getObj h0 o = Some (mkObj (mkruntime_type Imm_r C) vals) ->
+      heap_wm_type_agree h0 sigma0 ->
+      footprint_stable CT (reachable_abs CT h0 o) h0 sigma0 ->
+      derived_ss CT m (mkPicoCoreState h0 sigma0) o v ->
+      pico_core_interleaved_steps CT (mkPicoCoreState h0 sigma0) S ->
+      runtime_getVal rΓ x = Some (Iot o) ->
+      runtime_getVal rΓ y = Some v ->
+      DerivedCache.field_read (pcs_heap S) o f v_old ->
+      pico_core_step CT (CoreRun rΓ (SFldWrite x f y) V K) S
+        (CoreRun rΓ SSkip V' K) S' ->
+      derivation_cache_protocol_ss CT m S' o f /\
+      (forall w, derivation_cache_value_ss CT m S o w ->
+                 derivation_cache_value_ss CT m S' o w).
+  Proof.
+    intros m h0 sigma0 o C vals v S rΓ x f y V V' K S' v_old Htable Hready
+      Hobj Htypes Hst0 Hss0 Hsteps Hx Hy Hold Hstep.
+    have Hsteps' := pico_core_interleaved_steps_snoc _ S _ _ S' Hsteps Hstep.
+    destruct (derivation_stable_small_step m h0 sigma0 o C vals v S Htable
+      Hready Hobj Htypes Hst0 Hss0 Hsteps) as [_ Hunique].
+    destruct (derivation_stable_small_step m h0 sigma0 o C vals v S' Htable
+      Hready Hobj Htypes Hst0 Hss0 Hsteps') as [Hss' _].
+    split.
+    - exists v. split; [| right; exact Hss'].
+      inversion Hstep; subst; simpl in *.
+      match goal with
+      | Hx' : runtime_getVal rΓ x = Some (Iot ?l) |- _ =>
+          rewrite Hx in Hx'; injection Hx' as <-
+      end.
+      match goal with
+      | Hy' : runtime_getVal rΓ y = Some ?w |- _ =>
+          rewrite Hy in Hy'; injection Hy' as <-
+      end.
+      destruct Hold as [obj [Hobj_o Hval_old]].
+      destruct obj as [rt fs]. simpl in Hval_old.
+      exists (mkObj rt (update f v fs)).
+      split.
+      + unfold update_field. rewrite Hobj_o.
+        apply runtime_getObj_update_same.
+        exact (runtime_getObj_dom o _ _ Hobj_o).
+      + simpl. unfold getVal. apply update_same.
+        eapply getVal_dom. exact Hval_old.
+    - intros w [Hzero | Hw].
+      + left. exact Hzero.
+      + right. rewrite (Hunique w Hw). exact Hss'.
+  Qed.
 End small_step_derivation_stability.

@@ -21,6 +21,7 @@ Core/CacheLRVerticalSlice.v
 Iris/GenericCacheGhostState.v
 Iris/IrisSemanticBridge.v
 Core/GenericDerivedCache.v
+Core/SequentialModel.v
 Examples/LocalCopyCacheRule.v
 Examples/PicoIfZeroCacheExamples.v
 PICOBridge/PicoMemoryModel.v
