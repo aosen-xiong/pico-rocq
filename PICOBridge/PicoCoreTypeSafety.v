@@ -66,4 +66,193 @@ Section typed_histories.
     destruct Hv as (rqt & Hrqt & Hbase & Hqual).
     exists rqt. split; [exact (Htypes loc rqt Hrqt) | split; assumption].
   Qed.
+
+  Lemma Forall2_nth_error_left :
+    forall {A B : Type} (R : A -> B -> Prop) l1 l2 n a,
+      Forall2 R l1 l2 ->
+      nth_error l1 n = Some a ->
+      exists b, nth_error l2 n = Some b /\ R a b.
+  Proof.
+    intros A B R l1 l2 n a HF2. revert n a.
+    induction HF2 as [| x y l1 l2 Hxy _ IH]; intros [| n] a Hnth;
+      simpl in Hnth; try discriminate.
+    - injection Hnth as <-. exists y. split; [reflexivity | exact Hxy].
+    - exact (IH n a Hnth).
+  Qed.
+
+  (** A field value of a well-formed heap is admissible for its field.  The
+      heap's well-formedness says nothing about which fields may hold
+      [Null_a], so that case is a premise. *)
+  Lemma wf_heap_field_value_ok :
+    forall h ι o f v,
+      wf_heap CT h ->
+      runtime_getObj h ι = Some o ->
+      nth_error (fields_map o) f = Some v ->
+      (v = Null_a ->
+       forall field_defs fdef,
+         CollectFields CT (rctype (rt_type o)) field_defs ->
+         nth_error field_defs f = Some fdef ->
+         exists C, f_base_type (ftype fdef) = TRef C) ->
+      field_value_ok h ι f v.
+  Proof.
+    intros h ι o f v Hheap Hobj Hnth Hnull.
+    have Hdom := runtime_getObj_dom ι o h Hobj.
+    have Hwf := Hheap ι Hdom.
+    unfold wf_obj in Hwf. rewrite Hobj in Hwf.
+    destruct Hwf as [_ (field_defs & Hcf & Hlen & HF2)].
+    destruct (Forall2_nth_error_left _ _ _ f v HF2 Hnth) as (fdef & Hfdef & Hv).
+    exists (rt_type o), field_defs, fdef.
+    split; [unfold r_type; rewrite Hobj; reflexivity |].
+    split; [exact Hcf |].
+    split; [exact Hfdef |].
+    destruct v as [| loc | n].
+    - exact (Hnull eq_refl field_defs fdef Hcf Hfdef).
+    - destruct (runtime_getObj h loc) eqn:Hloc; [exact Hv | contradiction].
+    - exact Hv.
+  Qed.
+
+  (** The static facts a typed field write provides: the written field is
+      declared in the static class of the receiver, and the base type of the
+      written variable is a subtype of the field's base type. *)
+  Lemma stmt_typing_fldwrite_field :
+    forall sGamma sGamma' mt x f y,
+      stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
+      exists Tx Ty C fieldT,
+        static_getType sGamma x = Some Tx /\
+        static_getType sGamma y = Some Ty /\
+        sbase Tx = TRef C /\
+        FieldLookup CT C f fieldT /\
+        base_subtype CT (sbase Ty) (f_base_type (ftype fieldT)).
+  Proof.
+    intros sGamma sGamma' mt x f y Htyping.
+    inversion Htyping; subst;
+      match goal with
+      | Hx : static_getType _ x = Some ?Tx,
+        Hy : static_getType _ y = Some ?Ty,
+        Hr : sbase ?Tx = TRef ?C,
+        Hf : sf_def_rel CT ?C f ?fieldT,
+        Hs : qualified_type_subtype CT ?Ty _ |- _ =>
+          exists Tx, Ty, C, fieldT;
+          repeat (split; [assumption |]);
+          exact (qualified_type_subtype_base_subtype _ _ _ Hs)
+      end.
+  Qed.
+
+  (** The field definition at index [f] of the runtime class of a typed
+      receiver is the one declared in its static class. *)
+  Lemma typed_receiver_field_def :
+    forall h qcontext Tx C loc o f fieldT field_defs fdef,
+      pico_core_typed_value CT h qcontext Tx (Iot loc) ->
+      sbase Tx = TRef C ->
+      runtime_getObj h loc = Some o ->
+      FieldLookup CT C f fieldT ->
+      CollectFields CT (rctype (rt_type o)) field_defs ->
+      nth_error field_defs f = Some fdef ->
+      fdef = fieldT.
+  Proof.
+    intros h qcontext Tx C loc o f fieldT field_defs fdef
+      Htyped Href Hobj Hlookup Hcf Hnth.
+    simpl in Htyped. unfold wf_r_typable in Htyped.
+    unfold r_type in Htyped. rewrite Hobj in Htyped.
+    destruct Htyped as [Hbase _]. rewrite Href in Hbase.
+    destruct (base_subtype_from_ref CT _ _ Hbase) as (D & HD & Hsub).
+    injection HD as <-.
+    have Hlookup' := field_inheritance_subtyping CT _ C f fieldT Hsub Hlookup.
+    inversion Hlookup' as [CT0 C0 fields0 f0 fdef0 Hcf0 Hget]; subst.
+    have Heq := collect_fields_deterministic_rel CT _ _ _ Hcf Hcf0.
+    subst fields0. unfold gget in Hget. congruence.
+  Qed.
+
+  (** A typed field write keeps the histories typed.  The appended value is
+      the new heap value of the field, which the well-formed post-heap makes
+      admissible; older history entries stay admissible because the write
+      changes no runtime type. *)
+  Lemma fldwrite_step_preserves_histories_typed :
+    forall sGamma sGamma' rGamma h sigma mt x f y V K e' S',
+      stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
+      pico_core_typed_env CT sGamma rGamma h ->
+      pico_core_lr_state CT (mkPicoCoreState h sigma) ->
+      histories_typed (mkPicoCoreState h sigma) ->
+      pico_core_step CT (CoreRun rGamma (SFldWrite x f y) V K)
+        (mkPicoCoreState h sigma) e' S' ->
+      histories_typed S'.
+  Proof.
+    intros sGamma sGamma' rGamma h sigma mt x f y V K e' S'
+      Htyping Henv Hlr Hhist Hstep.
+    have Hpost := pico_core_typed_fldwrite_step_post CT _ _ _ _ _ _ _ _ _ _ _
+      _ _ Htyping Henv Hlr Hstep.
+    inversion Hstep; subst; try exact Hhist.
+    match goal with
+    | Hx : runtime_getVal rGamma x = Some (Iot ?l),
+      Ho : runtime_getObj h ?l = Some ?ob,
+      Hy : runtime_getVal rGamma y = Some ?w,
+      Hw : wm_write sigma _ _ _ _ _,
+      Ha : sf_assignability_rel CT _ f _ |- _ =>
+        rename Hx into Hgetx; rename Ho into Hobj; rename Hy into Hgety;
+        rename Hw into Hwrite; rename Ha into Hassign
+    end.
+    inversion Hpost as [rG V0 st Henv' _ | |]; subst. simpl in Henv'.
+    have Hcfg' := pico_core_typed_env_wf_config CT _ _ _ Henv'.
+    have Hheap' : wf_heap CT (update_field h loc_x f val_y)
+      by (destruct Hcfg' as (_ & Hheap' & _); exact Hheap').
+    have Hcfg := pico_core_typed_env_wf_config CT _ _ _ Henv.
+    have Hheap : wf_heap CT h by (destruct Hcfg as (_ & Hh & _); exact Hh).
+    have Hext := pico_core_heap_types_extend_write h loc_x f val_y o Hobj.
+    have Hdom := runtime_getObj_dom loc_x o h Hobj.
+    intros loc f0 v Hin. simpl in *.
+    destruct (Nat.eq_dec loc loc_x) as [-> | Hloc];
+      [destruct (Nat.eq_dec f0 f) as [-> | Hf] |].
+    - (* the written address *)
+      unfold values_written_to in Hin.
+      rewrite (wm_write_history_same _ _ _ _ _ _ Hwrite) in Hin.
+      rewrite map_app in Hin. apply in_app_or in Hin.
+      destruct Hin as [Hold | Hnew].
+      + eapply field_value_ok_heap_types_extend; [exact Hext |].
+        exact (Hhist loc_x f v Hold).
+      + simpl in Hnew. destruct Hnew as [<- | []].
+        (* the field exists in the runtime class *)
+        destruct Hassign as (fdef_a & Hlookup_a & _).
+        inversion Hlookup_a as [CT0 C0 fields_a f1 fdef1 Hcf_a Hget_a]; subst.
+        have Hwf := Hheap loc_x Hdom.
+        unfold wf_obj in Hwf. rewrite Hobj in Hwf.
+        destruct Hwf as [_ (field_defs & Hcf & Hlen & _)].
+        have Heqf := collect_fields_deterministic_rel CT _ _ _ Hcf Hcf_a.
+        subst fields_a.
+        have Hf_lt : f < length (fields_map o).
+        { rewrite Hlen. unfold gget in Hget_a.
+          apply nth_error_Some. rewrite Hget_a. discriminate. }
+        destruct o as [rt fs]. simpl in *.
+        eapply (wf_heap_field_value_ok (update_field h loc_x f val_y) loc_x
+          (mkObj rt (update f val_y fs)) f val_y Hheap').
+        * unfold update_field. rewrite Hobj.
+          apply runtime_getObj_update_same. exact Hdom.
+        * simpl. apply update_same. exact Hf_lt.
+        * intros -> field_defs' fdef' Hcf' Hnth'. simpl in Hcf'.
+          destruct (stmt_typing_fldwrite_field _ _ _ _ _ _ Htyping)
+            as (Tx & Ty & C & fieldT & Hsx & Hsy & Href & Hlookup & Hbase).
+          destruct (pico_core_typed_env_lookup CT _ _ _ y Ty Henv Hsy)
+            as (qy & vy & Hvy & Htyped_y).
+          rewrite Hgety in Hvy. injection Hvy as <-.
+          destruct Htyped_y as [Cy Hbase_y].
+          rewrite Hbase_y in Hbase.
+          destruct (base_subtype_from_ref CT _ _ Hbase) as (D & HD & _).
+          destruct (pico_core_typed_env_lookup CT _ _ _ x Tx Henv Hsx)
+            as (qx & vx & Hvx & Htyped_x).
+          rewrite Hgetx in Hvx. injection Hvx as <-.
+          have Heq := typed_receiver_field_def h qx Tx C loc_x (mkObj rt fs) f
+            fieldT field_defs' fdef' Htyped_x Href Hobj Hlookup Hcf' Hnth'.
+          subst fdef'. exists D. exact HD.
+    - (* another field of the same object *)
+      unfold values_written_to in *.
+      destruct Hwrite as [-> _].
+      rewrite history_of_append_write_other in Hin; [| congruence].
+      eapply field_value_ok_heap_types_extend; [exact Hext |].
+      exact (Hhist loc_x f0 v Hin).
+    - (* another object *)
+      unfold values_written_to in *.
+      destruct Hwrite as [-> _].
+      rewrite history_of_append_write_other in Hin; [| congruence].
+      eapply field_value_ok_heap_types_extend; [exact Hext |].
+      exact (Hhist loc f0 v Hin).
+  Qed.
 End typed_histories.
