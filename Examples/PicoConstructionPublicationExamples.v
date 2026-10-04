@@ -3,14 +3,14 @@ Import ListNotations.
 
 Require Import Syntax Helpers Subtyping Typing Bigstep DerivedCache.
 Require Import Core.GenericDerivedCache.
-Require Import Examples.PicoIfZeroCacheExamples Examples.PicoConcreteHashModel
+Require Import Examples.PicoIfZeroCache Examples.PicoConcreteHashProvider
   Examples.PicoSemanticConcurrencyExamples
   Examples.PicoSemanticConcurrencySafety Examples.PicoJamHashAdequacy
   Examples.PicoFinalFieldPublicationExamples.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
   PICOBridge.PicoConstructionPublication PICOBridge.PicoFinalFieldPublication
   PICOBridge.PicoStableAbsPreservation PICOBridge.PicoSemanticConcurrency
-  PICOBridge.PicoJamSimulation PICOBridge.PicoIrisSemImmLogicalRelation.
+  PICOBridge.PicoJamSimulation PICOBridge.PicoCoreSemImm.
 Require Import MemoryModels.JAM.JamLegality.
 Require Import MemoryModels.JMM.FinalFieldPublication.
 

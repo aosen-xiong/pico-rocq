@@ -23,6 +23,7 @@ Iris/IrisSemanticBridge.v
 Core/GenericDerivedCache.v
 Core/SequentialModel.v
 Examples/LocalCopyCacheRule.v
+Examples/PicoIfZeroCache.v
 Examples/PicoIfZeroCacheExamples.v
 PICOBridge/PicoMemoryModel.v
 MemoryModels/JMM/FinalFieldPublication.v
@@ -52,11 +53,14 @@ PICOBridge/PicoIrisCoreWP.v
 PICOBridge/PicoIrisTypingSupport.v
 PICOBridge/PicoIrisTypingFundamental.v
 PICOBridge/PicoIrisResourceLogicalRelation.v
+PICOBridge/PicoCoreSemImm.v
 PICOBridge/PicoIrisSemImmOperations.v
 PICOBridge/PicoIrisSemImmLogicalRelation.v
 PICOBridge/PicoIrisSemImmAdequacy.v
 PICOBridge/PicoIrisSemanticAPI.v
+Examples/PicoHashMethod.v
 Examples/PicoSemanticCacheAPIExamples.v
+Examples/PicoConcreteHashProvider.v
 Examples/PicoConcreteHashModel.v
 Examples/PicoSemanticConcurrencyExamples.v
 Examples/PicoSemanticConcurrencySafety.v

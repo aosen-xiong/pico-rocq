@@ -3,11 +3,11 @@ Import ListNotations.
 
 Require Import Syntax Helpers Subtyping Typing Bigstep DerivedCache.
 Require Import Core.GenericDerivedCache.
-Require Import Examples.PicoIfZeroCacheExamples
-  Examples.PicoSemanticCacheAPIExamples
-  Examples.PicoConcreteHashModel.
+Require Import Examples.PicoIfZeroCache
+  Examples.PicoHashMethod
+  Examples.PicoConcreteHashProvider.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
-  PICOBridge.PicoIrisSemImmLogicalRelation PICOBridge.PicoSemanticConcurrency
+  PICOBridge.PicoCoreSemImm PICOBridge.PicoSemanticConcurrency
   PICOBridge.PicoStableAbsPreservation.
 Require Import PICOBridge.PicoDerivationNoninterference
   PICOBridge.PicoDerivationCache.

@@ -919,3 +919,22 @@ Proof.
   eapply cache_safe_method_refines_pure; eauto.
   eapply valid_trace_from_history; eauto.
 Qed.
+
+(** ** Snapshot-level read and write side conditions
+
+    A read step observes a value from the field's history snapshot.  A write
+    step writes a protocol-valid value and extends the snapshot validly. *)
+Section snapshot_steps.
+  Context {AbsVal : Type}.
+  Context (P : CacheProtocol AbsVal).
+
+  Definition CacheReadStep
+      (snap : CacheHistorySnapshot P) k (v : cache_val P k) : Prop :=
+    In v (snap k).
+
+  Definition CacheWriteStep
+      a (snap snap' : CacheHistorySnapshot P)
+      k (v : cache_val P k) : Prop :=
+    cache_valid P a k v /\
+    CacheHistSnapshotValidExtension P snap snap' a.
+End snapshot_steps.

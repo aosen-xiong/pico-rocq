@@ -24,107 +24,18 @@ Section pico_semimm_logical_relation.
   Context (a : AbsVal).
   Context (A : PicoCoreCacheAdapter P).
 
-  (** A semantic object protocol is an instantiation boundary, not a theorem
-      derived from arbitrary PICO typing.  A client supplies the abstraction
-      function, identifies its cache fields, and proves that the concrete
-      field histories and writes implement that protocol.  The LR below then
-      derives execution safety from source typing *relative to this
-      instantiation*.
-
-      Ordinary field typing remains the responsibility of the resource LR.
-      This provider justifies mapped cache observations through
-      [pcsi_cache_history_covers].  Publication is derived from protocol
-      validity by [cache_valid_published]. *)
-  Record PicoCoreSemImmInstantiation : Type := {
-    (** Concrete states representing this object/protocol instance.  The
-        semantic provider need only describe reachable states satisfying this
-        invariant, not arbitrary PICO heaps and weak memories. *)
-    pcsi_state_inv : pico_core_state -> Prop;
-    pcsi_object : pico_core_state -> Obj;
-    pcsi_snapshot : pico_core_state -> CacheHistorySnapshot P;
-    pcsi_abstract_field : FieldAddr -> Prop;
-
-    pcsi_stable : forall state,
-      pcsi_state_inv state ->
-      Stable (pcsi_object state) a;
-
-    (** Every concrete complete value in a mapped cache-field history occurs
-        in the protocol snapshot after conversion to that field's cache value.
-        Together with [wm_read_from_history], this derives the cache-read
-        bridge used by [SemImmI]. *)
-    pcsi_cache_history_covers :
-      forall state addr k (v : Syntax.value),
-        pcsi_state_inv state ->
-        pico_core_cache_field P A addr = Some k ->
-        List.In v (values_written_to (pcs_weak state) addr) ->
-        exists cv : cache_val P k,
-          pico_core_cache_value P A k v = Some cv /\
-          List.In cv (pcsi_snapshot state k);
-
-    pcsi_unrelated_write_effect :
-      forall h h' sigma sigma' V V' loc f v,
-        pcsi_state_inv (mkPicoCoreState h sigma) ->
-        h' = update_field h loc f v ->
-        wm_write sigma sigma' V V' (loc, f) v ->
-        pico_core_cache_field P A (loc, f) = None ->
-        ~ pcsi_abstract_field (loc, f) ->
-        let before := mkPicoCoreState h sigma in
-        let after := mkPicoCoreState h' sigma' in
-        pcsi_object after = pcsi_object before /\
-        pcsi_snapshot after = pcsi_snapshot before /\
-        pcsi_state_inv after;
-
-    pcsi_valid_cache_write_effect :
-      forall h h' sigma sigma' V V' loc f v k
-        (cv : cache_val P k),
-        pcsi_state_inv (mkPicoCoreState h sigma) ->
-        h' = update_field h loc f v ->
-        wm_write sigma sigma' V V' (loc, f) v ->
-        pico_core_cache_field P A (loc, f) = Some k ->
-        pico_core_cache_value P A k v = Some cv ->
-        cache_valid P a k cv ->
-        let before := mkPicoCoreState h sigma in
-        let after := mkPicoCoreState h' sigma' in
-        PicoCoreCacheWriteStep P A a
-          (pcsi_snapshot before) (pcsi_snapshot after) (loc, f) v /\
-        pcsi_state_inv after;
-
-    pcsi_alloc_unchanged :
-      forall h sigma o V,
-        pcsi_state_inv (mkPicoCoreState h sigma) ->
-        let before := mkPicoCoreState h sigma in
-        let after := mkPicoCoreState
-          (h ++ [o]) (pico_core_alloc_weak sigma o V) in
-        pcsi_object after = pcsi_object before /\
-        pcsi_snapshot after = pcsi_snapshot before /\
-        pcsi_state_inv after
-  }.
-
-  Lemma pico_core_semimm_cache_read_from_history :
-    forall M state V addr v V' k,
-      pcsi_state_inv M state ->
-      wm_read (pcs_weak state) V addr v V' ->
-      pico_core_cache_field P A addr = Some k ->
-      PicoCoreCacheReadStep P A (pcsi_snapshot M state) addr v.
-  Proof.
-    intros M state V addr v V' k Hstate Hread Hfield.
-    destruct (wm_read_from_history _ _ _ _ _ Hread)
-      as (msg & Hmessage & Hvalue).
-    subst v.
-    assert (Hwritten :
-      List.In (msg_val msg) (values_written_to (pcs_weak state) addr)).
-    {
-      unfold values_written_to.
-      eapply in_map.
-      exact Hmessage.
-    }
-    destruct
-      (pcsi_cache_history_covers M state addr k (msg_val msg)
-        Hstate Hfield Hwritten)
-      as (cv & Hconvert & Hsnapshot).
-    exists k, cv.
-    repeat split; assumption.
-  Qed.
+  Local Notation PicoCoreSemImmInstantiation :=
+    (PicoCoreSemImmInstantiation P Stable a A).
+  Local Notation pcsi_state_inv := (pcsi_state_inv P Stable a A).
+  Local Notation pcsi_object := (pcsi_object P Stable a A).
+  Local Notation pcsi_snapshot := (pcsi_snapshot P Stable a A).
+  Local Notation pcsi_abstract_field := (pcsi_abstract_field P Stable a A).
+  Local Notation pcsi_stable := (pcsi_stable P Stable a A).
+  Local Notation pcsi_cache_history_covers := (pcsi_cache_history_covers P Stable a A).
+  Local Notation pcsi_unrelated_write_effect := (pcsi_unrelated_write_effect P Stable a A).
+  Local Notation pcsi_valid_cache_write_effect := (pcsi_valid_cache_write_effect P Stable a A).
+  Local Notation pcsi_alloc_unchanged := (pcsi_alloc_unchanged P Stable a A).
+  Local Notation pico_core_semimm_cache_read_from_history := (pico_core_semimm_cache_read_from_history P Stable a A).
 
   Definition pico_core_semimm_worldI
       (M : PicoCoreSemImmInstantiation)

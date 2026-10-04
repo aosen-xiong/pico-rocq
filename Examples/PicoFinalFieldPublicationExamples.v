@@ -2,15 +2,15 @@ From Stdlib Require Import List.
 Import ListNotations.
 
 Require Import Syntax Helpers DerivedCache Core.GenericDerivedCache.
-Require Import Examples.PicoIfZeroCacheExamples
-  Examples.PicoConcreteHashModel
+Require Import Examples.PicoIfZeroCache
+  Examples.PicoConcreteHashProvider
   Examples.PicoSemanticConcurrencyExamples
   Examples.PicoSemanticConcurrencySafety
   Examples.PicoJamHashAdequacy.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
   PICOBridge.PicoSemanticConcurrency PICOBridge.PicoJamSimulation
   PICOBridge.PicoStableAbsPreservation PICOBridge.PicoFinalFieldPublication
-  PICOBridge.PicoIrisSemImmLogicalRelation.
+  PICOBridge.PicoCoreSemImm.
 Require Import MemoryModels.JMM.FinalFieldPublication.
 Require Import MemoryModels.JAM.JamLegality.
 

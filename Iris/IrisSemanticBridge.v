@@ -46,20 +46,8 @@ Section iris_semantic_bridge.
       (snap : CacheHistorySnapshot P) : iProp Σ :=
     StableAbsI Stable o a ∗ CacheHistI γ a snap.
 
-(** Abstract read side condition for the Iris protocol.  It states that the
-    observed value came from the cache-field history snapshot. *)
-  Definition CacheReadStep
-      (snap : CacheHistorySnapshot P) k (v : cache_val P k) : Prop :=
-    In v (snap k).
-
-(** Abstract write side condition for the Iris protocol.  It states both that
-    the written value is valid for the cache protocol and that the post-snapshot
-    is a valid extension of the pre-snapshot. *)
-  Definition CacheWriteStep
-      a (snap snap' : CacheHistorySnapshot P)
-      k (v : cache_val P k) : Prop :=
-    cache_valid P a k v /\
-    CacheHistSnapshotValidExtension P snap snap' a.
+  Local Notation CacheReadStep := (CacheReadStep P).
+  Local Notation CacheWriteStep := (CacheWriteStep P).
 
   Global Instance stable_absI_persistent {Obj : Type}
       (Stable : StableAbs Obj AbsVal) o a :

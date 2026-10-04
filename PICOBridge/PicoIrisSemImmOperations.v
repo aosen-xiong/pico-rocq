@@ -2,6 +2,7 @@ From iris.program_logic Require Import weakestpre ownp.
 From iris.proofmode Require Import proofmode.
 
 Require Import Syntax Helpers Typing Bigstep ViewpointAdaptation.
+Require Export PICOBridge.PicoCoreSemImm.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
   PICOBridge.PicoIrisTypingSupport.
 Require Import Core.GenericCacheProtocol Iris.GenericCacheGhostState
@@ -21,6 +22,12 @@ Section pico_core_semimm_operations.
   Context {AbsVal Obj : Type}.
   Context (P : CacheProtocol AbsVal).
   Context `{!genericCacheG P Σ}.
+
+  Local Notation PicoCoreCacheAdapter := (PicoCoreCacheAdapter P).
+  Local Notation pico_core_cache_field := (pico_core_cache_field P).
+  Local Notation pico_core_cache_value := (pico_core_cache_value P).
+  Local Notation PicoCoreCacheReadStep := (PicoCoreCacheReadStep P).
+  Local Notation PicoCoreCacheWriteStep := (PicoCoreCacheWriteStep P).
 
   (** Lift one non-value CESK control state under [MaybeStuck].  Weak reads do
       not provide a global progress witness: the memory interface supplies the
@@ -64,36 +71,6 @@ Section pico_core_semimm_operations.
         simpl.
         iFrame.
   Qed.
-
-(** Adapter from concrete PICO field addresses and values to a generic cache
-    protocol.  The LR keeps this explicit because the generic cache theorem is
-    intentionally independent of PICO's concrete field identifiers and value
-    syntax. *)
-  Record PicoCoreCacheAdapter : Type := {
-    pico_core_cache_field :
-      FieldAddr -> option (cache_field P);
-    pico_core_cache_value :
-      forall k : cache_field P, Syntax.value -> option (cache_val P k)
-  }.
-
-  Definition PicoCoreCacheReadStep
-      (A : PicoCoreCacheAdapter)
-      (snap : CacheHistorySnapshot P)
-      (addr : FieldAddr) (v : Syntax.value) : Prop :=
-    exists k (cv : cache_val P k),
-      pico_core_cache_field A addr = Some k /\
-      pico_core_cache_value A k v = Some cv /\
-      CacheReadStep P snap k cv.
-
-  Definition PicoCoreCacheWriteStep
-      (A : PicoCoreCacheAdapter)
-      (a : AbsVal)
-      (snap snap' : CacheHistorySnapshot P)
-      (addr : FieldAddr) (v : Syntax.value) : Prop :=
-    exists k (cv : cache_val P k),
-      pico_core_cache_field A addr = Some k /\
-      pico_core_cache_value A k v = Some cv /\
-      CacheWriteStep P a snap snap' k cv.
 
   Lemma pico_core_cache_read_semimmI
       (A : PicoCoreCacheAdapter)

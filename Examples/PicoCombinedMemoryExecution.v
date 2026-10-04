@@ -2,13 +2,13 @@ From Stdlib Require Import List PeanoNat.
 Import ListNotations.
 
 Require Import Syntax Typing Core.GenericDerivedCache.
-Require Import Examples.PicoIfZeroCacheExamples Examples.PicoConcreteHashModel
+Require Import Examples.PicoIfZeroCache Examples.PicoConcreteHashProvider
   Examples.PicoSemanticConcurrencyExamples
   Examples.PicoSemanticConcurrencySafety Examples.PicoJamHashAdequacy
   Examples.PicoFinalFieldPublicationExamples
   Examples.PicoConstructionPublicationExamples.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoConstructionPublication
-  PICOBridge.PicoSemanticConcurrency PICOBridge.PicoIrisSemImmLogicalRelation
+  PICOBridge.PicoSemanticConcurrency PICOBridge.PicoCoreSemImm
   PICOBridge.PicoJamSimulation.
 Require Import MemoryModels.JAM.JamEvents MemoryModels.JAM.JamHistory.
 Require Import MemoryModels.JMM.FinalFieldPublication

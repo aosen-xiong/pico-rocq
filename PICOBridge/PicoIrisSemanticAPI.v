@@ -3,6 +3,7 @@ From iris.proofmode Require Import proofmode.
 
 Require Import Syntax Helpers Subtyping Typing Bigstep.
 Require Import Core.GenericCacheProtocol.
+Require Export PICOBridge.PicoCoreSemImm.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
   PICOBridge.PicoIrisCoreInvariant PICOBridge.PicoIrisCoreWP
   PICOBridge.PicoIrisResourceLogicalRelation
@@ -16,29 +17,6 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
     by logical approaches to type soundness: clients use the semantic contract,
     while an unsafe or concurrent implementation is verified once at the API
     boundary. *)
-
-Record PicoSemanticMethodContract : Type := {
-  psmc_pre : r_env -> pico_core_state -> Prop;
-  psmc_post : r_env -> pico_core_val -> Prop;
-}.
-
-(** Evidence exported at a successful callable-method return.  This is the
-    normalized bridge between a method-specific functional contract and the
-    ordinary PICO return-transfer theorem. *)
-Definition PicoCallableReturnEvidence
-    (CT : class_table) (entry_heap : heap) (entry_receiver : Loc)
-    (mdef : method_def) (callee_done : r_env)
-    (final_state : pico_core_state) (returned : value) : Prop :=
-  exists body_sGamma' body_ret_type,
-    static_getType body_sGamma' (mreturn (mbody mdef)) =
-      Some body_ret_type /\
-    qualified_type_subtype CT body_ret_type (mret (msignature mdef)) /\
-    pico_core_typed_env CT body_sGamma' callee_done
-      (pcs_heap final_state) /\
-    get_this_var_mapping (vars callee_done) = Some entry_receiver /\
-    pico_core_heap_types_extend entry_heap (pcs_heap final_state) /\
-    pico_core_lr_state CT final_state /\
-    runtime_getVal callee_done (mreturn (mbody mdef)) = Some returned.
 
 Section pico_semantic_api.
   Context `{Hmem : CacheMemoryModel}.

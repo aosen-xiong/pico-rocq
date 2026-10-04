@@ -2,8 +2,8 @@ From Stdlib Require Import List PeanoNat Lia.
 Import ListNotations.
 
 Require Import Syntax Helpers Bigstep.
-Require Import Examples.CacheProtocolDiversity Examples.PicoIfZeroCacheExamples
-  Examples.PicoConcreteHashModel Examples.PicoSemanticConcurrencyExamples.
+Require Import Examples.CacheProtocolDiversity Examples.PicoIfZeroCache
+  Examples.PicoConcreteHashProvider Examples.PicoSemanticConcurrencyExamples.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage.
 
 (** * Concrete CESK Execution of an Offset-Encoded Cache

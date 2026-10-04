@@ -3,15 +3,15 @@ Import ListNotations.
 
 Require Import Syntax Helpers.
 Require Import Core.GenericDerivedCache.
-Require Import Examples.PicoIfZeroCacheExamples
-  Examples.PicoSemanticCacheAPIExamples
-  Examples.PicoConcreteHashModel
+Require Import Examples.PicoIfZeroCache
+  Examples.PicoHashMethod
+  Examples.PicoConcreteHashProvider
   Examples.PicoSemanticConcurrencyExamples
   Examples.PicoSemanticConcurrencySafety.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoSemanticConcurrency
   PICOBridge.PicoCoreLanguage PICOBridge.PicoLabeledExecution
   PICOBridge.PicoJamSimulation
-  PICOBridge.PicoIrisSemImmLogicalRelation.
+  PICOBridge.PicoCoreSemImm.
 Require Import MemoryModels.JAM.JamEvents MemoryModels.JAM.JamHistory
   MemoryModels.JAM.JamRelations MemoryModels.JAM.JamLegality
   MemoryModels.JAM.JamFieldHistoryBridge.
