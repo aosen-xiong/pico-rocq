@@ -42,6 +42,7 @@ PICOBridge/PicoDerivationSmallStep.v
 PICOBridge/PicoCoreLanguage.v
 PICOBridge/PicoIrisCoreLanguage.v
 PICOBridge/PicoSemanticConcurrency.v
+PICOBridge/PicoCoreTypeSafety.v
 PICOBridge/PicoLabeledExecution.v
 PICOBridge/PicoJamSimulation.v
 PICOBridge/PicoStableAbsPreservation.v
@@ -50,7 +51,9 @@ PICOBridge/PicoConstructionPublication.v
 PICOBridge/PicoCoreInvariant.v
 PICOBridge/PicoIrisCoreInvariant.v
 PICOBridge/PicoIrisCoreWP.v
+PICOBridge/PicoCoreTypingSupport.v
 PICOBridge/PicoIrisTypingSupport.v
+PICOBridge/PicoCoreTyping.v
 PICOBridge/PicoIrisTypingFundamental.v
 PICOBridge/PicoIrisResourceLogicalRelation.v
 PICOBridge/PicoCoreSemImm.v
