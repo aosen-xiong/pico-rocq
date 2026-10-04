@@ -7,7 +7,7 @@ Require Import Examples.PicoIfZeroCacheExamples
   Examples.PicoSemanticConcurrencyExamples
   Examples.PicoSemanticConcurrencySafety
   Examples.PicoJamHashAdequacy.
-Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
+Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
   PICOBridge.PicoSemanticConcurrency PICOBridge.PicoJamSimulation
   PICOBridge.PicoStableAbsPreservation PICOBridge.PicoFinalFieldPublication
   PICOBridge.PicoIrisSemImmLogicalRelation.

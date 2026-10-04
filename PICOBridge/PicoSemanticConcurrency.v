@@ -2,7 +2,7 @@ From Stdlib Require Import List PeanoNat Lia.
 Import ListNotations.
 
 Require Import Syntax Helpers Typing Bigstep.
-Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage.
+Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage.
 
 (** * Semantic Concurrency for Sequential PICO
 

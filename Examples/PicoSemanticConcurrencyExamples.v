@@ -6,7 +6,7 @@ Require Import Core.GenericDerivedCache.
 Require Import Examples.PicoIfZeroCacheExamples
   Examples.PicoSemanticCacheAPIExamples
   Examples.PicoConcreteHashModel.
-Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
+Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
   PICOBridge.PicoIrisSemImmLogicalRelation PICOBridge.PicoSemanticConcurrency
   PICOBridge.PicoStableAbsPreservation.
 Require Import PICOBridge.PicoDerivationNoninterference

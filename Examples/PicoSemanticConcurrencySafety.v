@@ -7,7 +7,7 @@ Require Import Examples.PicoIfZeroCacheExamples
   Examples.PicoSemanticCacheAPIExamples
   Examples.PicoConcreteHashModel
   Examples.PicoSemanticConcurrencyExamples.
-Require Import PICOBridge.PicoIrisCoreLanguage
+Require Import PICOBridge.PicoCoreLanguage
   PICOBridge.PicoMemoryModel PICOBridge.PicoIrisSemImmLogicalRelation
   PICOBridge.PicoSemanticConcurrency PICOBridge.PicoStableAbsPreservation
   PICOBridge.PicoDerivationSmallStep.

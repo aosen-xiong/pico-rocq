@@ -3,7 +3,7 @@ Import ListNotations.
 
 Require Import Syntax Helpers Typing Bigstep DerivedCache
   Core.GenericDerivedCache.
-Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
+Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
   PICOBridge.PicoSemanticConcurrency.
 
 (** * PICO Stable Abstractions across CESK and Pool Executions

@@ -2,7 +2,7 @@ From Stdlib Require Import List PeanoNat Lia.
 Import ListNotations.
 
 Require Import Syntax Helpers Typing Bigstep DerivedCache ViewpointAdaptation.
-Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
+Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
   PICOBridge.PicoFinalFieldPublication.
 Require Import MemoryModels.JMM.FinalFieldPublication.
 

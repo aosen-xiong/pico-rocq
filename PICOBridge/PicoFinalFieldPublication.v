@@ -2,7 +2,7 @@ From Stdlib Require Import List.
 Import ListNotations.
 
 Require Import Syntax Helpers Bigstep DerivedCache Core.GenericDerivedCache.
-Require Import PICOBridge.PicoIrisCoreLanguage
+Require Import PICOBridge.PicoCoreLanguage
   PICOBridge.PicoStableAbsPreservation.
 Require Import MemoryModels.JMM.FinalFieldPublication.
 

@@ -1,7 +1,7 @@
 From Stdlib Require Import List.
 Import ListNotations.
 
-Require Import Syntax PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage
+Require Import Syntax PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
   PICOBridge.PicoSemanticConcurrency.
 
 (** * Access-Labeled PICO Pool Executions

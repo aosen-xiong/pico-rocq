@@ -4,7 +4,7 @@ Import ListNotations.
 Require Import Syntax Helpers Bigstep.
 Require Import Core.GenericCacheProtocol.
 Require Import Examples.CacheProtocolDiversity.
-Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoIrisCoreLanguage.
+Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage.
 
 (** * Operational Witnesses for Protocol Diversity
 

@@ -5,7 +5,7 @@ Require Import Syntax Helpers Typing Subtyping Bigstep Properties Preservation.
 Require Import Reachability AbstractStatePreservation.
 Require DerivedCache.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCacheTyping
-  PICOBridge.PicoIrisCoreLanguage PICOBridge.PicoIrisCoreInvariant
+  PICOBridge.PicoCoreLanguage PICOBridge.PicoCoreInvariant
   PICOBridge.PicoDerivationNoninterference PICOBridge.PicoDerivationCache.
 
 (** * Small-Step Noninterference for Derivation Methods

@@ -9,7 +9,7 @@ Require Import Examples.PicoIfZeroCacheExamples
   Examples.PicoSemanticConcurrencyExamples
   Examples.PicoSemanticConcurrencySafety.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoSemanticConcurrency
-  PICOBridge.PicoIrisCoreLanguage PICOBridge.PicoLabeledExecution
+  PICOBridge.PicoCoreLanguage PICOBridge.PicoLabeledExecution
   PICOBridge.PicoJamSimulation
   PICOBridge.PicoIrisSemImmLogicalRelation.
 Require Import MemoryModels.JAM.JamEvents MemoryModels.JAM.JamHistory
