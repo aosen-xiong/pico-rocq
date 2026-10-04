@@ -498,7 +498,7 @@ Section concrete_hash_small_step.
       (Int hash_value) Htable Hready Hrecv Hclosed Habs Hst0 Hst Hderived).
   Qed.
 
-  (** The Iris hash protocol is the derivation-defined protocol: a cache
+  (** The hash protocol is the derivation-defined protocol: a cache
       value is valid for the provider exactly when it is empty or is what the
       derivation's small-step run returns in the current state. *)
   Theorem pico_concrete_hash_cache_valid_is_derivation_value :

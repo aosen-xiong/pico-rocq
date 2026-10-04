@@ -13,8 +13,7 @@ Require Import Syntax Helpers Typing Bigstep ViewpointAdaptation
 (** * The PICO Core Machine
 
     A continuation-based small-step semantics for PICO statements over a
-    heap and weak field histories.  This file uses no Iris; the Iris language
-    instance built on it is in [PicoIrisCoreLanguage]. *)
+    heap and weak field histories. *)
 
 Record pico_core_state := mkPicoCoreState {
   pcs_heap : heap;
@@ -61,7 +60,7 @@ Definition pico_core_alloc_weak
 
 (** Agreement of heap allocation and runtime types. Field-value/history
     agreement is the stronger [pico_core_histories_initialized] invariant in
-    [PicoIrisCoreInvariant]. *)
+    [PicoCoreInvariant]. *)
 Definition heap_wm_type_agree (h : heap) (sigma : wm_state) : Prop :=
   length h = length (wm_objs sigma) /\
   forall loc o,

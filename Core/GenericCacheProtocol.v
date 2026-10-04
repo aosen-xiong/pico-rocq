@@ -3,7 +3,7 @@ Import ListNotations.
 
 (** * Generic Trace-Robust Cache Protocols
 
-    This file is intentionally independent of PICO, Java, and Iris.  It states
+    This file is intentionally independent of PICO and Java.  It states
     the pure semantic core of the derived-cache argument:
 
     - a provider has a stable abstraction [StableAbs];
@@ -12,8 +12,7 @@ Import ListNotations.
     - every cache-read trace admitted by the memory interface is valid; and
     - a trace-robust method refines pure recomputation.
 
-    Later files instantiate this interface for the current PICO weak-memory
-    shell and expose Iris-facing wrappers. *)
+    Later files instantiate this interface for the PICO core machine. *)
 
 (** [StableAbs Obj AbsVal] is the provider-side semantic immutability predicate:
     object [o] represents the stable abstract value [a].  The generic theory
@@ -57,8 +56,7 @@ Definition CacheHistory {Obj AbsVal : Type} (P : CacheProtocol AbsVal) : Type :=
   Obj -> forall k : cache_field P, list (cache_val P k).
 
 (** A snapshot is the object-local view of a [CacheHistory].  Snapshot lemmas
-    are useful for Iris state interpretations, where a single object/config is
-    usually the owned resource. *)
+    are useful for provider invariants, which describe a single object. *)
 Definition CacheHistorySnapshot {AbsVal : Type}
     (P : CacheProtocol AbsVal) : Type :=
   forall k : cache_field P, list (cache_val P k).
@@ -544,7 +542,7 @@ Proof.
 Qed.
 
 (** Snapshot form of [cache_safe_method_writes_history_valid_extension], used
-    by the Iris state-interpretation layer. *)
+    by provider invariants. *)
 Theorem cache_safe_method_writes_snapshot_valid_extension :
   forall {AbsVal Args Result : Type}
     (P : CacheProtocol AbsVal)

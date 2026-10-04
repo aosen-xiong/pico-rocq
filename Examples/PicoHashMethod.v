@@ -11,8 +11,7 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
 (** * Hash Cache as a Bespoke Semantic API
 
     The local-copy trace proof supplies the functional half of the API
-    boundary.  A concrete source method is exported only after its body has
-    also been proved to inhabit the Iris method contract below. *)
+    boundary. *)
 
 Definition pico_hash_decode_args (_ : r_env) : option unit := Some tt.
 

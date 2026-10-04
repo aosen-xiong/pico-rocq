@@ -11,7 +11,7 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
 
     Continuation typing, the typed postcondition of each kind of machine
     step, the typing of call frames and returns, and the stability of typing
-    under heap growth.  This file uses no Iris. *)
+    under heap growth. *)
 
 Section pico_typing_fundamental_ownp_pure.
   Context `{Hmem : CacheMemoryModel}.

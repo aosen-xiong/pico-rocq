@@ -18,11 +18,9 @@ AXIOM_NAME_RE = re.compile(
     re.MULTILINE,
 )
 
-# Iris's proof mode relies on the standard library's dependent functional
-# extensionality.  No other global assumption is accepted by this audit.
-ALLOWED_FOUNDATIONAL_AXIOMS = {
-    "FunctionalExtensionality.functional_extensionality_dep",
-}
+# No global assumption is accepted by this audit: every public result must be
+# closed under the global context.
+ALLOWED_FOUNDATIONAL_AXIOMS: set[str] = set()
 
 QUALIFIED_NAME_RE = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)+$"
@@ -206,9 +204,8 @@ def main() -> int:
 
     print(
         f"All {len(manifest)} manifest-listed public results are closed "
-        "under the global context or depend only on "
-        + ", ".join(sorted(ALLOWED_FOUNDATIONAL_AXIOMS))
-        + "; the manifest matches every source Theorem declaration."
+        "under the global context; the manifest matches every source "
+        "Theorem declaration."
     )
     return 0
 

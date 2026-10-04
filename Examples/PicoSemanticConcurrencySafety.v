@@ -586,9 +586,8 @@ Proof.
 Qed.
 
 (** The invariant above is definitionally the state interpretation supplied
-    by the concrete [PicoCoreSemImmInstantiation].  This spelling exposes the
-    connection to the Iris [SemImmI] provider without changing the pure pool
-    semantics or claiming Java/JMM adequacy. *)
+    by the concrete [PicoCoreSemImmInstantiation].  It does not claim Java/JMM
+    adequacy. *)
 Theorem pico_two_hash_invocations_semimm_benign_race :
   @pico_semantic_benign_race history_cache_memory_model
     pico_hash_concurrent_CT pico_hash_concurrent_initial_pool

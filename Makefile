@@ -119,13 +119,13 @@ alectryon-doc: coq
 	  '  <ul>' \
 	  '    <li><a href="Core.GenericCacheProtocol.html">Generic cache protocol</a></li>' \
 	  '    <li><a href="Core.GenericDerivedCache.html">Derived-cache instance</a></li>' \
-	  '    <li><a href="Iris.GenericCacheGhostState.html">Cache ghost state</a></li>' \
-	  '    <li><a href="Iris.IrisSemanticBridge.html">SemImm Iris bridge</a></li>' \
-	  '    <li><a href="PICOBridge.PicoIrisCoreLanguage.html">PICO CESK language</a></li>' \
-	  '    <li><a href="PICOBridge.PicoIrisResourceLogicalRelation.html">Resource logical relation</a></li>' \
-	  '    <li><a href="PICOBridge.PicoIrisSemanticAPI.html">Semantic method API</a></li>' \
-	  '    <li><a href="Examples.PicoConcreteHashModel.html">Concrete hash provider</a></li>' \
-	  '    <li><a href="Examples.PicoHashExecutionTrace.html">Positive and negative execution traces</a></li>' \
+	  '    <li><a href="Core.RelyGuarantee.html">Rely-guarantee specification</a></li>' \
+	  '    <li><a href="PICOBridge.PicoCoreLanguage.html">PICO CESK language</a></li>' \
+	  '    <li><a href="PICOBridge.PicoSemanticConcurrency.html">Invocation pool and parallel rule</a></li>' \
+	  '    <li><a href="PICOBridge.PicoCoreTypeSafety.html">Type safety under interleaving</a></li>' \
+	  '    <li><a href="Examples.PicoConcreteHashProvider.html">Concrete hash provider</a></li>' \
+	  '    <li><a href="Examples.PicoSemanticConcurrencySafety.html">Concurrent hash calls</a></li>' \
+	  '    <li><a href="Examples.PicoHashExecution.html">Positive and negative execution traces</a></li>' \
 	  '  </ul>' \
 	  '</body>' \
 	  '</html>' \

@@ -11,7 +11,7 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
 
     The local-copy method's hit and miss executions produce the reads and
     writes of the trace interpreter, and the double-read method executes the
-    bad trace to completion.  This file uses no Iris. *)
+    bad trace to completion. *)
 
 Section hash_trace_execution.
   Context `{CacheMemoryModel}.

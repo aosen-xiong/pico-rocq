@@ -7,7 +7,7 @@ Require Import Core.GenericCacheProtocol Core.CacheLRVerticalSlice.
 
     These examples exercise protocol features not present in the String-like
     hash instance: offset sentinel encodings and independently stale fields.
-    They remain independent of PICO and Iris so that the reusable semantic
+    They remain independent of PICO so that the reusable semantic
     obligations are visible directly. *)
 
 (** ** Offset-Encoded Numeric Cache *)

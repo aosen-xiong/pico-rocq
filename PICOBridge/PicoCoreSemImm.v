@@ -12,7 +12,7 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
     generic cache protocol: an adapter maps concrete field addresses and
     values to protocol fields and values, and an instantiation supplies the
     state invariant together with its preservation by unrelated writes, valid
-    cache writes and allocation.  This file uses no Iris. *)
+    cache writes and allocation. *)
 
 Section pico_core_cache_adapter.
   Context {AbsVal : Type}.

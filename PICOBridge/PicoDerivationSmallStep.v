@@ -12,7 +12,7 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCacheTyping
 
     [PicoDerivationNoninterference] proves noninterference for the big-step
     semantics.  This file proves it for the continuation-based core language
-    used by the Iris model and the invocation-pool scheduler, where a field
+    used by the invocation-pool scheduler, where a field
     read returns a value from the field's weak history.
 
     Two facts drive the proof.  A derivation performs no field write and no

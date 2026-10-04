@@ -16,7 +16,7 @@ Top-level theorem entry points:
 - `WFNOMutationEXP.v`: `well_typed_no_mutation_exp`
 
 The semantic-immutability and derived-cache development built on this calculus
-(`Core/`, `Iris/`, `PICOBridge/`, `MemoryModels/`, `Examples/`, and
+(`Core/`, `PICOBridge/`, `MemoryModels/`, `Examples/`, and
 `DerivedCache.v`) is described in
 [SEMANTIC_IMMUTABILITY.md](SEMANTIC_IMMUTABILITY.md).
 
@@ -45,7 +45,7 @@ The semantic-immutability and derived-cache development built on this calculus
 | Theorem 4 support | Readonly field-write safety | Receiver expression has static type `RO`; field-write statement evaluates successfully in `ReadonlyState` or `TransitiveState` scope | Protected field of the readonly-referenced object is unchanged | `readonly_field_write_preservation` in [ReadonlyStatePreservation.v](ReadonlyStatePreservation.v) |
 | Theorem 4, TS clause | Transitive-state preservation | Method call occurs in `TransitiveState` scope; receiver and all parameters are safe | Each protected object still exists with the same runtime type, and every field retains its entry value | `transitive_state_preservation` in [TransitiveStatePreservation.v](TransitiveStatePreservation.v) |
 | Proof-hygiene scan | Submitted proof sources do not use the forbidden commands scanned by the artifact | Every submitted `.v` file excludes literal `Axiom`, `Admitted`, and `admit` | Mechanical forbidden-command scan passes | [scripts/check-no-axioms-admits.py](scripts/check-no-axioms-admits.py) via `make check` |
-| Kernel-assumption audit | Public results do not depend on global axioms | The explicit [public-theorems.txt](scripts/public-theorems.txt) manifest is checked against every source `Theorem`, then each fully qualified theorem, lemma, or corollary entry is inspected with `Print Assumptions` | The manifest and sources agree; every listed PICO result is closed under the global context, and the Iris-based semantic-immutability results depend at most on `FunctionalExtensionality.functional_extensionality_dep`, which Iris proof mode uses | [scripts/check-public-assumptions.py](scripts/check-public-assumptions.py) via `make check` |
+| Kernel-assumption audit | Public results do not depend on global axioms | The explicit [public-theorems.txt](scripts/public-theorems.txt) manifest is checked against every source `Theorem`, then each fully qualified theorem, lemma, or corollary entry is inspected with `Print Assumptions` | The manifest and sources agree; every listed result is closed under the global context | [scripts/check-public-assumptions.py](scripts/check-public-assumptions.py) via `make check` |
 
 ## Paper/Formalization Notes
 

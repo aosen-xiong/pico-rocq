@@ -8,7 +8,7 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage.
 (** * Typed Runtime Values and Environments
 
     Pure facts about typed runtime values and environments of the core
-    machine.  This file uses no Iris. *)
+    machine. *)
 
 Section pico_typing_support_pure.
   Context `{Hmem : CacheMemoryModel}.
