@@ -2,7 +2,7 @@ From Stdlib Require Import List Lia.
 Import ListNotations.
 
 Require Import Syntax Helpers Typing Subtyping Bigstep Properties Preservation
-  ViewpointAdaptation.
+  ViewpointAdaptation WFNOMutationEXP.
 Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage
   PICOBridge.PicoCoreInvariant PICOBridge.PicoCoreTypingSupport
   PICOBridge.PicoCoreTyping PICOBridge.PicoSemanticConcurrency.
@@ -474,3 +474,455 @@ Section typed_histories.
     apply histories_typed_typed_histories. exact Hhist.
   Qed.
 End typed_histories.
+
+(** * Thread typing
+
+    A running thread is typed when its statement is typed, its environment is
+    typed in the current heap, and its continuation is typed.  A call frame
+    remembers the typing facts of the call that pushed it, taken in the heap
+    at the time of the call, because the return step needs them to adapt the
+    returned value to the caller's viewpoint.  The heap may have grown since:
+    the frame records only that runtime types were preserved, so it is stable
+    under every step of every thread. *)
+
+Section thread_typing.
+  Context `{Hmem : CacheMemoryModel}.
+  Context (CT : class_table).
+
+  Inductive cont_typed (h : heap) :
+      method_scope -> s_env -> Loc -> pico_core_cont -> Prop :=
+    | ContTyped_Nil : forall mt sGamma this,
+        cont_typed h mt sGamma this []
+    | ContTyped_Seq : forall mt sGamma sGamma' this s2 K,
+        stmt_typing CT sGamma mt s2 sGamma' ->
+        cont_typed h mt sGamma' this K ->
+        cont_typed h mt sGamma this (KSeq s2 :: K)
+    | ContTyped_Call : forall mt_callee body_sGamma' loc caller x K
+        h0 sGamma sGamma' mt y m args C mdef vals body_ret_type this_caller,
+        stmt_typing CT sGamma mt (SCall x m y args) sGamma' ->
+        pico_core_typed_env CT sGamma caller h0 ->
+        pico_core_heap_types_extend h0 h ->
+        runtime_getVal caller y = Some (Iot loc) ->
+        r_basetype h0 loc = Some C ->
+        FindMethodWithName CT C m mdef ->
+        runtime_lookup_list caller args = Some vals ->
+        static_getType body_sGamma' (mreturn (mbody mdef)) =
+          Some body_ret_type ->
+        qualified_type_subtype CT body_ret_type (mret (msignature mdef)) ->
+        get_this_var_mapping (vars caller) = Some this_caller ->
+        cont_typed h mt sGamma' this_caller K ->
+        cont_typed h mt_callee body_sGamma' loc
+          (KCall caller x (mreturn (mbody mdef)) :: K).
+
+  Definition thread_typed (h : heap) (e : pico_core_expr) : Prop :=
+    match e with
+    | CoreRun rGamma s _ K =>
+        exists sGamma mt sGamma' this,
+          stmt_typing CT sGamma mt s sGamma' /\
+          pico_core_typed_env CT sGamma rGamma h /\
+          get_this_var_mapping (vars rGamma) = Some this /\
+          cont_typed h mt sGamma' this K
+    | CoreDone r _ _ => r <> MUTATIONEXP
+    end.
+
+  (** The shared-state invariant, and the guarantee of every typed step. *)
+  Definition typed_state_inv (S : pico_core_state) : Prop :=
+    histories_typed CT S /\
+    pico_core_state_wf S /\
+    wf_heap CT (pcs_heap S).
+
+  Definition typed_guar (S S' : pico_core_state) : Prop :=
+    pico_core_heap_types_extend (pcs_heap S) (pcs_heap S') /\
+    typed_state_inv S'.
+
+  Lemma typed_env_wf_heap :
+    forall sGamma rGamma h,
+      pico_core_typed_env CT sGamma rGamma h -> wf_heap CT h.
+  Proof.
+    intros sGamma rGamma h (qc & rcv & Hcfg & _).
+    destruct Hcfg as (_ & Hwf & _). exact Hwf.
+  Qed.
+
+  Lemma typed_env_wf_senv :
+    forall sGamma rGamma h,
+      pico_core_typed_env CT sGamma rGamma h -> wf_senv CT sGamma.
+  Proof.
+    intros sGamma rGamma h (qc & rcv & Hcfg & _).
+    destruct Hcfg as (_ & _ & _ & Hwf & _). exact Hwf.
+  Qed.
+
+  Lemma cont_typed_heap_types_extend :
+    forall h h' mt sGamma this K,
+      pico_core_heap_types_extend h h' ->
+      cont_typed h mt sGamma this K ->
+      cont_typed h' mt sGamma this K.
+  Proof.
+    intros h h' mt sGamma this K Hext Hcont.
+    induction Hcont.
+    - constructor.
+    - econstructor; eauto.
+    - econstructor; eauto.
+      eapply pico_core_heap_types_extend_trans; eauto.
+  Qed.
+
+  (** Stability: a typed thread stays typed when another thread steps. *)
+  Lemma thread_typed_stable :
+    forall e S S',
+      thread_typed (pcs_heap S) e ->
+      typed_guar S S' ->
+      thread_typed (pcs_heap S') e.
+  Proof.
+    intros e S S' Hthread [Hext (_ & _ & Hheap')].
+    destruct e as [rGamma s V K | r rGamma V]; [| exact Hthread].
+    destruct Hthread
+      as (sGamma & mt & sGamma' & this & Htyping & Henv & Hthis & Hcont).
+    exists sGamma, mt, sGamma', this.
+    repeat split; try assumption.
+    - eapply pico_core_typed_env_heap_types_extend; eauto.
+    - eapply cont_typed_heap_types_extend; eauto.
+  Qed.
+
+  (** A typed field write never fails the run-time assignability check. *)
+  Lemma typed_fldwrite_not_final :
+    forall sGamma sGamma' mt rGamma h x f y loc_x o a val_y,
+      stmt_typing CT sGamma mt (SFldWrite x f y) sGamma' ->
+      pico_core_typed_env CT sGamma rGamma h ->
+      runtime_getVal rGamma x = Some (Iot loc_x) ->
+      runtime_getObj h loc_x = Some o ->
+      sf_assignability_rel CT (rctype (rt_type o)) f a ->
+      runtime_getVal rGamma y = Some val_y ->
+      runtime_vpa_assignability (rqtype (rt_type o)) a = Final ->
+      False.
+  Proof.
+    intros sGamma sGamma' mt rGamma h x f y loc_x o a val_y
+      Htyping Henv Hx Hobj Hassign Hy Hfinal.
+    assert (Hcfg : wf_r_config CT sGamma rGamma h).
+    { destruct Henv as (qc & rcv & Hcfg & _). exact Hcfg. }
+    assert (Hfield : exists vf, getVal (fields_map o) f = Some vf).
+    { have Hwfobj := typed_env_wf_heap _ _ _ Henv loc_x
+        (runtime_getObj_dom _ _ _ Hobj).
+      unfold wf_obj in Hwfobj. rewrite Hobj in Hwfobj.
+      destruct Hwfobj as (_ & field_defs & Hcf & Hlen & _).
+      destruct Hassign as (fdef & Hlookup & _).
+      inversion Hlookup as [CT0 C0 fields0 f0 fdef0 Hcf0 Hget]; subst.
+      have Heq := collect_fields_deterministic_rel CT _ _ _ Hcf Hcf0.
+      subst fields0.
+      unfold getVal, gget in *.
+      destruct (nth_error (fields_map o) f) as [vf |] eqn:Hnth;
+        [eauto |].
+      apply nth_error_None in Hnth.
+      assert (Hlt : f < length field_defs)
+        by (apply nth_error_Some; congruence).
+      lia. }
+    destruct Hfield as [vf Hvf].
+    eapply well_typed_field_write_no_mutation_exp; eauto.
+    eapply SBS_FldWrite_MUTATIONEXP; eauto.
+  Qed.
+
+  (** The primitive statements: declaration, assignment, field write and
+      allocation. *)
+  Definition primitive_stmt (s : stmt) : Prop :=
+    match s with
+    | SLocal _ _ | SVarAss _ _ | SFldWrite _ _ _ | SNew _ _ _ _ => True
+    | _ => False
+    end.
+
+  Lemma primitive_step_post :
+    forall sGamma sGamma' mt s rGamma h sigma V K e' S',
+      primitive_stmt s ->
+      stmt_typing CT sGamma mt s sGamma' ->
+      pico_core_typed_env CT sGamma rGamma h ->
+      pico_core_state_wf (mkPicoCoreState h sigma) ->
+      histories_typed CT (mkPicoCoreState h sigma) ->
+      pico_core_step CT (CoreRun rGamma s V K) (mkPicoCoreState h sigma)
+        e' S' ->
+      pico_core_stmt_post CT sGamma' K e' S'.
+  Proof.
+    intros sGamma sGamma' mt s rGamma h sigma V K e' S'
+      Hprim Htyping Henv Hwf Hhist Hstep.
+    assert (Hlr : pico_core_lr_state CT (mkPicoCoreState h sigma))
+      by exact Hwf.
+    destruct s; simpl in Hprim; try contradiction.
+    - eapply pico_core_typed_local_step_post; eauto.
+    - destruct e.
+      + assert (sGamma' = sGamma) by (inversion Htyping; reflexivity).
+        subst sGamma'.
+        eapply pico_core_typed_assign_null_step_post; eauto.
+      + assert (sGamma' = sGamma) by (inversion Htyping; reflexivity).
+        subst sGamma'.
+        eapply pico_core_typed_assign_var_step_post; eauto.
+      + assert (sGamma' = sGamma) by (inversion Htyping; reflexivity).
+        subst sGamma'.
+        eapply pico_core_typed_assign_int_step_post; eauto.
+      + eapply pico_core_typed_varass_field_step_post; eauto.
+        intros loc_y val V' Hy Hread.
+        eapply pico_core_typed_env_after_assign_field_read; eauto.
+        apply histories_typed_reads_typed. exact Hhist.
+    - eapply pico_core_typed_fldwrite_step_post; eauto.
+    - eapply pico_core_typed_new_step_post; eauto.
+  Qed.
+
+  Lemma primitive_step_histories :
+    forall sGamma sGamma' mt s rGamma h sigma V K e' S',
+      primitive_stmt s ->
+      stmt_typing CT sGamma mt s sGamma' ->
+      pico_core_typed_env CT sGamma rGamma h ->
+      pico_core_state_wf (mkPicoCoreState h sigma) ->
+      histories_typed CT (mkPicoCoreState h sigma) ->
+      pico_core_step CT (CoreRun rGamma s V K) (mkPicoCoreState h sigma)
+        e' S' ->
+      histories_typed CT S'.
+  Proof.
+    intros sGamma sGamma' mt s rGamma h sigma V K e' S'
+      Hprim Htyping Henv Hwf Hhist Hstep.
+    assert (Hlr : pico_core_lr_state CT (mkPicoCoreState h sigma))
+      by exact Hwf.
+    destruct s; simpl in Hprim; try contradiction.
+    - inversion Hstep; subst; exact Hhist.
+    - inversion Hstep; subst; exact Hhist.
+    - eapply fldwrite_step_preserves_histories_typed; eauto.
+    - eapply new_step_preserves_histories_typed; eauto.
+  Qed.
+
+  Lemma primitive_step_done :
+    forall sGamma sGamma' mt s rGamma h sigma V K r rGamma' V' S',
+      primitive_stmt s ->
+      stmt_typing CT sGamma mt s sGamma' ->
+      pico_core_typed_env CT sGamma rGamma h ->
+      pico_core_step CT (CoreRun rGamma s V K) (mkPicoCoreState h sigma)
+        (CoreDone r rGamma' V') S' ->
+      S' = mkPicoCoreState h sigma /\ r <> MUTATIONEXP.
+  Proof.
+    intros sGamma sGamma' mt s rGamma h sigma V K r rGamma' V' S'
+      Hprim Htyping Henv Hstep.
+    inversion Hstep; subst; simpl in Hprim; try contradiction;
+      try (split; [reflexivity | discriminate]).
+    exfalso. eapply typed_fldwrite_not_final; eauto.
+  Qed.
+
+  Lemma primitive_step_receiver :
+    forall sGamma sGamma' mt s rGamma h sigma V K rGamma' s' V' K' S' this,
+      primitive_stmt s ->
+      stmt_typing CT sGamma mt s sGamma' ->
+      get_this_var_mapping (vars rGamma) = Some this ->
+      pico_core_step CT (CoreRun rGamma s V K) (mkPicoCoreState h sigma)
+        (CoreRun rGamma' s' V' K') S' ->
+      get_this_var_mapping (vars rGamma') = Some this.
+  Proof.
+    intros sGamma sGamma' mt s rGamma h sigma V K rGamma' s' V' K' S' this
+      Hprim Htyping Hthis Hstep.
+    inversion Hstep; subst; simpl in Hprim; try contradiction;
+      try exact Hthis.
+    - change (get_this_var_mapping
+        (vars (set_vars rGamma (vars rGamma ++ [default_value T]))) =
+        Some this).
+      rewrite get_this_var_mapping_update_vars_app_default. exact Hthis.
+    - inversion Htyping; subst.
+      rewrite get_this_var_mapping_update_vars_nonzero; eauto.
+    - inversion Htyping; subst.
+      rewrite get_this_var_mapping_update_vars_nonzero; eauto.
+    - inversion Htyping; subst.
+      rewrite get_this_var_mapping_update_vars_nonzero; eauto.
+    - inversion Htyping; subst.
+      rewrite get_this_var_mapping_update_vars_nonzero; eauto.
+    - inversion Htyping; subst.
+      rewrite get_this_var_mapping_update_vars_nonzero; eauto.
+  Qed.
+
+  Lemma classic_primitive :
+    forall s, primitive_stmt s \/ ~ primitive_stmt s.
+  Proof. intros []; simpl; auto. Qed.
+
+  (** ** Preservation
+
+      One step of a typed thread, in a state satisfying the invariant, meets
+      the guarantee and leaves the thread typed. *)
+  Theorem typed_step :
+    forall e S e' S',
+      typed_state_inv S ->
+      thread_typed (pcs_heap S) e ->
+      pico_core_step CT e S e' S' ->
+      typed_guar S S' /\ thread_typed (pcs_heap S') e'.
+  Proof.
+    intros e [h sigma] e' S' Hinv Hthread Hstep.
+    pose proof Hinv as (Hhist & Hwf & Hheap).
+    destruct e as [rGamma s V K | r rGamma V]; [| inversion Hstep].
+    destruct Hthread
+      as (sGamma & mt & sGamma' & this & Htyping & Henv & Hthis & Hcont).
+    simpl in *.
+    assert (Hsame : typed_guar (mkPicoCoreState h sigma)
+      (mkPicoCoreState h sigma)).
+    { split; [apply pico_core_heap_types_extend_refl | exact Hinv]. }
+    destruct (classic_primitive s) as [Hprim | Hnonprim].
+    - (* primitive statements *)
+      have Hpost := primitive_step_post _ _ _ _ _ _ _ _ _ _ _
+        Hprim Htyping Henv Hwf Hhist Hstep.
+      have Hhist' := primitive_step_histories _ _ _ _ _ _ _ _ _ _ _
+        Hprim Htyping Henv Hwf Hhist Hstep.
+      have Hext := pico_core_step_preserves_heap_types CT _ _ _ _ Hstep.
+      simpl in Hext.
+      destruct e' as [rGamma' s' V' K' | r rGamma' V'].
+      + inversion Hpost; subst.
+        have Hthis' := primitive_step_receiver _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+          Hprim Htyping Hthis Hstep.
+        split.
+        * split; [exact Hext |].
+          split; [exact Hhist' |].
+          split; [assumption |].
+          eapply typed_env_wf_heap; eauto.
+        * exists sGamma', mt, sGamma', this.
+          split; [constructor; eapply typed_env_wf_senv; eauto |].
+          split; [assumption |].
+          split; [exact Hthis' |].
+          eapply cont_typed_heap_types_extend; eauto.
+      + destruct (primitive_step_done _ _ _ _ _ _ _ _ _ _ _ _ _
+          Hprim Htyping Henv Hstep) as [-> Hr].
+        split; [exact Hsame | exact Hr].
+    - (* control statements *)
+      destruct s; simpl in Hnonprim; try contradiction.
+      + (* skip *)
+        assert (sGamma' = sGamma) by (inversion Htyping; reflexivity).
+        subst sGamma'.
+        inversion Hstep; subst.
+        * split; [exact Hsame | discriminate].
+        * split; [exact Hsame |].
+          inversion Hcont; subst.
+          do 4 eexists.
+          split; [eassumption |]. split; [eassumption |].
+          split; eassumption.
+        * split; [exact Hsame |].
+          inversion Hcont; subst.
+          match goal with
+          | Hc : stmt_typing CT _ _ (SCall x _ _ _) _ |- _ =>
+              rename Hc into Hcall
+          end.
+          match goal with
+          | Hk : cont_typed h _ _ _ K0 |- _ => rename Hk into Hrest
+          end.
+          assert (Hshape : sGamma' = sGamma0 /\ x <> 0)
+            by (inversion Hcall; subst; (split; [reflexivity | assumption])).
+          destruct Hshape as [Heq Hx0]. subst sGamma'.
+          assert (Henv' : pico_core_typed_env CT sGamma0
+            (set_vars caller (update x retval (vars caller))) h)
+            by (eapply pico_core_typed_resolved_method_return; eauto).
+          exists sGamma0, mt0, sGamma0, this_caller.
+          split; [constructor; eapply typed_env_wf_senv; eauto |].
+          split; [exact Henv' |].
+          split; [| assumption].
+          rewrite get_this_var_mapping_update_vars_nonzero; assumption.
+      + (* call *)
+        assert (sGamma' = sGamma) by (inversion Htyping; reflexivity).
+        subst sGamma'.
+        inversion Hstep; subst.
+        * split; [exact Hsame |].
+          edestruct (pico_core_typed_resolved_method_body CT)
+            as (body_sGamma' & body_ret_type & Hbody & Hret & Hretsub);
+            [exact Htyping | exact Henv | eassumption | eassumption
+            | eassumption | eassumption |].
+          exists (mreceiver (msignature mdef) :: mparams (msignature mdef)),
+            (mscope (msignature mdef)), body_sGamma', loc_y.
+          split; [exact Hbody |].
+          split; [eapply pico_core_typed_resolved_method_frame; eauto |].
+          split; [reflexivity |].
+          eapply ContTyped_Call; eauto.
+          apply pico_core_heap_types_extend_refl.
+        * split; [exact Hsame | discriminate].
+      + (* sequence *)
+        inversion Hstep; subst.
+        split; [exact Hsame |].
+        inversion Htyping; subst.
+        do 4 eexists.
+        split; [eassumption |]. split; [eassumption |].
+        split; [eassumption |].
+        econstructor; eauto.
+      + (* zero test *)
+        inversion Htyping; subst.
+        inversion Hstep; subst.
+        * split; [exact Hsame |].
+          exists sGamma, mt, sGamma', this.
+          split; [assumption |]. split; [assumption |]. split; assumption.
+        * split; [exact Hsame |].
+          exists sGamma, mt, sGamma', this.
+          split; [assumption |]. split; [assumption |]. split; assumption.
+        * split; [exact Hsame | discriminate].
+  Qed.
+End thread_typing.
+
+(** * Type safety under interleaving
+
+    The parallel rule lifts single-step preservation to any number of threads
+    under any interleaving.  Every thread relies on the others to preserve the
+    typed-state invariant and to keep runtime types, and guarantees the
+    same. *)
+
+Section typed_pool.
+  Context `{Hmem : CacheMemoryModel}.
+  Context (CT : class_table).
+
+  Definition typed_local (e : pico_core_expr) (S : pico_core_state) : Prop :=
+    thread_typed CT (pcs_heap S) e.
+
+  Definition typed_pool (cfg : pico_pool_config) : Prop :=
+    pool_rg_inv (typed_state_inv CT) typed_local cfg.
+
+  (** A typed statement started in a typed environment is a typed thread. *)
+  Lemma thread_typed_start :
+    forall sGamma mt s sGamma' rGamma h V,
+      stmt_typing CT sGamma mt s sGamma' ->
+      pico_core_typed_env CT sGamma rGamma h ->
+      thread_typed CT h (CoreRun rGamma s V []).
+  Proof.
+    intros sGamma mt s sGamma' rGamma h V Htyping Henv.
+    pose proof Henv as (qc & this & _ & Hthis & _).
+    exists sGamma, mt, sGamma', this.
+    split; [exact Htyping |]. split; [exact Henv |].
+    split; [exact Hthis | constructor].
+  Qed.
+
+  (** Preservation: a typed pool stays typed. *)
+  Theorem typed_pool_preservation :
+    forall cfg cfg',
+      typed_pool cfg ->
+      pico_pool_steps CT cfg cfg' ->
+      typed_pool cfg'.
+  Proof.
+    intros cfg cfg' Hpool Hsteps.
+    eapply (pool_rely_guarantee CT (typed_state_inv CT) typed_local
+      (typed_guar CT)); eauto.
+    - intros e S e' S' Hinv Hlocal Hstep.
+      exact (typed_step CT e S e' S' Hinv Hlocal Hstep).
+    - intros S S' _ [_ Hinv']. exact Hinv'.
+    - intros e S S' _ Hlocal Hguar.
+      exact (thread_typed_stable CT e S S' Hlocal Hguar).
+  Qed.
+
+  (** No thread of a typed pool ever raises the mutation exception: typed
+      code never fails the run-time assignability check, however the threads
+      interleave and whichever values their weak reads return. *)
+  Theorem typed_pool_no_mutation_exception :
+    forall cfg cfg' r rGamma V,
+      typed_pool cfg ->
+      pico_pool_steps CT cfg cfg' ->
+      List.In (CoreDone r rGamma V) (pool_threads cfg') ->
+      r <> MUTATIONEXP.
+  Proof.
+    intros cfg cfg' r rGamma V Hpool Hsteps Hin.
+    destruct (typed_pool_preservation cfg cfg' Hpool Hsteps) as [_ Hlocal].
+    rewrite Forall_forall in Hlocal.
+    exact (Hlocal _ Hin).
+  Qed.
+
+  (** Every value in every field history of a reachable state is well typed
+      for its field. *)
+  Theorem typed_pool_histories_typed :
+    forall cfg cfg',
+      typed_pool cfg ->
+      pico_pool_steps CT cfg cfg' ->
+      histories_typed CT (pool_state cfg').
+  Proof.
+    intros cfg cfg' Hpool Hsteps.
+    destruct (typed_pool_preservation cfg cfg' Hpool Hsteps)
+      as [(Hhist & _) _].
+    exact Hhist.
+  Qed.
+End typed_pool.
