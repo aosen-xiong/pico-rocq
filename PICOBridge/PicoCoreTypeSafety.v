@@ -395,4 +395,82 @@ Section typed_histories.
     - eapply field_value_ok_heap_types_extend; [exact Hext |].
       exact (Hhist loc f v Hin).
   Qed.
+
+  (** Viewpoint adaptation agrees between the heap and the reader: a value
+      admissible for a field of the receiver's runtime type is typable at the
+      field's type adapted through the receiver's static type. *)
+  Lemma field_qualifier_typable_read :
+    forall qv qrec qy fm qcontext,
+      qualifier_typable_heap qv (vpa_mutability_rec_fld qrec fm) ->
+      qualifier_typable_context qrec qy qcontext ->
+      qualifier_typable_context qv
+        (vpa_mutability_stype_fld_abstract_state qy fm) qcontext /\
+      qualifier_typable_context qv
+        (vpa_mutability_stype_fld_readonly_state qy fm) qcontext.
+  Proof.
+    intros qv qrec qy fm qcontext Hheap Hctx.
+    destruct qv, qrec, qy, fm, qcontext; simpl in *; try contradiction;
+      split; exact I.
+  Qed.
+
+  (** A value drawn from a typed history is well typed where it is read. *)
+  Lemma histories_typed_typed_histories :
+    forall h sigma,
+      histories_typed (mkPicoCoreState h sigma) ->
+      pico_core_typed_histories CT h sigma.
+  Proof.
+    intros h sigma Hhist sGamma mt rGamma x y f Tx Te loc v qcontext receiver
+      Henv Hexpr Hx Hsub Hy Hthis Hmut Hin.
+    destruct (Hhist loc f v Hin)
+      as (rt & field_defs & fdef & Hrt & Hcf & Hnth & Hok).
+    destruct Henv as (qc & rcv & Hcfg & Hthis' & Hmut' & Hvars).
+    rewrite Hthis in Hthis'. injection Hthis' as <-.
+    rewrite Hmut in Hmut'. injection Hmut' as <-.
+    assert (Hwfheap : wf_heap CT h) by (destruct Hcfg as (_ & Hwf & _); exact Hwf).
+    assert (Hfield : exists Ty C fDef,
+      static_getType sGamma y = Some Ty /\ sbase Ty = TRef C /\
+      sf_def_rel CT C f fDef /\
+      (sqtype Te = vpa_mutability_stype_fld_abstract_state (sqtype Ty)
+         (mutability (ftype fDef)) \/
+       sqtype Te = vpa_mutability_stype_fld_readonly_state (sqtype Ty)
+         (mutability (ftype fDef))) /\
+      sbase Te = f_base_type (ftype fDef)).
+    { inversion Hexpr; subst; do 3 eexists; repeat split; eauto. }
+    destruct Hfield as (Ty & C & fDef & HTy & Href & Hfdef & Hq & Hbase).
+    destruct (Hvars y Ty HTy) as (vy & Hvy & Htyped_y).
+    rewrite Hy in Hvy. injection Hvy as <-.
+    unfold r_type in Hrt.
+    destruct (runtime_getObj h loc) as [o |] eqn:Hobj;
+      [| rewrite Hobj in Hrt; discriminate].
+    rewrite Hobj in Hrt.
+    assert (Hrteq : rt = rt_type o) by congruence.
+    subst rt. clear Hrt.
+    have Heq := typed_receiver_field_def h qcontext Ty C loc o f fDef
+      field_defs fdef Htyped_y Href Hobj Hfdef Hcf Hnth.
+    subst fdef.
+    simpl in Hok.
+    destruct v as [| loc_v | n]; simpl.
+    - eapply pico_core_subtype_preserves_reference; [| exact Hsub].
+      destruct Hok as [D HD]. exists D. congruence.
+    - destruct Hok as (rqt & Hrqt & Hbsub & Hqual).
+      eapply wf_r_typable_subtype; [exact Hwfheap | | exact Hsub].
+      unfold wf_r_typable. rewrite Hrqt. split; [congruence |].
+      simpl in Htyped_y. unfold wf_r_typable, r_type in Htyped_y.
+      rewrite Hobj in Htyped_y. destruct Htyped_y as [_ Hqy].
+      destruct (field_qualifier_typable_read _ _ _ _ _ Hqual Hqy) as [Ha Hr].
+      destruct Hq as [-> | ->]; assumption.
+    - have Hbs := qualified_type_subtype_base_subtype CT _ _ Hsub.
+      rewrite Hbase Hok in Hbs.
+      exact (base_subtype_from_int _ _ Hbs).
+  Qed.
+
+  Lemma histories_typed_reads_typed :
+    forall h sigma,
+      histories_typed (mkPicoCoreState h sigma) ->
+      pico_core_reads_typed CT h sigma.
+  Proof.
+    intros h sigma Hhist.
+    apply pico_core_typed_histories_reads_typed.
+    apply histories_typed_typed_histories. exact Hhist.
+  Qed.
 End typed_histories.
