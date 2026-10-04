@@ -255,4 +255,144 @@ Section typed_histories.
       eapply field_value_ok_heap_types_extend; [exact Hext |].
       exact (Hhist loc f0 v Hin).
   Qed.
+
+  Lemma mapM_nth_error_inv :
+    forall {A B : Type} (g : A -> option B) l r n y,
+      mapM g l = Some r ->
+      nth_error r n = Some y ->
+      exists x, nth_error l n = Some x /\ g x = Some y.
+  Proof.
+    intros A B g l. induction l as [| x l IH]; intros r n y Hmap Hnth.
+    - simpl in Hmap. injection Hmap as <-. destruct n; discriminate.
+    - simpl in Hmap.
+      destruct (g x) as [y0 |] eqn:Hgx; [| discriminate].
+      destruct (mapM g l) as [ys |] eqn:Hrest; [| discriminate].
+      injection Hmap as <-.
+      destruct n as [| n]; simpl in Hnth.
+      + injection Hnth as <-. exists x. split; [reflexivity | exact Hgx].
+      + destruct (IH ys n y eq_refl Hnth) as (x' & Hx' & Hg').
+        exists x'. split; assumption.
+  Qed.
+
+  (** A [Null_a] constructor argument is passed only to a reference field:
+      the argument's type is a reference type, a subtype of the adapted
+      parameter type, which the well-formed constructor makes a subtype of
+      the field's type. *)
+  Lemma typed_new_null_argument_field :
+    forall sGamma sGamma' rGamma h mt x qc C args vals f field_defs fdef,
+      stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
+      pico_core_typed_env CT sGamma rGamma h ->
+      runtime_lookup_list rGamma args = Some vals ->
+      nth_error vals f = Some Null_a ->
+      CollectFields CT C field_defs ->
+      nth_error field_defs f = Some fdef ->
+      exists D, f_base_type (ftype fdef) = TRef D.
+  Proof.
+    intros sGamma sGamma' rGamma h mt x qc C args vals f field_defs fdef
+      Htyping Henv Hvals Hnull Hcf Hfdef.
+    have Hcfg := pico_core_typed_env_wf_config CT _ _ _ Henv.
+    have Hct : wf_class_table CT by (destruct Hcfg as (Hct & _); exact Hct).
+    inversion Htyping; subst.
+    match goal with
+    | Hl : constructor_sig_lookup CT C = Some ?cs,
+      Ha : static_getType_list _ args = Some ?ats,
+      Hs : Forall2 _ ?ats _ |- _ =>
+        rename Hl into Hconsig; rename Ha into Hargtypes; rename Hs into Harg_sub
+    end.
+    (* the argument at index f and its static type *)
+    destruct (mapM_nth_error_inv _ _ _ _ _ Hvals Hnull) as (a_f & Ha_f & Hval_f).
+    assert (Hlen_args : length argtypes = length args)
+      by exact (static_getType_list_preserves_length _ _ _ Hargtypes).
+    assert (Hf_args : f < length args)
+      by (apply nth_error_Some; rewrite Ha_f; discriminate).
+    destruct (nth_error argtypes f) as [T_f |] eqn:HT_f;
+      [| apply nth_error_None in HT_f; lia].
+    destruct (mapM_nth_error_inv _ _ _ _ _ Hargtypes HT_f) as (a_f' & Ha_f' & Hst_f).
+    rewrite Ha_f in Ha_f'. injection Ha_f' as <-.
+    destruct (pico_core_typed_env_lookup CT _ _ _ a_f T_f Henv Hst_f)
+      as (q & v & Hv & Htyped).
+    rewrite Hval_f in Hv. injection Hv as <-.
+    (* the adapted parameter type at index f is a reference type *)
+    destruct (Forall2_nth_error_left _ _ _ f T_f Harg_sub HT_f)
+      as (P_f & HP_f & Hsub_arg).
+    destruct (pico_core_subtype_preserves_reference CT T_f P_f Htyped Hsub_arg)
+      as (D1 & HD1).
+    rewrite nth_error_map in HP_f.
+    destruct (nth_error (cparams consig) f) as [p_f |] eqn:Hp_f;
+      [| discriminate].
+    simpl in HP_f. injection HP_f as <-. simpl in HD1.
+    (* the well-formed constructor relates the parameter to the field *)
+    have Hdom := constructor_sig_lookup_dom CT C consig Hconsig.
+    have Hwfc := constructor_lookup_wf CT C consig Hct Hdom Hconsig.
+    destruct Hwfc as (_ & _ & field_defs0 & Hcf0 & _ & HF2).
+    have Heq := collect_fields_deterministic_rel CT _ _ _ Hcf Hcf0.
+    subst field_defs0.
+    destruct (Forall2_nth_error_left _ _ _ f p_f HF2 Hp_f)
+      as (fdef0 & Hfdef0 & Hsub_fld).
+    rewrite Hfdef in Hfdef0. injection Hfdef0 as <-.
+    assert (Href_p : exists D0,
+      sbase (vpa_mutability_constructor_param (cqualifier consig) p_f) = TRef D0)
+      by (exists D1; exact HD1).
+    destruct (pico_core_subtype_preserves_reference CT _ _ Href_p Hsub_fld)
+      as (D & HD).
+    exists D. exact HD.
+  Qed.
+
+  (** A typed allocation keeps the histories typed.  The new object's
+      histories hold its initial field values, which the well-formed
+      post-heap makes admissible. *)
+  Lemma new_step_preserves_histories_typed :
+    forall sGamma sGamma' rGamma h sigma mt x qc C args V K e' S',
+      stmt_typing CT sGamma mt (SNew x qc C args) sGamma' ->
+      pico_core_typed_env CT sGamma rGamma h ->
+      pico_core_lr_state CT (mkPicoCoreState h sigma) ->
+      histories_typed (mkPicoCoreState h sigma) ->
+      pico_core_step CT (CoreRun rGamma (SNew x qc C args) V K)
+        (mkPicoCoreState h sigma) e' S' ->
+      histories_typed S'.
+  Proof.
+    intros sGamma sGamma' rGamma h sigma mt x qc C args V K e' S'
+      Htyping Henv Hlr Hhist Hstep.
+    have Hpost := pico_core_typed_new_step_post CT _ _ _ _ _ _ _ _ _ _ _ _
+      _ _ Htyping Henv Hlr Hstep.
+    inversion Hstep; subst.
+    match goal with
+    | Hl : runtime_lookup_list rGamma args = Some ?vs |- _ =>
+        rename Hl into Hvals
+    end.
+    inversion Hpost as [rG V0 st Henv' _ | |]; subst. simpl in Henv'.
+    have Hcfg' := pico_core_typed_env_wf_config CT _ _ _ Henv'.
+    have Hheap' : wf_heap CT
+      (h ++ [mkObj (mkruntime_type (vpa_mutability_object_creation qthisr qc) C)
+               vals])
+      by (destruct Hcfg' as (_ & Hheap' & _); exact Hheap').
+    set (o := mkObj (mkruntime_type (vpa_mutability_object_creation qthisr qc) C)
+      vals) in *.
+    have Hext := pico_core_heap_types_extend_alloc h o.
+    have Hagree : length h = length (wm_objs sigma).
+    { destruct Hlr as [[Hlen _] _]. exact Hlen. }
+    have Hobj_new : runtime_getObj (h ++ [o]) (length h) = Some o.
+    { unfold runtime_getObj. rewrite nth_error_app2; [| lia].
+      rewrite Nat.sub_diag. reflexivity. }
+    intros loc f v Hin. simpl in *.
+    unfold values_written_to, history_of, pico_core_alloc_weak in Hin.
+    simpl in Hin.
+    destruct (Nat.eqb loc (length (wm_objs sigma))) eqn:Hloc.
+    - apply Nat.eqb_eq in Hloc. rewrite <- Hagree in Hloc. subst loc.
+      destruct (nth_error vals f) as [v0 |] eqn:Hv0.
+      + simpl in Hin. destruct Hin as [<- | []].
+        eapply (wf_heap_field_value_ok (h ++ [o]) (length h) o f v0 Hheap'
+          Hobj_new Hv0).
+        intros -> field_defs fdef Hcf Hfdef. simpl in Hcf.
+        exact (typed_new_null_argument_field _ _ _ _ _ _ _ _ _ _ _ _ _
+          Htyping Henv Hvals Hv0 Hcf Hfdef).
+      + (* no history is recorded for a location that is not allocated *)
+        exfalso.
+        destruct (Hhist (length h) f v Hin) as (rt & _ & _ & Hrt & _).
+        unfold r_type, runtime_getObj in Hrt.
+        rewrite (proj2 (nth_error_None h (length h)) (le_n _)) in Hrt.
+        discriminate.
+    - eapply field_value_ok_heap_types_extend; [exact Hext |].
+      exact (Hhist loc f v Hin).
+  Qed.
 End typed_histories.
