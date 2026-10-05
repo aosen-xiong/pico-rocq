@@ -62,6 +62,7 @@ Examples/PicoCacheClients.v
 Examples/PicoCacheClientCalls.v
 Examples/PicoHashClients.v
 Examples/PicoRefCacheJudgment.v
+Examples/PicoRefCacheExample.v
 Examples/PicoJamHashAdequacy.v
 Examples/PicoFinalFieldPublicationExamples.v
 Examples/PicoConstructionPublicationExamples.v

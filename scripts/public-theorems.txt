@@ -280,3 +280,4 @@ Examples.PicoHashClients.pico_hash_clients_and_readers_semimm
 Examples.PicoRefCacheJudgment.ref_inv_step
 Examples.PicoRefCacheJudgment.ref_cache_pool
 Examples.PicoRefCacheJudgment.ref_cache_calls_sound
+Examples.PicoRefCacheExample.ref_cache_example_sound

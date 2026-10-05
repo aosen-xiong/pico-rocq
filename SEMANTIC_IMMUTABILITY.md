@@ -125,6 +125,14 @@ Examples (`Examples/`):
   (`client_code_trace_robust`); it rests on `step_under_cont` in
   `PICOBridge/PicoCoreFrame.v`, which says a step never inspects the rest
   of the continuation.
+- `PicoRefCacheJudgment.v`, `PicoRefCacheExample.v`: reference-valued
+  caches with `null` as the unknown value. A cached reference is valid when
+  it points to an immutable view object whose abstract fields hold the
+  initializer's values; validity depends on the heap, so it is part of the
+  shared invariant (`ref_inv_step`). Any number of calls of a method of the
+  reference-cache shape preserve the invariant and return valid references
+  (`ref_cache_calls_sound`), with a well-typed example class
+  (`ref_cache_example_sound`).
 - `PicoHashTraceRobust.v`: the hash call is trace robust on the machine, and
   the n-call theorem as an instance (`pico_hash_n_calls_trace_robust`).
 - `PicoHashExecution.v`: read-labeled executions of the local-copy and
