@@ -67,8 +67,9 @@ PICO instance (`PICOBridge/`):
   and the parallel rule `pool_rely_guarantee`.
 - `PicoCoreTypeSafety.v`: type safety under interleaving. A typed pool stays
   typed (`typed_pool_preservation`), every field history stays typed
-  (`typed_pool_histories_typed`), and no thread raises the mutation exception
-  (`typed_pool_no_mutation_exception`).
+  (`typed_pool_histories_typed`), no thread raises the mutation exception
+  (`typed_pool_no_mutation_exception`), and every unfinished thread can take
+  a step (`typed_pool_progress`).
 - `PicoStableAbsPreservation.v`: abstract-state preservation on the machine
   and on every scheduler execution.
 - `PicoDerivationNoninterference.v`, `PicoDerivationCache.v`,

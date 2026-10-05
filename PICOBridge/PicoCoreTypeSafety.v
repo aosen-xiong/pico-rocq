@@ -846,6 +846,121 @@ Section thread_typing.
           split; [assumption |]. split; [assumption |]. split; assumption.
         * split; [exact Hsame | discriminate].
   Qed.
+  (** ** Progress
+
+      A typed running thread can always take a step.  The step may end the
+      thread with a null-pointer exception; by [typed_step] it never ends it
+      with the mutation exception.  The memory model must let a read of a
+      nonempty history return some value. *)
+  Theorem typed_progress `{Hprogress : @CacheMemoryModelProgress Hmem} :
+    forall rGamma s V K S,
+      typed_state_inv S ->
+      thread_typed (pcs_heap S) (CoreRun rGamma s V K) ->
+      exists e' S', pico_core_step CT (CoreRun rGamma s V K) S e' S'.
+  Proof.
+    intros rGamma s V K [h sigma] (Hhist & Hwf & Hheap) Hthread.
+    destruct Hthread
+      as (sGamma & mt & sGamma' & this & Htyping & Henv & Hthis & Hcont).
+    simpl in *.
+    assert (Hlookup : forall x T, static_getType sGamma x = Some T ->
+      exists v, runtime_getVal rGamma x = Some v).
+    { intros x T Hx.
+      destruct (pico_core_typed_env_lookup CT _ _ _ _ _ Henv Hx)
+        as (qc & v & Hv & _).
+      eauto. }
+    destruct s.
+    - (* skip *)
+      assert (sGamma' = sGamma) by (inversion Htyping; reflexivity).
+      subst sGamma'.
+      inversion Hcont; subst.
+      + do 2 eexists. apply PCS_SkipDone.
+      + do 2 eexists. apply PCS_SkipSeq.
+      + match goal with
+        | Hret : static_getType sGamma _ = Some _ |- _ =>
+            destruct (Hlookup _ _ Hret) as [retval Hretval]
+        end.
+        do 2 eexists. eapply PCS_SkipCall. exact Hretval.
+    - (* local *)
+      inversion Htyping; subst.
+      do 2 eexists. apply PCS_Local.
+      assert (Hlen : length sGamma = length (vars rGamma)).
+      { destruct Henv as (qc & rcv & Hcfg & _).
+        destruct Hcfg as (_ & _ & _ & _ & Hlen & _). exact Hlen. }
+      unfold runtime_getVal, static_getType in *.
+      apply nth_error_None. rewrite <- Hlen.
+      apply nth_error_None. assumption.
+    - (* assignment *)
+      assert (sGamma' = sGamma) by (inversion Htyping; reflexivity).
+      subst sGamma'.
+      inversion Htyping; subst.
+      match goal with
+      | Hx : static_getType sGamma v = Some _ |- _ =>
+          destruct (Hlookup _ _ Hx) as [old Hold]
+      end.
+      match goal with
+      | He : expr_has_type CT sGamma mt e _ |- _ => rename He into Hexpr
+      end.
+      destruct e.
+      + do 2 eexists. eapply PCS_AssignNull. exact Hold.
+      + inversion Hexpr; subst.
+        match goal with
+        | Hy : static_getType sGamma v0 = Some _ |- _ =>
+            destruct (Hlookup _ _ Hy) as [val_y Hval_y]
+        end.
+        do 2 eexists. eapply PCS_AssignVar; eassumption.
+      + do 2 eexists. eapply PCS_AssignInt. exact Hold.
+      + assert (Hfield : exists Ty C fDef,
+          static_getType sGamma v0 = Some Ty /\ sbase Ty = TRef C /\
+          sf_def_rel CT C v1 fDef).
+        { inversion Hexpr; subst; do 3 eexists; repeat split; eauto. }
+        destruct Hfield as (Ty & C & fDef & HTy & Href & Hfdef).
+        destruct (pico_core_typed_env_field_receiver_cases CT _ _ _ _ _ _ _ _
+          Henv HTy Href Hfdef) as [Hnull | (qc & loc & Hloc & Htyped)].
+        * do 2 eexists. eapply PCS_AssignFieldNPE; eassumption.
+        * destruct (pico_core_typed_receiver_field_exists CT _ _ _ _ _ _ _ _ _
+            Henv Htyped Href Hfdef) as (o & current & Hobj & Hcur).
+          destruct (pico_core_assign_field_step_exists CT rGamma v v0 v1 old
+            loc o current V K h sigma Hold Hloc Hwf Hobj Hcur)
+            as (val & V' & Hstep).
+          eauto.
+    - (* field write *)
+      destruct (pico_core_typed_fldwrite_runtime_cases CT _ _ _ _ _ _ _ _
+        Htyping Henv)
+        as [Hnull | (loc & o & a & val_y & Hloc & Hobj & Hassign & Hy & Hcase)].
+      + do 2 eexists. eapply PCS_FldWriteNPE. exact Hnull.
+      + destruct Hcase as [Hok | Hfinal].
+        * do 2 eexists. eapply PCS_FldWrite; eauto.
+          split; reflexivity.
+        * do 2 eexists. eapply PCS_FldWriteMutation; eauto.
+    - (* allocation *)
+      destruct (pico_core_typed_env_receiver_runtime CT _ _ _ Henv)
+        as (receiver & qthis & Hreceiver & Hmut).
+      assert (Hargs : exists vals, runtime_lookup_list rGamma l = Some vals).
+      { inversion Htyping; subst.
+        eapply pico_core_typed_env_lookup_list_exists; eauto. }
+      destruct Hargs as [vals Hvals].
+      do 2 eexists. eapply PCS_New; eauto.
+    - (* call *)
+      destruct (pico_core_typed_call_runtime_cases CT _ _ _ _ _ _ _ _ _
+        Htyping Henv)
+        as [Hnull | (loc & C & mdef & vals & Hloc & Hbase & Hfind & Hvals)].
+      + do 2 eexists. eapply PCS_CallNPE. exact Hnull.
+      + do 2 eexists. eapply PCS_Call; eauto.
+    - (* sequence *)
+      do 2 eexists. apply PCS_Seq.
+    - (* zero test *)
+      inversion Htyping; subst.
+      match goal with
+      | Hx : static_getType _ v = Some ?Tx, Hint : sbase ?Tx = TInt |- _ =>
+          destruct (pico_core_typed_env_lookup CT _ _ _ _ _ Henv Hx)
+            as (qc & val & Hval & Htyped);
+          destruct (pico_core_typed_value_int_cases CT _ _ _ _ Hint Htyped)
+            as [n ->]
+      end.
+      destruct n.
+      + do 2 eexists. eapply PCS_IfZero. exact Hval.
+      + do 2 eexists. eapply PCS_IfNonzero. exact Hval.
+  Qed.
 End thread_typing.
 
 (** * Type safety under interleaving
@@ -924,5 +1039,25 @@ Section typed_pool.
     destruct (typed_pool_preservation cfg cfg' Hpool Hsteps)
       as [(Hhist & _) _].
     exact Hhist.
+  Qed.
+
+  (** Progress for the pool: in every reachable pool, each thread has
+      finished without the mutation exception or can take a step. *)
+  Theorem typed_pool_progress
+      `{Hprogress : @CacheMemoryModelProgress Hmem} :
+    forall cfg cfg' e,
+      typed_pool cfg ->
+      pico_pool_steps CT cfg cfg' ->
+      List.In e (pool_threads cfg') ->
+      (exists r rGamma V, e = CoreDone r rGamma V /\ r <> MUTATIONEXP) \/
+      (exists e' S', pico_core_step CT e (pool_state cfg') e' S').
+  Proof.
+    intros cfg cfg' e Hpool Hsteps Hin.
+    destruct (typed_pool_preservation cfg cfg' Hpool Hsteps) as [Hinv Hlocal].
+    rewrite Forall_forall in Hlocal.
+    have Hthread := Hlocal _ Hin.
+    destruct e as [rGamma s V K | r rGamma V].
+    - right. eapply typed_progress; eauto.
+    - left. exists r, rGamma, V. split; [reflexivity | exact Hthread].
   Qed.
 End typed_pool.
