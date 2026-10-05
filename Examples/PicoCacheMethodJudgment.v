@@ -413,7 +413,7 @@ Section cache_method_judgment.
     intros n V0 rGamma x' y' V K Hsteps Hrecv.
     destruct (tail_classify n V0 _ Hsteps)
       as [Hrunning | [Hfailed | (rGamma1 & _ & _ & Hchain)]].
-    - destruct Hrunning as (rG & s & V1 & K1 & Heq & _ & _ & Hread).
+    - destruct Hrunning as (rG & s & V1 & K1 & Heq & _ & _ & _ & Hread).
       injection Heq as <- <- <- <-.
       destruct (Hread x' y' hash_cache_field receiver eq_refl Hrecv)
         as (_ & rt & fs & Hobj & Habs).
@@ -501,7 +501,7 @@ Section cache_method_judgment.
         destruct (tail_classify _ _ _ Hsteps)
           as [Hrunning | [Hfailed | (rGamma1 & _ & _ & Hchain)]]
     end.
-    - destruct Hrunning as (rG & s & Vr & Kr & Heq & [Kabove HK] & _).
+    - destruct Hrunning as (rG & s & Vr & Kr & Heq & (Kabove & HK & _) & _).
       injection Heq as <- <- <- <-.
       symmetry in HK. apply app_eq_nil in HK. destruct HK as [_ HK].
       discriminate.
