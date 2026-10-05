@@ -144,8 +144,12 @@ Examples (`Examples/`):
   whose view object captures its owner, as an inner-class view does
   (`rv_cache_example_sound`, `rv_cache_example_owner`).
 - `PicoValueClasses.v`: the hash class as a semantic value class, and the
-  state-completeness condition for PICO classes (every field is abstract
-  state or a declared derived field) for the example classes.
+  state-completeness condition for PICO classes: every field is abstract
+  state or a declared derived field, transitively for every class the object
+  can reach (`transitive_value_class`). At run time, every object reachable
+  in the heap from an object of such a class has only abstract and derived
+  fields (`reachable_objects_value_classes`). The example classes satisfy it
+  (`hash_class_transitive`, `rv_class_transitive`).
 - `PicoHashTraceRobust.v`: the hash call is trace robust on the machine, and
   the n-call theorem as an instance (`pico_hash_n_calls_trace_robust`).
 - `PicoHashExecution.v`: read-labeled executions of the local-copy and

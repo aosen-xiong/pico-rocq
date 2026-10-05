@@ -294,3 +294,6 @@ Examples.PicoValueClasses.hash_objects_equal_results
 Examples.PicoValueClasses.hash_class_fields
 Examples.PicoValueClasses.rv_class_fields
 Examples.PicoValueClasses.rv_view_class_fields
+Examples.PicoValueClasses.reachable_objects_value_classes
+Examples.PicoValueClasses.hash_class_transitive
+Examples.PicoValueClasses.rv_class_transitive
