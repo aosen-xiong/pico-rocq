@@ -66,6 +66,8 @@ Examples/PicoRefCacheJudgment.v
 Examples/PicoRefCacheExample.v
 Examples/PicoRefViewExample.v
 Examples/PicoValueClasses.v
+Examples/PicoValueClassTheorem.v
+Examples/PicoHashValueClass.v
 Examples/PicoJamHashAdequacy.v
 Examples/PicoFinalFieldPublicationExamples.v
 Examples/PicoConstructionPublicationExamples.v

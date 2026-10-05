@@ -150,6 +150,14 @@ Examples (`Examples/`):
   in the heap from an object of such a class has only abstract and derived
   fields (`reachable_objects_value_classes`). The example classes satisfy it
   (`hash_class_transitive`, `rv_class_transitive`).
+- `PicoValueClassTheorem.v`, `PicoHashValueClass.v`: the class-level
+  theorem. A PICO class is a semantic value class when its state is
+  complete, transitively, and every method is a cache method or a derivation
+  method (`pico_semantic_value_class`). For an object of such a class, any
+  number of threads may call any of its methods: the object stays
+  semantically immutable and every call that returns normally returns the
+  value of its method (`semantic_value_class_sound`). The hash class is an
+  instance (`hash_class_is_semantic_value_class`).
 - `PicoHashTraceRobust.v`: the hash call is trace robust on the machine, and
   the n-call theorem as an instance (`pico_hash_n_calls_trace_robust`).
 - `PicoHashExecution.v`: read-labeled executions of the local-copy and
