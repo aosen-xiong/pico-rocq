@@ -158,6 +158,11 @@ Examples (`Examples/`):
   semantically immutable and every call that returns normally returns the
   value of its method (`semantic_value_class_sound`). The hash class is an
   instance (`hash_class_is_semantic_value_class`).
+- `PicoRefValueClass.v`: the class-level theorem for a class whose derived
+  field is a reference cache (`ref_value_class_sound`): every method is a
+  reference-cache method or a derivation method, and any number of threads
+  may call any of them. The class with a cached view is an instance
+  (`rv_class_is_ref_value_class`).
 - `PicoHashTraceRobust.v`: the hash call is trace robust on the machine, and
   the n-call theorem as an instance (`pico_hash_n_calls_trace_robust`).
 - `PicoHashExecution.v`: read-labeled executions of the local-copy and
