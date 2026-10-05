@@ -132,7 +132,9 @@ Examples (`Examples/`):
   shared invariant (`ref_inv_step`). Any number of calls of a method of the
   reference-cache shape preserve the invariant and return valid references
   (`ref_cache_calls_sound`), with a well-typed example class
-  (`ref_cache_example_sound`).
+  (`ref_cache_example_sound`). `PicoRefViewExample.v` is a second example
+  whose view object captures its owner, as an inner-class view does
+  (`rv_cache_example_sound`, `rv_cache_example_owner`).
 - `PicoHashTraceRobust.v`: the hash call is trace robust on the machine, and
   the n-call theorem as an instance (`pico_hash_n_calls_trace_robust`).
 - `PicoHashExecution.v`: read-labeled executions of the local-copy and
