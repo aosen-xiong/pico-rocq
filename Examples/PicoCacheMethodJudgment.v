@@ -5,7 +5,7 @@ Require Import Syntax Helpers Typing Subtyping Bigstep Properties Reachability.
 Require Import Core.GenericCacheProtocol Core.GenericDerivedCache.
 Require Import Examples.PicoIfZeroCache Examples.PicoHashMethod
   Examples.PicoConcreteHashProvider.
-Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCacheTyping
+Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCacheTyping PICOBridge.PicoDerivationCache
   PICOBridge.PicoCoreLanguage PICOBridge.PicoCoreSemImm
   PICOBridge.PicoDerivationNoninterference PICOBridge.PicoDerivationSmallStep
   PICOBridge.PicoDerivationPrefix PICOBridge.PicoCoreTraceRobust.
@@ -498,3 +498,79 @@ Section cache_method_judgment.
       + apply Hdone.
   Qed.
 End cache_method_judgment.
+
+(** ** The initializer that calls the derivation method
+
+    When the miss branch calls the derivation method that defines the
+    protocol, the judgment has no semantic premise about the initializer:
+    the protocol's value is, by definition, what that method returns on the
+    receiver in the reference heap. *)
+Section derivation_call_initializer.
+  Context `{Hmem : CacheMemoryModel}.
+  Context (CT : class_table) (D : method_def -> Prop).
+  Context (receiver : Loc) (m : method_name) (h0 : heap) (H : nat).
+  Context (mc : method_name) (mdef : method_def).
+  Context (Trecv : qualified_type) (sGamma' : s_env) (mt : method_scope).
+  Context (rt0 : runtime_type) (fs0 : fields_mapping).
+  Context (caller : r_env) (x y : var).
+
+  Let compute : stmt := SCall cache_tmp m cache_receiver [].
+
+  Lemma derivation_call_value :
+    derived_by CT m h0 receiver (Int H) ->
+    forall rGamma1,
+      eval_stmt CT (env_tmp receiver (Int 0)) h0 compute OK rGamma1 h0 ->
+      runtime_getVal rGamma1 cache_tmp = Some (Int H).
+  Proof.
+    intros (cy0 & mdef0 & rG0 & Hbase0 & Hfind0 & Heval0 & Hret0)
+      rGamma1 Heval.
+    unfold compute in Heval. inversion Heval; subst.
+    match goal with
+    | Hv : runtime_getVal (env_tmp receiver (Int 0)) cache_receiver =
+             Some (Iot ?l) |- _ =>
+        cbv in Hv; injection Hv as <-
+    end.
+    match goal with
+    | Hb : r_basetype h0 receiver = Some ?c,
+      Hf : FindMethodWithName CT ?c m ?md /\ _,
+      Ha : runtime_lookup_list _ [] = Some ?vs,
+      Hbody : eval_stmt CT _ h0 _ OK ?rG h0,
+      Hr : runtime_getVal ?rG _ = Some ?rv |- _ =>
+        rewrite Hbase0 in Hb; injection Hb as <-;
+        destruct Hf as [Hf ->];
+        have Hmd := find_method_with_name_deterministic CT _ _ _ _ Hf Hfind0;
+        subst md; simpl in Ha; injection Ha as <-;
+        destruct (eval_stmt_deterministic _ _ _ _ _ _ _ _ _ _ Hbody Heval0)
+          as (_ & HrG & _);
+        subst rG; rewrite Hret0 in Hr; injection Hr as <-
+    end.
+    reflexivity.
+  Qed.
+
+  Theorem derivation_call_cache_method_trace_robust :
+    mbody_stmt (mbody mdef) = pico_hash_method_stmt_with compute ->
+    mreturn (mbody mdef) = cache_result ->
+    derivation_table CT D ->
+    deriv_stmt CT D [Trecv; int_type; int_type] compute sGamma' ->
+    stmt_typing CT [Trecv; int_type; int_type] mt compute sGamma' ->
+    wf_r_config CT [Trecv; int_type; int_type] (env_tmp receiver (Int 0)) h0 ->
+    derived_by CT m h0 receiver (Int H) ->
+    runtime_getObj h0 receiver = Some (mkObj rt0 fs0) ->
+    derived_cache_field CT (rctype rt0) hash_cache_field ->
+    FindMethodWithName CT (rctype rt0) mc mdef ->
+    runtime_getVal caller y = Some (Iot receiver) ->
+    x < dom (vars caller) ->
+    forall V0,
+      machine_cache_safe CT hash_cache_protocol pico_hash_stable_abs H
+        (pico_hash_cache_adapter receiver)
+        (pico_concrete_hash_semimm CT receiver m h0 H)
+        (cache_call_result_ok H x)
+        (CoreRun caller (SCall x mc y []) V0 []).
+  Proof.
+    intros Hbody Hret Htable Hderiv Htyped Hwf3 Hderived Hobj0 Hcachefield
+      Hfind Hy Hx V0.
+    eapply (cache_method_call_trace_robust CT D receiver m h0 H compute mc
+      mdef Trecv sGamma' mt rt0 fs0 caller x y); eauto.
+    exact (derivation_call_value Hderived).
+  Qed.
+End derivation_call_initializer.
