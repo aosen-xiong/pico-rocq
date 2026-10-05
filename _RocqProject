@@ -38,6 +38,7 @@ PICOBridge/PicoDerivationSmallStep.v
 PICOBridge/PicoCoreLanguage.v
 PICOBridge/PicoSemanticConcurrency.v
 PICOBridge/PicoCoreTypeSafety.v
+PICOBridge/PicoCoreTraceRobust.v
 PICOBridge/PicoLabeledExecution.v
 PICOBridge/PicoJamSimulation.v
 PICOBridge/PicoStableAbsPreservation.v
@@ -52,6 +53,7 @@ Examples/PicoConcreteHashProvider.v
 Examples/PicoSemanticConcurrencyExamples.v
 Examples/PicoSemanticConcurrencySafety.v
 Examples/PicoHashTypeSafety.v
+Examples/PicoHashTraceRobust.v
 Examples/PicoJamHashAdequacy.v
 Examples/PicoFinalFieldPublicationExamples.v
 Examples/PicoConstructionPublicationExamples.v
