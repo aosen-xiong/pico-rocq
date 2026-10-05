@@ -61,13 +61,12 @@ Section cache_method_judgment.
       runtime_getVal rGamma1 cache_tmp = Some (Int H).
 
   (** The receiver's class declares the cache field and resolves the call to
-      this method; the caller holds the receiver and has a result slot. *)
+      this method, and the caller holds the receiver. *)
   Hypothesis Hobj0 : runtime_getObj h0 receiver = Some (mkObj rt0 fs0).
   Hypothesis Hcachefield :
     derived_cache_field CT (rctype rt0) hash_cache_field.
   Hypothesis Hfind : FindMethodWithName CT (rctype rt0) mc mdef.
   Hypothesis Hy : runtime_getVal caller y = Some (Iot receiver).
-  Hypothesis Hx : x < dom (vars caller).
 
   Notation hash_machine := (pico_concrete_hash_semimm CT receiver m h0 H).
   Notation hash_inv :=
@@ -232,7 +231,7 @@ Section cache_method_judgment.
   Lemma tail_classify :
     forall n V e,
       footprint_steps CT footprint h0 n (CoreRun rho3 compute V Kw) e ->
-      deriv_running CT footprint h0 e \/
+      deriv_running CT footprint h0 Kw e \/
       deriv_failed e \/
       exists rGamma1,
         runtime_getVal rGamma1 cache_tmp = Some (Int H) /\
@@ -409,7 +408,7 @@ Section cache_method_judgment.
     intros n V0 rGamma x' y' V K Hsteps Hrecv.
     destruct (tail_classify n V0 _ Hsteps)
       as [Hrunning | [Hfailed | (rGamma1 & _ & _ & Hchain)]].
-    - destruct Hrunning as (rG & s & V1 & K1 & Heq & _ & Hread).
+    - destruct Hrunning as (rG & s & V1 & K1 & Heq & _ & _ & Hread).
       injection Heq as <- <- <- <-.
       destruct (Hread x' y' hash_cache_field receiver eq_refl Hrecv)
         as (_ & rt & fs & Hobj & Habs).
@@ -445,7 +444,71 @@ Section cache_method_judgment.
     - exact (call_phase_step e S e' S' (IH Hvalid) Hnoread Hinv Hstep).
   Qed.
 
+  (** Every field write of the call respects the protocol. *)
+  Lemma cache_method_call_write_ok :
+    forall V0 tr rGamma x' f y' V K loc v,
+      hash_run (CoreRun caller (SCall x mc y []) V0 []) tr
+        (CoreRun rGamma (SFldWrite x' f y') V K) ->
+      ValidTrace hash_cache_protocol H tr ->
+      runtime_getVal rGamma x' = Some (Iot loc) ->
+      runtime_getVal rGamma y' = Some v ->
+      write_respects_protocol hash_cache_protocol pico_hash_stable_abs H
+        (pico_hash_cache_adapter receiver) hash_machine (loc, f) v.
+  Proof.
+    intros V0 tr rGamma x' f y' V K loc v Hrun Hvalid Hx' Hy'.
+    have Hphase := call_run_phase V0 tr _ Hrun Hvalid.
+    inversion Hphase; subst.
+    match goal with
+    | Hsteps : footprint_steps _ _ _ _ _ _ |- _ =>
+        destruct (tail_classify _ _ _ Hsteps)
+          as [Hrunning | [Hfailed | (rGamma1 & Htmp & Hthis & Hchain)]]
+    end.
+    - destruct Hrunning as (rG & s & Vr & Kr & Heq & _ & Hnowrite & _).
+      injection Heq as <- <- <- <-.
+      exfalso. eapply Hnowrite. reflexivity.
+    - destruct Hfailed as (rf & rG & Vr & Heq & _). discriminate.
+    - inversion Hchain; subst.
+      rewrite Hthis in Hx'. injection Hx' as <-.
+      rewrite Htmp in Hy'. injection Hy' as <-.
+      right. exists HashField, (Int H).
+      split; [apply pico_concrete_hash_adapter_at |].
+      split; [reflexivity |].
+      simpl. unfold hash_cache_valid.
+      destruct (Nat.eq_dec H 0) as [Hz | Hnz].
+      + left. rewrite Hz. reflexivity.
+      + right. split; [reflexivity | exact Hnz].
+  Qed.
+
+  (** When the call has emptied its continuation, it has returned to the
+      caller with the result stored. *)
+  Lemma cache_method_call_exit :
+    forall V0 tr rGamma V,
+      hash_run (CoreRun caller (SCall x mc y []) V0 []) tr
+        (CoreRun rGamma SSkip V []) ->
+      ValidTrace hash_cache_protocol H tr ->
+      rGamma = caller_done.
+  Proof.
+    intros V0 tr rGamma V Hrun Hvalid.
+    have Hphase := call_run_phase V0 tr _ Hrun Hvalid.
+    inversion Hphase; subst; try reflexivity.
+    match goal with
+    | Hsteps : footprint_steps _ _ _ _ _ _ |- _ =>
+        destruct (tail_classify _ _ _ Hsteps)
+          as [Hrunning | [Hfailed | (rGamma1 & _ & _ & Hchain)]]
+    end.
+    - destruct Hrunning as (rG & s & Vr & Kr & Heq & [Kabove HK] & _).
+      injection Heq as <- <- <- <-.
+      symmetry in HK. apply app_eq_nil in HK. destruct HK as [_ HK].
+      discriminate.
+    - destruct Hfailed as (rf & rG & Vr & Heq & _). discriminate.
+    - inversion Hchain; subst. reflexivity.
+  Qed.
+
   (** ** Soundness of the judgment *)
+
+  (** The caller has a slot for the result. *)
+  Hypothesis Hx : x < dom (vars caller).
+
   Theorem cache_method_call_trace_robust :
     forall V0,
       machine_cache_safe CT hash_cache_protocol pico_hash_stable_abs H
@@ -461,26 +524,7 @@ Section cache_method_judgment.
       cbn [vars]. apply update_hit. exact Hx. }
     split.
     - intros rGamma x' f y' V K loc v -> Hx' Hy'.
-      inversion Hphase; subst.
-      match goal with
-      | Hsteps : footprint_steps _ _ _ _ _ _ |- _ =>
-          destruct (tail_classify _ _ _ Hsteps)
-            as [Hrunning | [Hfailed | (rGamma1 & Htmp & Hthis & Hchain)]]
-      end.
-      + destruct Hrunning as (rG & s & Vr & Kr & Heq & Hnowrite & _).
-        injection Heq as <- <- <- <-.
-        exfalso. eapply Hnowrite. reflexivity.
-      + destruct Hfailed as (rf & rG & Vr & Heq & _). discriminate.
-      + inversion Hchain; subst.
-        rewrite Hthis in Hx'. injection Hx' as <-.
-        rewrite Htmp in Hy'. injection Hy' as <-.
-        right. exists HashField, (Int H).
-        split; [apply pico_concrete_hash_adapter_at |].
-        split; [reflexivity |].
-        simpl. unfold hash_cache_valid.
-        destruct (Nat.eq_dec H 0) as [Hz | Hnz].
-        * left. rewrite Hz. reflexivity.
-        * right. split; [reflexivity | exact Hnz].
+      eapply cache_method_call_write_ok; eassumption.
     - intros r rGamma V ->.
       inversion Hphase; subst.
       + match goal with

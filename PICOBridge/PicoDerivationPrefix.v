@@ -69,10 +69,12 @@ Section derivation_prefix.
     - exact (FootprintStepsStep _ _ _ _ _ _ H H0 (IHHrun Hstep)).
   Qed.
 
-  (** The control is running derivation code. *)
-  Definition deriv_running (e : pico_core_expr) : Prop :=
+  (** The control is running derivation code above the continuation
+      [Kbase]. *)
+  Definition deriv_running (Kbase : pico_core_cont) (e : pico_core_expr) : Prop :=
     exists rΓ s V K,
       e = CoreRun rΓ s V K /\
+      (exists Kabove, K = Kabove ++ Kbase) /\
       (forall x f y, s <> SFldWrite x f y) /\
       (forall x y f ly,
          s = SVarAss x (EField y f) ->
@@ -88,7 +90,7 @@ Section derivation_prefix.
   Definition deriv_outcome
       (n : nat) (rΓ : r_env) (s : stmt) (K : pico_core_cont)
       (e : pico_core_expr) : Prop :=
-    deriv_running e \/
+    deriv_running K e \/
     (exists rΓ1 V1 k,
        k <= n /\
        eval_stmt CT rΓ h1 s OK rΓ1 h1 /\
@@ -97,10 +99,22 @@ Section derivation_prefix.
     deriv_failed e.
 
   Lemma skip_running :
-    forall rΓ V K, deriv_running (CoreRun rΓ SSkip V K).
+    forall rΓ V Kabove Kbase,
+      deriv_running Kbase (CoreRun rΓ SSkip V (Kabove ++ Kbase)).
   Proof.
-    intros rΓ V K. exists rΓ, SSkip, V, K.
-    split; [reflexivity |]. split; intros; discriminate.
+    intros rΓ V Kabove Kbase. exists rΓ, SSkip, V, (Kabove ++ Kbase).
+    split; [reflexivity |]. split; [exists Kabove; reflexivity |].
+    split; intros; discriminate.
+  Qed.
+
+  Lemma deriv_running_frame :
+    forall fr Kbase e,
+      deriv_running (fr :: Kbase) e -> deriv_running Kbase e.
+  Proof.
+    intros fr Kbase e (rΓ & s & V & K & Heq & [Kabove HK] & Hw & Hr).
+    exists rΓ, s, V, K. split; [exact Heq |].
+    split; [| split; assumption].
+    exists (Kabove ++ [fr]). rewrite <- app_assoc. exact HK.
   Qed.
 
   Lemma deriv_start :
@@ -109,10 +123,11 @@ Section derivation_prefix.
       stmt_typing CT sΓ mt s sΓ' ->
       wf_r_config CT sΓ rΓ h1 ->
       env_in P rΓ ->
-      deriv_running (CoreRun rΓ s V K).
+      deriv_running K (CoreRun rΓ s V K).
   Proof.
     intros rΓ s V K sΓ sΓ' mt Hderiv Htyp Hwf Henv.
     exists rΓ, s, V, K. split; [reflexivity |].
+    split; [exists (@nil pico_core_frame); reflexivity |].
     split.
     - intros x f y Heq. subst s. inversion Hderiv.
     - intros x y f ly Heq Hy. subst s.
@@ -207,9 +222,9 @@ Section derivation_prefix.
           Hderiv1 Htype1 Hwf Henv)
           as [Hrunning | [(rΓ1 & V1 & k1 & Hk1 & Heval1 & Henv1 & Htail1)
                          | Hfailed]].
-        * left. exact Hrunning.
+        * left. eapply deriv_running_frame. exact Hrunning.
         * inversion Htail1 as [| k1' e3 S3 e4 S4 e5 HS1 Hstep1 Htail2]; subst.
-          { left. apply skip_running. }
+          { left. apply (skip_running rΓ1 V1 [KSeq s2] K). }
           inversion Hstep1; subst.
           have Hwf1 := preservation_pico CT sΓ mt rΓ h1 s1 rΓ1 h1 _ Hwf Htype1 Heval1.
           destruct (IH k1' rΓ1 s2 V1 K _ sΓ' mt e ltac:(lia) Htail2
@@ -274,9 +289,11 @@ Section derivation_prefix.
             (env_in_call_frame P rΓ args vals loc_y Henv Hly Ha0))
             as [Hrunning | [(rΓb & Vb & kb & Hkb & Hevalb & Henvb & Htailb)
                            | Hfailed]].
-          -- left. exact Hrunning.
+          -- left. eapply deriv_running_frame. exact Hrunning.
           -- inversion Htailb as [| kb' e3 S3 e4 S4 e5 HSr Hstepr Htailr]; subst.
-             { left. apply skip_running. }
+             { left.
+               apply (skip_running rΓb Vb
+                 [KCall rΓ x (mreturn (mbody mdef))] K). }
              inversion Hstepr; subst.
              match goal with
              | Hret : runtime_getVal rΓb (mreturn (mbody mdef)) = Some ?retval |- _ =>

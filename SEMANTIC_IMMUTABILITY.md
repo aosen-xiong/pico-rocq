@@ -120,6 +120,11 @@ Examples (`Examples/`):
   control that never writes it directly may run alongside cache-method calls
   (`no_direct_cache_write_client`); hash calls with direct readers as an
   instance (`pico_hash_calls_and_readers_semimm`).
+- `PicoCacheClientCalls.v`, `PicoHashClients.v`: client code that
+  interleaves its own steps with calls to the cache method is trace robust
+  (`client_code_trace_robust`); it rests on `step_under_cont` in
+  `PICOBridge/PicoCoreFrame.v`, which says a step never inspects the rest
+  of the continuation.
 - `PicoHashTraceRobust.v`: the hash call is trace robust on the machine, and
   the n-call theorem as an instance (`pico_hash_n_calls_trace_robust`).
 - `PicoHashExecution.v`: read-labeled executions of the local-copy and
