@@ -82,6 +82,11 @@ PICO instance (`PICOBridge/`):
   `PicoDerivationSmallStep.v`: derivation methods, their noninterference in
   the big-step and small-step semantics, and stability under every
   interleaving.
+- `PicoDerivationPrefix.v`: derivation code under interference
+  (`deriv_prefix`). A run whose steps start from different states that agree
+  with the reference heap on the footprint is still running without having
+  written a field, has finished with the environment of its sequential
+  evaluation in the reference heap, or has ended with an exception.
 - `PicoCoreSemImm.v`: providers that connect an object's representation to a
   cache protocol.
 - `PicoCacheTyping.v`, `PicoLabeledExecution.v`, `ConcurrentPico.v`,
@@ -102,6 +107,14 @@ Examples (`Examples/`):
   and return the hash (`pico_hash_n_calls_results_correct`).
 - `PicoHashTypeSafety.v`: the pool of hash calls is a typed pool
   (`pico_hash_n_calls_type_safe`).
+- `PicoCacheMethodJudgment.v`: the cache-method judgment over PICO
+  statements. A call to a method of the local-copy shape whose initializer is
+  derivation code is trace robust on the machine
+  (`cache_method_call_trace_robust`), with no semantic premise when the
+  initializer calls the derivation method itself
+  (`derivation_call_cache_method_trace_robust`).
+- `PicoHashCacheMethod.v`: the hash method satisfies the judgment
+  (`pico_hash_n_calls_by_judgment`).
 - `PicoHashTraceRobust.v`: the hash call is trace robust on the machine, and
   the n-call theorem as an instance (`pico_hash_n_calls_trace_robust`).
 - `PicoHashExecution.v`: read-labeled executions of the local-copy and
