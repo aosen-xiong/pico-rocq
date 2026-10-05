@@ -50,6 +50,14 @@ Generic theory (`Core/`), independent of PICO:
   trace-robust methods (`CacheSafeMethod`), refinement to pure recomputation.
 - `RelyGuarantee.v`: the interference relation, stability of semantic
   immutability, derived protocols and agreement of cached values.
+- `SemanticValue.v`: semantic value classes and objects. A class is a
+  semantic value class when its protocol is derived and every method is
+  trace robust. Its objects then behave as functions of their abstract
+  value: method results (`value_object_result`) and derived state
+  (`value_object_derived_state`) are determined by it, and two objects with
+  the same abstract value give equal results
+  (`value_objects_equal_results`). Semantic immutability alone does not
+  imply this (`any_value_not_derived`).
 - `SequentialModel.v`: the sequential specialization; the double-read method
   is correct sequentially although it is not trace robust.
 - `CacheLRVerticalSlice.v`, `GenericDerivedCache.v`: the local-copy rule, the
@@ -135,6 +143,9 @@ Examples (`Examples/`):
   (`ref_cache_example_sound`). `PicoRefViewExample.v` is a second example
   whose view object captures its owner, as an inner-class view does
   (`rv_cache_example_sound`, `rv_cache_example_owner`).
+- `PicoValueClasses.v`: the hash class as a semantic value class, and the
+  state-completeness condition for PICO classes (every field is abstract
+  state or a declared derived field) for the example classes.
 - `PicoHashTraceRobust.v`: the hash call is trace robust on the machine, and
   the n-call theorem as an instance (`pico_hash_n_calls_trace_robust`).
 - `PicoHashExecution.v`: read-labeled executions of the local-copy and

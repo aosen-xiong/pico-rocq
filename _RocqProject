@@ -20,6 +20,7 @@ Core/RelyGuarantee.v
 Core/CacheLRVerticalSlice.v
 Core/GenericDerivedCache.v
 Core/SequentialModel.v
+Core/SemanticValue.v
 Examples/PicoIfZeroCache.v
 PICOBridge/PicoMemoryModel.v
 MemoryModels/JMM/FinalFieldPublication.v
@@ -64,6 +65,7 @@ Examples/PicoHashClients.v
 Examples/PicoRefCacheJudgment.v
 Examples/PicoRefCacheExample.v
 Examples/PicoRefViewExample.v
+Examples/PicoValueClasses.v
 Examples/PicoJamHashAdequacy.v
 Examples/PicoFinalFieldPublicationExamples.v
 Examples/PicoConstructionPublicationExamples.v
