@@ -323,4 +323,91 @@ Section machine_trace_robust.
     intros e0 S Hsafe. exists e0, (@nil (CacheObs P)). split; [exact Hsafe |].
     split; [constructor | constructor].
   Qed.
+
+  (** ** Clients
+
+      A client is any other control: it need not be a cache method and need
+      not be trace robust.  It is admitted when each of its steps, from every
+      control it can reach, preserves the invariant.  Providers discharge
+      this for controls that never write a cache field directly. *)
+  Inductive inv_reach (e0 : pico_core_expr) : pico_core_expr -> Prop :=
+    | InvReach_Refl :
+        inv_reach e0 e0
+    | InvReach_Step : forall e S e' S',
+        inv_reach e0 e ->
+        machine_inv S ->
+        pico_core_step CT e S e' S' ->
+        inv_reach e0 e'.
+
+  Definition protocol_client (e0 : pico_core_expr) : Prop :=
+    forall e S e' S',
+      inv_reach e0 e ->
+      machine_inv S ->
+      pico_core_step CT e S e' S' ->
+      machine_inv S'.
+
+  Definition client_local (e : pico_core_expr) : Prop :=
+    exists e0, protocol_client e0 /\ inv_reach e0 e.
+
+  Definition mixed_local (e : pico_core_expr) (S : pico_core_state) : Prop :=
+    machine_local e S \/ client_local e.
+
+  Definition mixed_pool (cfg : pico_pool_config) : Prop :=
+    pool_rg_inv machine_inv mixed_local cfg.
+
+  Lemma mixed_own_step :
+    forall e S e' S',
+      machine_inv S ->
+      mixed_local e S ->
+      pico_core_step CT e S e' S' ->
+      machine_inv S' /\ mixed_local e' S'.
+  Proof.
+    intros e S e' S' Hinv [Hrobust | (e0 & Hclient & Hreach)] Hstep.
+    - destruct (machine_own_step e S e' S' Hinv Hrobust Hstep) as [Hinv' Hl].
+      split; [exact Hinv' | left; exact Hl].
+    - split; [exact (Hclient e S e' S' Hreach Hinv Hstep) |].
+      right. exists e0. split; [exact Hclient |].
+      eapply InvReach_Step; eassumption.
+  Qed.
+
+  (** Trace robust controls and clients together: every scheduler execution
+      preserves the invariant. *)
+  Theorem machine_mixed_pool :
+    forall cfg cfg',
+      mixed_pool cfg ->
+      pico_pool_steps CT cfg cfg' ->
+      mixed_pool cfg'.
+  Proof.
+    intros cfg cfg' Hpool Hsteps.
+    exact (pool_rely_guarantee CT machine_inv mixed_local
+      (fun _ S' => machine_inv S')
+      mixed_own_step
+      (fun S S' _ Hinv' => Hinv')
+      (fun e S S' _ Hlocal _ => Hlocal)
+      cfg cfg' Hpool Hsteps).
+  Qed.
+
+  Theorem machine_mixed_pool_semimm :
+    forall cfg cfg',
+      mixed_pool cfg ->
+      pico_pool_steps CT cfg cfg' ->
+      Stable (pcsi_object P Stable a A M (pool_state cfg')) a /\
+      CacheHistSnapshotOK P (pcsi_snapshot P Stable a A M (pool_state cfg')) a.
+  Proof.
+    intros cfg cfg' Hpool Hsteps.
+    destruct (machine_mixed_pool cfg cfg' Hpool Hsteps) as [[Hstate Hsnap] _].
+    split; [exact (pcsi_stable P Stable a A M _ Hstate) | exact Hsnap].
+  Qed.
+
+  (** A finished trace robust control meets the result contract, also in a
+      mixed pool; clients carry no contract. *)
+  Lemma machine_local_result :
+    forall r rGamma V S,
+      machine_local (CoreDone r rGamma V) S ->
+      ResultOK (mkPicoCoreVal r rGamma V).
+  Proof.
+    intros r rGamma V S (e0 & tr & Hsafe & Hvalid & Hrun).
+    destruct (Hsafe tr _ Hrun Hvalid) as [_ Hresult].
+    eapply Hresult. reflexivity.
+  Qed.
 End machine_trace_robust.

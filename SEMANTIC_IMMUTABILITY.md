@@ -115,6 +115,11 @@ Examples (`Examples/`):
   (`derivation_call_cache_method_trace_robust`).
 - `PicoHashCacheMethod.v`: the hash method satisfies the judgment
   (`pico_hash_n_calls_by_judgment`).
+- `PicoCacheClients.v`: a thread can break the provider's invariant only by
+  writing the cache field itself (`noncache_step_preserves_inv`), so any
+  control that never writes it directly may run alongside cache-method calls
+  (`no_direct_cache_write_client`); hash calls with direct readers as an
+  instance (`pico_hash_calls_and_readers_semimm`).
 - `PicoHashTraceRobust.v`: the hash call is trace robust on the machine, and
   the n-call theorem as an instance (`pico_hash_n_calls_trace_robust`).
 - `PicoHashExecution.v`: read-labeled executions of the local-copy and
