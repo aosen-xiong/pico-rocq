@@ -70,6 +70,12 @@ PICO instance (`PICOBridge/`):
   (`typed_pool_histories_typed`), no thread raises the mutation exception
   (`typed_pool_no_mutation_exception`), and every unfinished thread can take
   a step (`typed_pool_progress`).
+- `PicoCoreTraceRobust.v`: trace robustness stated for controls of the
+  machine, for an arbitrary protocol and provider. From a pool of trace
+  robust controls, every execution preserves semantic immutability
+  (`machine_trace_robust_semimm`), every weak read of a cache field is valid
+  (`machine_cache_read_valid`), and every finished control meets its
+  contract (`machine_trace_robust_results`).
 - `PicoStableAbsPreservation.v`: abstract-state preservation on the machine
   and on every scheduler execution.
 - `PicoDerivationNoninterference.v`, `PicoDerivationCache.v`,
@@ -96,6 +102,8 @@ Examples (`Examples/`):
   and return the hash (`pico_hash_n_calls_results_correct`).
 - `PicoHashTypeSafety.v`: the pool of hash calls is a typed pool
   (`pico_hash_n_calls_type_safe`).
+- `PicoHashTraceRobust.v`: the hash call is trace robust on the machine, and
+  the n-call theorem as an instance (`pico_hash_n_calls_trace_robust`).
 - `PicoHashExecution.v`: read-labeled executions of the local-copy and
   double-read methods.
 - `CacheProtocolDiversity.v`, `PicoProtocolDiversityExecution.v`,
