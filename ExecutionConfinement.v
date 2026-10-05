@@ -243,7 +243,8 @@ Proof.
     exact (IHHeval2 (ltac:(lia)) Hmid).
   - eapply IHHeval; eauto.
   - eapply IHHeval; eauto.
-  - exact Hstate.
+  - eapply IHHeval; eauto.
+  - eapply IHHeval; eauto.
 Qed.
 
 Lemma confined_eval_preserves_old_object :
@@ -286,6 +287,8 @@ Proof.
     assert (Hfirst : vals = mid) by (eapply IHHeval1; eauto).
     assert (Hsecond : mid = vals') by (eapply IHHeval2; eauto; lia).
     congruence.
+  - eapply IHHeval; eauto.
+  - eapply IHHeval; eauto.
   - eapply IHHeval; eauto.
   - eapply IHHeval; eauto.
 Qed.

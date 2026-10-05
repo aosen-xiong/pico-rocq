@@ -376,6 +376,11 @@ Section cache_method_judgment.
             simpl in Hz; injection Hz as ->
         end.
         destruct Hvalid as [Hzero | [Hhash _]]; discriminate.
+      + match goal with
+        | Hz : runtime_getVal (env_tmp _) cache_tmp = Some (Iot _) |- _ =>
+            simpl in Hz; injection Hz as ->
+        end.
+        destruct Hvalid as [Hzero | [Hhash _]]; discriminate.
     - inversion Hstep; subst.
       eapply Ph_Tail with (n := 0). constructor.
     - eapply Ph_Tail.

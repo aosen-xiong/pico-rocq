@@ -299,7 +299,7 @@ Proof.
       eapply ST_IfZero with (Tx := int_type).
       * exact pico_hash_concurrent_wf_env3.
       * reflexivity.
-      * reflexivity.
+      * left. reflexivity.
       * eapply ST_Seq with
           (sΓ' := [pico_hash_witness_receiver_type; int_type; int_type]).
         -- exact pico_hash_concurrent_wf_env3.

@@ -342,6 +342,10 @@ Proof.
     apply IHHeval. exact Heqok.
   - (* IfNonzero *)
     apply IHHeval. exact Heqok.
+  - (* null guard: zero branch *)
+    apply IHHeval. exact Heqok.
+  - (* reference guard: nonzero branch *)
+    apply IHHeval. exact Heqok.
 Qed.
 
 Lemma runtime_getObj_app_left : forall h h_ext loc obj
@@ -407,6 +411,10 @@ Proof.
     eapply IHHeval; eauto.
   - (* IfNonzero *)
     eapply IHHeval; eauto.
+  - (* null guard: zero branch *)
+    eapply IHHeval; eauto.
+  - (* reference guard: nonzero branch *)
+    eapply IHHeval; eauto.
 Qed.
 
 Lemma eval_stmt_preserves_r_muttype :
@@ -470,6 +478,10 @@ Proof.
   - (* IfZero *)
     eapply IHHeval; eauto.
   - (* IfNonzero *)
+    eapply IHHeval; eauto.
+  - (* null guard: zero branch *)
+    eapply IHHeval; eauto.
+  - (* reference guard: nonzero branch *)
     eapply IHHeval; eauto.
 Qed.
 
@@ -779,6 +791,10 @@ Proof.
   - (* IfZero *)
     eapply IHHeval; eauto.
   - (* IfNonzero *)
+    eapply IHHeval; eauto.
+  - (* null guard: zero branch *)
+    eapply IHHeval; eauto.
+  - (* reference guard: nonzero branch *)
     eapply IHHeval; eauto.
 Qed.
 

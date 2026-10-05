@@ -32,19 +32,51 @@ Proof.
   - destruct K1 as [| fr K1'];
       [exfalso; apply Hnot; split; reflexivity |].
     simpl in Hstep. inversion Hstep; subst;
-      eexists; (split; [econstructor; eauto | reflexivity]).
+      first
+        [ solve [eexists; (split; [econstructor; solve [eauto] | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNull; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfRef; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNonzero; eauto | reflexivity])] ].
   - inversion Hstep; subst;
-      eexists; (split; [econstructor; eauto | reflexivity]).
+      first
+        [ solve [eexists; (split; [econstructor; solve [eauto] | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNull; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfRef; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNonzero; eauto | reflexivity])] ].
   - inversion Hstep; subst;
-      eexists; (split; [econstructor; eauto | reflexivity]).
+      first
+        [ solve [eexists; (split; [econstructor; solve [eauto] | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNull; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfRef; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNonzero; eauto | reflexivity])] ].
   - inversion Hstep; subst;
-      eexists; (split; [econstructor; eauto | reflexivity]).
+      first
+        [ solve [eexists; (split; [econstructor; solve [eauto] | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNull; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfRef; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNonzero; eauto | reflexivity])] ].
   - inversion Hstep; subst;
-      eexists; (split; [econstructor; eauto | reflexivity]).
+      first
+        [ solve [eexists; (split; [econstructor; solve [eauto] | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNull; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfRef; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNonzero; eauto | reflexivity])] ].
   - inversion Hstep; subst;
-      eexists; (split; [econstructor; eauto | reflexivity]).
+      first
+        [ solve [eexists; (split; [econstructor; solve [eauto] | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNull; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfRef; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNonzero; eauto | reflexivity])] ].
   - inversion Hstep; subst;
-      eexists; (split; [econstructor; eauto | reflexivity]).
+      first
+        [ solve [eexists; (split; [econstructor; solve [eauto] | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNull; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfRef; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNonzero; eauto | reflexivity])] ].
   - inversion Hstep; subst;
-      eexists; (split; [econstructor; eauto | reflexivity]).
+      first
+        [ solve [eexists; (split; [econstructor; solve [eauto] | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNull; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfRef; eauto | reflexivity])]
+        | solve [eexists; (split; [eapply PCS_IfNonzero; eauto | reflexivity])] ].
 Qed.

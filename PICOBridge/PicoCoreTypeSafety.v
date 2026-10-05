@@ -844,7 +844,12 @@ Section thread_typing.
         * split; [exact Hsame |].
           exists sGamma, mt, sGamma', this.
           split; [assumption |]. split; [assumption |]. split; assumption.
-        * split; [exact Hsame | discriminate].
+        * split; [exact Hsame |].
+          exists sGamma, mt, sGamma', this.
+          split; [assumption |]. split; [assumption |]. split; assumption.
+        * split; [exact Hsame |].
+          exists sGamma, mt, sGamma', this.
+          split; [assumption |]. split; [assumption |]. split; assumption.
   Qed.
   (** ** Progress
 
@@ -951,13 +956,13 @@ Section thread_typing.
     - (* zero test *)
       inversion Htyping; subst.
       match goal with
-      | Hx : static_getType _ v = Some ?Tx, Hint : sbase ?Tx = TInt |- _ =>
+      | Hx : static_getType _ v = Some ?Tx |- _ =>
           destruct (pico_core_typed_env_lookup CT _ _ _ _ _ Henv Hx)
-            as (qc & val & Hval & Htyped);
-          destruct (pico_core_typed_value_int_cases CT _ _ _ _ Hint Htyped)
-            as [n ->]
+            as (qc & val & Hval & Htyped)
       end.
-      destruct n.
+      destruct val as [| loc | [| n]].
+      + do 2 eexists. eapply PCS_IfNull. exact Hval.
+      + do 2 eexists. eapply PCS_IfRef. exact Hval.
       + do 2 eexists. eapply PCS_IfZero. exact Hval.
       + do 2 eexists. eapply PCS_IfNonzero. exact Hval.
   Qed.

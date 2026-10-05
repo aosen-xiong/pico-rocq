@@ -2734,6 +2734,12 @@ Proof.
   - (* Case: stmt = IfZero, nonzero branch *)
     intros. inversion Htyping; subst.
     eapply IHHeval; eauto.
+  - (* null guard: zero branch *)
+    intros. inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* reference guard: nonzero branch *)
+    intros. inversion Htyping; subst.
+    eapply IHHeval; eauto.
 Qed.
 
 Notation "l [ i ]" := (nth_error l i) (at level 50).

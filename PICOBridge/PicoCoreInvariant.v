@@ -63,8 +63,9 @@ Definition pico_core_typed_env
         runtime_getVal rGamma x = Some v /\
         pico_core_typed_value CT h qcontext T v.
 
-(** A runtime fact used by the cache-specific conditional rule.  The CESK
-    conditional may inspect only a whole integer or [Null_a]. *)
+(** A runtime fact used by the cache-specific conditional rule: the guard
+    holds a whole integer or [Null_a].  The conditional is a default test, so
+    [Null_a] takes the zero branch. *)
 Definition pico_core_int_guard (rGamma : r_env) (x : var) : Prop :=
   runtime_getVal rGamma x = Some Null_a \/
   exists n, runtime_getVal rGamma x = Some (Int n).
@@ -82,8 +83,8 @@ Lemma pico_core_int_guard_ifzero_step `{Hmem : CacheMemoryModel} :
 Proof.
   intros CT rGamma h sigma V K x s_zero s_nonzero Hguard.
   destruct Hguard as [Hnull | [n Hinteger]].
-  - exists (CoreDone NPE rGamma V).
-    apply PCS_IfZeroNPE.
+  - exists (CoreRun rGamma s_zero V K).
+    apply PCS_IfNull.
     exact Hnull.
   - destruct n as [|n].
     + exists (CoreRun rGamma s_zero V K).

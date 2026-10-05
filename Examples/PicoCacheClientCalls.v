@@ -190,9 +190,7 @@ Section client_calls.
     - inversion Hstep; subst.
       apply client_run; [exact Hrecv | assumption |].
       constructor; [| exact HK]. eexists. split; [reflexivity | assumption].
-    - inversion Hstep; subst;
-        try (apply client_run; assumption).
-      apply client_done.
+    - inversion Hstep; subst; apply client_run; assumption.
     - (* a call to the cache method *)
       inversion Hstep; subst; [| apply client_done].
       match goal with

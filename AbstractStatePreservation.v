@@ -300,6 +300,12 @@ Proof.
   - (* IfNonzero *)
     intros. inversion Htyping; subst.
     eapply IHHeval; eauto.
+  - (* null guard: zero branch *)
+    intros. inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* reference guard: nonzero branch *)
+    intros. inversion Htyping; subst.
+    eapply IHHeval; eauto.
 Qed.
 
 (** Public shallow-immutability statement.  Evaluation preserves the runtime

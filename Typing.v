@@ -674,10 +674,11 @@ Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env ->
       (Htype2 : stmt_typing CT sΓ' mt s2 sΓ''),
       stmt_typing CT sΓ mt (SSeq s1 s2) sΓ''
 
-  (* Integer zero test; both branches must agree on the output environment *)
+  (* Default test on an integer or a reference; both branches must agree on
+     the output environment *)
   | ST_IfZero : forall CT sΓ mt x Tx s_zero s_nonzero sΓ',
       wf_senv CT sΓ -> static_getType sΓ x = Some Tx ->
-      sbase Tx = TInt ->
+      (sbase Tx = TInt \/ exists C, sbase Tx = TRef C) ->
       stmt_typing CT sΓ mt s_zero sΓ' ->
       stmt_typing CT sΓ mt s_nonzero sΓ' ->
       stmt_typing CT sΓ mt (SIfZero x s_zero s_nonzero) sΓ'

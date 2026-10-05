@@ -570,9 +570,18 @@ Proof.
       [exact Hnonzero | inversion Xtyp; eassumption | exact Xwf |
        exact Xagree | exact Xpub | eassumption |].
     subst. repeat split; auto.
-  - (* null guard *)
+  - (* null guard: zero branch *)
     inversion Xrun2; subst; try congruence.
-    repeat split; auto.
+    edestruct (IHHrun Htable) as (Hr & Henv' & Hh & Hh' & Hpub');
+      [exact Hzero | inversion Xtyp; eassumption | exact Xwf | exact Xagree |
+       exact Xpub | eassumption |].
+    subst. repeat split; auto.
+  - (* reference guard: nonzero branch *)
+    inversion Xrun2; subst; try congruence.
+    edestruct (IHHrun Htable) as (Hr & Henv' & Hh & Hh' & Hpub');
+      [exact Hnonzero | inversion Xtyp; eassumption | exact Xwf |
+       exact Xagree | exact Xpub | eassumption |].
+    subst. repeat split; auto.
 Qed.
 
 (** ** Replaying a derivation in an agreeing heap
@@ -770,8 +779,18 @@ Proof.
     subst.
     repeat split; [| assumption].
     eapply SBS_IfNonzero; eassumption.
-  - repeat split; [| assumption].
-    apply SBS_IfZero_NPE. assumption.
+  - inversion Xtyp; subst.
+    edestruct (IHHrun Htable) as (Hh & Hrun' & Hpub');
+      [exact Hzero | eassumption | exact Xwf | exact Xagree | exact Xpub |].
+    subst.
+    repeat split; [| assumption].
+    eapply SBS_IfNull; eassumption.
+  - inversion Xtyp; subst.
+    edestruct (IHHrun Htable) as (Hh & Hrun' & Hpub');
+      [exact Hnonzero | eassumption | exact Xwf | exact Xagree | exact Xpub |].
+    subst.
+    repeat split; [| assumption].
+    eapply SBS_IfRef; eassumption.
 Qed.
 
 (** ** Stability of the abstract state

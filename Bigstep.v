@@ -455,10 +455,18 @@ Inductive eval_stmt : class_table -> r_env -> heap -> stmt -> eval_result -> r_e
       (Hbranch : eval_stmt CT rΓ h s_nonzero r rΓ' h'),
       eval_stmt CT rΓ h
         (SIfZero x s_zero s_nonzero) r rΓ' h'
-  | SBS_IfZero_NPE : forall CT rΓ h x s_zero s_nonzero,
-      runtime_getVal rΓ x = Some Null_a ->
+  (* The test is a default test: null behaves like zero and a reference
+     like a nonzero integer. *)
+  | SBS_IfNull : forall CT rΓ h x s_zero s_nonzero r rΓ' h'
+      (Hguard : runtime_getVal rΓ x = Some Null_a)
+      (Hbranch : eval_stmt CT rΓ h s_zero r rΓ' h'),
       eval_stmt CT rΓ h
-        (SIfZero x s_zero s_nonzero) NPE rΓ h
+        (SIfZero x s_zero s_nonzero) r rΓ' h'
+  | SBS_IfRef : forall CT rΓ h x loc s_zero s_nonzero r rΓ' h'
+      (Hguard : runtime_getVal rΓ x = Some (Iot loc))
+      (Hbranch : eval_stmt CT rΓ h s_nonzero r rΓ' h'),
+      eval_stmt CT rΓ h
+        (SIfZero x s_zero s_nonzero) r rΓ' h'
   .
 
 (* Determinism of eval_stmt.
@@ -745,9 +753,12 @@ Proof.
   - (* SBS_IfNonzero *)
     inversion H2; subst; try congruence.
     eapply IHeval_stmt; eauto.
-  - (* SBS_IfZero_NPE *)
+  - (* SBS_IfNull *)
     inversion H2; subst; try congruence.
-    repeat split; reflexivity.
+    eapply IHeval_stmt; eauto.
+  - (* SBS_IfRef *)
+    inversion H2; subst; try congruence.
+    eapply IHeval_stmt; eauto.
 Qed.
 
 Lemma r_type_dom : forall h loc rqt
@@ -1130,6 +1141,10 @@ Proof.
   - (* SBS_IfZero *)
     eapply IHHeval; eauto.
   - (* SBS_IfNonzero *)
+    eapply IHHeval; eauto.
+  - (* SBS_IfNull *)
+    eapply IHHeval; eauto.
+  - (* SBS_IfRef *)
     eapply IHHeval; eauto.
 Qed.
 

@@ -266,12 +266,20 @@ Inductive pico_core_step
         (CoreRun rΓ s_nonzero V K)
         sigma
 
-  | PCS_IfZeroNPE : forall rΓ x s_zero s_nonzero V K sigma,
+  | PCS_IfNull : forall rΓ x s_zero s_nonzero V K sigma,
       runtime_getVal rΓ x = Some Null_a ->
       pico_core_step CT
         (CoreRun rΓ (SIfZero x s_zero s_nonzero) V K)
         sigma
-        (CoreDone NPE rΓ V)
+        (CoreRun rΓ s_zero V K)
+        sigma
+
+  | PCS_IfRef : forall rΓ x loc s_zero s_nonzero V K sigma,
+      runtime_getVal rΓ x = Some (Iot loc) ->
+      pico_core_step CT
+        (CoreRun rΓ (SIfZero x s_zero s_nonzero) V K)
+        sigma
+        (CoreRun rΓ s_nonzero V K)
         sigma.
 
 Lemma runtime_getObj_update_field_type :

@@ -555,8 +555,18 @@ Section small_step_calls.
           exists rΓ1, V1, k. split; [lia |].
           split; [eapply SBS_IfNonzero; eassumption |].
           split; [exact Henv1 | exact Htail1].
-        * destruct (core_nsteps_done_inv _ _ _ _ _ _ _ Htail) as (_ & Heq & _).
-          discriminate.
+        * destruct (IH n' rΓ s_zero V K sΓ sΓ' mt rf W S' ltac:(lia) Htail
+            Hzero ltac:(eassumption) Hwf Henv)
+            as (rΓ1 & V1 & k & Hk & Heval & Henv1 & Htail1).
+          exists rΓ1, V1, k. split; [lia |].
+          split; [eapply SBS_IfNull; eassumption |].
+          split; [exact Henv1 | exact Htail1].
+        * destruct (IH n' rΓ s_nonzero V K sΓ sΓ' mt rf W S' ltac:(lia) Htail
+            Hnonzero ltac:(eassumption) Hwf Henv)
+            as (rΓ1 & V1 & k & Hk & Heval & Henv1 & Htail1).
+          exists rΓ1, V1, k. split; [lia |].
+          split; [eapply SBS_IfRef; eassumption |].
+          split; [exact Henv1 | exact Htail1].
       + (* call *)
         inversion Hrun as [| n' e0 S0 e1 S1 e2 S2 Hstep Htail]; subst.
         inversion Hstep; subst.
@@ -714,6 +724,18 @@ Section small_step_calls.
           Hwf0 HenvP) as [Hh' [V1 Hsteps]].
         split; [exact Hh' |]. exists V1.
         econstructor; [eapply PCS_IfNonzero; exact Hguard | exact Hsteps].
+      - (* null guard *)
+        inversion Htyp0; subst.
+        destruct (IHHeval eq_refl _ _ _ V0 K0 eq_refl eq_refl Hzero ltac:(eassumption)
+          Hwf0 HenvP) as [Hh' [V1 Hsteps]].
+        split; [exact Hh' |]. exists V1.
+        econstructor; [apply PCS_IfNull; exact Hguard | exact Hsteps].
+      - (* reference guard *)
+        inversion Htyp0; subst.
+        destruct (IHHeval eq_refl _ _ _ V0 K0 eq_refl eq_refl Hnonzero ltac:(eassumption)
+          Hwf0 HenvP) as [Hh' [V1 Hsteps]].
+        split; [exact Hh' |]. exists V1.
+        econstructor; [eapply PCS_IfRef; exact Hguard | exact Hsteps].
     Qed.
   End with_progress.
 End small_step_calls.

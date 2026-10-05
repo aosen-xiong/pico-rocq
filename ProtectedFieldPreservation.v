@@ -232,4 +232,10 @@ Proof.
   - (* if-nonzero *)
     inversion Htyping; subst.
     eapply (IHHeval eq_refl Heval); eauto.
+  - (* null guard: zero branch *)
+    inversion Htyping; subst.
+    eapply (IHHeval eq_refl Heval); eauto.
+  - (* reference guard: nonzero branch *)
+    inversion Htyping; subst.
+    eapply (IHHeval eq_refl Heval); eauto.
 Qed.

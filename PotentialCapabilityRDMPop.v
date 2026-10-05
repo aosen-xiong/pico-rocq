@@ -1692,6 +1692,12 @@ Proof.
   - (* if-nonzero *)
     inversion Htyping; subst.
     eapply IHHeval; eauto.
+  - (* null guard: zero branch *)
+    inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* reference guard: nonzero branch *)
+    inversion Htyping; subst.
+    eapply IHHeval; eauto.
 Qed.
 
 (** Stack-shape auxiliaries for the per-edge lemma. *)

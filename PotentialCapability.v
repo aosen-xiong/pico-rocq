@@ -482,5 +482,11 @@ Proof.
   - (* if-nonzero *)
     inversion Htyping; subst.
     eapply (IHHeval eq_refl Heval P); eauto.
+  - (* null guard: zero branch *)
+    inversion Htyping; subst.
+    eapply (IHHeval eq_refl Heval P); eauto.
+  - (* reference guard: nonzero branch *)
+    inversion Htyping; subst.
+    eapply (IHHeval eq_refl Heval P); eauto.
 }
 Qed.

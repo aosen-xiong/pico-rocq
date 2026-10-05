@@ -258,7 +258,24 @@ Section derivation_prefix.
              split; [eapply SBS_IfNonzero; eassumption |].
              split; [exact Henv1 | exact Htail1].
           -- right. right. exact Hfailed.
-        * right. right. eapply failed_tail; [| exact Htail]. discriminate.
+        * destruct (IH n' rΓ s_zero V K sΓ sΓ' mt e ltac:(lia) Htail
+            Hzero ltac:(eassumption) Hwf Henv)
+            as [Hrunning | [(rΓ1 & V1 & k & Hk & Heval & Henv1 & Htail1)
+                           | Hfailed]].
+          -- left. exact Hrunning.
+          -- right. left. exists rΓ1, V1, k. split; [lia |].
+             split; [eapply SBS_IfNull; eassumption |].
+             split; [exact Henv1 | exact Htail1].
+          -- right. right. exact Hfailed.
+        * destruct (IH n' rΓ s_nonzero V K sΓ sΓ' mt e ltac:(lia) Htail
+            Hnonzero ltac:(eassumption) Hwf Henv)
+            as [Hrunning | [(rΓ1 & V1 & k & Hk & Heval & Henv1 & Htail1)
+                           | Hfailed]].
+          -- left. exact Hrunning.
+          -- right. left. exists rΓ1, V1, k. split; [lia |].
+             split; [eapply SBS_IfRef; eassumption |].
+             split; [exact Henv1 | exact Htail1].
+          -- right. right. exact Hfailed.
       + (* call *)
         inversion Hstep; subst.
         * match goal with

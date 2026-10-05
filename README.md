@@ -71,9 +71,12 @@ The semantic-immutability and derived-cache development built on this calculus
   obligations for every method that a runtime subtype can select.
 - The calculus extends the paper's PICO with immutable integers: a qualified
   type's base is either `TInt` or a class reference `TRef C`, expressions
-  include integer literals, statements include the zero test `SIfZero`, and a
+  include integer literals, statements include the default test `SIfZero`, and a
   local declaration initialises its slot with `default_value` (null for
-  references, `Int 0` for integers). Integer types are well formed only at
+  references, `Int 0` for integers). The default test takes its first branch
+  when the tested variable holds the default value of its type (`Int 0` or
+  null) and its second branch otherwise; like a null test in Java, it does
+  not throw. Integer types are well formed only at
   `Imm`. The semantic-immutability development uses integers for derived cache
   values; the PICO claims above are unchanged by the extension.
 - The paper treats `Lost` as a helper qualifier rather than a programmer-written
