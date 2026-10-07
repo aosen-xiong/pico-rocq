@@ -121,6 +121,18 @@ Examples (`Examples/`):
   (`cache_method_call_trace_robust`), with no semantic premise when the
   initializer calls the derivation method itself
   (`derivation_call_cache_method_trace_robust`).
+- `PicoCacheFlowJudgment.v`: the judgment as a flow analysis over arbitrary
+  statements. Each local carries an origin: the receiver, an unchecked read
+  of the cache field, the sentinel, the derived value, or other. A read of
+  the cache field is unchecked, a test against the sentinel refines it on
+  each branch, a write must store the derived value, and the method must
+  return the derived value. Derivation code is a leaf whose effect is given
+  by its sequential evaluation. An accepted method is trace robust on the
+  machine (`flow_cache_method_trace_robust`), and the local-copy method is
+  accepted (`local_copy_flow`, `local_copy_derivation_call_flow`). The proof
+  does not need a single-read premise: a second read is unchecked until it
+  is tested. Scope: one integer cache field with sentinel zero, one
+  receiver, the core statement language.
 - `PicoHashCacheMethod.v`: the hash method satisfies the judgment
   (`pico_hash_n_calls_by_judgment`).
 - `PicoCacheClients.v`: a thread can break the provider's invariant only by
