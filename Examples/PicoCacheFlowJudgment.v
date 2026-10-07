@@ -305,6 +305,9 @@ Section flow_judgment.
         flow sG G (SIfZero t s0 s1) sG' G'
     | F_Read : forall sG G t yv,
         nth_error G yv = Some OThis ->
+        (* [t] is an integer local.  The premise is stated as a typing fact
+           because the proof uses it to keep the frame well formed after
+           the read. *)
         (forall n, stmt_typing CT sG mt (SVarAss t (EInt n)) sG) ->
         flow sG G (SVarAss t (EField yv hash_cache_field)) sG
           (update t OUnchecked G)
@@ -513,6 +516,100 @@ Section flow_judgment.
     { apply Forall2_refl_le. }
     exact (flow_copy sG3 [OThis; ODerived; OOther] cache_result cache_tmp
              ODerived Hcopy eq_refl).
+  Qed.
+
+  (** ** The double read is rejected
+
+      The method that reads the cache field again for its result is not
+      accepted: the second read is unchecked, and derivation code cannot
+      read a field that is not abstract. *)
+
+  Lemma deriv_stmt_keeps_receiver :
+    forall sG d sG' T,
+      deriv_stmt CT D sG d sG' ->
+      static_getType sG cache_receiver = Some T ->
+      static_getType sG' cache_receiver = Some T.
+  Proof.
+    intros sG d sG' T Hd. induction Hd; intros Hg; auto.
+    match goal with
+    | |- static_getType (?l ++ _) _ = _ =>
+        destruct l; [discriminate | exact Hg]
+    end.
+  Qed.
+
+  Lemma flow_keeps_receiver :
+    forall sG G s sG' G' T,
+      flow sG G s sG' G' ->
+      static_getType sG cache_receiver = Some T ->
+      static_getType sG' cache_receiver = Some T.
+  Proof.
+    intros sG G s sG' G' T Hfl. induction Hfl; intros Hg; auto.
+    eapply deriv_stmt_keeps_receiver; eassumption.
+  Qed.
+
+  Lemma cache_read_not_deriv :
+    forall sG t sG' T C,
+      static_getType sG cache_receiver = Some T ->
+      sbase T = TRef C ->
+      ~ abstract_field CT C hash_cache_field ->
+      deriv_stmt CT D sG
+        (SVarAss t (EField cache_receiver hash_cache_field)) sG' ->
+      False.
+  Proof.
+    intros sG t sG' T C Hg Hb Hna Hd. inversion Hd; subst.
+    match goal with
+    | He : ts_expr_reads_only_stable _ _ (EField _ _) |- _ =>
+        inversion He; subst
+    end.
+    match goal with
+    | Hg' : static_getType _ cache_receiver = Some ?T',
+      Hb' : sbase ?T' = TRef ?C',
+      Ha : abstract_field CT ?C' hash_cache_field |- _ =>
+        rewrite Hg' in Hg; injection Hg as <-;
+        rewrite Hb' in Hb; injection Hb as <-;
+        exact (Hna Ha)
+    end.
+  Qed.
+
+  Lemma double_read_not_flow :
+    forall compute sG G sG' G' T C,
+      static_getType sG cache_receiver = Some T ->
+      sbase T = TRef C ->
+      ~ abstract_field CT C hash_cache_field ->
+      flow sG G (pico_double_read_cache_stmt compute) sG' G' ->
+      nth_error G' cache_result = Some ODerived ->
+      False.
+  Proof.
+    intros compute sG G sG' G' T C Hg Hb Hna Hfl Hres.
+    unfold pico_double_read_cache_stmt in Hfl.
+    inversion Hfl as
+      [ | ? ? ? sGa ? Ga' ? ? ? Hfl1 _ Hfl2 | | | | ? ? ? ? ? _ Hd _ _ ]; subst.
+    - have Hga := flow_keeps_receiver _ _ _ _ _ T Hfl1 Hg.
+      inversion Hfl2 as
+        [ | ? ? ? sGb ? Gb' ? ? ? Hfl3 _ Hfl4 | | | | ? ? ? ? ? _ Hd _ _ ];
+        subst.
+      + have Hgb := flow_keeps_receiver _ _ _ _ _ T Hfl3 Hga.
+        inversion Hfl4 as [ | | | | | ? ? ? ? ? _ Hd _ _ ]; subst.
+        * destruct (Nat.lt_ge_cases cache_result (length Gb')) as [Hlt | Hge].
+          -- rewrite (update_same _ _ _ _ Hlt) in Hres. discriminate.
+          -- assert (Hnone :
+               nth_error (update cache_result OUnchecked Gb') cache_result
+                 = None).
+             { apply nth_error_None. rewrite update_length. exact Hge. }
+             rewrite Hnone in Hres. discriminate.
+        * exact (cache_read_not_deriv _ _ _ _ _ Hgb Hb Hna Hd).
+      + inversion Hd; subst.
+        match goal with
+        | Hd1 : deriv_stmt _ _ sGa (pico_local_copy_cache_branch _) ?sGm,
+          Hd2 : deriv_stmt _ _ ?sGm (SVarAss _ _) _ |- _ =>
+            exact (cache_read_not_deriv _ _ _ _ _
+                     (deriv_stmt_keeps_receiver _ _ _ T Hd1 Hga) Hb Hna Hd2)
+        end.
+    - inversion Hd; subst.
+      match goal with
+      | Hd1 : deriv_stmt _ _ sG (SVarAss _ (EField _ _)) _ |- _ =>
+          exact (cache_read_not_deriv _ _ _ _ _ Hg Hb Hna Hd1)
+      end.
   Qed.
 
   (** ** Assumptions about the method and the receiver *)

@@ -129,7 +129,8 @@ Examples (`Examples/`):
   return the derived value. Derivation code is a leaf whose effect is given
   by its sequential evaluation. An accepted method is trace robust on the
   machine (`flow_cache_method_trace_robust`), and the local-copy method is
-  accepted (`local_copy_flow`, `local_copy_derivation_call_flow`). The proof
+  accepted (`local_copy_flow`, `local_copy_derivation_call_flow`), and the
+  double-read method is not (`double_read_not_flow`). The proof
   does not need a single-read premise: a second read is unchecked until it
   is tested. Scope: one integer cache field with sentinel zero, one
   receiver, the core statement language.
