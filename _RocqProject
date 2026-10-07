@@ -61,6 +61,7 @@ Examples/PicoCacheFlowJudgment.v
 Examples/PicoHashTraceRobust.v
 Examples/PicoHashCacheMethod.v
 Examples/PicoCacheClients.v
+Examples/PicoCacheFlowClients.v
 Examples/PicoCacheClientCalls.v
 Examples/PicoHashClients.v
 Examples/PicoRefCacheJudgment.v

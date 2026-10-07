@@ -134,6 +134,14 @@ Examples (`Examples/`):
   does not need a single-read premise: a second read is unchecked until it
   is tested. Scope: one integer cache field with sentinel zero, one
   receiver, the core statement language.
+- `PicoCacheFlowClients.v`: a class-table discipline in place of the
+  assumption on clients. A statement is quiet when it has no write to the
+  cache field and no call to the cache method; the table is disciplined
+  when every other method body is quiet. A quiet control stays quiet and is
+  an admissible client (`quiet_control_client`), so calls of an accepted
+  cache method together with any quiet threads preserve the invariant
+  (`disciplined_pool_semimm`). Quiet code may read the cache field but may
+  not call the cache method.
 - `PicoHashCacheMethod.v`: the hash method satisfies the judgment
   (`pico_hash_n_calls_by_judgment`).
 - `PicoCacheClients.v`: a thread can break the provider's invariant only by
