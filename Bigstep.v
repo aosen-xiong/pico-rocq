@@ -284,6 +284,12 @@ Inductive eval_expr : class_table -> r_env -> heap -> expr -> value -> eval_resu
   | EBS_Field_NPE : forall CT rΓ h x f
       (Hnull : runtime_getVal rΓ x = Some (Null_a)),
       eval_expr CT rΓ h (EField x f) Null_a NPE rΓ h
+
+  (* evaluate an integer operation on two locals *)
+  | EBS_Bin : forall CT rΓ h op x y n1 n2
+      (Hval_x : runtime_getVal rΓ x = Some (Int n1))
+      (Hval_y : runtime_getVal rΓ y = Some (Int n2)),
+      eval_expr CT rΓ h (EBin op x y) (Int (binop_eval op n1 n2)) OK rΓ h
   .
 (* Determinism of eval_expr.
 
@@ -296,25 +302,7 @@ Lemma eval_expr_deterministic :
     v1 = v2 /\ r1 = r2 /\ rΓ1' = rΓ2' /\ h1' = h2'.
 Proof.
   intros CT rΓ h e v1 r1 rΓ1' h1' v2 r2 rΓ2' h2' H1 H2.
-  inversion H1; subst; inversion H2; subst.
-  - (* EBS_Null vs EBS_Null *)
-    repeat split; reflexivity.
-  - (* EBS_Val vs EBS_Val *)
-    rewrite Hval0 in Hval; injection Hval as ?; subst.
-    repeat split; reflexivity.
-  - (* EBS_Int vs EBS_Int *)
-    repeat split; reflexivity.
-  - (* EBS_Field vs EBS_Field *)
-    rewrite Hval0 in Hval; injection Hval as ?; subst.
-    rewrite Hobj0 in Hobj; injection Hobj as ?; subst.
-    rewrite Hfield0 in Hfield; injection Hfield as ?; subst.
-    repeat split; reflexivity.
-  - (* EBS_Field vs EBS_Field_NPE: Iot vs Null contradiction *)
-    rewrite Hnull in Hval; discriminate.
-  - (* EBS_Field_NPE vs EBS_Field: Null vs Iot contradiction *)
-    rewrite Hnull in Hval; discriminate.
-  - (* EBS_Field_NPE vs EBS_Field_NPE *)
-    repeat split; reflexivity.
+  inversion H1; subst; inversion H2; subst; repeat split; congruence.
 Qed.
 
 (* PICO Statement evaluation *)
@@ -1841,6 +1829,8 @@ Proof.
 	     }
 	     subst fdef.
 	     exact Hforall2.
+  - (* EBS_Bin *)
+    reflexivity.
 Qed.
 
 Lemma runtime_lookup_list_preserves_wf_values : forall CT rΓ h zs vals0

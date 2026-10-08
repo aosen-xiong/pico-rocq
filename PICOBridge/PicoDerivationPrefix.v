@@ -139,7 +139,7 @@ Section derivation_prefix.
     intros x y f ly Heq Hy. subst s.
     {
       inversion Hderiv; subst.
-      inversion Hexpr as [| | | y0 f0 T C Hget Href Habs]; subst.
+      inversion Hexpr as [| | | | y0 f0 T C Hget Href Habs]; subst.
       have Hly := Henv y ly Hy.
       split; [exact Hly |].
       destruct (Hdom ly Hly) as (rt & fs & Hobj).
@@ -224,7 +224,7 @@ Section derivation_prefix.
           split; [| exact Htail].
           apply env_in_update; [exact Henv |]. intros l Hl; discriminate.
         * (* field read *)
-          inversion Hexpr as [| | | y0 f0 T C Hget Href Habs]; subst.
+          inversion Hexpr as [| | | | y0 f0 T C Hget Href Habs]; subst.
           match goal with
           | Hy : runtime_getVal rΓ y = Some (Iot ?ly),
             Hr : wm_read _ _ (?ly, f) ?v _ |- _ =>
@@ -240,6 +240,12 @@ Section derivation_prefix.
               intros l Hl; subst v; exact (Hclosed l Hv)
           end.
         * right. right. eapply failed_tail; [| exact Htail]. discriminate.
+        * (* integer operation *)
+          right. left. eexists _, _, n'. split; [lia |].
+          split; [eapply SBS_Assign;
+            [eassumption | eapply EBS_Bin; eassumption] |].
+          split; [| exact Htail].
+          apply env_in_update; [exact Henv |]. intros l Hl; discriminate.
       + (* sequence *)
         inversion Hstep; subst.
         inversion Htyp; subst.

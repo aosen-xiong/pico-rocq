@@ -216,6 +216,9 @@ Proof.
     intros l ->. exact (Henv x l Hval).
   - inversion Heval1; subst. inversion Heval2; subst.
     repeat split; intros l Hl; discriminate.
+  - (* an integer operation reads only locals *)
+    inversion Heval1; subst; inversion Heval2; subst;
+      repeat split; try congruence; intros l Hl; discriminate.
   - inversion Heval1; subst; inversion Heval2; subst; try congruence.
     + (* both runs read the field of the same public object *)
       assert (v0 = v) by congruence. subst v0.
@@ -605,6 +608,7 @@ Proof.
   - constructor.
   - constructor. assumption.
   - constructor.
+  - eapply EBS_Bin; eassumption.
   - have Hv := Hpub x v0 Hval.
     destruct (Hagree v0 Hv) as (rt & fs1 & fs2 & Hobj1 & Hobj2 & Hfields).
     rewrite Hobj1 in Hobj. injection Hobj as <-.

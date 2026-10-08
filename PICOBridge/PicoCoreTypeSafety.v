@@ -658,6 +658,9 @@ Section thread_typing.
         intros loc_y val V' Hy Hread.
         eapply pico_core_typed_env_after_assign_field_read; eauto.
         apply histories_typed_reads_typed. exact Hhist.
+      + assert (sGamma' = sGamma) by (inversion Htyping; reflexivity).
+        subst sGamma'.
+        eapply pico_core_typed_assign_bin_step_post; eauto.
     - eapply pico_core_typed_fldwrite_step_post; eauto.
     - eapply pico_core_typed_new_step_post; eauto.
   Qed.
@@ -717,6 +720,8 @@ Section thread_typing.
         (vars (set_vars rGamma (vars rGamma ++ [default_value T]))) =
         Some this).
       rewrite get_this_var_mapping_update_vars_app_default. exact Hthis.
+    - inversion Htyping; subst.
+      rewrite get_this_var_mapping_update_vars_nonzero; eauto.
     - inversion Htyping; subst.
       rewrite get_this_var_mapping_update_vars_nonzero; eauto.
     - inversion Htyping; subst.
@@ -928,6 +933,31 @@ Section thread_typing.
             loc o current V K h sigma Hold Hloc Hwf Hobj Hcur)
             as (val & V' & Hstep).
           eauto.
+      + (* an integer operation: both operands hold integers *)
+        assert (Hint : forall z T,
+          static_getType sGamma z = Some T -> sbase T = TInt ->
+          exists n, runtime_getVal rGamma z = Some (Int n)).
+        { intros z T Hz HT.
+          destruct (pico_core_typed_env_lookup CT _ _ _ _ _ Henv Hz)
+            as (qc & v' & Hv' & Htv).
+          destruct v' as [| loc | n]; simpl in Htv.
+          - destruct Htv as [C HC]. congruence.
+          - exfalso. unfold wf_r_typable in Htv.
+            destruct (r_type h loc) as [rqt |]; [| contradiction].
+            destruct Htv as [Hb _].
+            destruct (base_subtype_from_ref CT _ _ Hb) as [C [HC _]].
+            congruence.
+          - eauto. }
+        inversion Hexpr; subst.
+        match goal with
+        | Hy : static_getType sGamma v0 = Some ?T0, Hi : sbase ?T0 = TInt |- _ =>
+            destruct (Hint _ _ Hy Hi) as [n1 Hn1]
+        end.
+        match goal with
+        | Hz : static_getType sGamma v1 = Some ?T1, Hi : sbase ?T1 = TInt |- _ =>
+            destruct (Hint _ _ Hz Hi) as [n2 Hn2]
+        end.
+        do 2 eexists. eapply PCS_AssignBin; eassumption.
     - (* field write *)
       destruct (pico_core_typed_fldwrite_runtime_cases CT _ _ _ _ _ _ _ _
         Htyping Henv)

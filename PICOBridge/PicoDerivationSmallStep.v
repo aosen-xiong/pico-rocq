@@ -506,7 +506,7 @@ Section small_step_calls.
           split; [| exact Htail].
           apply env_in_update; [exact Henv |]. intros l Hl; discriminate.
         * (* field read *)
-          inversion Hexpr as [| | | y0 f0 T C Hget Href Habs]; subst.
+          inversion Hexpr as [| | | | y0 f0 T C Hget Href Habs]; subst.
           match goal with
           | Hy : runtime_getVal rΓ y = Some (Iot ?ly),
             Hr : wm_read sigma2 _ (?ly, f) ?v _ |- _ =>
@@ -523,6 +523,12 @@ Section small_step_calls.
         * (* null dereference cannot complete normally *)
           destruct (core_nsteps_done_inv _ _ _ _ _ _ _ Htail) as (_ & Heq & _).
           discriminate.
+        * (* integer operation *)
+          eexists _, _, n'. split; [lia |].
+          split; [eapply SBS_Assign;
+            [eassumption | eapply EBS_Bin; eassumption] |].
+          split; [| exact Htail].
+          apply env_in_update; [exact Henv |]. intros l Hl; discriminate.
       + (* sequence *)
         inversion Hrun as [| n' e0 S0 e1 S1 e2 S2 Hstep Htail]; subst.
         inversion Hstep; subst.
@@ -644,11 +650,12 @@ Section small_step_calls.
         exists V0. econstructor; [apply PCS_Local; eassumption | constructor].
       - (* assignment *)
         split; [reflexivity |].
-        inversion Hexpr as [| y0 | n0 | y0 f0 T C Hget Href Habs]; subst;
-          inversion Heval; subst.
+        inversion Hexpr as [| y0 | n0 | op0 y1 z1 | y0 f0 T C Hget Href Habs];
+          subst; inversion Heval; subst.
         + exists V0. econstructor; [eapply PCS_AssignNull; eassumption | constructor].
         + exists V0. econstructor; [eapply PCS_AssignVar; eassumption | constructor].
         + exists V0. econstructor; [eapply PCS_AssignInt; eassumption | constructor].
+        + exists V0. econstructor; [eapply PCS_AssignBin; eassumption | constructor].
         + match goal with
           | Hy : runtime_getVal rΓ y0 = Some (Iot ?ly),
             Ho : runtime_getObj h1 ?ly = Some ?o,

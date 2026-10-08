@@ -58,11 +58,26 @@ Definition int_type : qualified_type :=
 
 Definition s_env := list qualified_type.
 
+(* Integer operators.  Integers are naturals, so subtraction truncates at
+   zero. *)
+Inductive binop : Type :=
+  | BAdd
+  | BSub
+  | BMul.
+
+Definition binop_eval (op : binop) (n1 n2 : nat) : nat :=
+  match op with
+  | BAdd => n1 + n2
+  | BSub => n1 - n2
+  | BMul => n1 * n2
+  end.
+
 Inductive expr : Type :=
   | ENull : expr
   | EVar : var -> expr
   | EInt : nat -> expr
-  | EField : var -> var -> expr.
+  | EField : var -> var -> expr
+  | EBin : binop -> var -> var -> expr. (* an integer operation on two locals *)
 
 Inductive stmt: Type :=
   | SSkip: stmt (* skip *)

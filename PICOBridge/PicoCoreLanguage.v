@@ -173,6 +173,17 @@ Inductive pico_core_step
         (CoreDone NPE rΓ V)
         sigma
 
+  | PCS_AssignBin : forall rΓ x op y z old_v n1 n2 V K sigma,
+      runtime_getVal rΓ x = Some old_v ->
+      runtime_getVal rΓ y = Some (Int n1) ->
+      runtime_getVal rΓ z = Some (Int n2) ->
+      pico_core_step CT
+        (CoreRun rΓ (SVarAss x (EBin op y z)) V K)
+        sigma
+        (CoreRun (set_vars rΓ (update x (Int (binop_eval op n1 n2)) (vars rΓ)))
+           SSkip V K)
+        sigma
+
   | PCS_FldWrite : forall rΓ x f y loc_x o a val_y h h' sigma sigma' V V' K,
       runtime_getVal rΓ x = Some (Iot loc_x) ->
       runtime_getObj h loc_x = Some o ->

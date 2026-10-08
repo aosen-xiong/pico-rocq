@@ -412,6 +412,15 @@ Inductive expr_has_type : class_table -> s_env -> method_scope -> expr -> qualif
       (Hwf : wf_senv CT Γ),
       expr_has_type CT Γ mt (EInt n) int_type
 
+  (* Integer operation on two integer locals *)
+  | ET_Bin : forall CT Γ mt op x y Tx Ty
+      (Hwf    : wf_senv CT Γ)
+      (Hget_x : static_getType Γ x = Some Tx)
+      (Hint_x : sbase Tx = TInt)
+      (Hget_y : static_getType Γ y = Some Ty)
+      (Hint_y : sbase Ty = TInt),
+      expr_has_type CT Γ mt (EBin op x y) int_type
+
   (* Field access typing — AbstractState scope *)
   | ET_Field_abstract_state : forall CT Γ mt x T C fDef f
       (Hwf      : wf_senv CT Γ)

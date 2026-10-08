@@ -33,6 +33,8 @@ Inductive cache_init_expr_reads_only_abstract
       cache_init_expr_reads_only_abstract CT sΓ (EVar x)
   | CIERO_Int : forall n,
       cache_init_expr_reads_only_abstract CT sΓ (EInt n)
+  | CIERO_Bin : forall op x y,
+      cache_init_expr_reads_only_abstract CT sΓ (EBin op x y)
   | CIERO_Field : forall x f T C
       (Hget_x : static_getType sΓ x = Some T)
       (Href : sbase T = TRef C)
@@ -83,6 +85,8 @@ Inductive ts_expr_reads_only_stable
       ts_expr_reads_only_stable CT sΓ (EVar x)
   | TSERO_Int : forall n,
       ts_expr_reads_only_stable CT sΓ (EInt n)
+  | TSERO_Bin : forall op x y,
+      ts_expr_reads_only_stable CT sΓ (EBin op x y)
   | TSERO_Field : forall x f T C
       (Hget_x : static_getType sΓ x = Some T)
       (Href : sbase T = TRef C)
@@ -121,6 +125,7 @@ Lemma ts_expr_implies_cache_init_expr_reads_only_abstract :
 Proof.
   intros CT sΓ e Hts.
   induction Hts.
+  - constructor.
   - constructor.
   - constructor.
   - constructor.

@@ -2413,6 +2413,26 @@ Section pico_typing_fundamental_ownp_pure.
     apply pico_core_typed_value_int.
   Qed.
 
+  Lemma pico_core_typed_env_after_assign_bin :
+    forall sGamma rGamma h mt x op y z n
+      (Htyping : stmt_typing CT sGamma mt (SVarAss x (EBin op y z)) sGamma)
+      (Henv : pico_core_typed_env CT sGamma rGamma h),
+      pico_core_typed_env CT sGamma
+        (set_vars rGamma (update x (Int n) (vars rGamma))) h.
+  Proof.
+    intros sGamma rGamma h mt x op y z n Htyping Henv.
+    inversion Htyping; subst.
+    inversion Htype_e; subst.
+    pose proof
+      (pico_core_typed_env_wf_config CT sGamma rGamma h Henv)
+      as Hconfig.
+    destruct Hconfig as [Hwf_CT [Hwf_heap _]].
+    eapply pico_core_typed_env_update_value; eauto.
+    intros qcontext receiver Hreceiver Hqcontext.
+    eapply pico_core_typed_value_subtype with (T1 := int_type); eauto.
+    apply pico_core_typed_value_int.
+  Qed.
+
   Lemma pico_core_typed_env_after_assign_var :
     forall sGamma rGamma h mt x y val_y
       (Htyping : stmt_typing CT sGamma mt (SVarAss x (EVar y)) sGamma)
@@ -2758,6 +2778,26 @@ Section pico_typing_fundamental_ownp_pure.
     inversion Hstep; subst; try discriminate; try congruence.
     apply PCSP_Ok.
     - eapply pico_core_typed_env_after_assign_int; eauto.
+    - exact Hlrstate.
+  Qed.
+
+  Lemma pico_core_typed_assign_bin_step_post :
+    forall sGamma rGamma h sigma mt x op y z V K e' state'
+      (Htyping : stmt_typing CT sGamma mt (SVarAss x (EBin op y z)) sGamma)
+      (Henv : pico_core_typed_env CT sGamma rGamma h)
+      (Hlrstate : pico_core_lr_state CT (mkPicoCoreState h sigma))
+      (Hstep :
+        pico_core_step CT
+          (CoreRun rGamma (SVarAss x (EBin op y z)) V K)
+          (mkPicoCoreState h sigma)
+          e' state'),
+      pico_core_stmt_post sGamma K e' state'.
+  Proof.
+    intros sGamma rGamma h sigma mt x op y z V K e' state'
+      Htyping Henv Hlrstate Hstep.
+    inversion Hstep; subst; try discriminate; try congruence.
+    apply PCSP_Ok.
+    - eapply pico_core_typed_env_after_assign_bin; eauto.
     - exact Hlrstate.
   Qed.
 
