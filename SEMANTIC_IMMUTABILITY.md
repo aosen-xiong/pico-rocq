@@ -160,8 +160,12 @@ Examples (`Examples/`):
   value. With the predecessor as decoding, an offset-encoded accessor (read
   once, store the encoded value on a miss, return the cached value minus
   one) is accepted with every premise discharged in the hash class's frame
-  (`offset_accessor_flow`). No class table declaring this accessor is
-  built, so there is no closed call-level instance for it.
+  (`offset_accessor_flow`).
+- `PicoOffsetClass.v`: a class whose cache method is the offset accessor,
+  with its class table, heap and initial state proved well formed. Any
+  number of concurrent calls preserve semantic immutability and return the
+  decoded value (`poc_n_calls_sound`). `PicoOffsetCacheExecution.v`, the
+  older stand-alone execution, now decodes with subtraction as well.
 - `PicoHashCacheMethod.v`: the hash method satisfies the judgment
   (`pico_hash_n_calls_by_judgment`).
 - `PicoCacheClients.v`: a thread can break the provider's invariant only by

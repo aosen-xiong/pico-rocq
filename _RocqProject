@@ -65,6 +65,7 @@ Examples/PicoCacheFlowClients.v
 Examples/PicoHashFlowInstance.v
 Examples/PicoArithmeticDerivation.v
 Examples/PicoOffsetFlowInstance.v
+Examples/PicoOffsetClass.v
 Examples/PicoCacheClientCalls.v
 Examples/PicoHashClients.v
 Examples/PicoRefCacheJudgment.v

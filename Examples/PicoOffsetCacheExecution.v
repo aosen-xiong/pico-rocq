@@ -8,11 +8,11 @@ Require Import PICOBridge.PicoMemoryModel PICOBridge.PicoCoreLanguage.
 
 (** * Concrete CESK Execution of an Offset-Encoded Cache
 
-    PICO has no primitive predecessor expression.  As with hash
-    recomputation, the concrete example therefore isolates the derived
-    computation behind a semantic contract.  For the fixed represented value
-    seven, assigning seven implements decoding on every protocol-valid
-    nonzero observation, because the only such observation is eight. *)
+    On a hit the accessor decodes the cached value by subtracting one, using
+    the calculus's integer subtraction.  On a miss it assigns the represented
+    value seven and stores the encoded value eight.  The class-level result
+    for an offset accessor, for any number of concurrent calls, is in
+    [PicoOffsetClass]. *)
 
 Definition pico_offset_abstract_value : nat := 7.
 Definition pico_offset_encoded_value : nat := S pico_offset_abstract_value.
@@ -21,8 +21,10 @@ Definition offset_receiver : var := 0.
 Definition offset_cached : var := 1.
 Definition offset_result : var := 2.
 
+(** [result = 1; result = cached - result] *)
 Definition pico_offset_hit_compute : stmt :=
-  SVarAss offset_result (EInt pico_offset_abstract_value).
+  SSeq (SVarAss offset_result (EInt 1))
+    (SVarAss offset_result (EBin BSub offset_cached offset_result)).
 
 Definition pico_offset_miss_compute : stmt :=
   SSeq
@@ -140,11 +142,14 @@ Proof.
       * eapply PicoCoreStepsStep.
         -- apply PCS_IfNonzero with (n := pico_offset_abstract_value).
            reflexivity.
-        -- eapply PicoCoreStepsStep.
-           ++ eapply PCS_AssignInt. reflexivity.
-           ++ eapply PicoCoreStepsStep.
-              ** apply PCS_SkipDone.
-              ** apply PicoCoreStepsRefl.
+        -- unfold pico_offset_hit_compute.
+           eapply PicoCoreStepsStep; [apply PCS_Seq |].
+           eapply PicoCoreStepsStep; [eapply PCS_AssignInt; reflexivity |].
+           eapply PicoCoreStepsStep; [apply PCS_SkipSeq |].
+           eapply PicoCoreStepsStep;
+             [eapply PCS_AssignBin; reflexivity |].
+           eapply PicoCoreStepsStep; [apply PCS_SkipDone |].
+           apply PicoCoreStepsRefl.
 Qed.
 
 Theorem pico_offset_miss_cesk_execution :
