@@ -155,6 +155,13 @@ Examples (`Examples/`):
   (`arith_derivation_evaluates`) and to the same value in every heap that
   agrees on the abstract state (`arith_derivation_stable`). The hash class's
   own derivation method is still a field read.
+- `PicoOffsetFlowInstance.v`: the flow judgment is parameterized by a
+  decoding of the cached value, and the method must return the decoded
+  value. With the predecessor as decoding, an offset-encoded accessor (read
+  once, store the encoded value on a miss, return the cached value minus
+  one) is accepted with every premise discharged in the hash class's frame
+  (`offset_accessor_flow`). No class table declaring this accessor is
+  built, so there is no closed call-level instance for it.
 - `PicoHashCacheMethod.v`: the hash method satisfies the judgment
   (`pico_hash_n_calls_by_judgment`).
 - `PicoCacheClients.v`: a thread can break the provider's invariant only by

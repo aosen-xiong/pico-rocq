@@ -42,6 +42,7 @@ Inductive origin : Type :=
   | OUnchecked
   | OSentinel
   | ODerived
+  | ODecoded
   | OOther.
 
 Definition origin_le (o o' : origin) : Prop :=
@@ -122,6 +123,11 @@ Proof.
   - destruct i as [| i]; simpl; constructor; auto.
 Qed.
 
+Lemma origin_le_decoded : forall o, origin_le o ODecoded -> o = ODecoded.
+Proof.
+  intros o [H | [H | [H _]]]; [exact H | discriminate | discriminate].
+Qed.
+
 Lemma Forall2_le_derived :
   forall G G' i,
     Forall2 origin_le G G' -> nth_error G' i = Some ODerived ->
@@ -130,6 +136,16 @@ Proof.
   intros G G' i Hle Hnth.
   destruct (Forall2_nth_right _ _ _ _ _ Hle Hnth) as (o & Ho & Hl).
   apply origin_le_derived in Hl. subst o. exact Ho.
+Qed.
+
+Lemma Forall2_le_decoded :
+  forall G G' i,
+    Forall2 origin_le G G' -> nth_error G' i = Some ODecoded ->
+    nth_error G i = Some ODecoded.
+Proof.
+  intros G G' i Hle Hnth.
+  destruct (Forall2_nth_right _ _ _ _ _ Hle Hnth) as (o & Ho & Hl).
+  apply origin_le_decoded in Hl. subst o. exact Ho.
 Qed.
 
 (** ** Two facts about steps *)
@@ -148,6 +164,9 @@ Section flow_judgment.
   Context `{Hmem : CacheMemoryModel}.
   Context (CT : class_table) (D : method_def -> Prop).
   Context (receiver : Loc) (m : method_name) (h0 : heap) (H : nat).
+  (** The method's result is a decoding of the cached value: the identity
+      for a plain cache, the predecessor for an offset encoding. *)
+  Context (dec : nat -> nat).
   Context (mc : method_name) (mdef : method_def).
   Context (Trecv : qualified_type) (mt : method_scope).
   Context (rt0 : runtime_type) (fs0 : fields_mapping).
@@ -158,7 +177,8 @@ Section flow_judgment.
   Let body := mbody_stmt (mbody mdef).
   Let ret := mreturn (mbody mdef).
   Let Kc : pico_core_cont := [KCall caller x ret].
-  Let caller_done : r_env := set_vars caller (update x (Int H) (vars caller)).
+  Let caller_done : r_env :=
+    set_vars caller (update x (Int (dec H)) (vars caller)).
 
   (** ** What an origin says about a value *)
 
@@ -171,6 +191,7 @@ Section flow_judgment.
     | OUnchecked => flow_valid_read v
     | OSentinel => v = Int 0
     | ODerived => v = Int H
+    | ODecoded => v = Int (dec H)
     | OOther => True
     end.
 
@@ -250,7 +271,7 @@ Section flow_judgment.
       sem (refine_zero G t) rho.
   Proof.
     intros G rho t v Hs Hv Hzero. unfold refine_zero.
-    destruct (nth_error G t) as [[| | | |] |] eqn:Hnth; try exact Hs.
+    destruct (nth_error G t) as [[| | | | |] |] eqn:Hnth; try exact Hs.
     destruct (sem_get _ _ _ _ Hs Hnth) as (v' & Hv' & Hvalid).
     rewrite Hv in Hv'. injection Hv' as <-.
     assert (Hv0 : v = Int 0).
@@ -270,7 +291,7 @@ Section flow_judgment.
       sem (refine_nonzero G t) rho.
   Proof.
     intros G rho t v Hs Hv Hnz. unfold refine_nonzero.
-    destruct (nth_error G t) as [[| | | |] |] eqn:Hnth; try exact Hs.
+    destruct (nth_error G t) as [[| | | | |] |] eqn:Hnth; try exact Hs.
     destruct (sem_get _ _ _ _ Hs Hnth) as (v' & Hv' & Hvalid).
     rewrite Hv in Hv'. injection Hv' as <-.
     assert (HvH : v = Int H).
@@ -329,7 +350,7 @@ Section flow_judgment.
       with the returned variable holding the derived value. *)
   Inductive cont_flow : s_env -> list origin -> pico_core_cont -> Prop :=
     | CF_Nil : forall sG G,
-        nth_error G ret = Some ODerived ->
+        nth_error G ret = Some ODecoded ->
         cont_flow sG G []
     | CF_Seq : forall sG G s sG' G' G'' K,
         flow sG G s sG' G' ->
@@ -410,6 +431,32 @@ Section flow_judgment.
       apply sem_update; assumption.
   Qed.
 
+  (** When the result is the cached value itself, a copy of the derived
+      value is the result. *)
+  Lemma flow_copy_result :
+    forall sG G t z,
+      dec H = H ->
+      stmt_typing CT sG mt (SVarAss t (EVar z)) sG ->
+      nth_error G z = Some ODerived ->
+      flow sG G (SVarAss t (EVar z)) sG (update t ODecoded G).
+  Proof.
+    intros sG G t z Hdec Htyped Hz. apply F_Deriv.
+    - discriminate.
+    - apply DS_VarAss. apply TSERO_Var.
+    - exact Htyped.
+    - intros rho rhob Hs Heval. inversion Heval; subst.
+      destruct (sem_get _ _ _ _ Hs Hz) as (v & Hv & Hov).
+      match goal with
+      | He : eval_expr _ _ _ (EVar z) _ _ _ _ |- _ => inversion He; subst
+      end.
+      match goal with
+      | Hval : runtime_getVal rho z = Some ?w |- _ =>
+          rewrite Hv in Hval; injection Hval as <-
+      end.
+      apply sem_update; [exact Hs |].
+      simpl in Hov |- *. rewrite Hdec. exact Hov.
+  Qed.
+
   (** A call of the protocol's derivation method on the receiver yields
       the derived value. *)
   Lemma derivation_call_sem :
@@ -469,6 +516,7 @@ Section flow_judgment.
   Lemma local_copy_flow :
     forall compute,
       let sG3 := [Trecv; int_type; int_type] in
+      dec H = H ->
       stmt_typing CT [Trecv] mt (SLocal int_type cache_tmp)
         [Trecv; int_type] ->
       stmt_typing CT [Trecv; int_type] mt (SLocal int_type cache_result)
@@ -483,9 +531,9 @@ Section flow_judgment.
          eval_stmt CT rho h0 compute OK rhob h0 ->
          sem [OThis; ODerived; OOther] rhob) ->
       flow [Trecv] [OThis] (pico_hash_method_stmt_with compute) sG3
-        [OThis; ODerived; ODerived].
+        [OThis; ODerived; ODecoded].
   Proof.
-    intros compute sG3 Hl1 Hl2 Hint Hcopy Hns Hderiv Htyped Hcompute.
+    intros compute sG3 Hdec Hl1 Hl2 Hint Hcopy Hns Hderiv Htyped Hcompute.
     unfold pico_hash_method_stmt_with, pico_hash_method_core_stmt_with,
       pico_local_copy_cache_stmt, pico_local_copy_cache_branch.
     eapply F_Seq.
@@ -514,8 +562,8 @@ Section flow_judgment.
         constructor; [apply origin_le_refl |].
         constructor; [right; left; reflexivity | constructor]. }
     { apply Forall2_refl_le. }
-    exact (flow_copy sG3 [OThis; ODerived; OOther] cache_result cache_tmp
-             ODerived Hcopy eq_refl).
+    exact (flow_copy_result sG3 [OThis; ODerived; OOther] cache_result
+             cache_tmp Hdec Hcopy eq_refl).
   Qed.
 
   (** ** The double read is rejected
@@ -577,7 +625,7 @@ Section flow_judgment.
       sbase T = TRef C ->
       ~ abstract_field CT C hash_cache_field ->
       flow sG G (pico_double_read_cache_stmt compute) sG' G' ->
-      nth_error G' cache_result = Some ODerived ->
+      nth_error G' cache_result = Some ODecoded ->
       False.
   Proof.
     intros compute sG G sG' G' T C Hg Hb Hna Hfl Hres.
@@ -625,7 +673,7 @@ Section flow_judgment.
   (** The body is accepted, and returns the derived value. *)
   Variables (sGbody : s_env) (Gbody : list origin).
   Hypothesis Hflow : flow [Trecv] [OThis] body sGbody Gbody.
-  Hypothesis Hreturn : nth_error Gbody ret = Some ODerived.
+  Hypothesis Hreturn : nth_error Gbody ret = Some ODecoded.
 
   Notation hash_machine := (pico_concrete_hash_semimm CT receiver m h0 H).
   Notation hash_inv :=
@@ -883,7 +931,7 @@ Section flow_judgment.
       + (* skip *)
         destruct Kb as [| fr Kb'].
         * inversion Hcont; subst.
-          have Hret := Forall2_le_derived _ _ _ Hle H0.
+          have Hret := Forall2_le_decoded _ _ _ Hle H0.
           destruct (sem_get _ _ _ _ Hsem Hret) as (v & Hv & Hd).
           simpl in Hd. subst v.
           simpl in Hstep. inversion Hstep; subst.
@@ -998,7 +1046,7 @@ Section flow_judgment.
     forall V0,
       machine_cache_safe CT hash_cache_protocol pico_hash_stable_abs H
         (pico_hash_cache_adapter receiver) hash_machine
-        (cache_call_result_ok H x)
+        (cache_call_result_ok (dec H) x)
         (CoreRun caller (SCall x mc y []) V0 []).
   Proof.
     intros V0 tr e Hrun Hvalid.
@@ -1049,6 +1097,7 @@ Section flow_judgment.
   Lemma local_copy_derivation_call_flow :
     let sG3 := [Trecv; int_type; int_type] in
     let compute := SCall cache_tmp m cache_receiver [] in
+    dec H = H ->
     derived_by CT m h0 receiver (Int H) ->
     stmt_typing CT [Trecv] mt (SLocal int_type cache_tmp)
       [Trecv; int_type] ->
@@ -1058,9 +1107,9 @@ Section flow_judgment.
     deriv_stmt CT D sG3 compute sG3 ->
     stmt_typing CT sG3 mt compute sG3 ->
     flow [Trecv] [OThis] (pico_hash_method_stmt_with compute) sG3
-      [OThis; ODerived; ODerived].
+      [OThis; ODerived; ODecoded].
   Proof.
-    intros sG3 compute Hderived Hl1 Hl2 Hint Hcopy Hderiv Htyped.
+    intros sG3 compute Hdec Hderived Hl1 Hl2 Hint Hcopy Hderiv Htyped.
     apply local_copy_flow; try assumption.
     - discriminate.
     - intros rho rhob Hs Heval.

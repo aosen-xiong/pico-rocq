@@ -33,8 +33,9 @@ Notation hash_H := pico_hash_concurrent_value.
 Notation hash_Trecv := pico_hash_witness_receiver_type.
 
 Notation hash_flow :=
-  (flow hash_CT pico_hash_derivations hash_recv hash_h0 hash_H AbstractState).
-Notation hash_sem := (sem hash_recv hash_H).
+  (flow hash_CT pico_hash_derivations hash_recv hash_h0 hash_H (fun n => n)
+     AbstractState).
+Notation hash_sem := (sem hash_recv hash_H (fun n => n)).
 
 (** ** The leaves are well typed *)
 
@@ -91,11 +92,11 @@ Qed.
 (** ** The initializer yields the derived value *)
 
 Lemma hash_sem_frame :
-  forall rho,
-    hash_sem [OThis; OSentinel; OSentinel] rho ->
+  forall dec rho,
+    sem hash_recv hash_H dec [OThis; OSentinel; OSentinel] rho ->
     rho = pico_hash_frame_env.
 Proof.
-  intros [vs] Hs. unfold sem in Hs. simpl in Hs.
+  intros dec [vs] Hs. unfold sem in Hs. simpl in Hs.
   repeat match goal with
          | Hf : Forall2 _ (_ :: _) _ |- _ => inversion Hf; subst; clear Hf
          | Hf : Forall2 _ [] _ |- _ => inversion Hf; subst; clear Hf
@@ -104,14 +105,14 @@ Proof.
 Qed.
 
 Lemma hash_compute_sem :
-  forall rho rhob,
-    hash_sem [OThis; OSentinel; OSentinel] rho ->
+  forall dec rho rhob,
+    sem hash_recv hash_H dec [OThis; OSentinel; OSentinel] rho ->
     eval_stmt hash_CT rho hash_h0 pico_hash_read_compute_stmt OK rhob
       hash_h0 ->
-    hash_sem [OThis; ODerived; OOther] rhob.
+    sem hash_recv hash_H dec [OThis; ODerived; OOther] rhob.
 Proof.
-  intros rho rhob Hs Heval.
-  have Hrho := hash_sem_frame rho Hs. subst rho.
+  intros dec rho rhob Hs Heval.
+  have Hrho := hash_sem_frame dec rho Hs. subst rho.
   have Hval := pico_hash_compute_value rhob Heval.
   unfold pico_hash_read_compute_stmt in Heval.
   inversion Heval; subst.
@@ -128,12 +129,13 @@ Qed.
 Theorem hash_method_flow :
   hash_flow [hash_Trecv] [OThis]
     (mbody_stmt (mbody pico_hash_concurrent_method_def))
-    pico_hash_frame_senv [OThis; ODerived; ODerived].
+    pico_hash_frame_senv [OThis; ODerived; ODecoded].
 Proof.
   change (mbody_stmt (mbody pico_hash_concurrent_method_def))
     with (pico_hash_method_stmt_with pico_hash_read_compute_stmt).
   apply (local_copy_flow hash_CT pico_hash_derivations hash_recv hash_h0
-    hash_H hash_Trecv AbstractState pico_hash_read_compute_stmt).
+    hash_H (fun n => n) hash_Trecv AbstractState pico_hash_read_compute_stmt).
+  - reflexivity.
   - exact hash_local_tmp_typing.
   - exact hash_local_result_typing.
   - exact hash_int_assign_typing.
@@ -141,7 +143,7 @@ Proof.
   - discriminate.
   - exact pico_hash_compute_deriv.
   - exact pico_hash_compute_typing.
-  - exact hash_compute_sem.
+  - exact (hash_compute_sem (fun n => n)).
 Qed.
 
 (** The call is trace robust on the machine, by the flow judgment. *)
@@ -157,7 +159,7 @@ Theorem pico_hash_call_trace_robust_by_flow : forall V0,
 Proof.
   intros V0.
   eapply (flow_cache_method_trace_robust hash_CT pico_hash_derivations
-    hash_recv pico_hash_derive_method hash_h0 hash_H
+    hash_recv pico_hash_derive_method hash_h0 hash_H (fun n => n)
     pico_hash_concurrent_method pico_hash_concurrent_method_def
     hash_Trecv AbstractState
     (mkruntime_type Imm_r pico_hash_witness_class) [Int 0; Int 7]
@@ -268,14 +270,15 @@ Theorem pico_hash_calls_and_quiet_threads_semimm :
 Proof.
   intros n clients cfg Hquiet Hsteps.
   eapply (disciplined_pool_semimm hash_CT pico_hash_derivations hash_recv
-    pico_hash_derive_method hash_h0 hash_H pico_hash_concurrent_method
+    pico_hash_derive_method hash_h0 hash_H (fun n => n)
+    pico_hash_concurrent_method
     pico_hash_concurrent_method_def hash_Trecv AbstractState
     (mkruntime_type Imm_r pico_hash_witness_class) [Int 0; Int 7]
     pico_hash_concurrent_footprint_immutable hash_class_table_quiet
     pico_hash_concurrent_derivation_table pico_hash_concurrent_config_wf
     eq_refl pico_hash_concurrent_cache_declared
     pico_hash_concurrent_find_method
-    pico_hash_frame_senv [OThis; ODerived; ODerived] hash_method_flow
+    pico_hash_frame_senv [OThis; ODerived; ODecoded] hash_method_flow
     eq_refl 1).
   - split; [exact pico_hash_concurrent_initial_provider_inv |].
     exact (proj2 (proj2 pico_hash_concurrent_initial_provider_inv)).

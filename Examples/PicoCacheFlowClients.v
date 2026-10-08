@@ -84,6 +84,7 @@ Section flow_clients.
   Context `{Hmem : CacheMemoryModel}.
   Context (CT : class_table) (D : method_def -> Prop).
   Context (receiver : Loc) (m : method_name) (h0 : heap) (H : nat).
+  Context (dec : nat -> nat).
   Context (mc : method_name) (mdef : method_def).
   Context (Trecv : qualified_type) (mt : method_scope).
   Context (rt0 : runtime_type) (fs0 : fields_mapping).
@@ -141,10 +142,10 @@ Section flow_clients.
   Hypothesis Hfind : FindMethodWithName CT (rctype rt0) mc mdef.
   Variables (sGbody : s_env) (Gbody : list origin).
   Hypothesis Hflow :
-    flow CT D receiver h0 H mt [Trecv] [OThis]
+    flow CT D receiver h0 H dec mt [Trecv] [OThis]
       (mbody_stmt (mbody mdef)) sGbody Gbody.
   Hypothesis Hreturn :
-    nth_error Gbody (mreturn (mbody mdef)) = Some ODerived.
+    nth_error Gbody (mreturn (mbody mdef)) = Some ODecoded.
 
   (** A call of the cache method on the receiver, with a slot for its
       result. *)
@@ -165,12 +166,12 @@ Section flow_clients.
     intros x S0 threads cfg Hinv Hthreads Hsteps.
     assert (Hpool : mixed_pool CT hash_cache_protocol pico_hash_stable_abs H
       (pico_hash_cache_adapter receiver) hash_machine
-      (cache_call_result_ok H x) (mkPicoPoolConfig S0 threads)).
+      (cache_call_result_ok (dec H) x) (mkPicoPoolConfig S0 threads)).
     { split; [exact Hinv |]. simpl.
       eapply Forall_impl; [| exact Hthreads].
       intros e [(caller & y & V0 & -> & Hy & Hx) | Hq].
       - left. apply machine_local_start.
-        exact (flow_cache_method_trace_robust CT D receiver m h0 H mc mdef
+        exact (flow_cache_method_trace_robust CT D receiver m h0 H dec mc mdef
           Trecv mt rt0 fs0 caller x y Htable Hwf1 Hobj0 Hcachefield Hfind Hy
           sGbody Gbody Hflow Hreturn Hx V0).
       - right. exists e. split; [| constructor].
