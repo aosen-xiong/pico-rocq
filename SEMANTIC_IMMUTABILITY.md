@@ -148,6 +148,13 @@ Examples (`Examples/`):
   table is disciplined (`hash_class_table_quiet`), so hash calls together
   with any quiet threads preserve the invariant
   (`pico_hash_calls_and_quiet_threads_semimm`).
+- `PicoArithmeticDerivation.v`: the calculus has integer operations on
+  locals (add, truncating subtract, multiply), admissible in derivation
+  code. A closed witness: a well-typed derivation statement that computes
+  `p * p + p` from the receiver's payload evaluates to that value
+  (`arith_derivation_evaluates`) and to the same value in every heap that
+  agrees on the abstract state (`arith_derivation_stable`). The hash class's
+  own derivation method is still a field read.
 - `PicoHashCacheMethod.v`: the hash method satisfies the judgment
   (`pico_hash_n_calls_by_judgment`).
 - `PicoCacheClients.v`: a thread can break the provider's invariant only by
