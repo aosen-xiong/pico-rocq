@@ -142,6 +142,12 @@ Examples (`Examples/`):
   cache method together with any quiet threads preserve the invariant
   (`disciplined_pool_semimm`). Quiet code may read the cache field but may
   not call the cache method.
+- `PicoHashFlowInstance.v`: closed instances for the hash class. Its method
+  is accepted by the flow judgment (`hash_method_flow`), so any number of
+  calls are sound by that judgment (`pico_hash_n_calls_by_flow`); its class
+  table is disciplined (`hash_class_table_quiet`), so hash calls together
+  with any quiet threads preserve the invariant
+  (`pico_hash_calls_and_quiet_threads_semimm`).
 - `PicoHashCacheMethod.v`: the hash method satisfies the judgment
   (`pico_hash_n_calls_by_judgment`).
 - `PicoCacheClients.v`: a thread can break the provider's invariant only by
