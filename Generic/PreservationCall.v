@@ -18,11 +18,11 @@ Lemma wf_class_super_inv : forall CT C def P Ss,
     Forall2
       (fun T B =>
          lost_free (member_type AbstractState
-                      (qc2q (class_qualifier (signature def))) Ss [] B) /\
+                      (qc2q (class_qualifier (signature def))) Ss [] [] B) /\
          qualified_type_subtype CT
-           (mk_tv_env (ctparams (signature def)) [] AbstractState) T
+           (mk_tv_env (ctparams (signature def)) [] AbstractState 0) T
            (member_type AbstractState
-              (qc2q (class_qualifier (signature def))) Ss [] B))
+              (qc2q (class_qualifier (signature def))) Ss [] [] B))
       Ss (ctparams (signature super_def)) /\
     (class_qualifier (signature def) = class_qualifier (signature super_def) \/
      class_qualifier (signature super_def) = RDM_c) /\
@@ -108,8 +108,8 @@ Proof.
     as (sd & Hsd & _ & HlfS & HbS & Hpin & _).
   rewrite Hsd.
   assert (Hfb : frame_bounds_ok CT
-                  (mk_tv_env (ctparams (signature def)) [] AbstractState)
-                  (qr2q qr) Rs []).
+                  (mk_tv_env (ctparams (signature def)) [] AbstractState 0)
+                  (qr2q qr) Rs [] []).
   { apply frame_bounds_ok_of_rbounds; simpl; auto. constructor. }
   assert (Hc : concrete_q (qr2q qr)) by apply qr2q_concrete.
   refine (conj _ (conj _ _)).
@@ -117,14 +117,13 @@ Proof.
   - apply map_dyn_lost_free; auto.
   - unfold rbounds_ok. eapply Forall2_map_left; [exact HbS|].
     intros T B [HlfB Hsub]. simpl in HlfB, Hsub.
-    pose proof (subtype_dyn _ _ _ _ _ _ _ Hc Hfb Hsub) as Hrs.
+    pose proof (subtype_dyn _ _ _ _ _ _ _ _ Hc Hfb Hsub) as Hrs.
     unfold member_type in Hrs. rewrite dyn_subst in Hrs. simpl map in Hrs.
     rewrite (dyn_adapt_exact AbstractState qr qr
                (qc2q (class_qualifier (signature def)))
-               (map (dyn (qr2q qr) Rs []) Ss) (map (dyn (qr2q qr) Rs []) Ss)
-               [] [] B); auto using Forall2_rarg_sub_refl, bound_agree_head_ok.
-    change (@nil rtype) with (map (dyn (qr2q qr) Rs []) []).
-    rewrite <- dyn_subst.
+               (map (dyn (qr2q qr) Rs [] []) Ss) (map (dyn (qr2q qr) Rs [] []) Ss)
+               [] [] [] B); auto using Forall2_rarg_sub_refl, bound_agree_head_ok.
+    rewrite <- (dyn_subst (qr2q qr) Rs [] [] Ss [] []).
     apply dyn_lost_free; auto.
 Qed.
 
@@ -164,8 +163,8 @@ Proof.
   f_equal. rewrite <- seq_shift. rewrite map_map. simpl. exact IH.
 Qed.
 
-Lemma dyn_class_var_types : forall qctx ca ma,
-  map (dyn qctx ca ma) (class_var_types (length ca)) = ca.
+Lemma dyn_class_var_types : forall qctx ca ma ka,
+  map (dyn qctx ca ma ka) (class_var_types (length ca)) = ca.
 Proof.
   intros. unfold class_var_types. rewrite map_map. simpl.
   apply map_nth_default_seq.
@@ -181,11 +180,11 @@ Proof.
     heap_ext_app; eauto using heap_ext_trans.
 Qed.
 
-Lemma callee_env_targs : forall CT rΓ h ly D Us vals rΓ',
-  callee_env CT rΓ h ly D Us vals rΓ' ->
+Lemma callee_env_targs : forall CT rΓ h ly D Us Qs vals rΓ',
+  callee_env CT rΓ h ly D Us Qs vals rΓ' ->
   vars rΓ' = Iot ly :: vals.
 Proof.
-  intros CT rΓ h ly D Us vals rΓ' (lt & qt & oy & ca & _ & _ & _ & _ & ->).
+  intros CT rΓ h ly D Us Qs vals rΓ' (lt & qt & oy & ca & _ & _ & _ & _ & ->).
   reflexivity.
 Qed.
 
@@ -212,6 +211,15 @@ Proof.
     repeat split; congruence.
 Qed.
 
+(** A successful evaluation keeps the activation's qualifier arguments. *)
+Lemma eval_stmt_qargs : forall CT rΓ h s res rΓ' h',
+  eval_stmt CT rΓ h s res rΓ' h' -> res = OK -> qargs rΓ' = qargs rΓ.
+Proof.
+  intros CT rΓ h s res rΓ' h' H.
+  induction H; intros Hr; try discriminate; subst; simpl; try reflexivity.
+  rewrite IHeval_stmt2; auto.
+Qed.
+
 (* ------------------TYPES WITHOUT METHOD VARIABLES------------------*)
 
 Section wf_stype_ind'.
@@ -224,12 +232,12 @@ Section wf_stype_ind'.
     Forall (P false) Ts ->
     P top (TClass q0 C Ts).
   Hypothesis Hvar : forall top u o n B,
-    tv_bound Δ o n = Some B -> P top (TVar u o n).
-  Hypothesis Hhead : forall top o n C Ts B,
-    tv_bound Δ o n = Some B ->
+    tv_bound Δ o n = Some B -> tv_use_ok Δ top u -> P top (TVar u o n).
+  Hypothesis Hhead : forall top n C Ts,
+    n < qparams Δ ->
     wf_stype CT Δ top (TClass RO C Ts) ->
     P top (TClass RO C Ts) ->
-    P top (THead o n C Ts).
+    P top (THead n C Ts).
 
   Fixpoint wf_stype_ind' top T (H : wf_stype CT Δ top T) : P top T :=
     match H with
@@ -241,9 +249,9 @@ Section wf_stype_ind'.
               | @Forall_cons _ _ x l' Hx Hr =>
                   Forall_cons x (wf_stype_ind' false x Hx) (go l' Hr)
               end) Ts Hargs)
-    | wfs_var _ _ top u o n B Hb _ => Hvar top u o n B Hb
-    | wfs_head _ _ top n C Ts B Hb Hv =>
-        Hhead top MethodVar n C Ts B Hb Hv (wf_stype_ind' top _ Hv)
+    | wfs_var _ _ top u o n B Hb Hu => Hvar top u o n B Hb Hu
+    | wfs_head _ _ top n C Ts Hb Hv =>
+        Hhead top n C Ts Hb Hv (wf_stype_ind' top _ Hv)
     end.
 End wf_stype_ind'.
 
@@ -251,26 +259,24 @@ End wf_stype_ind'.
     not depend on the method type arguments. *)
 Lemma dyn_no_method_vars : forall CT Δ top T,
   wf_stype CT Δ top T ->
-  method_bounds Δ = [] ->
-  forall qctx ca ma, dyn qctx ca ma T = dyn qctx ca [] T.
+  (method_bounds Δ, qparams Δ) = ([], 0) ->
+  forall qctx ca ma ka, dyn qctx ca ma ka T = dyn qctx ca [] [] T.
 Proof.
-  intros CT Δ top T H. induction H using wf_stype_ind'; intros Hm qctx ca ma.
+  intros CT Δ top T H. induction H using wf_stype_ind'; intros Hmq qctx ca ma ka;
+    pose proof Hmq as Hmq'; injection Hmq' as Hm Hq0.
   - simpl. f_equal. induction H1; simpl; auto.
     inversion H0; subst. f_equal; auto.
-  - unfold tv_bound in H. destruct o; simpl in *.
-    + reflexivity.
-    + rewrite Hm in H. destruct n; discriminate.
-  - specialize (IHwf_stype Hm qctx ca ma). simpl in IHwf_stype.
-    inversion IHwf_stype as [Hargs]. simpl. rewrite Hargs.
-    unfold tv_bound in H. destruct o; simpl in *.
-    + reflexivity.
-    + rewrite Hm in H. destruct n; discriminate.
+  - destruct u as [| |m];
+      [| |exfalso; simpl in H0; rewrite Hq0 in H0; inversion H0];
+      (unfold tv_bound in H; destruct o; simpl in *;
+       [reflexivity | rewrite Hm in H; destruct n; discriminate]).
+  - exfalso. rewrite Hq0 in H. inversion H.
 Qed.
 
 Lemma class_bounds_wf : forall CT D defD,
   wf_class_table CT ->
   find_class CT D = Some defD ->
-  Forall (wf_stypeuse CT (mk_tv_env (ctparams (signature defD)) [] AbstractState))
+  Forall (wf_stypeuse CT (mk_tv_env (ctparams (signature defD)) [] AbstractState 0))
     (ctparams (signature defD)).
 Proof.
   intros CT D defD Hwf Hfind.
@@ -308,11 +314,11 @@ Proof.
   intros. induction H; simpl; constructor; auto.
 Qed.
 
-Lemma dyn_map_qual_eq : forall f qa qb ca ma T,
+Lemma dyn_map_qual_eq : forall f qa qb ca ma ka T,
   (forall q0, dynq qb (f q0) = dynq qa q0) ->
-  dyn qb ca ma (map_qual f T) = dyn qa ca ma T.
+  dyn qb ca ma ka (map_qual f T) = dyn qa ca ma ka T.
 Proof.
-  intros f qa qb ca ma T Hq.
+  intros f qa qb ca ma ka T Hq.
   induction T using qualified_type_ind'; simpl.
   - rewrite Hq. f_equal. rewrite map_map.
     induction H; simpl; auto. f_equal; auto.
@@ -330,19 +336,32 @@ Qed.
 
 (** Adapting through the class's own declared mutability changes nothing for
     an object of that class. *)
-Lemma dyn_class_adapt : forall qr qc ca ma T,
+Lemma dyn_class_adapt : forall qr qc ca ma ka T,
   vpa_mutability_runtime_bound_agree qr qc = true ->
-  dyn (qr2q qr) ca ma (adapt AbstractState (qc2q qc) T) = dyn (qr2q qr) ca ma T.
+  dyn (qr2q qr) ca ma ka (adapt AbstractState (qc2q qc) T) = dyn (qr2q qr) ca ma ka T.
 Proof.
   intros. unfold adapt. apply dyn_map_qual_eq.
   intros q0. apply dynq_class_adapt; auto.
 Qed.
 
-Lemma dyn_method_var_types : forall qctx ca ma,
-  map (dyn qctx ca ma) (method_var_types (length ma)) = ma.
+Lemma dyn_method_var_types : forall qctx ca ma ka,
+  map (dyn qctx ca ma ka) (method_var_types (length ma)) = ma.
 Proof.
   intros. unfold method_var_types. rewrite map_map. simpl.
   apply map_nth_default_seq.
+Qed.
+
+Lemma map_qnth_seq : forall ka, map (qnth ka) (seq 0 (length ka)) = ka.
+Proof.
+  unfold qnth. induction ka as [|a ka IH]; simpl; auto.
+  f_equal. rewrite <- seq_shift. rewrite map_map. exact IH.
+Qed.
+
+(** The identity qualifier arguments read as the activation's own. *)
+Lemma rqarg_qvar_args : forall qctx ka,
+  map (rqarg qctx ka) (qvar_args (length ka)) = ka.
+Proof.
+  intros. unfold qvar_args. rewrite map_map. simpl. apply map_qnth_seq.
 Qed.
 
 Lemma super_inst_exists : forall CT qh C Rs D Vs,
@@ -352,7 +371,7 @@ Proof.
   intros CT qh C Rs D Vs H. induction H; intros mt q0 Ts.
   - exists Ts. apply si_refl.
   - destruct (IHrsuper_inst mt q0
-                (map (subst Ts []) (map (adapt mt q0) Ss))) as [Ws HW].
+                (map (subst Ts [] []) (map (adapt mt q0) Ss))) as [Ws HW].
     exists Ws. eapply si_step; eauto.
 Qed.
 
@@ -360,75 +379,74 @@ Qed.
     exactly is matched exactly at runtime. *)
 Lemma super_inst_dyn_exact : forall CT mt qx C Ts D Vs,
   super_inst CT mt qx C Ts D Vs ->
-  forall qo ca ma,
+  forall qo ca ma ka,
     (forall q0, dynq qo (vpa_q mt qx q0) = dynq qo q0) ->
-    rsuper_inst CT qo C (map (dyn qo ca ma) Ts) D (map (dyn qo ca ma) Vs).
+    rsuper_inst CT qo C (map (dyn qo ca ma ka) Ts) D (map (dyn qo ca ma ka) Vs).
 Proof.
-  intros CT mt qx C Ts D Vs H. induction H; intros qo ca ma Hq.
+  intros CT mt qx C Ts D Vs H. induction H; intros qo ca ma ka Hq.
   - apply rsi_refl.
   - eapply rsi_step; eauto.
-    assert (Heq : map (dyn qo ca ma)
-                    (map (subst Ts []) (map (adapt mt qx) Ss)) =
-                  map (dyn qo (map (dyn qo ca ma) Ts) []) Ss).
+    assert (Heq : map (dyn qo ca ma ka)
+                    (map (subst Ts [] []) (map (adapt mt qx) Ss)) =
+                  map (dyn qo (map (dyn qo ca ma ka) Ts) [] []) Ss).
     { rewrite map_dyn_subst. simpl. rewrite map_map. apply map_ext.
       intros T. unfold adapt. apply dyn_map_qual_eq; auto. }
     rewrite <- Heq. apply IHsuper_inst; auto.
 Qed.
 
 (** What static subtyping says about the head of a class type and of a class
-    type headed by a type variable's qualifier. *)
+    type under a qualifier parameter. *)
 Lemma sub_head_inv : forall CT Δ T U,
   qualified_type_subtype CT Δ T U ->
   (forall q1 C Ts, T = TClass q1 C Ts ->
      (exists q2 D Us, U = TClass q2 D Us /\ (q1 = q2 \/ q2 = RO \/ q1 = Bot)) \/
-     (q1 = Bot /\ exists o n D Us, U = THead o n D Us)) /\
-  (forall o n C Ts, T = THead o n C Ts ->
-     (exists D Us, U = THead o n D Us) \/ (exists D Us, U = TClass RO D Us)).
+     (q1 = Bot /\ exists n D Us, U = THead n D Us)) /\
+  (forall n C Ts, T = THead n C Ts ->
+     (exists D Us, U = THead n D Us) \/ (exists D Us, U = TClass RO D Us)).
 Proof.
   intros CT Δ T U H. induction H; split;
-    try (intros ? ? ? E; discriminate E);
-    try (intros ? ? ? ? E; discriminate E).
+    try (intros ? ? ? E; discriminate E).
   - intros qa Ca Tsa E. inversion E; subst. left.
     eexists _, _, _. split; [reflexivity|]. inversion Hqsub; subst; auto.
   - intros qa Ca Tsa E. inversion E; subst. left. eauto 8.
-  - intros o0 n0 C0 Ts0 E. inversion E; subst. right. eauto.
-  - intros o0 n0 C0 Ts0 E. inversion E; subst. left. eauto.
-  - intros o0 n0 C0 Ts0 E. inversion E; subst. left. eauto.
+  - intros n0 C0 Ts0 E. inversion E; subst. right. eauto.
+  - intros n0 C0 Ts0 E. inversion E; subst. left. eauto.
+  - intros n0 C0 Ts0 E. inversion E; subst. left. eauto.
   - intros qa Ca Tsa E. inversion E; subst. right. split; eauto 6.
   - intros qa Ca Tsa E.
     destruct IHqualified_type_subtype1 as [IH1 _].
     destruct IHqualified_type_subtype2 as [IH2c IH2h].
-    destruct (IH1 _ _ _ E) as [(q2 & D & Us & -> & Hq) | (-> & o & n & D & Us & ->)].
+    destruct (IH1 _ _ _ E) as [(q2 & D & Us & -> & Hq) | (-> & n & D & Us & ->)].
     + destruct (IH2c _ _ _ eq_refl)
-        as [(q3 & E3 & Ws & -> & Hq3) | (-> & o & n & E3 & Ws & ->)].
+        as [(q3 & E3 & Ws & -> & Hq3) | (-> & n & E3 & Ws & ->)].
       * left. eexists _, _, _. split; [reflexivity|].
         destruct Hq as [-> | [-> | ->]]; auto.
         destruct Hq3 as [<- | [-> | Hx]]; auto. discriminate.
       * right. split; eauto 6.
         destruct Hq as [-> | [Hx | ->]]; auto. discriminate.
-    + destruct (IH2h _ _ _ _ eq_refl) as [(E3 & Ws & ->) | (E3 & Ws & ->)].
+    + destruct (IH2h _ _ _ eq_refl) as [(E3 & Ws & ->) | (E3 & Ws & ->)].
       * right. split; eauto 6.
       * left. eexists _, _, _. split; [reflexivity|]. auto.
-  - intros o0 n0 C0 Ts0 E.
+  - intros n0 C0 Ts0 E.
     destruct IHqualified_type_subtype1 as [_ IH1].
     destruct IHqualified_type_subtype2 as [IH2c IH2h].
-    destruct (IH1 _ _ _ _ E) as [(D & Us & ->) | (D & Us & ->)].
-    + exact (IH2h _ _ _ _ eq_refl).
+    destruct (IH1 _ _ _ E) as [(D & Us & ->) | (D & Us & ->)].
+    + exact (IH2h _ _ _ eq_refl).
     + right.
       destruct (IH2c _ _ _ eq_refl)
         as [(q3 & E3 & Ws & -> & Hq3) | (Hx & _)]; [|discriminate].
       destruct Hq3 as [<- | [-> | Hx]]; eauto. discriminate.
 Qed.
 
-(** The receiver of a declaration takes its qualifier from the type variable
-    [(o, n)], or is one that no object inhabits. *)
-Definition recv_slot (o : tv_owner) (n : nat) (R : qualified_type) : Prop :=
-  (exists C a, R = THead o n C a) \/ (exists C a, R = TClass Bot C a).
+(** The receiver of a declaration is under the qualifier parameter [n], or is
+    one that no object inhabits. *)
+Definition recv_slot (n : nat) (R : qualified_type) : Prop :=
+  (exists C a, R = THead n C a) \/ (exists C a, R = TClass Bot C a).
 
-Lemma nth_error_method_var_types : forall k n T,
-  nth_error (method_var_types k) n = Some T -> T = TVar TVSub MethodVar n.
+Lemma nth_error_qvar_args : forall k n a,
+  nth_error (qvar_args k) n = Some a -> a = QVar n.
 Proof.
-  intros k n T H. unfold method_var_types in H. rewrite nth_error_map in H.
+  intros k n a H. unfold qvar_args in H. rewrite nth_error_map in H.
   destruct (nth_error (seq 0 k) n) as [i|] eqn:Hi; [|discriminate].
   inversion H; subst.
   assert (Hlt : n < length (seq 0 k)) by (apply nth_error_Some; congruence).
@@ -443,53 +461,54 @@ Lemma vpa_as_bot : forall qc q1,
 Proof. intros [] []; simpl; congruence. Qed.
 
 (** What the override check on receivers gives. *)
-Lemma recv_override_facts : forall CT Δ qc Vs k R R',
+Lemma recv_override_facts : forall CT Δ qc Vs k kq R R',
   ((exists q1 C1 a1, R = TClass q1 C1 a1) \/
-   (exists n1 C1 a1, R = THead MethodVar n1 C1 a1)) ->
+   (exists n1 C1 a1, R = THead n1 C1 a1)) ->
   ((exists q2 C2 a2, R' = TClass q2 C2 a2) \/
-   (exists n2 C2 a2, R' = THead MethodVar n2 C2 a2)) ->
+   (exists n2 C2 a2, R' = THead n2 C2 a2)) ->
   qualified_type_subtype CT Δ
-    (rebase (member_type AbstractState (qc2q qc) Vs (method_var_types k) R) R') R' ->
+    (rebase (member_type AbstractState (qc2q qc) Vs (method_var_types k)
+               (qvar_args kq) R) R') R' ->
   (forall q1 C1 a1 q2 C2 a2, R = TClass q1 C1 a1 -> R' = TClass q2 C2 a2 ->
      vpa_q AbstractState (qc2q qc) q1 = q2 \/ q2 = RO \/
      vpa_q AbstractState (qc2q qc) q1 = Bot) /\
-  (forall n1 C1 a1 q2 C2 a2, R = THead MethodVar n1 C1 a1 ->
+  (forall n1 C1 a1 q2 C2 a2, R = THead n1 C1 a1 ->
      R' = TClass q2 C2 a2 -> q2 = RO) /\
-  (forall o n, recv_slot o n R' -> recv_slot o n R).
+  (forall n, recv_slot n R' -> recv_slot n R).
 Proof.
-  intros CT Δ qc Vs k R R' HR HR' Hsub.
+  intros CT Δ qc Vs k kq R R' HR HR' Hsub.
   assert (Hview : forall n1 C1 a1,
             (exists a, member_type AbstractState (qc2q qc) Vs (method_var_types k)
-                         (THead MethodVar n1 C1 a1) = THead MethodVar n1 C1 a) \/
+                         (qvar_args kq) (THead n1 C1 a1) = THead n1 C1 a) \/
             (exists a, member_type AbstractState (qc2q qc) Vs (method_var_types k)
-                         (THead MethodVar n1 C1 a1) = TClass RO C1 a)).
-  { intros n1 C1 a1. unfold member_type, adapt. cbn [map_qual subst tv_lookup].
-    destruct (nth_error (method_var_types k) n1) as [T|] eqn:Hn.
-    - rewrite (nth_error_method_var_types _ _ _ Hn). left. eexists. reflexivity.
+                         (qvar_args kq) (THead n1 C1 a1) = TClass RO C1 a)).
+  { intros n1 C1 a1. unfold member_type, adapt. cbn [map_qual subst].
+    destruct (nth_error (qvar_args kq) n1) as [a|] eqn:Hn.
+    - rewrite (nth_error_qvar_args _ _ _ Hn). left. eexists. reflexivity.
     - right. eexists. reflexivity. }
   refine (conj _ (conj _ _)).
   - intros q1 C1 a1 q2 C2 a2 -> ->.
-    unfold member_type, adapt in Hsub. cbn [map_qual subst rebase headby] in Hsub.
+    unfold member_type, adapt in Hsub. cbn [map_qual subst rebase rehead] in Hsub.
     destruct (proj1 (sub_head_inv _ _ _ _ Hsub) _ _ _ eq_refl)
-      as [(q3 & D & Us & E & Hq) | (_ & o & n & D & Us & E)]; [|discriminate].
+      as [(q3 & D & Us & E & Hq) | (_ & n & D & Us & E)]; [|discriminate].
     inversion E; subst. exact Hq.
   - intros n1 C1 a1 q2 C2 a2 -> ->.
     destruct (Hview n1 C1 a1) as [[a Ha] | [a Ha]]; rewrite Ha in Hsub;
-      cbn [rebase headby] in Hsub.
-    + destruct (proj2 (sub_head_inv _ _ _ _ Hsub) _ _ _ _ eq_refl)
+      cbn [rebase rehead] in Hsub.
+    + destruct (proj2 (sub_head_inv _ _ _ _ Hsub) _ _ _ eq_refl)
         as [(D & Us & E) | (D & Us & E)]; [discriminate|].
       inversion E; reflexivity.
     + destruct (proj1 (sub_head_inv _ _ _ _ Hsub) _ _ _ eq_refl)
         as [(q3 & D & Us & E & Hq) | (Hx & _)]; [|discriminate].
       inversion E; subst. destruct Hq as [<- | [-> | Hx]]; auto. discriminate.
-  - intros o n Hslot.
+  - intros n Hslot.
     assert (Hsub' : exists C a,
-              (R' = THead o n C a \/ R' = TClass Bot C a) /\
-              forall T, rebase T R' = headby T C a).
+              (R' = THead n C a \/ R' = TClass Bot C a) /\
+              forall T, rebase T R' = rehead T C a).
     { destruct Hslot as [(C & a & ->) | (C & a & ->)]; exists C, a; split; auto. }
     destruct Hsub' as (C & a & HR'eq & Hreb). rewrite Hreb in Hsub.
     destruct HR as [(q1 & C1 & a1 & ->) | (n1 & C1 & a1 & ->)].
-    + unfold member_type, adapt in Hsub. cbn [map_qual subst headby] in Hsub.
+    + unfold member_type, adapt in Hsub. cbn [map_qual subst rehead] in Hsub.
       right. exists C1, a1. f_equal.
       destruct (proj1 (sub_head_inv _ _ _ _ Hsub) _ _ _ eq_refl)
         as [(q3 & D & Us & E & Hq) | (Hb & _)].
@@ -498,8 +517,8 @@ Proof.
           exact (vpa_as_bot _ _ Hq).
       * exact (vpa_as_bot _ _ Hb).
     + destruct (Hview n1 C1 a1) as [[a0 Ha] | [a0 Ha]]; rewrite Ha in Hsub;
-        cbn [headby] in Hsub.
-      * destruct (proj2 (sub_head_inv _ _ _ _ Hsub) _ _ _ _ eq_refl)
+        cbn [rehead] in Hsub.
+      * destruct (proj2 (sub_head_inv _ _ _ _ Hsub) _ _ _ eq_refl)
           as [(D & Us & E) | (D & Us & E)].
         -- destruct HR'eq as [-> | ->]; [|discriminate]. inversion E; subst.
            left. eauto.
@@ -513,14 +532,136 @@ Qed.
 Lemma receiver_shape_cases : forall CT C T,
   receiver_shape CT C T ->
   (exists q1 C1 a1, T = TClass q1 C1 a1) \/
-  (exists n1 C1 a1, T = THead MethodVar n1 C1 a1).
-Proof. intros CT C T [[q0 ->] | [n ->]]; [left | right]; eauto. Qed.
+  (exists n1 C1 a1, T = THead n1 C1 a1).
+Proof. intros CT C T (args & _ & [[q0 ->] | [n ->]]); [left | right]; eauto. Qed.
+
+Lemma Forall2_map_r_nth : forall (A B C : Type) (P : A -> C -> Prop)
+    (f g : B -> C) l a,
+  Forall2 P l (map f a) ->
+  (forall i x T, nth_error l i = Some x -> nth_error a i = Some T ->
+     P x (f T) -> P x (g T)) ->
+  Forall2 P l (map g a).
+Proof.
+  intros A B C P f g l. induction l as [|x l IH]; intros [|T a] H Hp;
+    inversion H; subst; constructor.
+  - apply (Hp 0); auto.
+  - apply IH; auto. intros i. apply (Hp (S i)).
+Qed.
+
+Lemma Forall2_map_map_nth : forall (A A' B C C' : Type)
+    (P : A -> C -> Prop) (Q : A' -> C' -> Prop)
+    (e : A' -> A) (f : B -> C) (g : B -> C') l a,
+  Forall2 P (map e l) (map f a) ->
+  (forall i x T, nth_error l i = Some x -> nth_error a i = Some T ->
+     P (e x) (f T) -> Q x (g T)) ->
+  Forall2 Q l (map g a).
+Proof.
+  intros A A' B C C' P Q e f g l. induction l as [|x l IH]; intros [|T a] H Hp;
+    simpl in H; inversion H; subst; constructor.
+  - apply (Hp 0); auto.
+  - apply IH; auto. intros i. apply (Hp (S i)).
+Qed.
+
+(** A written qualifier on a receiver argument that the caller knows means
+    the same for the caller and for the receiver object. *)
+Lemma recv_arg_q : forall mt (qr qctx : q_r) qy u,
+  head_ok qr (dynq (qr2q qctx) qy) ->
+  vpa_q mt qy u <> Lost ->
+  dynq (qr2q qctx) (vpa_recv qy u) = dynq (qr2q qr) u /\
+  dynq (qr2q qr) u <> Lost.
+Proof.
+  intros mt qr qctx qy u Hh Hn.
+  destruct mt, qr, qctx, qy, u; simpl in *; unfold head_ok in Hh; simpl in Hh;
+    try (exfalso; apply Hn; reflexivity);
+    try (destruct Hh as [Hh | [Hh | Hh]]; discriminate);
+    split; try reflexivity; discriminate.
+Qed.
+
+(** The arguments of a class type or of a class type under a qualifier
+    parameter survive receiver adaptation, substitution and resolution. *)
+Lemma dyn_member_recv_args : forall qctx ca ma ka qy Vs Us Qs R,
+  (exists q1 C1 a1, R = TClass q1 C1 a1) \/ (exists n1 C1 a1, R = THead n1 C1 a1) ->
+  exists q0 C0,
+    (exists a1, targs R = a1 /\ (R = TClass q0 C0 a1 \/ exists n, R = THead n C0 a1)) /\
+    exists q2,
+    dyn qctx ca ma ka (member_recv qy Vs Us Qs R) =
+    RClass q2 C0
+      (map (fun T => dyn qctx ca ma ka
+                       (subst Vs Us Qs (map_qual (vpa_recv qy) T))) (targs R)).
+Proof.
+  intros qctx ca ma ka qy Vs Us Qs R [(q1 & C1 & a1 & ->) | (n1 & C1 & a1 & ->)].
+  - exists q1, C1. split; [exists a1; auto|].
+    unfold member_recv. cbn [map_qual subst dyn targs]. eexists.
+    rewrite !map_map. reflexivity.
+  - exists RO, C1. split; [exists a1; split; eauto|].
+    unfold member_recv. cbn [map_qual subst targs].
+    destruct (nth_error Qs n1) as [[ql | m]|]; unfold qhead; cbn [dyn]; eexists;
+      rewrite !map_map; reflexivity.
+Qed.
+
+(** The receiver object satisfies what the declared receiver of the
+    statically selected method asks of its type arguments. *)
+Lemma static_radmit : forall CT Δ h mt (qr qctx : q_r) ca0 ma0 ka0 Ty qy Vs Us Qs R
+    ly Co Ro fso D caD,
+  wf_class_table CT ->
+  frame_bounds_ok CT Δ (qr2q qctx) ca0 ma0 ka0 ->
+  qualified_type_subtype CT Δ Ty (member_recv qy Vs Us Qs R) ->
+  recv_args_known mt qy R ->
+  receiver_shape CT D R ->
+  loc_has_rtype CT h ly (dyn (qr2q qctx) ca0 ma0 ka0 Ty) ->
+  runtime_getObj h ly = Some (mkObj (mkruntime_type qr Co Ro) fso) ->
+  head_ok qr (dynq (qr2q qctx) qy) ->
+  rsuper_inst CT (qr2q qr) Co Ro D caD ->
+  radmit (qr2q qr) caD (map (rqarg (qr2q qctx) ka0) Qs) R.
+Proof.
+  intros CT Δ h mt qr qctx ca0 ma0 ka0 Ty qy Vs Us Qs R ly Co Ro fso D caD
+    Hct Hfb Hsub Hrcv_args Hrecv Hyty Hoy Hhead HsupD.
+  intros ma1.
+  pose proof (loc_has_rtype_sub _ _ _ _ _ Hyty
+                (subtype_dyn _ _ _ _ _ _ _ _ (qr2q_concrete _) Hfb Hsub)) as Hrt.
+  destruct (dyn_member_recv_args (qr2q qctx) ca0 ma0 ka0
+              qy Vs Us Qs _ (receiver_shape_cases _ _ _ Hrecv))
+    as (q0 & C0 & (a1 & Ha1 & HR) & q2 & Hdyn).
+  rewrite Hdyn in Hrt. unfold loc_has_rtype in Hrt. rewrite Hoy in Hrt.
+  simpl in Hrt. destruct Hrt as (_ & Vs0 & Hsup0 & Hle0).
+  destruct Hrecv as (args1 & [Hlen1 Hsh1] & Hcase).
+  assert (HC0 : C0 = D /\ targs R = args1).
+  { destruct Hcase as [[qx Hx] | [nx Hx]]; rewrite Hx in HR; rewrite Hx;
+      destruct HR as [HR | [nn HR]]; inversion HR; subst; auto. }
+  destruct HC0 as [HC0 Hta]. subst C0. rewrite Hta in Hle0. rewrite Hta.
+  assert (Vs0 = caD) by (eapply rsuper_inst_deterministic; eauto). subst Vs0.
+  eapply Forall2_map_r_nth; [exact Hle0|].
+  intros i rx T Hrx HT Hrel.
+  destruct (Hsh1 i T HT) as [u0 ->].
+  destruct u0 as [|u0|mu0].
+  - simpl. rewrite Hrx. apply rarg_sub_refl.
+  - assert (Hin : List.In (TVar (TVQual u0) ClassVar i) (targs R)).
+    { rewrite Hta. eapply nth_error_In; eauto. }
+    destruct (recv_arg_q mt qr qctx qy u0 Hhead (Hrcv_args _ _ _ Hin))
+      as [Heq Hnl].
+    cbn [map_qual] in Hrel. rewrite dyn_subst in Hrel. simpl in Hrel.
+    rewrite Heq in Hrel.
+    simpl. rewrite Hrx. destruct rx as [q1 Cx ax].
+    destruct (match nth_error (map (dyn (qr2q qctx) ca0 ma0 ka0) Vs) i
+              with Some R0 => R0 | None => default_rtype end) as [qw Cw aw].
+    simpl in Hrel. inversion Hrel; subst.
+    simpl. apply ras_class; [|apply Forall2_rarg_sub_refl].
+    destruct Hq as [Hq | [Hq _]]; [left; exact Hq | contradiction].
+  - (* under a qualifier parameter: the caller checked the stored argument
+       against the qualifier it supplies for that parameter *)
+    cbn [map_qual] in Hrel. rewrite dyn_subst in Hrel. simpl in Hrel.
+    simpl. rewrite Hrx. destruct rx as [q1 Cx ax].
+    destruct (match nth_error (map (dyn (qr2q qctx) ca0 ma0 ka0) Vs) i
+              with Some R0 => R0 | None => default_rtype end) as [qw Cw aw].
+    simpl in Hrel. inversion Hrel; subst.
+    simpl. apply ras_class; [exact Hq | apply Forall2_rarg_sub_refl].
+Qed.
 
 Definition recv_head (T : qualified_type) : q :=
   match T with
   | TClass q0 _ _ => q0
   | TVar _ _ _ => RO
-  | THead _ _ _ _ => RO
+  | THead _ _ _ => RO
   end.
 
 (** The declaration selected at run time, with signature [sig'] and the
@@ -534,25 +675,32 @@ Definition sem_ref (CT : class_table) (qr : q_r)
     (ca' : list rtype) (sig' : method_sig)
     (ca : list rtype) (sig : method_sig) : Prop :=
   mscope sig' = mscope sig /\
-  ((head_ok qr (dynq (qr2q qr) (recv_head (mreceiver sig))) ->
-    head_ok qr (dynq (qr2q qr) (recv_head (mreceiver sig')))) /\
-   (forall o n, recv_slot o n (mreceiver sig') -> recv_slot o n (mreceiver sig))) /\
-  forall ma,
-    rbounds_ok CT (qr2q qr) ca ma ma (mtparams sig) ->
-    rbounds_ok CT (qr2q qr) ca' ma ma (mtparams sig') /\
+  (((head_ok qr (dynq (qr2q qr) (recv_head (mreceiver sig))) ->
+     head_ok qr (dynq (qr2q qr) (recv_head (mreceiver sig')))) /\
+    (forall ka, length ka = mqparams sig ->
+       radmit (qr2q qr) ca ka (mreceiver sig) ->
+       radmit (qr2q qr) ca' ka (mreceiver sig'))) /\
+   (forall n, recv_slot n (mreceiver sig') -> recv_slot n (mreceiver sig)) /\
+   mqparams sig' = mqparams sig) /\
+  forall ma ka,
+    length ka = mqparams sig ->
+    rbounds_ok CT (qr2q qr) ca ma ka ma (mtparams sig) ->
+    rbounds_ok CT (qr2q qr) ca' ma ka ma (mtparams sig') /\
     Forall2
       (fun P P' => forall h loc,
-         loc_has_rtype CT h loc (dyn (qr2q qr) ca ma P) ->
-         loc_has_rtype CT h loc (dyn (qr2q qr) ca' ma P'))
+         loc_has_rtype CT h loc (dyn (qr2q qr) ca ma ka P) ->
+         loc_has_rtype CT h loc (dyn (qr2q qr) ca' ma ka P'))
       (mparams sig) (mparams sig') /\
     (forall h loc,
-       loc_has_rtype CT h loc (dyn (qr2q qr) ca' ma (mret sig')) ->
-       loc_has_rtype CT h loc (dyn (qr2q qr) ca ma (mret sig))).
+       loc_has_rtype CT h loc (dyn (qr2q qr) ca' ma ka (mret sig')) ->
+       loc_has_rtype CT h loc (dyn (qr2q qr) ca ma ka (mret sig))).
 
 Lemma sem_ref_refl : forall CT qr ca sig, sem_ref CT qr ca sig ca sig.
 Proof.
-  intros. refine (conj eq_refl (conj (conj (fun H => H) (fun o n H => H)) _)).
-  intros ma Hb. refine (conj Hb (conj _ (fun h loc H => H))).
+  intros. refine (conj eq_refl
+                    (conj (conj (conj (fun H => H) (fun ka _ H => H))
+                             (conj (fun n H => H) eq_refl)) _)).
+  intros ma ka Hk Hb. refine (conj Hb (conj _ (fun h loc H => H))).
   induction (mparams sig); constructor; auto.
 Qed.
 
@@ -560,14 +708,17 @@ Lemma sem_ref_trans : forall CT qr ca1 s1 ca2 s2 ca3 s3,
   sem_ref CT qr ca1 s1 ca2 s2 -> sem_ref CT qr ca2 s2 ca3 s3 ->
   sem_ref CT qr ca1 s1 ca3 s3.
 Proof.
-  intros CT qr ca1 s1 ca2 s2 ca3 s3 (Hs12 & [Hh12 Hsl12] & H12)
-    (Hs23 & [Hh23 Hsl23] & H23).
+  intros CT qr ca1 s1 ca2 s2 ca3 s3 (Hs12 & ([Hh12 Ha12] & Hsl12 & Hq12) & H12)
+    (Hs23 & ([Hh23 Ha23] & Hsl23 & Hq23) & H23).
   refine (conj _ (conj _ _)).
   - congruence.
-  - split; auto.
-  - intros ma Hb3.
-    destruct (H23 ma Hb3) as (Hb2 & Hp23 & Hr23).
-    destruct (H12 ma Hb2) as (Hb1 & Hp12 & Hr12).
+  - split; [split; [auto|]|].
+    + intros ka Hk Ha. apply (Ha12 ka); [congruence | exact (Ha23 ka Hk Ha)].
+    + split; [auto | congruence].
+  - intros ma ka Hk Hb3.
+    destruct (H23 ma ka Hk Hb3) as (Hb2 & Hp23 & Hr23).
+    assert (Hk2 : length ka = mqparams s2) by congruence.
+    destruct (H12 ma ka Hk2 Hb2) as (Hb1 & Hp12 & Hr12).
     refine (conj Hb1 (conj _ _)).
     + eapply Forall2_compose; [exact Hp23 | exact Hp12 |].
       intros P3 P2 P1 Ha Hb h loc Hl. auto.
@@ -598,31 +749,43 @@ Proof.
   pose proof (Hovr def' P Ss D1 mdef1 Vs Hfind Hsuper Hfm Hsi) as Hcompat.
   assert (Hlen_ca : length (ctparams (signature def')) = length ca').
   { symmetry. apply (Forall2_length Hbnd). }
-  assert (Hca1 : forall ma, ca1 = map (dyn (qr2q qr) ca' ma) Vs).
-  { intros ma.
-    pose proof (super_inst_dyn_exact _ _ _ _ _ _ _ Hsi (qr2q qr) ca' ma
+  assert (Hca1 : forall ma ka, ca1 = map (dyn (qr2q qr) ca' ma ka) Vs).
+  { intros ma ka.
+    pose proof (super_inst_dyn_exact _ _ _ _ _ _ _ Hsi (qr2q qr) ca' ma ka
                   (fun q0 => dynq_class_adapt qr qC q0 Hagree)) as Hex.
     rewrite Hlen_ca in Hex. rewrite dyn_class_var_types in Hex.
     eapply rsuper_inst_deterministic; eauto. }
   set (sig1 := msignature mdef1) in *.
   set (sig' := msignature mdef') in *.
-  assert (Hview : forall ma T,
+  assert (Hview : forall ma ka T,
             length ma = length (mtparams sig1) ->
-            dyn (qr2q qr) ca' ma
+            length ka = mqparams sig1 ->
+            dyn (qr2q qr) ca' ma ka
               (member_type AbstractState (qc2q qC) Vs
-                 (method_var_types (length (mtparams sig1))) T) =
-            dyn (qr2q qr) ca1 ma T).
-  { intros ma T Hlen. unfold member_type. rewrite dyn_subst.
-    rewrite <- Hlen. rewrite dyn_method_var_types. rewrite <- (Hca1 ma).
+                 (method_var_types (length (mtparams sig1)))
+                 (qvar_args (mqparams sig1)) T) =
+            dyn (qr2q qr) ca1 ma ka T).
+  { intros ma ka T Hlen Hlenk. unfold member_type. rewrite dyn_subst.
+    rewrite <- Hlen. rewrite dyn_method_var_types.
+    rewrite <- Hlenk. rewrite rqarg_qvar_args. rewrite <- (Hca1 ma ka).
     apply dyn_class_adapt; auto. }
-  destruct Hcompat as (_ & Hscope & Hmtp & Hret & Hpar & Hrcv).
-  pose proof Hwm as (Hshape' & _).
-  pose proof (find_method_wf _ _ _ _ _ Hct Hfm) as (Hshape1 & _).
+  destruct Hcompat as (_ & Hscope & [Hmtp Hmqp] & Hret & Hpar & Hrcv & Hadm).
+  pose proof Hwm as ((Hshape' & _) & _).
+  pose proof (find_method_wf _ _ _ _ _ Hct Hfm) as ((Hshape1 & _) & _).
   destruct (recv_override_facts _ _ _ _ _ _ _
-              (receiver_shape_cases _ _ _ Hshape1)
+              _ (receiver_shape_cases _ _ _ Hshape1)
               (receiver_shape_cases _ _ _ Hshape') Hrcv)
     as (Hcc & Hhc & Hslot).
-  refine (conj Hscope (conj (conj _ Hslot) _)).
+  refine (conj Hscope (conj (conj (conj _ _) (conj Hslot Hmqp)) _)).
+  2:{ fold sig1 sig'. intros ka Hk Ha1.
+      apply (Hadm qr ca' ka).
+      - intros Hq. fold qC in Hq. rewrite Hq in Hagree.
+        destruct qr; simpl in Hagree; [reflexivity | discriminate].
+      - intros Hq. fold qC in Hq. rewrite Hq in Hagree.
+        destruct qr; simpl in Hagree; [discriminate | reflexivity].
+      - simpl. unfold class_tparams. rewrite Hfind. symmetry. exact Hlen_ca.
+      - exact Hk.
+      - rewrite <- (Hca1 [] []). exact Ha1. }
   - fold sig1 sig'.
     destruct (receiver_shape_cases _ _ _ Hshape') as
       [(q2 & C2 & a2 & Hr2) | (n2 & C2 & a2 & Hr2)];
@@ -639,14 +802,14 @@ Proof.
       * exfalso. fold qC in Hq. rewrite Hq in Hh. simpl in Hh.
         eapply head_ok_not_bot; eauto.
     + intros _. rewrite (Hhc _ _ _ _ _ _ Hr1 Hr2). simpl. unfold head_ok. auto.
-  - intros ma Hb1.
+  - intros ma ka Hk Hb1.
     assert (Hlen : length ma = length (mtparams sig1))
       by apply (Forall2_length Hb1).
-    assert (Hb' : rbounds_ok CT (qr2q qr) ca' ma ma (mtparams sig')).
+    assert (Hb' : rbounds_ok CT (qr2q qr) ca' ma ka ma (mtparams sig')).
     { rewrite Hmtp. unfold rbounds_ok in *.
       eapply Forall2_map_right; [exact Hb1|].
       intros R B HR. simpl in *. rewrite Hview; auto. }
-    assert (Hfb : frame_bounds_ok CT (method_tv_env CT D' sig') (qr2q qr) ca' ma).
+    assert (Hfb : frame_bounds_ok CT (method_tv_env CT D' sig') (qr2q qr) ca' ma ka).
     { apply frame_bounds_ok_of_rbounds; simpl; auto.
       unfold class_tparams. rewrite Hfind. unfold rbounds_ok in *.
       eapply Forall2_Forall_r_impl;
@@ -661,7 +824,7 @@ Proof.
       rewrite Hview; auto.
     + intros h loc Hl.
       pose proof (loc_has_rtype_sub _ _ _ _ _ Hl
-                    (subtype_dyn _ _ _ _ _ _ _ (qr2q_concrete _) Hfb Hret)) as Hl'.
+                    (subtype_dyn _ _ _ _ _ _ _ _ (qr2q_concrete _) Hfb Hret)) as Hl'.
       rewrite Hview in Hl'; auto.
 Qed.
 
@@ -682,7 +845,7 @@ Lemma find_rsuper_exists : forall CT C m D mdef,
 Proof.
   intros CT C m D mdef H. induction H; intros qh Rs.
   - exists Rs. apply rsi_refl.
-  - destruct (IHFindMethodWithName qh (map (dyn qh Rs []) Ss)) as [Vs HV].
+  - destruct (IHFindMethodWithName qh (map (dyn qh Rs [] []) Ss)) as [Vs HV].
     exists Vs. eapply rsi_step; eauto.
     unfold parent_lookup. rewrite Hfind. exact Hsuper.
 Qed.
@@ -730,11 +893,11 @@ Proof.
     destruct (wf_class_super_inv _ _ _ _ _ Hct Hfind Hparent') as (sd & _ & HltP & _).
     pose proof (base_subtype_le _ _ _ Hct (find_method_with_name_base _ _ _ _ _ Hf))
       as HleD.
-    assert (HsD : rsuper_inst CT (qr2q qr) P (map (dyn (qr2q qr) Rs []) Ss) D ca).
+    assert (HsD : rsuper_inst CT (qr2q qr) P (map (dyn (qr2q qr) Rs [] []) Ss) D ca).
     { inversion Hs; subst; [lia|].
       rewrite Hparent in Hparent0. inversion Hparent0; subst. auto. }
     assert (HrtP : wf_rtypeuse CT
-                     (mkruntime_type qr P (map (dyn (qr2q qr) Rs []) Ss))).
+                     (mkruntime_type qr P (map (dyn (qr2q qr) Rs [] []) Ss))).
     { eapply rsuper_wf; [exact Hct | | exact Hrt].
       eapply rsi_step; eauto. apply rsi_refl. }
     inversion Hf'; subst.
@@ -745,7 +908,7 @@ Proof.
       subst ca'.
       destruct (find_from_subclass _ _ _ _ _ _ Hrest _ _ _ Hf) as (D1 & mdef1 & HfP).
       destruct (find_rsuper_exists _ _ _ _ _ HfP (qr2q qr)
-                  (map (dyn (qr2q qr) Rs []) Ss)) as [ca1 Hs1].
+                  (map (dyn (qr2q qr) Rs [] []) Ss)) as [ca1 Hs1].
       eapply sem_ref_trans; [|eapply (IH HrtP); eauto].
       eapply override_step; eauto.
       * eapply find_method_wf; eauto.
@@ -756,10 +919,32 @@ Proof.
       rewrite Hsuper in Hparent'. inversion Hparent'; subst.
       pose proof (base_subtype_le _ _ _ Hct
                     (find_method_with_name_base _ _ _ _ _ Hparent_fmn)) as HleD'.
-      assert (HsD' : rsuper_inst CT (qr2q qr) P (map (dyn (qr2q qr) Rs []) Ss) D' ca').
+      assert (HsD' : rsuper_inst CT (qr2q qr) P (map (dyn (qr2q qr) Rs [] []) Ss) D' ca').
       { inversion Hs'; subst; [lia|].
         rewrite Hparent in Hparent0. inversion Hparent0; subst. auto. }
       eapply (IH HrtP); eauto.
+Qed.
+
+(** A qualifier argument accepted by the checker is never unknown at run
+    time. *)
+Lemma rqarg_not_lost : forall Δ qctx ka a,
+  concrete_q qctx ->
+  Forall (fun q0 => q0 <> Lost) ka ->
+  qarg_ok Δ a -> rqarg qctx ka a <> Lost.
+Proof.
+  intros Δ qctx ka [q0|m] Hc Hka Hok; simpl in *.
+  - destruct Hc as [-> | ->]; destruct q0; simpl; congruence.
+  - apply qnth_not_lost. exact Hka.
+Qed.
+
+Lemma map_rqarg_not_lost : forall Δ qctx ka Qs,
+  concrete_q qctx ->
+  Forall (fun q0 => q0 <> Lost) ka ->
+  Forall (qarg_ok Δ) Qs ->
+  Forall (fun q0 => q0 <> Lost) (map (rqarg qctx ka) Qs).
+Proof.
+  intros Δ qctx ka Qs Hc Hka H. induction H; simpl; constructor;
+    eauto using rqarg_not_lost.
 Qed.
 
 (* ------------------CALL ENTRY------------------*)
@@ -768,41 +953,69 @@ Qed.
     well-formed configuration for the body of the method selected at run
     time, and a result of that method's return type is a value of the call's
     destination type. *)
-Lemma call_entry : forall CT Δ sΓ rΓ h mt x m y Us zs sΓ' ly cy D' mdef' vals rΓ',
+(** What the receiver check of a call says about the receiver object: its
+    mutability may be seen through the declared receiver's qualifier, unless
+    that is [RDM]; for a receiver under a qualifier parameter, through the
+    qualifier supplied for it. *)
+Lemma recv_head_typable : forall CT Δ h ly Ty qy Vs Us Qs R qctx ca ma ka o,
+  frame_bounds_ok CT Δ (qr2q qctx) ca ma ka ->
+  qualified_type_subtype CT Δ Ty (member_recv qy Vs Us Qs R) ->
+  wf_r_typable CT h ly Ty qctx ca ma ka ->
+  runtime_getObj h ly = Some o ->
+  match R with
+  | TClass q1 _ _ => q1 = RDM \/ head_ok (rqtype (rt_type o)) q1
+  | THead n _ _ =>
+      head_ok (rqtype (rt_type o)) (qnth (map (rqarg (qr2q qctx) ka) Qs) n)
+  | TVar _ _ _ => True
+  end.
+Proof.
+  intros CT Δ h ly Ty qy Vs Us Qs R qctx ca ma ka o Hfb Hsub Hty Ho.
+  pose proof (wf_r_typable_subtype _ _ _ _ _ _ _ _ _ _ Hfb Hsub Hty) as Hbt.
+  unfold wf_r_typable, member_recv in Hbt. rewrite dyn_subst in Hbt.
+  destruct R as [q1 C args | u ow n | n C args]; [| exact I |].
+  - simpl in Hbt. unfold loc_has_rtype in Hbt. rewrite Ho in Hbt.
+    destruct Hbt as [Hh _].
+    destruct q1; simpl in Hh; auto.
+  - simpl in Hbt. unfold loc_has_rtype in Hbt. rewrite Ho in Hbt.
+    exact (proj1 Hbt).
+Qed.
+
+Lemma call_entry : forall CT Δ sΓ rΓ h mt x m y Us Qs zs sΓ' ly cy D' mdef' vals rΓ',
   wf_r_config CT Δ sΓ rΓ h ->
-  stmt_typing CT Δ sΓ mt (SCall x m y Us zs) sΓ' ->
+  stmt_typing CT Δ sΓ mt (SCall x m y Us Qs zs) sΓ' ->
   runtime_getVal rΓ y = Some (Iot ly) ->
   r_basetype h ly = Some cy ->
   FindMethodWithName CT cy m D' mdef' ->
   runtime_lookup_list rΓ zs = Some vals ->
-  callee_env CT rΓ h ly D' Us vals rΓ' ->
+  callee_env CT rΓ h ly D' Us Qs vals rΓ' ->
   exists ι o oy Tx,
     get_this_var_mapping (vars rΓ) = Some ι /\
     runtime_getObj h ι = Some o /\
     runtime_getObj h ly = Some oy /\
     static_getType sΓ x = Some Tx /\
     x <> 0 /\ sΓ' = sΓ /\
-    frame_bounds_ok CT Δ (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ) /\
+    frame_bounds_ok CT Δ (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ) (qargs rΓ) /\
     wf_method CT D' mdef' /\
     wf_r_config CT (method_tv_env CT D' (msignature mdef'))
       (mreceiver (msignature mdef') :: mparams (msignature mdef')) rΓ' h /\
     get_this_var_mapping (vars rΓ') = Some ly /\
     (forall h' v,
        val_typable CT h' v (mret (msignature mdef'))
-         (rqtype (rt_type oy)) (cargs rΓ') (margs rΓ') ->
-       val_typable CT h' v Tx (rqtype (rt_type o)) (cargs rΓ) (margs rΓ)) /\
+         (rqtype (rt_type oy)) (cargs rΓ') (margs rΓ') (qargs rΓ') ->
+       val_typable CT h' v Tx (rqtype (rt_type o)) (cargs rΓ) (margs rΓ) (qargs rΓ)) /\
     method_scope_subtype (mscope (msignature mdef')) mt.
 Proof.
-  intros CT Δ sΓ rΓ h mt x m y Us zs sΓ' ly cy D' mdef' vals rΓ'
+  intros CT Δ sΓ rΓ h mt x m y Us Qs zs sΓ' ly cy D' mdef' vals rΓ'
     Hwf Htype Hvy Hbase Hfind Hvals Henv.
   inversion Htype; subst.
+  pose proof (wf_r_config_qargs _ _ _ _ _ Hwf) as Hka.
   destruct (wf_r_config_this _ _ _ _ _ Hwf)
     as (ι & o & Hthis & Hobj & _ & Hlc & Hlm & Hfb).
   pose proof Hwf as (Hct & Hheap & _).
   pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_y) as Hyty.
   rewrite Hvy in Hyty.
-  pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ Hfb Hub Hyty) as Hyty'.
-  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hyty')
+  pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ _ Hfb Hub Hyty) as Hyty'.
+  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hyty')
     as (oy & Rs1 & Hoy & Hhead & Hsup1 & Hle1).
   pose proof (Hheap ly (runtime_getObj_dom _ _ _ Hoy)) as Hwfo.
   unfold wf_obj in Hwfo. rewrite Hoy in Hwfo. destruct Hwfo as (Hrt_oy & _).
@@ -815,10 +1028,11 @@ Proof.
   assert (lt = ι) by congruence. subst lt.
   unfold r_muttype in Hqt. rewrite Hobj in Hqt. inversion Hqt; subst qt. clear Hqt.
   set (qctx := rqtype (rt_type o)) in *.
-  set (margs' := map (dyn (qr2q qctx) (cargs rΓ) (margs rΓ)) Us) in *.
+  set (margs' := map (dyn (qr2q qctx) (cargs rΓ) (margs rΓ) (qargs rΓ)) Us) in *.
+  set (kargs' := map (rqarg (qr2q qctx) (qargs rΓ)) Qs) in *.
   (* the receiver's class arguments at the statically selected declaration *)
   destruct (super_inst_dyn _ _ _ _ _ _ _ Hsuper (qr2q qr) (qr2q qctx)
-              (cargs rΓ) (margs rΓ) Rs1) as (caD & HsupX & HleX); auto.
+              (cargs rΓ) (margs rΓ) (qargs rΓ) Rs1) as (caD & HsupX & HleX); auto.
   { intros q0. apply dynq_vpa_q_agree; auto using qr2q_concrete. }
   pose proof (rsuper_inst_trans _ _ _ _ _ _ Hsup1 _ _ HsupX) as HsupD.
   (* the declaration selected at run time refines the static one *)
@@ -830,27 +1044,31 @@ Proof.
   destruct Hview as (_ & Hlf_ca & Hb_ca).
   pose proof (find_method_wf _ _ _ _ _ Hct Hfind) as Hwm'.
   pose proof (find_method_wf _ _ _ _ _ Hct Hfind_m) as Hwm.
-  pose proof Hwm' as (Hrecv' & _ & _ & (sΓb & Tb & Hbody & _ & _) & _ & _).
-  pose proof Hwm as (Hrecv & _).
+  pose proof Hwm' as ((Hrecv' & _) & _ & _ & (sΓb & Tb & Hbody & _ & _) & _ & _).
+  pose proof Hwm as ((Hrecv & _) & _).
   assert (Hlm' : Forall rlost_free margs').
   { apply map_dyn_lost_free; auto using qr2q_concrete. }
+  assert (Hka' : Forall (fun q0 => q0 <> Lost) kargs').
+  { eapply map_rqarg_not_lost; eauto using qr2q_concrete. }
+  assert (Hklen : length kargs' = mqparams (msignature mdef)).
+  { unfold kargs'. rewrite length_map. exact Hqargs_len. }
   assert (Hmrefl : Forall2 rarg_sub margs' margs') by apply Forall2_rarg_sub_refl.
   assert (Hctp : class_tparams CT D' = ctparams (signature defD)).
   { unfold class_tparams. rewrite HfD. reflexivity. }
   (* method type arguments fit the static declaration, hence the selected one *)
-  assert (HbD : rbounds_ok CT (qr2q qr) caD margs' margs'
+  assert (HbD : rbounds_ok CT (qr2q qr) caD margs' kargs' margs'
                   (mtparams (msignature mdef))).
   { unfold rbounds_ok. unfold margs' at 2.
     eapply Forall2_map_left; [exact Htargs_bnd|].
     intros U B [HlfB Hsub]. apply bound_sub_self in Hsub. simpl in HlfB, Hsub.
-    pose proof (subtype_dyn _ _ _ _ _ _ _ (qr2q_concrete _) Hfb Hsub) as Hrs.
+    pose proof (subtype_dyn _ _ _ _ _ _ _ _ (qr2q_concrete _) Hfb Hsub) as Hrs.
     unfold member_type in Hrs. rewrite dyn_subst in Hrs.
     rewrite (dyn_adapt_exact mt qr qctx qy caD
-               (map (dyn (qr2q qctx) (cargs rΓ) (margs rΓ)) Vs)
-               margs' margs' B); auto.
-    unfold margs'. rewrite <- dyn_subst.
+               (map (dyn (qr2q qctx) (cargs rΓ) (margs rΓ) (qargs rΓ)) Vs)
+               margs' margs' kargs' B); auto.
+    unfold margs', kargs'. rewrite <- dyn_subst.
     apply dyn_lost_free; auto using qr2q_concrete. }
-  destruct (Hma margs' HbD) as (Hb' & Hpar_ref & Hret_ref).
+  destruct (Hma margs' kargs' Hklen HbD) as (Hb' & Hpar_ref & Hret_ref).
   (* arguments and receiver in the callee's activation *)
   pose proof (lookup_list_typable _ _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_args Hvals)
     as Hvals_ty.
@@ -858,63 +1076,64 @@ Proof.
     Forall2 (fun v P =>
                match v with
                | Null_a => True
-               | Iot loc => loc_has_rtype CT h loc (dyn (qr2q qr) caD margs' P)
+               | Iot loc => loc_has_rtype CT h loc (dyn (qr2q qr) caD margs' kargs' P)
                end) vals (mparams (msignature mdef))).
   { eapply Forall2_compose; [exact Hvals_ty | exact Harg_sub |].
     intros v A P Hv Hassign. simpl in Hv, Hassign.
-    exact (assignable_to_member _ _ _ _ _ _ _ _ _ _ _ _ _
-             qr caD margs' Hfb Hlc Hlm Hassign Hv Hhead HleX Hmrefl). }
+    exact (assignable_to_member _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+             qr caD margs' Hfb Hlc Hlm Hka Hassign Hv Hhead HleX Hmrefl). }
   assert (Hparams' :
     Forall2 (fun v P =>
                match v with
                | Null_a => True
-               | Iot loc => loc_has_rtype CT h loc (dyn (qr2q qr) ca' margs' P)
+               | Iot loc => loc_has_rtype CT h loc (dyn (qr2q qr) ca' margs' kargs' P)
                end) vals (mparams (msignature mdef'))).
   { eapply Forall2_compose; [exact Hparams | exact Hpar_ref |].
     intros v P P' Hv Hf. destruct v as [|loc]; auto. }
   assert (Hhead_static :
     head_ok qr (dynq (qr2q qr) (recv_head (mreceiver (msignature mdef))))).
-  { destruct Hrecv as [[qr1 Hreq1] | [n1 Hreq1]];
+  { destruct Hrecv as (args1 & _ & [[qr1 Hreq1] | [n1 Hreq1]]);
       [|rewrite Hreq1; simpl; unfold head_ok; auto].
-    destruct Hrcv_sub as [Hassign | (-> & Rargs & Hreq)].
-    - pose proof (assignable_to_member _ _ _ (Iot ly) _ _ _ _ _ _ _ _ _
-                    qr caD margs' Hfb Hlc Hlm Hassign Hyty Hhead HleX Hmrefl)
-        as Hrt.
-      rewrite Hreq1 in Hrt. rewrite Hreq1. simpl in *.
-      unfold loc_has_rtype in Hrt. rewrite Hoy in Hrt. simpl in Hrt. tauto.
-    - rewrite Hreq1 in Hreq. inversion Hreq; subst. rewrite Hreq1. simpl.
+    pose proof (recv_head_typable _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hfb
+                  (proj1 Hrcv_sub) Hyty Hoy) as Hrt.
+    rewrite Hreq1 in Hrt. rewrite Hreq1. simpl in Hrt. simpl.
+    destruct Hrt as [-> | Hh].
+    - unfold head_ok. right. right. destruct qr; reflexivity.
+    - destruct qr1; simpl; auto.
       unfold head_ok. right. right. destruct qr; reflexivity. }
-  pose proof (Hhd Hhead_static) as Hhead_sel.
+  pose proof (proj1 Hhd Hhead_static) as Hhead_sel.
+  (* the receiver object satisfies what the static declaration asks of its
+     type arguments, hence what the selected one asks *)
+  assert (Hadm_static : radmit (qr2q qr) caD kargs' (mreceiver (msignature mdef))).
+  { exact (static_radmit CT Δ h mt qr qctx _ _ _ Ty qy Vs Us Qs _ ly Co Ro fso D caD
+             Hct Hfb (proj1 Hrcv_sub) Hrcv_args Hrecv Hyty Hoy Hhead HsupD). }
+  pose proof (proj2 Hhd kargs' Hklen Hadm_static) as Hadm_sel.
   assert (Hrecv_ty :
     loc_has_rtype CT h ly
-      (dyn (qr2q qr) ca' margs' (mreceiver (msignature mdef')))).
-  { destruct Hrecv' as [[qr2 Hreq2] | [n2 Hreq2]].
+      (dyn (qr2q qr) ca' margs' kargs' (mreceiver (msignature mdef')))).
+  { destruct Hrecv' as (args2 & _ & [[qr2 Hreq2] | [n2 Hreq2]]).
     - rewrite Hreq2 in Hhead_sel. rewrite Hreq2. simpl in Hhead_sel.
-      simpl dyn. rewrite Hctp. rewrite <- (Forall2_length Hb_ca).
-      rewrite dyn_class_var_types.
+      pose proof (Hadm_sel margs') as Hadm2. rewrite Hreq2 in Hadm2.
+      simpl in Hadm2. simpl dyn.
       unfold loc_has_rtype. rewrite Hoy. simpl. split; [exact Hhead_sel|].
-      exists ca'. split; [exact Hsupc | apply Forall2_rarg_sub_refl].
+      exists ca'. split; [exact Hsupc | exact Hadm2].
     - (* the receiver takes its qualifier from a method type variable: the
          caller supplied it, and checked the receiver against it *)
-      assert (Hs : recv_slot MethodVar n2 (mreceiver (msignature mdef))).
+      assert (Hs : recv_slot n2 (mreceiver (msignature mdef))).
       { apply Hslot. rewrite Hreq2. left. eauto. }
-      assert (Hh : head_ok qr
-                (rhead match nth_error margs' n2 with
-                       | Some R => R | None => default_rtype end)).
-      { destruct Hrcv_sub as [Hassign | (-> & Rargs & Hreq)].
-        - pose proof (assignable_to_member _ _ _ (Iot ly) _ _ _ _ _ _ _ _ _
-                        qr caD margs' Hfb Hlc Hlm Hassign Hyty Hhead HleX Hmrefl)
-            as Hrt.
-          destruct Hs as [(C0 & a0 & E) | (C0 & a0 & E)]; rewrite E in Hrt;
-            unfold loc_has_rtype in Hrt; rewrite Hoy in Hrt; simpl in Hrt.
-          + exact (proj1 Hrt).
-          + exfalso. destruct Hrt as [Hb _]. eapply head_ok_not_bot; eauto.
-        - destruct Hs as [(C0 & a0 & E) | (C0 & a0 & E)]; rewrite E in Hreq;
-            discriminate. }
-      rewrite Hreq2. simpl dyn. rewrite Hctp. rewrite <- (Forall2_length Hb_ca).
-      rewrite dyn_class_var_types.
+      assert (Hh : head_ok qr (qnth kargs' n2)).
+      { pose proof (recv_head_typable _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hfb
+                      (proj1 Hrcv_sub) Hyty Hoy) as Hrt.
+        destruct Hs as [(C0 & a0 & E) | (C0 & a0 & E)]; rewrite E in Hrt;
+          simpl in Hrt.
+        - exact Hrt.
+        - exfalso. destruct Hrt as [Hb | Hb]; [discriminate|].
+          eapply head_ok_not_bot; eauto. }
+      pose proof (Hadm_sel margs') as Hadm2. rewrite Hreq2 in Hadm2.
+      simpl in Hadm2.
+      rewrite Hreq2. simpl dyn.
       unfold loc_has_rtype. rewrite Hoy. simpl. split; [exact Hh|].
-      exists ca'. split; [exact Hsupc | apply Forall2_rarg_sub_refl]. }
+      exists ca'. split; [exact Hsupc | exact Hadm2]. }
   exists ι, o, (mkObj (mkruntime_type qr Co Ro) fso), Tx.
   refine (conj Hthis (conj Hobj (conj Hoy (conj Hget_x (conj Hnot_rcv
            (conj eq_refl (conj Hfb (conj Hwm' (conj _ (conj eq_refl
@@ -933,7 +1152,7 @@ Proof.
     + eapply stmt_typing_wf_env; eauto.
     + exists ly, (mkObj (mkruntime_type qr Co Ro) fso), D'. simpl.
       refine (conj eq_refl (conj Hoy (conj eq_refl (conj Hsupc
-               (conj Hlf_ca (conj Hlm' (conj _ Hb'))))))).
+               (conj Hlf_ca (conj (conj Hlm' Hka') (conj _ Hb'))))))).
       rewrite Hctp. unfold rbounds_ok in *.
       eapply Forall2_Forall_r_impl;
         [exact Hb_ca | exact (class_bounds_wf _ _ _ Hct HfD) |].

@@ -16,13 +16,14 @@ Require Import Syntax Notations Helpers ViewpointAdaptation Subtyping Typing
 Definition no_tparams (CT : class_table) : Prop :=
   forall C def, find_class CT C = Some def ->
     ctparams (signature def) = [] /\
-    Forall (fun md => mtparams (msignature md) = []) (methods (body def)).
+    Forall (fun md => mtparams (msignature md) = [] /\
+                      mqparams (msignature md) = 0) (methods (body def)).
 
 Definition head_of (T : qualified_type) : option q :=
   match T with
   | TClass q0 _ _ => Some q0
   | TVar _ _ _ => None
-  | THead _ _ _ _ => None
+  | THead _ _ _ => None
   end.
 
 Definition no_rdm_fields (CT : class_table) : Prop :=
@@ -30,14 +31,14 @@ Definition no_rdm_fields (CT : class_table) : Prop :=
     Forall (fun fd => head_of (ftype fd) <> Some RDM) fs.
 
 Definition empty_tv_env (Δ : tv_env) : Prop :=
-  class_bounds Δ = [] /\ method_bounds Δ = [].
+  class_bounds Δ = [] /\ method_bounds Δ = [] /\ qparams Δ = 0.
 
 Definition flat_type (T : qualified_type) : Prop :=
   exists q0 C, T = TClass q0 C [].
 
 Lemma tv_bound_empty : forall Δ o n, empty_tv_env Δ -> tv_bound Δ o n = None.
 Proof.
-  intros Δ o n [Hc Hm]. unfold tv_bound, tv_lookup.
+  intros Δ o n [Hc [Hm _]]. unfold tv_bound, tv_lookup.
   rewrite Hc. rewrite Hm. destruct o; destruct n; reflexivity.
 Qed.
 
@@ -48,7 +49,7 @@ Proof.
   - destruct (Hnt _ _ Hfind) as [Hct _]. rewrite Hct in Hlen.
     destruct Ts; [|discriminate]. exists q0, C. reflexivity.
   - rewrite tv_bound_empty in Hbound; auto. discriminate.
-  - rewrite tv_bound_empty in Hbound; auto. discriminate.
+  - destruct HΔ as (_ & _ & Hq0). rewrite Hq0 in Hbound. inversion Hbound.
 Qed.
 
 Lemma class_tparams_nil : forall CT C, no_tparams CT -> class_tparams CT C = [].
@@ -155,9 +156,11 @@ Proof.
   - rewrite tv_bound_empty in Hbound; auto. discriminate.
   - discriminate.
   - discriminate.
+  - discriminate.
+  - discriminate.
   - destruct (IHqualified_type_subtype _ _ _ eq_refl) as (qT & C0 & b & Heq & _).
     discriminate.
-  - rewrite tv_bound_empty in Hbound; auto. discriminate.
+  - destruct HΔ as (_ & _ & Hq0). rewrite Hq0 in Hbound. inversion Hbound.
   - discriminate.
   - discriminate.
   - discriminate.
@@ -179,10 +182,10 @@ Proof.
 Qed.
 
 (** A location never inhabits a bottom-headed type. *)
-Lemma val_typable_not_bot : forall CT h loc T qctx ca ma,
-  wf_r_typable CT h loc T qctx ca ma -> is_bot_type T = false.
+Lemma val_typable_not_bot : forall CT h loc T qctx ca ma ka,
+  wf_r_typable CT h loc T qctx ca ma ka -> is_bot_type T = false.
 Proof.
-  intros CT h loc T qctx ca ma H.
+  intros CT h loc T qctx ca ma ka H.
   destruct T as [q0 C Ts| |]; auto. destruct q0; auto.
   exfalso. unfold wf_r_typable, loc_has_rtype in H. simpl in H.
   destruct (runtime_getObj h loc); [|contradiction].
@@ -397,13 +400,13 @@ Qed.
 
 Lemma head_mut_is_mut : forall T, head_of T = Some Mut -> is_mut_type T = true.
 Proof.
-  intros [q0 C Ts|u o n|? ? ? ?] H; simpl in *; [|discriminate..].
+  intros [q0 C Ts|u o n| ? ? ?] H; simpl in *; [|discriminate..].
   inversion H; subst. reflexivity.
 Qed.
 
 Lemma is_mut_head_mut : forall T, is_mut_type T = true -> head_of T = Some Mut.
 Proof.
-  intros [q0 C Ts|u o n|? ? ? ?] H; simpl in *; [|discriminate..].
+  intros [q0 C Ts|u o n| ? ? ?] H; simpl in *; [|discriminate..].
   destruct q0; try discriminate. reflexivity.
 Qed.
 
@@ -458,7 +461,7 @@ Proof.
     simpl in Hsub, Hvty, HnrC.
     assert (Hp : bitp κ (TClass (vpa_q mt qx qF) D []) = true).
     { eapply subtype_bitp; eauto. unfold bitp. rewrite Hb. reflexivity. }
-    pose proof (val_typable_not_bot _ _ _ _ _ _ _ Hvty) as Hnb.
+    pose proof (val_typable_not_bot _ _ _ _ _ _ _ _ Hvty) as Hnb.
     unfold bitp in Hp. rewrite Hnb in Hp. rewrite orb_false_r in Hp.
     destruct (rs_vpa_mut mt qx qF Hrs) with (κ := κ) (D := D) as [-> ->]; auto.
     { congruence. }
@@ -466,7 +469,7 @@ Proof.
     assert (Hsy : safe P CT h v) by (eapply HInv; eauto).
     pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_x0) as Hyty.
     rewrite Hval in Hyty.
-    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hyty)
+    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hyty)
       as (oy & Vs & Hoy & _ & Hsup & _).
     rewrite Hobj0 in Hoy. inversion Hoy; subst oy. clear Hoy.
     pose proof (Hheap v (runtime_getObj_dom _ _ _ Hobj0)) as Hwfo.
@@ -539,7 +542,7 @@ Proof.
   destruct (flat_ubound _ _ _ _ _ HTx Hub) as [-> ->].
   pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_x) as Hxty.
   rewrite Hvx in Hxty.
-  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hxty)
+  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hxty)
     as (ox' & Vs & Hox' & _ & Hsup & _).
   rewrite Hox in Hox'. inversion Hox'; subst ox'. clear Hox'.
   pose proof (Hheap lx (runtime_getObj_dom _ _ _ Hox)) as Hwfo.
@@ -562,7 +565,7 @@ Proof.
       apply is_mut_head_mut in Hmut. rewrite Hmut in Hhead.
       rewrite HF in Hhead. simpl in Hhead. inversion Hhead; subst qF.
       rewrite HF in Hsub.
-      change (member_type mt qx [] [] (TClass Mut D []))
+      change (member_type mt qx [] [] [] (TClass Mut D []))
         with (TClass (vpa_q mt qx Mut) D []) in Hsub.
       destruct Hsub as [Hsub Hok].
       assert (Hsw : safe P CT h w).
@@ -571,11 +574,8 @@ Proof.
           + exists (vpa_q mt Mut Mut), D. reflexivity.
           + destruct Hrs as [-> | ->]; reflexivity.
         - exfalso. rewrite (rs_vpa_mut_target _ _ Hrs Hnm) in Hok.
-          destruct Hok as [[Hlf _] | (C' & Ts' & ->)].
-          + apply Hlf. reflexivity.
-          + pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_y)
-              as Hyty.
-            rewrite Hvy in Hyty. apply val_typable_not_bot in Hyty. discriminate. }
+          destruct Hok as [Hlf _].
+            apply Hlf. reflexivity. }
       apply Hsw; auto. }
   refine (conj _ (conj Hsafe _)).
   - eapply Inv_heap; eauto using update_field_heap_ext.
@@ -635,8 +635,8 @@ Proof.
     + eapply IH; eauto.
 Qed.
 
-Lemma view_flat : forall mt q0 Vs Us qF E,
-  member_type mt q0 Vs Us (TClass qF E []) = TClass (vpa_q mt q0 qF) E [].
+Lemma view_flat : forall mt q0 Vs Us Qs qF E,
+  member_type mt q0 Vs Us Qs (TClass qF E []) = TClass (vpa_q mt q0 qF) E [].
 Proof. reflexivity. Qed.
 
 (** An initializer type that is fully known reads the same in every mode. *)
@@ -656,7 +656,7 @@ Lemma rs_new : forall P CT Δ sΓ rΓ h mt x qc C Ts ys sΓ' κ l1 qthisr vals,
   (forall l, P l -> l < dom h) ->
   let onew := mkObj
                 (mkruntime_type (vpa_mutability_object_creation qthisr qc) C
-                   (map (dyn (qr2q qthisr) (cargs rΓ) (margs rΓ)) Ts)) vals in
+                   (map (dyn (qr2q qthisr) (cargs rΓ) (margs rΓ) (qargs rΓ)) Ts)) vals in
   Inv P CT sΓ' (set_vars rΓ (update x (Iot (dom h)) (vars rΓ))) (h ++ [onew]) κ /\
   (forall v, safe P CT h v -> safe P CT (h ++ [onew]) v) /\
   (forall l qr C0 Rs vals0 f,
@@ -693,13 +693,8 @@ Proof.
       destruct qF; simpl in Hmutf; try discriminate.
       rewrite view_flat in Hrel. destruct Hrel as [Hsub Hok].
       assert (Hnl : vpa_q mt (qc2q qc) Mut <> Lost).
-      { intros Hl. destruct Hok as [[Hq _] | (C' & Ts' & ->)].
-        - apply Hq. exact Hl.
-        - pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj HyA) as Hty0.
-          rewrite Hyv in Hty0.
-          destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hty0)
-            as (o' & Vs' & _ & Hhd & _).
-          simpl in Hhd. exact (head_ok_not_bot _ Hhd). }
+      { intros Hl. destruct Hok as [Hq _].
+          apply Hq. exact Hl. }
       rewrite (vpa_eq_as _ _ _ Hnl) in Hsub.
       assert (Hsv : safe P CT h v').
       { eapply Inv_var_sub with (U := TClass (vpa_q AbstractState (qc2q qc) Mut) D []);
@@ -770,7 +765,7 @@ Proof.
     pose proof Hparent as Hparent'. unfold parent_lookup in Hparent'.
     destruct (find_class CT C) as [def|] eqn:Hfind; [|discriminate].
     assert (HrtP : wf_rtypeuse CT
-                     (mkruntime_type qr P (map (dyn (qr2q qr) Rs []) Ss))).
+                     (mkruntime_type qr P (map (dyn (qr2q qr) Rs [] []) Ss))).
     { eapply rsuper_wf; [exact Hct | | exact Hrt].
       eapply rsi_step; eauto. apply rsi_refl. }
     inversion Hf'; subst.
@@ -847,7 +842,7 @@ Proof.
   unfold wf_rtypeuse in Hrt. simpl in Hrt. rewrite Hfind in Hrt.
   destruct Hrt as (Hagree & _).
   set (qC := class_qualifier (signature def')) in *.
-  destruct (find_rsuper_exists _ _ _ _ _ Hfm Mut (map (dyn Mut [] []) Ss))
+  destruct (find_rsuper_exists _ _ _ _ _ Hfm Mut (map (dyn Mut [] [] []) Ss))
     as [Xs Hrs0].
   assert (Hrs : rsuper_inst CT Mut D' [] D1 Xs).
   { eapply rsi_step; [|exact Hrs0].
@@ -878,7 +873,7 @@ Proof.
     destruct (subtype_head _ _ _ _ Hsub HΔ _ _ _ eq_refl)
       as (qT & CT0 & bT & HeqT & HqT).
     inversion HeqT; subst qT CT0 bT. clear HeqT.
-    inversion Hnm as [? ? ? Hnmq Hnmargs | | |]; subst.
+    inversion Hnm as [? ? ? Hnmq Hnmargs | | | |]; subst.
     unfold bitp in *. unfold qC in *.
     destruct (class_qualifier (signature def')), q1; simpl in *;
       try assumption; try discriminate;
@@ -924,8 +919,8 @@ Proof.
   eapply Hv; eauto.
 Qed.
 
-Lemma call_typing_inv : forall CT Δ sΓ mt x m y Us zs sΓ',
-  stmt_typing CT Δ sΓ mt (SCall x m y Us zs) sΓ' ->
+Lemma call_typing_inv : forall CT Δ sΓ mt x m y Us Qs zs sΓ',
+  stmt_typing CT Δ sΓ mt (SCall x m y Us Qs zs) sΓ' ->
   exists argtypes Tx Ty qy C Ts D Vs mdef,
     sΓ' = sΓ /\
     static_getType sΓ x = Some Tx /\
@@ -935,8 +930,8 @@ Lemma call_typing_inv : forall CT Δ sΓ mt x m y Us zs sΓ',
     FindMethodWithName CT C m D mdef /\
     x <> 0 /\
     qualified_type_subtype CT Δ
-      (member_type mt qy Vs Us (mret (msignature mdef))) Tx /\
-    Forall2 (fun A P => assignable_to CT Δ A (member_type mt qy Vs Us P))
+      (member_type mt qy Vs Us Qs (mret (msignature mdef))) Tx /\
+    Forall2 (fun A P => assignable_to CT Δ A (member_type mt qy Vs Us Qs P))
       argtypes (mparams (msignature mdef)) /\
     method_scope_subtype (mscope (msignature mdef)) mt.
 Proof.
@@ -1058,11 +1053,11 @@ Proof.
   - (* call *)
     subst.
     pose proof Hwf as (Hct & Hheap & _).
-    destruct (call_typing_inv _ _ _ _ _ _ _ _ _ _ Htype)
+    destruct (call_typing_inv _ _ _ _ _ _ _ _ _ _ _ Htype)
       as (argtypes & Tx & Ty & qy & C & Ts & Ds & Vs & smdef & -> & Hget_x &
           Hget_y & Hget_args & Hub & Hfind_s & Hx & Hret_sub & Harg_sub & Hscope_s).
     destruct (call_entry _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-                Hwf Htype Hval_y Hbase Hfind Hargs Hframe)
+                _ Hwf Htype Hval_y Hbase Hfind Hargs Hframe)
       as (ι & o & oy & Tx' & Hthis & Hobj & Hoy & _ & _ & _ &
           Hfb & Hwm & Hcfg & Hthis' & _ & Hscope).
     pose proof (stmt_typing_wf_env _ _ _ _ _ _ Htype) as Hsenv.
@@ -1071,8 +1066,8 @@ Proof.
     pose proof (senv_flat _ _ _ _ _ Hnt HΔ Hsenv Hget_x) as HTx.
     pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_y) as Hyty.
     rewrite Hval_y in Hyty.
-    pose proof (val_typable_not_bot _ _ _ _ _ _ _ Hyty) as Hynb.
-    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hyty)
+    pose proof (val_typable_not_bot _ _ _ _ _ _ _ _ Hyty) as Hynb.
+    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hyty)
       as (oy' & Rs1 & Hoy' & Hhead & Hsup1 & _).
     rewrite Hoy in Hoy'. inversion Hoy'; subst oy'. clear Hoy'.
     pose proof (Hheap ly (runtime_getObj_dom _ _ _ Hoy)) as Hwfo.
@@ -1108,7 +1103,7 @@ Proof.
     pose proof Hwm as
       (Hrecv' & _ & _ & (sΓb & Tb & Hbody & Hnthb & Hsubb) & _ & Hroots').
     destruct (Hroots' Hrs') as [Hnm_recv _].
-    pose proof (callee_env_targs _ _ _ _ _ _ _ _ Hframe) as Hvars'.
+    pose proof (callee_env_targs _ _ _ _ _ _ _ _ _ Hframe) as Hvars'.
     (* the invariant for the callee activation *)
     assert (HInv' : Inv P CT
                       (mreceiver (msignature mdef) :: mparams (msignature mdef))
@@ -1121,10 +1116,10 @@ Proof.
         unfold static_getType in HT.
         destruct x0 as [|i]; simpl in HT, Hv.
         + inversion HT; subst T. inversion Hv; subst v.
-          destruct Hrecv' as [[q2 Hreq] | [n2 Hreq]];
+          destruct (proj1 Hrecv') as (args0' & _ & [[q2 Hreq] | [n2 Hreq]]);
             [|rewrite Hreq in Hb; simpl in Hb; discriminate].
           rewrite Hreq in Hb. rewrite Hreq in Hnm_recv.
-          inversion Hnm_recv as [? ? ? Hnmq _ | | |]; subst.
+          inversion Hnm_recv as [? ? ? Hnmq _ | | | |]; subst.
           destruct q2; simpl in Hb; try discriminate; [congruence|].
           destruct HInv as [_ HInv]. eapply HInv; eauto.
         + pose proof (Forall2_nth_error_rel _ _ _ i Hbpar) as Hrel.
@@ -1146,9 +1141,7 @@ Proof.
                       Hnt HΔ Hwf Hthis Hobj HInv HyA Hyv Hsub);
               [eexists _, _; reflexivity | exact Hbt].
           * rewrite Hlost in Hok. rewrite Hlost in Hsub.
-            destruct Hok as [[Hlf _] | (C' & Ts' & ->)]; [congruence|].
-            pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj HyA) as Hty.
-            rewrite Hyv in Hty. apply val_typable_not_bot in Hty. discriminate. }
+            destruct Hok as [Hlf _]; congruence. }
     destruct (IHHeval Hnt Hnr eq_refl _ _ _ _ κ' HΔ' Hrs' Hcfg Hbody HInv' HPdom)
       as (HInv'' & Hsafe & Hprot).
     pose proof (eval_stmt_heap_ext _ _ _ _ _ _ _ Heval) as Hext.
@@ -1162,7 +1155,7 @@ Proof.
           as (ι2 & o2 & Hth2 & Hobj2 & _).
         pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hcfg'' Hth2 Hobj2 Hnthb) as Hrv.
         rewrite Hretval in Hrv.
-        pose proof (val_typable_not_bot _ _ _ _ _ _ _ Hrv) as Hrnb.
+        pose proof (val_typable_not_bot _ _ _ _ _ _ _ _ Hrv) as Hrnb.
         destruct Hfret_s as (qm & Em & Hm).
         rewrite Hm in Hret_sub. rewrite view_flat in Hret_sub.
         assert (Hb1 : bitp κ (TClass (vpa_q mt0 qy qm) Em []) = true).
@@ -1206,11 +1199,11 @@ Qed.
     objects reachable from the receiver and the arguments are a special
     case. *)
 Theorem rs_ts_call_preservation_flat :
-  forall CT Δ sΓ mt rΓ h x m y Us zs sΓ' rΓ' h' ly cy D mdef,
+  forall CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' rΓ' h' ly cy D mdef,
     no_tparams CT -> no_rdm_fields CT ->
     wf_r_config CT Δ sΓ rΓ h ->
-    stmt_typing CT Δ sΓ mt (SCall x m y Us zs) sΓ' ->
-    eval_stmt CT rΓ h (SCall x m y Us zs) OK rΓ' h' ->
+    stmt_typing CT Δ sΓ mt (SCall x m y Us Qs zs) sΓ' ->
+    eval_stmt CT rΓ h (SCall x m y Us Qs zs) OK rΓ' h' ->
     runtime_getVal rΓ y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m D mdef ->
@@ -1222,7 +1215,7 @@ Theorem rs_ts_call_preservation_flat :
         runtime_getObj h' l = Some (mkObj (mkruntime_type qr C Rs) vals') /\
         nth_error vals f = nth_error vals' f.
 Proof.
-  intros CT Δ sΓ mt rΓ h x m y Us zs sΓ' rΓ' h' ly cy D mdef
+  intros CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' rΓ' h' ly cy D mdef
     Hnt Hnr Hwf Htype Heval Hvy Hbase Hfind Hrs l qr C Rs vals f Hl Hprot.
   pose proof Hwf as (Hct & _).
   inversion Heval; subst.
@@ -1231,7 +1224,7 @@ Proof.
   destruct (find_method_with_name_deterministic _ _ _ _ _ _ _ Hfind Hfind0)
     as [<- <-].
   destruct (call_entry _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-              Hwf Htype Hvy Hbase Hfind Hargs Hframe)
+              _ Hwf Htype Hvy Hbase Hfind Hargs Hframe)
     as (ι & o & oy & Tx & _ & _ & _ & _ & _ & _ & _ & Hwm & Hcfg & _).
   destruct (find_method_In _ _ _ _ _ Hfind) as (defD & HfD & HinD).
   destruct (sig_flat _ _ _ _ Hct Hnt HfD HinD Hwm) as (HΔ' & _ & Hfpar).
@@ -1259,11 +1252,11 @@ Qed.
 
 (** Readonly-state preservation: non-assignable fields keep their values. *)
 Corollary readonly_state_preservation_flat :
-  forall CT Δ sΓ mt rΓ h x m y Us zs sΓ' rΓ' h' ly cy D mdef,
+  forall CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' rΓ' h' ly cy D mdef,
     no_tparams CT -> no_rdm_fields CT ->
     wf_r_config CT Δ sΓ rΓ h ->
-    stmt_typing CT Δ sΓ mt (SCall x m y Us zs) sΓ' ->
-    eval_stmt CT rΓ h (SCall x m y Us zs) OK rΓ' h' ->
+    stmt_typing CT Δ sΓ mt (SCall x m y Us Qs zs) sΓ' ->
+    eval_stmt CT rΓ h (SCall x m y Us Qs zs) OK rΓ' h' ->
     runtime_getVal rΓ y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m D mdef ->
@@ -1281,11 +1274,11 @@ Qed.
 
 (** Transitive-state preservation: every field keeps its value. *)
 Corollary transitive_state_preservation_flat :
-  forall CT Δ sΓ mt rΓ h x m y Us zs sΓ' rΓ' h' ly cy D mdef,
+  forall CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' rΓ' h' ly cy D mdef,
     no_tparams CT -> no_rdm_fields CT ->
     wf_r_config CT Δ sΓ rΓ h ->
-    stmt_typing CT Δ sΓ mt (SCall x m y Us zs) sΓ' ->
-    eval_stmt CT rΓ h (SCall x m y Us zs) OK rΓ' h' ->
+    stmt_typing CT Δ sΓ mt (SCall x m y Us Qs zs) sΓ' ->
+    eval_stmt CT rΓ h (SCall x m y Us Qs zs) OK rΓ' h' ->
     runtime_getVal rΓ y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m D mdef ->

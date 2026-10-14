@@ -9,11 +9,10 @@ Require Import Syntax Notations Helpers ViewpointAdaptation Subtyping Typing
 (* ------------------SHALLOW IMMUTABILITY------------------*)
 
 (** A field of an immutable object keeps its value across a well-typed
-    evaluation when the field is not assignable, or when the code runs in a
+    evaluation, however the evaluation ends, when the field is not assignable, or when the code runs in a
     mode with strict assignability (concrete-state or transitive-state). *)
 Theorem shallow_abstract_immutability : forall CT rΓ h s res rΓ' h',
     eval_stmt CT rΓ h s res rΓ' h' ->
-    res = OK ->
     forall Δ sΓ mt sΓ' l C Rs vals f,
       wf_r_config CT Δ sΓ rΓ h ->
       stmt_typing CT Δ sΓ mt s sΓ' ->
@@ -27,8 +26,8 @@ Theorem shallow_abstract_immutability : forall CT rΓ h s res rΓ' h',
 Proof.
   intros CT rΓ h s res rΓ' h' Heval.
   induction Heval;
-    intros Hres Δ sΓ mt0 sΓ' l C0 Rs0 vals0 f0 Hwf Htype Hl Hprot;
-    try discriminate; try (exists vals0; split; [exact Hl | reflexivity]).
+    intros Δ sΓ mt0 sΓ' l C0 Rs0 vals0 f0 Hwf Htype Hl Hprot;
+    try (exists vals0; split; [exact Hl | reflexivity]).
   - (* field write *)
     subst h'.
     destruct (Nat.eq_dec loc_x l) as [-> | Hne].
@@ -50,8 +49,8 @@ Proof.
            pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_x)
              as Hxty.
            rewrite Hval_x in Hxty.
-           pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ Hfb Hub Hxty) as Hxty'.
-           destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hxty')
+           pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ _ Hfb Hub Hxty) as Hxty'.
+           destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hxty')
              as (ox' & Vs & Hox' & Hhead & _).
            rewrite Hl in Hox'. inversion Hox'; subst ox'. simpl in Hhead.
            unfold head_ok in Hhead.
@@ -68,20 +67,64 @@ Proof.
   - (* call *)
     subst.
     destruct (call_entry _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-                Hwf Htype Hval_y Hbase Hfind Hargs Hframe)
+                _ Hwf Htype Hval_y Hbase Hfind Hargs Hframe)
       as (ι & o & oy & Tx & _ & _ & _ & _ & _ & _ &
           _ & Hwm & Hcfg & _ & _ & Hscope).
     pose proof Hwm as (_ & _ & _ & (sΓb & Tb & Hbody & _ & _) & _ & _).
-    eapply (IHHeval eq_refl _ _ _ _ l C0 Rs0 vals0 f0 Hcfg Hbody Hl).
+    eapply (IHHeval _ _ _ _ l C0 Rs0 vals0 f0 Hcfg Hbody Hl).
+    destruct Hprot as [Hp | [Hp | Hstrict]]; auto.
+    right. right. eapply concrete_assignability_submethod; eauto.
+  - (* call, the body ends in a null dereference *)
+    subst.
+    destruct (call_entry _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+                _ Hwf Htype Hval_y Hbase Hfind Hargs Hframe)
+      as (ι & o & oy & Tx & _ & _ & _ & _ & _ & _ &
+          _ & Hwm & Hcfg & _ & _ & Hscope).
+    pose proof Hwm as (_ & _ & _ & (sΓb & Tb & Hbody & _ & _) & _ & _).
+    eapply (IHHeval _ _ _ _ l C0 Rs0 vals0 f0 Hcfg Hbody Hl).
+    destruct Hprot as [Hp | [Hp | Hstrict]]; auto.
+    right. right. eapply concrete_assignability_submethod; eauto.
+  - (* call, the body ends in a rejected write *)
+    subst.
+    destruct (call_entry _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+                _ Hwf Htype Hval_y Hbase Hfind Hargs Hframe)
+      as (ι & o & oy & Tx & _ & _ & _ & _ & _ & _ &
+          _ & Hwm & Hcfg & _ & _ & Hscope).
+    pose proof Hwm as (_ & _ & _ & (sΓb & Tb & Hbody & _ & _) & _ & _).
+    eapply (IHHeval _ _ _ _ l C0 Rs0 vals0 f0 Hcfg Hbody Hl).
     destruct Hprot as [Hp | [Hp | Hstrict]]; auto.
     right. right. eapply concrete_assignability_submethod; eauto.
   - (* sequence *)
     inversion Htype; subst.
-    destruct (IHHeval1 eq_refl _ _ _ _ l C0 Rs0 vals0 f0 Hwf Htype1 Hl Hprot)
+    destruct (IHHeval1 _ _ _ _ l C0 Rs0 vals0 f0 Hwf Htype1 Hl Hprot)
       as (vals1 & Hl1 & Heq1).
     pose proof (preservation_pico _ _ _ _ _ _ _ Heval1 eq_refl _ _ _ _ Hwf Htype1)
       as Hwf1.
-    destruct (IHHeval2 eq_refl _ _ _ _ l C0 Rs0 vals1 f0 Hwf1 Htype2 Hl1 Hprot)
+    destruct (IHHeval2 _ _ _ _ l C0 Rs0 vals1 f0 Hwf1 Htype2 Hl1 Hprot)
+      as (vals2 & Hl2 & Heq2).
+    exists vals2. split; auto. congruence.
+  - (* sequence, the first part fails *)
+    inversion Htype; subst.
+    exact (IHHeval _ _ _ _ l C0 Rs0 vals0 f0 Hwf Htype1 Hl Hprot).
+  - (* sequence, the second part fails *)
+    inversion Htype; subst.
+    destruct (IHHeval1 _ _ _ _ l C0 Rs0 vals0 f0 Hwf Htype1 Hl Hprot)
+      as (vals1 & Hl1 & Heq1).
+    pose proof (preservation_pico _ _ _ _ _ _ _ Heval1 eq_refl _ _ _ _ Hwf Htype1)
+      as Hwf1.
+    destruct (IHHeval2 _ _ _ _ l C0 Rs0 vals1 f0 Hwf1 Htype2 Hl1 Hprot)
+      as (vals2 & Hl2 & Heq2).
+    exists vals2. split; auto. congruence.
+  - (* sequence, the first part fails *)
+    inversion Htype; subst.
+    exact (IHHeval _ _ _ _ l C0 Rs0 vals0 f0 Hwf Htype1 Hl Hprot).
+  - (* sequence, the second part fails *)
+    inversion Htype; subst.
+    destruct (IHHeval1 _ _ _ _ l C0 Rs0 vals0 f0 Hwf Htype1 Hl Hprot)
+      as (vals1 & Hl1 & Heq1).
+    pose proof (preservation_pico _ _ _ _ _ _ _ Heval1 eq_refl _ _ _ _ Hwf Htype1)
+      as Hwf1.
+    destruct (IHHeval2 _ _ _ _ l C0 Rs0 vals1 f0 Hwf1 Htype2 Hl1 Hprot)
       as (vals2 & Hl2 & Heq2).
     exists vals2. split; auto. congruence.
 Qed.
@@ -99,7 +142,8 @@ Definition abs_type (bounds : list qualified_type) (T : qualified_type) : Prop :
       exists qb C Ts,
         nth_error bounds n = Some (TClass qb C Ts) /\ (qb = Imm \/ qb = RDM)
   | TVar TVSub MethodVar _ => False
-  | THead _ _ _ _ => False
+  | TVar (TVPoly _) _ _ => False
+  | THead _ _ _ => False
   end.
 
 (** Reachability through abstract-state fields. *)
@@ -159,8 +203,8 @@ Proof.
   pose proof (Forall2_nth_error_rel _ _ _ k Hall) as Hrel.
   rewrite Hk in Hrel. unfold gget in Hget. rewrite Hget in Hrel.
   unfold wf_r_typable in Hrel. simpl in Hrel.
-  destruct (ftype fd) as [q0 Cf Tf | [|q0] [|] n | oh nh Ch Th];
-    [| | | | | contradiction]; simpl in *.
+  destruct (ftype fd) as [q0 Cf Tf | [|q0|mp] [|] n | nh Ch Th];
+    [| | | | | contradiction | contradiction | contradiction]; simpl in *.
   - assert (Hd : dynq Imm q0 = Imm) by (destruct Habs as [-> | ->]; reflexivity).
     rewrite Hd in Hrel. eapply loc_has_rtype_imm; eauto.
   - destruct Habs as (qb & Cb & Tb & Hnb & Hqb).
@@ -215,20 +259,20 @@ Qed.
 
 (** Abstract-state preservation: every non-assignable field of every object
     in the abstract state of an immutable root keeps its value. *)
-Theorem abstract_state_preservation : forall CT Δ sΓ mt rΓ h stmt rΓ' h' sΓ'
+Theorem abstract_state_preservation : forall CT Δ sΓ mt rΓ h stmt res rΓ' h' sΓ'
     root C0 Rs0 vals0 l C qr Rs vals f,
   runtime_getObj h root = Some (mkObj (mkruntime_type Imm_r C0 Rs0) vals0) ->
   reachable_abs CT h root l ->
   wf_r_config CT Δ sΓ rΓ h ->
   stmt_typing CT Δ sΓ mt stmt sΓ' ->
-  eval_stmt CT rΓ h stmt OK rΓ' h' ->
+  eval_stmt CT rΓ h stmt res rΓ' h' ->
   runtime_getObj h l = Some (mkObj (mkruntime_type qr C Rs) vals) ->
   (sf_assignability_rel CT C f Final \/ sf_assignability_rel CT C f RDA) ->
   exists vals',
     runtime_getObj h' l = Some (mkObj (mkruntime_type qr C Rs) vals') /\
     nth_error vals f = nth_error vals' f.
 Proof.
-  intros CT Δ sΓ mt rΓ h stmt rΓ' h' sΓ' root C0 Rs0 vals0 l C qr Rs vals f
+  intros CT Δ sΓ mt rΓ h stmt res rΓ' h' sΓ' root C0 Rs0 vals0 l C qr Rs vals f
     Hroot Hreach Hwf Htype Heval Hobj Hprot.
   pose proof Hwf as (_ & Hheap & _).
   destruct (reachable_abs_from_imm_points_to_imm _ _ _ _ Hheap Hreach _ _ _ Hroot)
@@ -241,20 +285,20 @@ Qed.
 (** Concrete-state preservation: in a mode with strict assignability, every
     field of every object in the abstract state of an immutable root keeps
     its value, including fields declared assignable. *)
-Theorem concrete_state_preservation : forall CT Δ sΓ mt rΓ h stmt rΓ' h' sΓ'
+Theorem concrete_state_preservation : forall CT Δ sΓ mt rΓ h stmt res rΓ' h' sΓ'
     root C0 Rs0 vals0 l C qr Rs vals f,
   strict_assignability_method_scope mt ->
   runtime_getObj h root = Some (mkObj (mkruntime_type Imm_r C0 Rs0) vals0) ->
   reachable_abs CT h root l ->
   wf_r_config CT Δ sΓ rΓ h ->
   stmt_typing CT Δ sΓ mt stmt sΓ' ->
-  eval_stmt CT rΓ h stmt OK rΓ' h' ->
+  eval_stmt CT rΓ h stmt res rΓ' h' ->
   runtime_getObj h l = Some (mkObj (mkruntime_type qr C Rs) vals) ->
   exists vals',
     runtime_getObj h' l = Some (mkObj (mkruntime_type qr C Rs) vals') /\
     nth_error vals f = nth_error vals' f.
 Proof.
-  intros CT Δ sΓ mt rΓ h stmt rΓ' h' sΓ' root C0 Rs0 vals0 l C qr Rs vals f
+  intros CT Δ sΓ mt rΓ h stmt res rΓ' h' sΓ' root C0 Rs0 vals0 l C qr Rs vals f
     Hstrict Hroot Hreach Hwf Htype Heval Hobj.
   pose proof Hwf as (_ & Hheap & _).
   destruct (reachable_abs_from_imm_points_to_imm _ _ _ _ Hheap Hreach _ _ _ Hroot)

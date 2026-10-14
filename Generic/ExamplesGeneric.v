@@ -91,6 +91,7 @@ Definition look : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [ROCell];
+          mqparams := 0;
           mret := ROObject;
           mname := 0;
           mreceiver := ROTool;
@@ -124,18 +125,18 @@ Definition prefix : stmt :=
         (SNew 4 Mut_c 3 [] []))))))))).
 
 (** Call A: the caller supplies the mutable type argument. *)
-Definition callA : stmt := SCall 5 0 4 [MutCell] [3; 2].
+Definition callA : stmt := SCall 5 0 4 [MutCell] [] [3; 2].
 
 Definition main : stmt := SSeq prefix callA.
 
-Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState.
+Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState 0.
 Definition sΓ0 : s_env := [MutObject].
 Definition sΓA : s_env :=
   [MutObject; MutObject; MutCell; MutBoxMutCell; MutTool; ROObject; ROObject].
 
 (** The bound environment of look: no class parameters, one method parameter
     bounded by a readonly Cell. *)
-Definition ΔX : tv_env := mk_tv_env [] [ROCell] ReadonlyState.
+Definition ΔX : tv_env := mk_tv_env [] [ROCell] ReadonlyState 0.
 
 (* ------------------SMALL TACTICS AND FACTS------------------*)
 
@@ -330,7 +331,7 @@ Proof.
     (C := 2) (Ts := [tX]) (fieldT := note_field);
     [wfenv | reflexivity | reflexivity | reflexivity | | | reflexivity].
   - eapply FL_Found; [apply collect_Box | reflexivity].
-  - split; [cbn; refl_sub | left; cbn; intuition discriminate].
+  - split; [cbn; refl_sub | cbn; intuition discriminate].
 Qed.
 
 Lemma wf_look : wf_method CT 3 look.
@@ -338,9 +339,10 @@ Proof.
   unfold wf_method.
   change (method_tv_env CT 3 (msignature look)) with ΔX.
   cbn.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split.
-  { constructor; [|constructor]. split; [exact I | apply wf_ROCell]. }
+  { constructor; [|constructor]. split; [exact I | split; [apply wf_ROCell|]].
+    intros _. apply nm_class; [discriminate | constructor]. }
   split; [apply wf_ROObject|].
   split.
   { exists [ROTool; ROBoxX; tX; ROObject; tX], ROObject. split; [|split].
@@ -472,7 +474,7 @@ Proof.
       | reflexivity | apply wf_MutCell | constructor | constructor
       | apply collect_Cell | | ].
     - constructor; [|constructor]. cbn. split; [qual_sub|].
-      left. cbn. intuition discriminate.
+      cbn. intuition discriminate.
     - cbn. refl_sub. }
   (* b = new @Mut Box<@Mut Cell>(c, n): the payload field, declared E, is
      seen as @Mut Cell *)
@@ -485,8 +487,8 @@ Proof.
     - constructor; [|constructor]. cbn. split; [intuition discriminate|].
       intros m. apply sub_Cell_ROObject.
     - constructor; [|constructor; [|constructor]]; cbn.
-      + split; [refl_sub | left; cbn; intuition discriminate].
-      + split; [refl_sub | left; cbn; intuition discriminate].
+      + split; [refl_sub | cbn; intuition discriminate].
+      + split; [refl_sub | cbn; intuition discriminate].
     - cbn. refl_sub. }
   (* t = new @Mut Tool() *)
   eapply ST_New with (Tx := MutTool) (argtypes := []) (fds := []);
@@ -508,16 +510,16 @@ Proof.
     (mdef := look);
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | apply find_look | apply si_refl | discriminate | | | reflexivity
-    | | | | | apply method_rs_as].
+    | | | | | apply method_rs_as | reflexivity | constructor | recv_known].
   - constructor; [apply wf_MutCell | constructor].
   - constructor; [|constructor]. cbn. intuition discriminate.
   - constructor; [|constructor]. cbn. split; [intuition discriminate|].
     intros m. qual_sub.
   - cbn. refl_sub.
-  - left. cbn. split; [qual_sub | left; cbn; intuition discriminate].
+  - cbn. split; [qual_sub | cbn; intuition discriminate].
   - constructor; [|constructor; [|constructor]]; cbn.
-    + split; [qual_sub | left; cbn; intuition discriminate].
-    + split; [refl_sub | left; cbn; intuition discriminate].
+    + split; [qual_sub | cbn; intuition discriminate].
+    + split; [refl_sub | cbn; intuition discriminate].
 Qed.
 
 Lemma main_typed : stmt_typing CT Δ0 sΓ0 AbstractState main sΓA.
@@ -528,11 +530,11 @@ Qed.
 
 (** The states.  Location 0 is main's receiver, 1 is o, 2 is the Cell, 3 is
     the Box, 4 is the Tool. *)
-Definition rΓ0 : r_env := mkr_env [Iot 0] [] [].
+Definition rΓ0 : r_env := mkr_env [Iot 0] [] [] [].
 Definition h0 : heap := [mkObj (mkruntime_type Mut_r 0 []) []].
 
 Definition rΓA : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Null_a; Null_a] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Null_a; Null_a] [] [] [].
 
 (** The Box object stores the runtime type argument [@Mut Cell]. *)
 Definition hA : heap :=
@@ -572,7 +574,7 @@ Proof.
   - split; simpl; [lia|]. constructor; [apply wf_MutObject | constructor].
   - exists 0, (mkObj (mkruntime_type Mut_r 0 []) []), 0. simpl.
     refine (conj eq_refl (conj eq_refl (conj eq_refl (conj (rsi_refl _ _ _ _)
-             (conj (Forall_nil _) (conj (Forall_nil _) (conj _ _))))))); constructor.
+             (conj (Forall_nil _) (conj (conj (Forall_nil _) (Forall_nil _)) (conj _ _))))))); constructor.
   - intros ι qcontext Hthis Hmut i Hi sqt Hnth.
     simpl in Hi. assert (i = 0) by lia. subst i.
     simpl in Hthis. inversion Hthis; subst ι.
@@ -594,7 +596,7 @@ Qed.
 
 (** After call A: x holds o, and the Box's note slot holds o. *)
 Definition rΓA' : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Iot 1; Null_a] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Iot 1; Null_a] [] [] [].
 
 Definition hA' : heap :=
   [ mkObj (mkruntime_type Mut_r 0 []) [];
@@ -606,14 +608,14 @@ Definition hA' : heap :=
 (** The activation of look: receiver the Tool, arguments the Box and the
     Cell, and the runtime method type argument [@Mut Cell]. *)
 Definition rΓlook : r_env :=
-  mkr_env [Iot 4; Iot 3; Iot 2] [] [RClass Mut 1 []].
+  mkr_env [Iot 4; Iot 3; Iot 2] [] [RClass Mut 1 []] [].
 
 Lemma callA_eval : eval_stmt CT rΓA hA callA OK rΓA' hA'.
 Proof.
   unfold callA, rΓA.
   eapply SBS_Call with (mdef := look) (D := 3) (cy := 3)
     (rΓ' := rΓlook)
-    (rΓ'' := mkr_env [Iot 4; Iot 3; Iot 2; Iot 1; Iot 2] [] [RClass Mut 1 []]).
+    (rΓ'' := mkr_env [Iot 4; Iot 3; Iot 2; Iot 1; Iot 2] [] [RClass Mut 1 []] []).
   - reflexivity.
   - reflexivity.
   - apply find_look.
@@ -621,7 +623,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [apply rsi_refl | reflexivity].
   - cbn. unfold rΓlook.
     eapply SBS_Seq; [apply SBS_Local; reflexivity|]. cbn.
@@ -658,7 +660,7 @@ Lemma callA_preserves : forall rΓ' h',
 Proof.
   intros rΓ' h' Heval.
   eapply (readonly_state_preservation_generic CT Δ0 sΓA AbstractState rΓA hA
-            5 0 4 [MutCell] [3; 2] sΓA rΓ' h' 4 3 3 look
+            5 0 4 [MutCell] [] [3; 2] sΓA rΓ' h' 4 3 3 look
             generic_ct_clean config_A callA_typed Heval).
   - reflexivity.
   - reflexivity.

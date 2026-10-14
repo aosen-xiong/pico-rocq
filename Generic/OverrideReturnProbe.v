@@ -85,6 +85,7 @@ Definition Super_pick : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROPX;
           mname := 0;
           mreceiver := ROSuperX;
@@ -102,6 +103,7 @@ Definition Sub_pick : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROC;
           mname := 0;
           mreceiver := ROSub;
@@ -117,6 +119,7 @@ Definition hack : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 1;
           mreceiver := ROTool;
@@ -129,7 +132,7 @@ Definition hack : method_def :=
             (SSeq (SLocal MutCell 6)
             (SSeq (SNew 3 Mut_c 5 [] [])
             (SSeq (SVarAss 4 (EVar 3))
-            (SSeq (SCall 5 0 4 [] [1])
+            (SSeq (SCall 5 0 4 [] [] [1])
             (SSeq (SVarAss 6 (EField 5 0))
                   (SFldWrite 6 0 2))))))));
           mreturn := 2 |} |}.
@@ -270,7 +273,7 @@ Proof. eapply FOM_Here; reflexivity. Qed.
 
 (* ------------------1. SUPER.PICK IS WELL FORMED------------------*)
 
-Definition ΔS : tv_env := mk_tv_env [ROObject] [] ReadonlyState.
+Definition ΔS : tv_env := mk_tv_env [ROObject] [] ReadonlyState 0.
 
 Lemma wf_ROPX : wf_stypeuse CT ΔS ROPX.
 Proof.
@@ -294,7 +297,7 @@ Proof.
   assert (Hwf1 : wf_senv CT ΔS [ROSuperX; ROC]).
   { split; [cbn; lia|].
     constructor; [apply wf_ROSuperX|]. constructor; [apply wf_ROC | constructor]. }
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [apply wf_ROPX|].
   split.
@@ -322,7 +325,7 @@ Qed.
     @Mut Super<@Mut Cell> has result type @RO P<@Mut Cell>, reading item from
     that gives @Mut Cell, and the write to value is allowed. *)
 
-Definition Δh : tv_env := mk_tv_env [] [] ReadonlyState.
+Definition Δh : tv_env := mk_tv_env [] [] ReadonlyState 0.
 
 Definition G0 : s_env := [ROTool; ROC; ROObject].
 Definition G1 : s_env := G0 ++ [MutSub].
@@ -338,13 +341,13 @@ Lemma wf_G4 : wf_senv CT Δh G4. Proof. wfenv. Qed.
 
 (** The result type of r.pick(c) seen by the caller. *)
 Lemma call_result_type :
-  member_type ReadonlyState Mut [MutCell] [] (mret (msignature Super_pick))
+  member_type ReadonlyState Mut [MutCell] [] [] (mret (msignature Super_pick))
   = ROPMutCell.
 Proof. reflexivity. Qed.
 
 (** Reading item through @RO P<@Mut Cell> in readonly-state code. *)
 Lemma item_read_type :
-  member_type ReadonlyState RO [MutCell] [] (ftype item_field) = MutCell.
+  member_type ReadonlyState RO [MutCell] [] [] (ftype item_field) = MutCell.
 Proof. reflexivity. Qed.
 
 Lemma hack_new_typed :
@@ -367,7 +370,7 @@ Proof.
 Qed.
 
 Lemma hack_call_typed :
-  stmt_typing CT Δh G4 ReadonlyState (SCall 5 0 4 [] [1]) G4.
+  stmt_typing CT Δh G4 ReadonlyState (SCall 5 0 4 [] [] [1]) G4.
 Proof.
   eapply ST_Call with (argtypes := [ROC]) (Tx := ROPMutCell) (Ty := MutSuperMC)
     (qy := Mut) (C := 4) (Ts := [MutCell]) (D := 4) (Vs := [MutCell])
@@ -385,21 +388,24 @@ Proof.
   - reflexivity.
   - constructor.
   - rewrite call_result_type. refl_sub.
-  - left. split.
+  - split.
     + change (qualified_type_subtype CT Δh MutSuperMC (TClass RO 4 [MutCell])).
       apply qtype_qual; [cbn; lia | apply q_rd | apply Forall2_targ_sub_refl].
-    + left. cbn. intuition discriminate.
+    + cbn. intuition discriminate.
   - constructor; [|constructor]. split.
     + change (qualified_type_subtype CT Δh ROC ROC). refl_sub.
-    + left. cbn. intuition discriminate.
+    + cbn. intuition discriminate.
   - apply method_subtyping_refl.
+  - reflexivity.
+  - constructor.
+  - recv_known.
 Qed.
 
 Lemma hack_read_typed :
   stmt_typing CT Δh G4 ReadonlyState (SVarAss 6 (EField 5 0)) G4.
 Proof.
   assert (He : expr_has_type CT Δh G4 ReadonlyState (EField 5 0)
-                 (member_type ReadonlyState RO [MutCell] [] (ftype item_field))).
+                 (member_type ReadonlyState RO [MutCell] [] [] (ftype item_field))).
   { eapply ET_Field with (T := ROPMutCell) (C := 2);
       [apply wf_G4 | reflexivity | reflexivity |].
     eapply FL_Found; [apply collect_P | reflexivity]. }
@@ -417,7 +423,7 @@ Proof.
     | eapply FL_Found; [apply collect_Cell | reflexivity] | | reflexivity].
   split.
   - change (qualified_type_subtype CT Δh ROObject ROObject). refl_sub.
-  - left. cbn. intuition discriminate.
+  - cbn. intuition discriminate.
 Qed.
 
 Lemma hack_body_typed :
@@ -447,7 +453,7 @@ Proof.
   unfold wf_method.
   change (method_tv_env CT 6 (msignature hack)) with Δh.
   cbv zeta.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [apply wf_ROObject|].
   split.
@@ -506,7 +512,7 @@ Proof.
       inversion Hl; subst.
       inversion Hab as [|qa qb Ca Tsa Usa Hq Hargs'|]; subst.
       inversion Hargs'; subst.
-      destruct Hq as [-> | [_ [Hq | Hq]]]; try discriminate.
+      destruct Hq as [-> | [_ [Hq | [Hq | Hq]]]]; try discriminate.
       right. left. reflexivity.
     + inversion Hargs; subst. right. right. reflexivity.
   - assert (Hr : q1 = RO /\ reach C Ts).
@@ -515,6 +521,8 @@ Proof.
     destruct Hr as [-> Hr].
     destruct (super_inst_reach _ Hmode _ _ _ _ Hsuper Hr)
       as [[-> ->] | [[-> ->] | [-> ->]]]; unfold sup_ROC; auto.
+  - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
+  - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
   - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
   - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
   - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
@@ -557,7 +565,7 @@ Proof. eapply si_step; [reflexivity|]. cbn. apply si_refl. Qed.
 Lemma overridden_return_view :
   member_type AbstractState (qc2q (class_qualifier (signature SubDef)))
     [MutCell]
-    (method_var_types (length (mtparams (msignature Super_pick))))
+    (method_var_types (length (mtparams (msignature Super_pick)))) (qvar_args (mqparams (msignature Super_pick)))
     (mret (msignature Super_pick))
   = ROPMutCell.
 Proof. reflexivity. Qed.
@@ -565,7 +573,7 @@ Proof. reflexivity. Qed.
 (** The check runs in Sub.pick's own bound environment, whose mode is
     readonly-state. *)
 Lemma Sub_pick_env :
-  method_tv_env CT 5 (msignature Sub_pick) = mk_tv_env [] [] ReadonlyState.
+  method_tv_env CT 5 (msignature Sub_pick) = mk_tv_env [] [] ReadonlyState 0.
 Proof. reflexivity. Qed.
 
 (** The return-type premise of the override check fails. *)
@@ -574,7 +582,7 @@ Theorem Sub_pick_return_premise_fails :
       (mret (msignature Sub_pick))
       (member_type AbstractState (qc2q (class_qualifier (signature SubDef)))
          [MutCell]
-         (method_var_types (length (mtparams (msignature Super_pick))))
+         (method_var_types (length (mtparams (msignature Super_pick)))) (qvar_args (mqparams (msignature Super_pick)))
          (mret (msignature Super_pick))).
 Proof.
   rewrite overridden_return_view. rewrite Sub_pick_env.
@@ -630,7 +638,7 @@ Qed.
     well-formedness and the remaining parts of the override check hold. *)
 Theorem Sub_pick_rest_ok :
   let Δ := method_tv_env CT 5 (msignature Sub_pick) in
-  let view := member_type AbstractState RDM [MutCell] [] in
+  let view := member_type AbstractState RDM [MutCell] [] [] in
   receiver_shape CT 5 ROSub /\
   wf_stypeuse CT Δ ROC /\
   stmt_typing CT Δ [ROSub; ROC] ReadonlyState SSkip [ROSub; ROC] /\
@@ -644,7 +652,7 @@ Theorem Sub_pick_rest_ok :
   q_subtype (vpa_mutability_qq_abstract_state RDM RO) RO.
 Proof.
   cbv zeta. rewrite Sub_pick_env.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_shape; left; exists RO; reflexivity|].
   split; [apply wf_ROC|].
   split; [apply ST_Skip; wfenv|].
   split; [refl_sub|].
@@ -652,10 +660,10 @@ Proof.
   { split.
     - apply nm_class; [discriminate | constructor].
     - constructor; [apply nm_class; [discriminate | constructor] | constructor]. }
-  split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+  split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
   split.
   { constructor; [|constructor].
-    change (qualified_type_subtype CT (mk_tv_env [] [] ReadonlyState) ROC ROC).
+    change (qualified_type_subtype CT (mk_tv_env [] [] ReadonlyState 0) ROC ROC).
     refl_sub. }
   cbn. qs.
 Qed.
@@ -687,20 +695,20 @@ Qed.
     comparison is made in abstract-state mode.  So the mode of the comparison
     is the only thing that rejects this override. *)
 Theorem override_accepted_if_compared_abstractly :
-  method_override_compatible CT (mk_tv_env [] [] AbstractState)
+  method_override_compatible CT (mk_tv_env [] [] AbstractState 0)
     (class_qualifier (signature SubDef)) [MutCell]
     (msignature Sub_pick) (msignature Super_pick).
 Proof.
   unfold method_override_compatible. cbv zeta.
-  split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+  split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
   split.
   { rewrite overridden_return_view.
     apply return_check_accepted_abstract. reflexivity. }
   split.
   { constructor; [|constructor].
-    change (qualified_type_subtype CT (mk_tv_env [] [] AbstractState) ROC ROC).
+    change (qualified_type_subtype CT (mk_tv_env [] [] AbstractState 0) ROC ROC).
     refl_sub. }
-  cbn. apply qtype_qual; [cbn; lia | cbn; qs | apply Forall2_targ_sub_refl].
+  cbn. split; [apply qtype_qual; [cbn; lia | cbn; qs | apply Forall2_targ_sub_refl] | radmit_plain].
 Qed.
 
 (** No runtime configuration over this class table is well formed, so the

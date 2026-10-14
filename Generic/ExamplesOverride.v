@@ -38,6 +38,7 @@ Definition base_id : method_def :=
   {| msignature :=
        {| mscope := AbstractState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 0;
           mreceiver := ROBase;
@@ -50,6 +51,7 @@ Definition base_look : method_def :=
   {| msignature :=
        {| mscope := AbstractState;
           mtparams := [ROCell];
+          mqparams := 0;
           mret := ROObject;
           mname := 1;
           mreceiver := ROBase;
@@ -69,6 +71,7 @@ Definition derived_id : method_def :=
   {| msignature :=
        {| mscope := AbstractState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 0;
           mreceiver := RODerived;
@@ -93,10 +96,10 @@ Definition main : stmt :=
   (SSeq (SNew 5 Mut_c 0 [] [])
   (SSeq (SNew 2 Mut_c 1 [] [5])
   (SSeq (SNew 1 Mut_c 3 [] [])
-  (SSeq (SCall 3 0 1 [] [5])
-        (SCall 4 1 1 [MutCell] [2]))))))))).
+  (SSeq (SCall 3 0 1 [] [] [5])
+        (SCall 4 1 1 [MutCell] [] [2]))))))))).
 
-Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState.
+Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState 0.
 Definition sΓ0 : s_env := [MutObject].
 Definition sΓfinal : s_env :=
   [MutObject; ROBase; MutCell; ROObject; ROObject; MutObject].
@@ -188,7 +191,7 @@ Qed.
 Lemma wf_base_id : wf_method CT 2 base_id.
 Proof.
   unfold wf_method. cbn.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [wfp|].
   split.
@@ -206,7 +209,7 @@ Qed.
 
 (** The bound environment of look's body: no class parameters, one method
     parameter bounded by @RO Cell. *)
-Definition ΔL : tv_env := mk_tv_env [] [ROCell] AbstractState.
+Definition ΔL : tv_env := mk_tv_env [] [ROCell] AbstractState 0.
 
 Lemma wf_roX : wf_stypeuse CT ΔL roX.
 Proof.
@@ -224,8 +227,8 @@ Proof.
   { split; [cbn; lia|].
     constructor; [wfp|]. constructor; [apply wf_roX|].
     constructor; [wfp | constructor]. }
-  split; [left; exists RO; reflexivity|].
-  split; [constructor; [split; [exact I | wfp] | constructor]|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
+  split; [constructor; [split; [exact I | split; [wfp | intros [H | H]; discriminate]] | constructor]|].
   split; [wfp|].
   split.
   { exists [ROBase; roX; ROObject], ROObject. split; [|split].
@@ -253,7 +256,7 @@ Qed.
 Lemma wf_derived_id : wf_method CT 3 derived_id.
 Proof.
   unfold wf_method. cbn.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [wfp|].
   split.
@@ -272,10 +275,10 @@ Proof.
     injection Hsuper as <- <-.
     apply find_id_in_Base in Hfm. destruct Hfm as [-> ->].
     unfold method_override_compatible. cbn.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [refl_sub|].
     split; [constructor; [refl_sub | constructor]|].
-    cbn. apply qtype_qual; [cbn; lia | cbn; qs | apply Forall2_targ_sub_refl]. }
+    cbn. split; [apply qtype_qual; [cbn; lia | cbn; qs | apply Forall2_targ_sub_refl] | radmit_plain]. }
   intros [H | H]; discriminate.
 Qed.
 
@@ -325,7 +328,7 @@ Ltac ty_local :=
 Ltac ty_seq := eapply ST_Seq; [wfenv | |].
 
 Lemma ov_main_typed :
-  stmt_typing CT (mk_tv_env [] [] AbstractState) [TClass Mut 0 []] AbstractState main sΓfinal.
+  stmt_typing CT (mk_tv_env [] [] AbstractState 0) [TClass Mut 0 []] AbstractState main sΓfinal.
 Proof.
   unfold main, sΓfinal.
   ty_seq; [ty_local|]. ty_seq; [ty_local|]. ty_seq; [ty_local|].
@@ -346,7 +349,7 @@ Proof.
       | apply collect_Cell | | ].
     - constructor; [|constructor]. cbn. split.
       + qual_sub.
-      + left. cbn. intuition discriminate.
+      + cbn. intuition discriminate.
     - cbn. refl_sub. }
   (* b = new @Mut Derived() *)
   ty_seq.
@@ -363,13 +366,13 @@ Proof.
       (mdef := base_id);
       [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
       | | | discriminate | constructor | constructor | reflexivity
-      | constructor | | | | apply method_subtyping_refl].
+      | constructor | | | | apply method_subtyping_refl | reflexivity | constructor | recv_known].
     - eapply FOM_Here; reflexivity.
     - apply si_refl.
     - cbn. refl_sub.
-    - left. cbn. split; [refl_sub|]. left. cbn. intuition discriminate.
+    - cbn. split; [refl_sub|]. cbn. intuition discriminate.
     - constructor; [|constructor]. cbn. split; [qual_sub|].
-      left. cbn. intuition discriminate. }
+      cbn. intuition discriminate. }
   (* y = b.look<@Mut Cell>(c) *)
   eapply ST_Call with (Tx := ROObject) (Ty := ROBase)
     (argtypes := [MutCell])
@@ -377,7 +380,7 @@ Proof.
     (mdef := base_look);
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | | | discriminate | | | reflexivity
-    | | | | | apply method_subtyping_refl].
+    | | | | | apply method_subtyping_refl | reflexivity | constructor | recv_known].
   - eapply FOM_Here; reflexivity.
   - apply si_refl.
   - constructor; [wfp | constructor].
@@ -385,21 +388,21 @@ Proof.
   - constructor; [|constructor]. cbn. split; [intuition discriminate|].
     intros m. qual_sub.
   - cbn. refl_sub.
-  - left. cbn. split; [refl_sub|]. left. cbn. intuition discriminate.
+  - cbn. split; [refl_sub|]. cbn. intuition discriminate.
   - (* the parameter type @RO X becomes @RO Cell at this call *)
     constructor; [|constructor]. cbn. split; [qual_sub|].
-    left. cbn. intuition discriminate.
+    cbn. intuition discriminate.
 Qed.
 
 (* ------------------EVALUATION------------------*)
 
-Definition rΓ0 : r_env := mkr_env [Iot 0] [] [].
+Definition rΓ0 : r_env := mkr_env [Iot 0] [] [] [].
 Definition h0 : heap := [mkObj (mkruntime_type Mut_r 0 []) []].
 
 (** x (variable 3) is null because Derived.id ran; y (variable 4) is the
     object o at location 1, read out of the Cell at location 2. *)
 Definition rΓfinal : r_env :=
-  mkr_env [Iot 0; Iot 3; Iot 2; Null_a; Iot 1; Iot 1] [] [].
+  mkr_env [Iot 0; Iot 3; Iot 2; Null_a; Iot 1; Iot 1] [] [] [].
 
 Definition hfinal : heap :=
   [ mkObj (mkruntime_type Mut_r 0 []) [];
@@ -410,7 +413,7 @@ Definition hfinal : heap :=
 Ltac ev_local := eapply SBS_Seq; [apply SBS_Local; reflexivity|]; cbn.
 
 Lemma ov_main_eval :
-  eval_stmt CT (mkr_env [Iot 0] [] []) [mkObj (mkruntime_type Mut_r 0 []) []]
+  eval_stmt CT (mkr_env [Iot 0] [] [] []) [mkObj (mkruntime_type Mut_r 0 []) []]
     main OK rΓfinal hfinal.
 Proof.
   unfold main.
@@ -428,7 +431,7 @@ Proof.
     - reflexivity.
     - reflexivity.
     - unfold callee_env. do 4 eexists.
-      split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+      split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
       split; [apply rsi_refl | reflexivity].
     - cbn. eapply SBS_Seq; [apply SBS_Local; reflexivity|]. cbn.
       eapply SBS_Assign; [reflexivity|]. apply EBS_Null.
@@ -445,7 +448,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [|reflexivity].
     cbn. eapply rsi_step; [reflexivity|]. cbn. apply rsi_refl.
   - cbn. eapply SBS_Seq; [apply SBS_Local; reflexivity|]. cbn.
@@ -458,8 +461,8 @@ Qed.
 (* ------------------THE RUN PRESERVES WELL-FORMEDNESS------------------*)
 
 Lemma ov_initial_config :
-  wf_r_config CT (mk_tv_env [] [] AbstractState) [TClass Mut 0 []]
-    (mkr_env [Iot 0] [] []) [mkObj (mkruntime_type Mut_r 0 []) []].
+  wf_r_config CT (mk_tv_env [] [] AbstractState 0) [TClass Mut 0 []]
+    (mkr_env [Iot 0] [] [] []) [mkObj (mkruntime_type Mut_r 0 []) []].
 Proof.
   refine (conj ov_ct_wf (conj _ (conj _ (conj _ (conj _ (conj eq_refl _)))))).
   - intros ι Hι. simpl in Hι. assert (ι = 0) by lia. subst ι.
@@ -475,7 +478,7 @@ Proof.
   - split; simpl; [lia|]. constructor; [wfp | constructor].
   - exists 0, (mkObj (mkruntime_type Mut_r 0 []) []), 0. simpl.
     refine (conj eq_refl (conj eq_refl (conj eq_refl (conj (rsi_refl _ _ _ _)
-             (conj (Forall_nil _) (conj (Forall_nil _) (conj _ _))))))); constructor.
+             (conj (Forall_nil _) (conj (conj (Forall_nil _) (Forall_nil _)) (conj _ _))))))); constructor.
   - intros ι qcontext Hthis Hmut i Hi sqt Hnth.
     simpl in Hi. assert (i = 0) by lia. subst i.
     simpl in Hthis. inversion Hthis; subst ι.
@@ -488,7 +491,7 @@ Qed.
 
 (** The run ends in a well-formed configuration. *)
 Corollary ov_final_config :
-  wf_r_config CT (mk_tv_env [] [] AbstractState) sΓfinal rΓfinal hfinal.
+  wf_r_config CT (mk_tv_env [] [] AbstractState 0) sΓfinal rΓfinal hfinal.
 Proof.
   eapply preservation_pico;
     eauto using ov_main_eval, ov_initial_config, ov_main_typed.

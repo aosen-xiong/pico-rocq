@@ -108,6 +108,7 @@ Definition look : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 0;
           mreceiver := ROPY;
@@ -130,13 +131,14 @@ Definition CDef : class_def :=
                      super := Some (3, [tX]) |};
      body := {| fields := []; methods := [] |} |}.
 
-Definition lookCallImm : stmt := SCall 6 0 4 [] [].
-Definition lookCallMut : stmt := SCall 7 0 5 [] [].
+Definition lookCallImm : stmt := SCall 6 0 4 [] [] [].
+Definition lookCallMut : stmt := SCall 7 0 5 [] [] [].
 
 Definition run : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 1;
           mreceiver := RORunner;
@@ -177,20 +179,20 @@ Definition prefix : stmt :=
   (SSeq (SNew 4 Imm_c 4 [RODMutCell] [3])
         (SNew 5 Mut_c 5 [] [])))))))))).
 
-Definition callR : stmt := SCall 6 1 5 [] [1].
+Definition callR : stmt := SCall 6 1 5 [] [] [1].
 
 Definition main : stmt := SSeq prefix callR.
 
-Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState.
+Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState 0.
 Definition sΓ0 : s_env := [MutObject].
 Definition sΓA : s_env :=
   [MutObject; MutObject; MutCell; MutDMutCell; ImmC; MutRunner; ROObject].
 
 (** The bound environment of run: no type parameter is in scope. *)
-Definition ΔR : tv_env := mk_tv_env [] [] ReadonlyState.
+Definition ΔR : tv_env := mk_tv_env [] [] ReadonlyState 0.
 
 (** The bound environment of look: Y bounded by @RO Object. *)
-Definition ΔL : tv_env := mk_tv_env [ROObject] [] ReadonlyState.
+Definition ΔL : tv_env := mk_tv_env [ROObject] [] ReadonlyState 0.
 
 Definition sΓRun : s_env :=
   [RORunner; ROObject; MutCell; MutDMutCell; ImmC; MutC; ROObject; ROObject].
@@ -246,7 +248,7 @@ Qed.
 (** Inside C, X is below its bound @RO D<@Mut Cell> and hence a readonly
     Object. *)
 Lemma sub_tX_ROObject : forall mt,
-  qualified_type_subtype CT (mk_tv_env [RODMutCell] [] mt) tX ROObject.
+  qualified_type_subtype CT (mk_tv_env [RODMutCell] [] mt 0) tX ROObject.
 Proof.
   intros mt. eapply qtype_trans.
   - apply qtype_var_bound with (B := RODMutCell). reflexivity.
@@ -269,8 +271,8 @@ Qed.
     seen through an immutable head and through a mutable head: in both cases
     it stays @RO D<@Mut Cell>, with its Mut. *)
 Lemma C_bound_read :
-  member_type AbstractState Imm [RODMutCell] [] RODMutCell = RODMutCell /\
-  member_type AbstractState Mut [RODMutCell] [] RODMutCell = RODMutCell.
+  member_type AbstractState Imm [RODMutCell] [] [] RODMutCell = RODMutCell /\
+  member_type AbstractState Mut [RODMutCell] [] [] RODMutCell = RODMutCell.
 Proof. split; reflexivity. Qed.
 
 (** A C<@RO D<@Mut Cell>>, immutable or mutable.  The argument is compared
@@ -466,7 +468,7 @@ Lemma wf_look : wf_method CT 3 look.
 Proof.
   unfold wf_method.
   change (method_tv_env CT 3 (msignature look)) with ΔL.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [apply wf_ROObject|].
   split.
@@ -490,7 +492,7 @@ Proof.
     | reflexivity | apply wf_MutCell | constructor | constructor
     | apply collect_Cell | | ].
   - constructor; [|constructor]; cbn.
-    split; [refl_sub | left; lf].
+    split; [refl_sub | lf].
   - cbn. refl_sub.
 Qed.
 
@@ -506,7 +508,7 @@ Proof.
   - constructor; [|constructor]. cbn.
     split; [lf | intros m; apply sub_Cell_ROObject].
   - constructor; [|constructor]; cbn.
-    split; [refl_sub | left; lf].
+    split; [refl_sub | lf].
   - cbn. refl_sub.
 Qed.
 
@@ -527,7 +529,7 @@ Proof.
   - constructor; [|constructor]; cbn.
     split; [lf | intros m; refl_sub].
   - constructor; [|constructor]; cbn.
-    split; [qual_sub | left; lf].
+    split; [qual_sub | lf].
   - cbn. refl_sub.
 Qed.
 
@@ -544,7 +546,7 @@ Proof.
   - constructor; [|constructor]; cbn.
     split; [lf | intros m; refl_sub].
   - constructor; [|constructor]; cbn.
-    split; [qual_sub | left; lf].
+    split; [qual_sub | lf].
   - cbn. refl_sub.
 Qed.
 
@@ -563,9 +565,9 @@ Proof.
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | apply find_look_C | apply super_C_P | discriminate | constructor
     | constructor | reflexivity | constructor | | | constructor
-    | apply method_subtyping_refl].
+    | apply method_subtyping_refl | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - left. cbn. split; [apply sub_C_ROP | left; lf].
+  - cbn. split; [apply sub_C_ROP | lf].
 Qed.
 
 (** r2 = bm.look(): the same on the mutable one. *)
@@ -581,9 +583,9 @@ Proof.
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | apply find_look_C | apply super_C_P | discriminate | constructor
     | constructor | reflexivity | constructor | | | constructor
-    | apply method_subtyping_refl].
+    | apply method_subtyping_refl | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - left. cbn. split; [apply sub_C_ROP | left; lf].
+  - cbn. split; [apply sub_C_ROP | lf].
 Qed.
 
 Lemma run_body_typed :
@@ -606,7 +608,7 @@ Lemma wf_run : wf_method CT 5 run.
 Proof.
   unfold wf_method.
   change (method_tv_env CT 5 (msignature run)) with ΔR.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [apply wf_ROObject|].
   split.
@@ -759,9 +761,9 @@ Proof. split; reflexivity. Qed.
 (** That bound has a mutable position. *)
 Lemma C_bound_has_mut : forall Δ, ~ no_mut Δ RODMutCell.
 Proof.
-  intros Δ H. inversion H as [q0 C Ts _ Hargs | | |]; subst.
+  intros Δ H. inversion H as [q0 C Ts _ Hargs | | | |]; subst.
   inversion Hargs as [|T Ts' HT _]; subst.
-  inversion HT as [q1 C1 Ts1 Hq _ | | |]; subst.
+  inversion HT as [q1 C1 Ts1 Hq _ | | | |]; subst.
   apply Hq. reflexivity.
 Qed.
 
@@ -797,7 +799,7 @@ Proof.
       | reflexivity | apply wf_MutCell | constructor | constructor
       | apply collect_Cell | | ].
     - constructor; [|constructor]; cbn.
-      split; [qual_sub | left; lf].
+      split; [qual_sub | lf].
     - cbn. refl_sub. }
   (* pd = new @Mut D<@Mut Cell>(s0) *)
   ty_seq.
@@ -808,7 +810,7 @@ Proof.
     - constructor; [|constructor]. cbn.
       split; [lf | intros m; apply sub_Cell_ROObject].
     - constructor; [|constructor]; cbn.
-      split; [refl_sub | left; lf].
+      split; [refl_sub | lf].
     - cbn. refl_sub. }
   (* pc = new @Imm C<@RO D<@Mut Cell>>(pd) *)
   ty_seq.
@@ -819,7 +821,7 @@ Proof.
     - constructor; [|constructor]; cbn.
       split; [lf | intros m; refl_sub].
     - constructor; [|constructor]; cbn.
-      split; [qual_sub | left; lf].
+      split; [qual_sub | lf].
     - cbn. refl_sub. }
   (* rn = new @Mut Runner() *)
   eapply ST_New with (Tx := MutRunner) (argtypes := []) (fds := []);
@@ -839,14 +841,14 @@ Proof.
     (mdef := run);
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | apply find_run | apply si_refl | discriminate | | | reflexivity
-    | | | | | apply method_rs_as].
+    | | | | | apply method_rs_as | reflexivity | constructor | recv_known].
   - constructor.
   - constructor.
   - constructor.
   - cbn. refl_sub.
-  - left. cbn. split; [qual_sub | left; lf].
+  - cbn. split; [qual_sub | lf].
   - constructor; [|constructor]; cbn.
-    split; [qual_sub | left; lf].
+    split; [qual_sub | lf].
 Qed.
 
 Lemma main_typed : stmt_typing CT Δ0 sΓ0 AbstractState main sΓA.
@@ -858,11 +860,11 @@ Qed.
 (** The states.  Location 0 is main's receiver, 1 is y0, 2 is the Cell s0,
     3 is the D pd that holds s0, 4 is the immutable C pc that holds pd, 5 is
     the Runner. *)
-Definition rΓ0 : r_env := mkr_env [Iot 0] [] [].
+Definition rΓ0 : r_env := mkr_env [Iot 0] [] [] [].
 Definition h0 : heap := [mkObj (mkruntime_type Mut_r 0 []) []].
 
 Definition rΓA : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Iot 5; Null_a] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Iot 5; Null_a] [] [] [].
 
 Definition rMutCell : rtype := RClass Mut 1 [].
 Definition rRODMutCell : rtype := RClass RO 2 [rMutCell].
@@ -904,7 +906,7 @@ Proof.
   - split; simpl; [lia|]. constructor; [apply wf_MutObject | constructor].
   - exists 0, (mkObj (mkruntime_type Mut_r 0 []) []), 0. simpl.
     refine (conj eq_refl (conj eq_refl (conj eq_refl (conj (rsi_refl _ _ _ _)
-             (conj (Forall_nil _) (conj (Forall_nil _) (conj _ _))))))); constructor.
+             (conj (Forall_nil _) (conj (conj (Forall_nil _) (Forall_nil _)) (conj _ _))))))); constructor.
   - intros ι qcontext Hthis Hmut i Hi sqt Hnth.
     simpl in Hi. assert (i = 0) by lia. subst i.
     simpl in Hthis. inversion Hthis; subst ι.
@@ -964,7 +966,7 @@ Proof.
 Qed.
 
 (** The activation of run: receiver the Runner, argument y0. *)
-Definition rΓrun : r_env := mkr_env [Iot 5; Iot 1] [] [].
+Definition rΓrun : r_env := mkr_env [Iot 5; Iot 1] [] [] [].
 
 (** The four fresh objects: a Cell at location 6, a D at location 7 that
     holds it, an immutable C at location 8 and a mutable C at location 9
@@ -983,20 +985,20 @@ Definition hA' : heap := hA ++ [fresh_Cell; fresh_D; fresh_ImmC; fresh_MutC].
 (** The activation of run before the first call to look, between the two
     calls, and after the second. *)
 Definition rΓpre : r_env :=
-  mkr_env [Iot 5; Iot 1; Iot 6; Iot 7; Iot 8; Iot 9; Null_a; Null_a] [] [].
+  mkr_env [Iot 5; Iot 1; Iot 6; Iot 7; Iot 8; Iot 9; Null_a; Null_a] [] [] [].
 Definition rΓmid : r_env :=
-  mkr_env [Iot 5; Iot 1; Iot 6; Iot 7; Iot 8; Iot 9; Iot 7; Null_a] [] [].
+  mkr_env [Iot 5; Iot 1; Iot 6; Iot 7; Iot 8; Iot 9; Iot 7; Null_a] [] [] [].
 Definition rΓend : r_env :=
-  mkr_env [Iot 5; Iot 1; Iot 6; Iot 7; Iot 8; Iot 9; Iot 7; Iot 7] [] [].
+  mkr_env [Iot 5; Iot 1; Iot 6; Iot 7; Iot 8; Iot 9; Iot 7; Iot 7] [] [] [].
 
 (** The activation of look on a receiver at location l: the class argument
     of P is the object's own type argument, carried up from C. *)
-Definition rΓlook (l : Loc) : r_env := mkr_env [Iot l] [rRODMutCell] [].
+Definition rΓlook (l : Loc) : r_env := mkr_env [Iot l] [rRODMutCell] [] [].
 Definition rΓlook' (l : Loc) : r_env :=
-  mkr_env [Iot l; Iot 7] [rRODMutCell] [].
+  mkr_env [Iot l; Iot 7] [rRODMutCell] [] [].
 
 Definition rΓA' : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Iot 5; Iot 1] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Iot 5; Iot 1] [] [] [].
 
 Definition run_allocs : stmt :=
   SSeq (SLocal MutCell 2)
@@ -1047,7 +1049,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [|reflexivity].
     cbn. eapply rsi_step; [reflexivity|]. cbn. apply rsi_refl.
   - apply look_body_eval. left. reflexivity.
@@ -1068,7 +1070,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [|reflexivity].
     cbn. eapply rsi_step; [reflexivity|]. cbn. apply rsi_refl.
   - apply look_body_eval. right. reflexivity.
@@ -1111,7 +1113,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [apply rsi_refl | reflexivity].
   - apply run_body_eval.
   - reflexivity.
@@ -1141,7 +1143,7 @@ Theorem callR_preserves : forall rΓ' h',
 Proof.
   intros rΓ' h' Heval.
   eapply (readonly_state_preservation_final CT Δ0 sΓA AbstractState rΓA hA
-            6 1 5 [] [1] sΓA rΓ' h' 5 5 5 run
+            6 1 5 [] [] [1] sΓA rΓ' h' 5 5 5 run
             mutbound_ct_clean_bounds config_A rsfp_A
             callR_typed Heval).
   - reflexivity.

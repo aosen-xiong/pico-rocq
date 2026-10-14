@@ -137,7 +137,7 @@ Qed.
 
 Record frameP (CT : class_table) (sΓ : s_env) (rΓ : r_env) (h : heap)
     (G : ghost) (L : list nat) (next wf : nat) (mode : bool) (qthis : q_r)
-    (lc lm : list ltype) : Prop := {
+    (lc lm : list ltype) (lk : list (q * lab)) : Prop := {
   fp_live : List.In wf L;
   fp_this : exists ι o,
     get_this_var_mapping (vars rΓ) = Some ι /\
@@ -146,11 +146,13 @@ Record frameP (CT : class_table) (sΓ : s_env) (rΓ : r_env) (h : heap)
     (mode = true -> g_col G ι = Some wf);
   fp_ec : map erase lc = cargs rΓ;
   fp_em : map erase lm = margs rΓ;
+  fp_ek : map fst lk = qargs rΓ;
   fp_bound : Forall (lbound next) lc /\ Forall (lbound next) lm;
+  fp_kbound : Forall (fun p => lab_bound next (snd p)) lk;
   fp_vars : forall x T v,
     static_getType sΓ x = Some T ->
     runtime_getVal rΓ x = Some (Iot v) ->
-    lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) T);
+    lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) T);
 }.
 
 (** What a frame's own type variables satisfy: both kinds of fit. *)
@@ -158,70 +160,74 @@ Definition ffit (CT : class_table) (L : list nat) (Δ : tv_env) (F : lframe)
     : Prop :=
   frame_fits CT L Δ F /\ frame_fitsp CT L Δ F.
 
-Lemma frameP_update : forall CT sΓ rΓ h G L next wf mode qthis lc lm x v Tx,
-  frameP CT sΓ rΓ h G L next wf mode qthis lc lm ->
+Lemma frameP_update : forall CT sΓ rΓ h G L next wf mode qthis lc lm lk x v Tx,
+  frameP CT sΓ rΓ h G L next wf mode qthis lc lm lk ->
   x <> 0 ->
   static_getType sΓ x = Some Tx ->
   (forall w, v = Iot w ->
-     lhasp CT h G L w (ldyn (act_frame qthis wf mode lc lm) Tx)) ->
-  frameP CT sΓ (set_vars rΓ (update x v (vars rΓ))) h G L next wf mode qthis lc lm.
+     lhasp CT h G L w (ldyn (act_frame qthis wf mode lc lm lk) Tx)) ->
+  frameP CT sΓ (set_vars rΓ (update x v (vars rΓ))) h G L next wf mode qthis lc lm lk.
 Proof.
-  intros CT sΓ rΓ h G L next wf mode qthis lc lm x v Tx HF Hx HTx Hnew.
+  intros CT sΓ rΓ h G L next wf mode qthis lc lm lk x v Tx HF Hx HTx Hnew.
   constructor.
-  - exact (fp_live _ _ _ _ _ _ _ _ _ _ _ _ HF).
-  - destruct (fp_this _ _ _ _ _ _ _ _ _ _ _ _ HF) as (ι & o & Hth & Hrest).
+  - exact (fp_live _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - destruct (fp_this _ _ _ _ _ _ _ _ _ _ _ _ _ HF) as (ι & o & Hth & Hrest).
     exists ι, o. simpl. rewrite get_this_var_mapping_update; auto.
-  - exact (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ HF).
-  - exact (fp_em _ _ _ _ _ _ _ _ _ _ _ _ HF).
-  - exact (fp_bound _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_em _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_ek _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_bound _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_kbound _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
   - intros y T w HT Hv. unfold runtime_getVal in Hv. simpl in Hv.
     destruct (Nat.eq_dec x y) as [-> | Hne].
     + apply nth_error_update_same_inv in Hv. subst v.
       assert (T = Tx) by (unfold static_getType in *; congruence). subst T.
       apply Hnew. reflexivity.
     + rewrite update_diff in Hv; auto.
-      eapply (fp_vars _ _ _ _ _ _ _ _ _ _ _ _ HF); eauto.
+      eapply (fp_vars _ _ _ _ _ _ _ _ _ _ _ _ _ HF); eauto.
 Qed.
 
-Lemma frameP_ext : forall CT sΓ rΓ h h' G G' L next wf mode qthis lc lm,
-  frameP CT sΓ rΓ h G L next wf mode qthis lc lm ->
+Lemma frameP_ext : forall CT sΓ rΓ h h' G G' L next wf mode qthis lc lm lk,
+  frameP CT sΓ rΓ h G L next wf mode qthis lc lm lk ->
   heap_ext h h' -> gext h G G' ->
-  frameP CT sΓ rΓ h' G' L next wf mode qthis lc lm.
+  frameP CT sΓ rΓ h' G' L next wf mode qthis lc lm lk.
 Proof.
-  intros CT sΓ rΓ h h' G G' L next wf mode qthis lc lm HF Hext Hg.
+  intros CT sΓ rΓ h h' G G' L next wf mode qthis lc lm lk HF Hext Hg.
   constructor.
-  - exact (fp_live _ _ _ _ _ _ _ _ _ _ _ _ HF).
-  - destruct (fp_this _ _ _ _ _ _ _ _ _ _ _ _ HF) as (ι & o & Hth & Ho & Hq & Hm).
+  - exact (fp_live _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - destruct (fp_this _ _ _ _ _ _ _ _ _ _ _ _ _ HF) as (ι & o & Hth & Ho & Hq & Hm).
     destruct (heap_ext_getObj _ _ _ _ Hext Ho) as (o' & Ho' & Hrt).
     exists ι, o'. refine (conj Hth (conj Ho' (conj _ _))).
     + congruence.
     + intros Hmode. destruct (Hg ι (runtime_getObj_dom _ _ _ Ho)) as (E1 & _).
       rewrite E1. auto.
-  - exact (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ HF).
-  - exact (fp_em _ _ _ _ _ _ _ _ _ _ _ _ HF).
-  - exact (fp_bound _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_em _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_ek _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_bound _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_kbound _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
   - intros x T v HT Hv.
-    eapply lhasp_ext; eauto. exact (fp_vars _ _ _ _ _ _ _ _ _ _ _ _ HF x T v HT Hv).
+    eapply lhasp_ext; eauto. exact (fp_vars _ _ _ _ _ _ _ _ _ _ _ _ _ HF x T v HT Hv).
 Qed.
 
 (* ------------------AN OBJECT AGAINST A STATIC VIEW------------------*)
 
 (** One step: the object's reading of a header, with its payload, against
     the reading of the protected-mode view in a frame. *)
-Lemma ostatic_step_cond : forall L mt F hq l qh pn As cs ms,
+Lemma ostatic_step_cond : forall L mt F hq l qh pn As cs ms ks,
   readonly_state_method_scope mt ->
   (forall As0,
      label_cond2 L (fun q0 => q0) (vpa_q mt qh)
-       (mk_lframe hq l l As0 []) (lf_with_args F cs ms)) ->
+       (mk_lframe hq l l As0 [] []) (lf_with_args F cs ms ks)) ->
   (qh = Mut ->
    match pn with
    | Some (Mut, l') => norm L l' = norm L (lf_mut F)
    | _ => True
    end) ->
   lc2 L (rd_map false (fun q0 => q0) pn) (vpa_q mt qh)
-    (hframe hq l pn As) (lf_with_args F cs ms).
+    (hframe hq l pn As) (lf_with_args F cs ms ks).
 Proof.
-  intros L mt F hq l qh pn As cs ms Hrs Hbase Hpay q1.
+  intros L mt F hq l qh pn As cs ms ks Hrs Hbase Hpay q1.
   rewrite rd_map_obj.
   destruct (Hbase As q1) as [H1 H2]. cbn [hframe lf_q lf_with_args] in H1, H2 |- *.
   split; [exact H1|].
@@ -244,8 +250,8 @@ Proof.
       rewrite Hst. reflexivity.
   - destruct H2 as [H2 | [H2 | H2]]; auto.
     right. right.
-    assert (Hlab : lab_of (mk_lframe hq (rd_lab l pn) l As []) q1 =
-                   lab_of (mk_lframe hq l l As []) q1).
+    assert (Hlab : lab_of (mk_lframe hq (rd_lab l pn) l As [] []) q1 =
+                   lab_of (mk_lframe hq l l As [] []) q1).
     { destruct q1; simpl; try reflexivity; congruence. }
     rewrite Hlab. exact H2.
 Qed.
@@ -272,9 +278,9 @@ Lemma oview_vs_static : forall CT mt qh C Ts D Vs,
   super_inst CT mt qh C Ts D Vs ->
   forall L F qo l As,
     readonly_state_method_scope mt ->
-    (forall As0 cs ms,
+    (forall As0 cs ms ks,
        label_cond2 L (fun q0 => q0) (vpa_q mt qh)
-         (mk_lframe (qr2q qo) l l As0 []) (lf_with_args F cs ms)) ->
+         (mk_lframe (qr2q qo) l l As0 [] []) (lf_with_args F cs ms ks)) ->
     (qh = Mut -> opcoh CT L qo l C As (lf_mut F)) ->
     Forall2 (lagree L) As (map (ldyn F) Ts) ->
     exists Vs', oview CT qo l C As D Vs' /\
@@ -287,8 +293,8 @@ Proof.
                 (hstep false (qr2q qo) (fun q0 => q0) l (pclassf CT C As) As Ss)
                 Hrs Hbase) as (Vs' & Hv & Hle).
     { intros Hqh. exact (opcoh_step _ _ _ _ _ _ _ _ _ (Hpc Hqh) Hparent). }
-    { assert (Heq : map (ldyn F) (map (subst Ts []) (map (adapt mt qh) Ss)) =
-                    map (fun S => ldyn (lf_with_args F (map (ldyn F) Ts) [])
+    { assert (Heq : map (ldyn F) (map (subst Ts [] []) (map (adapt mt qh) Ss)) =
+                    map (fun S => ldyn (lf_with_args F (map (ldyn F) Ts) [] [])
                                     (map_qual (vpa_q mt qh) S)) Ss).
       { clear. induction Ss as [|S Ss IH]; simpl; auto.
         f_equal; auto. rewrite ldyn_subst. reflexivity. }
@@ -298,14 +304,15 @@ Proof.
       constructor; [|exact IH].
       apply ldyn_agree2.
       - apply (ostatic_step_cond L mt F (qr2q qo) l qh (pclassf CT C As) As
-                 (map (ldyn F) Ts) [] Hrs).
+                 (map (ldyn F) Ts) [] _ Hrs).
         + intros As0. apply Hbase.
         + intros Hqh.
           destruct (pclassf CT C As) as [[qp lp]|] eqn:Hp; auto.
           destruct qp; auto.
           apply (Hpc Hqh C As); [apply v_refl | exact Hp].
       - exact Hargs.
-      - constructor. }
+      - constructor.
+      - reflexivity. }
     exists Vs'. split; auto. unfold oview. eapply v_step; eauto.
 Qed.
 
@@ -338,7 +345,7 @@ Definition hexTp (G : ghost) (wf : nat) (T : qualified_type) (v : Loc) : Prop :=
     the activation does not count its receiver as in the world; what is
     needed instead is that a value held at a type written mutable is exactly
     in that world, and this is kept too. *)
-Lemma lhasp_subtype_ex : forall P CT Δ h G L next mt qthis wf mode lc lm ca ma,
+Lemma lhasp_subtype_ex : forall P CT Δ h G L next mt qthis wf mode lc lm lk ca ma ka,
   wf_class_table CT ->
   heapP P CT h G L next ->
   (mode = true -> List.In wf L) ->
@@ -346,24 +353,24 @@ Lemma lhasp_subtype_ex : forall P CT Δ h G L next mt qthis wf mode lc lm ca ma,
   tv_mode Δ = mt ->
   (forall o n B v,
      tv_bound Δ o n = Some B ->
-     wf_r_typable CT h v (TVar TVSub o n) qthis ca ma ->
-     lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) (TVar TVSub o n)) ->
-     lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) B)) ->
+     wf_r_typable CT h v (TVar TVSub o n) qthis ca ma ka ->
+     lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) (TVar TVSub o n)) ->
+     lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) B)) ->
   (forall o n B, tv_bound Δ o n = Some B -> whead B <> Some Mut) ->
-  frame_bounds_ok CT Δ (qr2q qthis) ca ma ->
-  map erase lc = ca -> map erase lm = ma ->
+  frame_bounds_ok CT Δ (qr2q qthis) ca ma ka ->
+  map erase lc = ca -> map erase lm = ma -> map fst lk = ka ->
   forall T U,
     qualified_type_subtype CT Δ T U ->
     forall v,
-      wf_r_typable CT h v T qthis ca ma ->
+      wf_r_typable CT h v T qthis ca ma ka ->
       hexTp G wf T v ->
-      lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) T) ->
-      lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) U) /\
+      lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) T) ->
+      lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) U) /\
       hexTp G wf U v.
 Proof.
-  intros P CT Δ h G L next mt qthis wf mode lc lm ca ma
-    Hwf HG HwfL Hrs Hmode Hcb Hfl Hfb Hec Hem T U Hsub.
-  set (Fc := act_frame qthis wf mode lc lm).
+  intros P CT Δ h G L next mt qthis wf mode lc lm lk ca ma ka
+    Hwf HG HwfL Hrs Hmode Hcb Hfl Hfb Hec Hem Hek T U Hsub.
+  set (Fc := act_frame qthis wf mode lc lm lk).
   induction Hsub; intros v Hty Hex Hl.
   - (* same class, widen the qualifier *)
     split.
@@ -372,22 +379,22 @@ Proof.
       * unfold headL. intros Hm. inversion Hqsub; subst.
         -- apply Hh. exact Hm.
         -- simpl in Hm. discriminate.
-        -- exfalso. exact (typable_head_not_bot _ _ _ _ _ _ _ Hty eq_refl).
+        -- exfalso. exact (typable_head_not_bot _ _ _ _ _ _ _ _ Hty eq_refl).
       * exists Vs. split; auto.
         eapply Forall2_lagree_trans; [exact Hle|].
         apply map_ldyn_targ_sub; auto.
     + intros Hw. simpl in Hw. inversion Hw; subst q2. inversion Hqsub; subst.
       * apply Hex. reflexivity.
-      * exfalso. exact (typable_head_not_bot _ _ _ _ _ _ _ Hty eq_refl).
+      * exfalso. exact (typable_head_not_bot _ _ _ _ _ _ _ _ Hty eq_refl).
   - (* up the hierarchy *)
     split; [|exact Hex].
     pose proof Hl as (o & Ho & Hh & As & Hs & Hle).
     rewrite Hmode in Hsuper.
-    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hty)
+    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hty)
       as (o' & Vs' & Ho' & Hhead & _).
     rewrite Ho in Ho'. inversion Ho'; subst o'. clear Ho'.
     assert (Hnb : q1 <> Bot).
-    { intros ->. exact (typable_head_not_bot _ _ _ _ _ _ _ Hty eq_refl). }
+    { intros ->. exact (typable_head_not_bot _ _ _ _ _ _ _ _ Hty eq_refl). }
     assert (Hcond : label_cond L (vpa_q mt q1)
                       (obj_frame (rqtype (rt_type o)) (g_col G v) (g_col G v) [])
                       Fc).
@@ -406,7 +413,7 @@ Proof.
         + exact Hh. }
     destruct (oview_vs_static _ _ _ _ _ _ _ Hsuper L Fc (rqtype (rt_type o))
                 (olab (g_col G v)) As Hrs) as (Vs0 & Hs0 & Hle0).
-    + intros As0 cs ms q0. exact (Hcond q0).
+    + intros As0 cs ms ks q0. exact (Hcond q0).
     + intros ->.
       assert (Hc : g_col G v = Some wf) by (apply Hex; reflexivity).
       destruct (hp_obj _ _ _ _ _ _ HG v o Ho) as (Hi & Hk & _).
@@ -432,11 +439,20 @@ Proof.
       unfold headL. intros Hm. inversion Hqsub; subst.
       * apply Hh. exact Hm.
       * simpl in Hm. discriminate.
-      * exfalso. eapply (typable_whead_not_bot _ _ _ _ _ _ _ Hty). reflexivity.
+      * exfalso. eapply (typable_whead_not_bot _ _ _ _ _ _ _ _ Hty). reflexivity.
     + intros Hw. simpl in Hw. inversion Hw; subst q2. inversion Hqsub; subst.
       * apply Hex. reflexivity.
-      * exfalso. eapply (typable_whead_not_bot _ _ _ _ _ _ _ Hty). reflexivity.
+      * exfalso. eapply (typable_whead_not_bot _ _ _ _ _ _ _ _ Hty). reflexivity.
   - (* view the supplied type as readonly *)
+    split; [|intros Hw; simpl in Hw; discriminate].
+    destruct Hl as (ob & Hob & Hl). exists ob. split; auto.
+    simpl in *.
+    destruct (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
+      as [qa la Ca Aa].
+    simpl in *. destruct Hl as (Hh & Vs & Hs & Hle).
+    split; [|eauto]. unfold headL. intros Hm. discriminate.
+  - split; assumption.
+  - (* a use under a qualifier parameter, viewed as readonly *)
     split; [|intros Hw; simpl in Hw; discriminate].
     destruct Hl as (ob & Hob & Hl). exists ob. split; auto.
     simpl in *.
@@ -446,9 +462,9 @@ Proof.
     split; [|eauto]. unfold headL. intros Hm. discriminate.
   - (* a qualified variable use at an argument-free bound *)
     split; [|exact Hex].
-    pose proof (wf_r_typable_subtype _ _ _ _ _ _ _ _ _ Hfb
+    pose proof (wf_r_typable_subtype _ _ _ _ _ _ _ _ _ _ Hfb
                   (qtype_qvar_bound CT Δ q1 o n qb C Hsub) Hty) as Hty'.
-    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hty')
+    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hty')
       as (ob & Rs' & Hob & _ & Hrs' & Hle').
     simpl in Hle'. inversion Hle'; subst.
     destruct (oview_exists _ _ _ _ _ _ Hrs' (rqtype (rt_type ob))
@@ -466,8 +482,6 @@ Proof.
     split; [|intros Hw; simpl in Hw; discriminate].
     destruct Hl as (ob & Hob & Hl). exists ob. split; auto.
     simpl in *.
-    destruct (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
-      as [qa la Ca Aa].
     simpl in *. destruct Hl as (Hh & Vs & Hs & Hle).
     split; [unfold headL; intros Hm; discriminate|].
     exists Vs. split; auto.
@@ -477,8 +491,6 @@ Proof.
     split; [|intros Hw; simpl in Hw; discriminate].
     destruct Hl as (ob & Hob & Hl). exists ob. split; auto.
     simpl in *.
-    destruct (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
-      as [qa la Ca Aa].
     simpl in *. destruct Hl as (Hh & Vs & Hs & Hle).
     split; [exact Hh|].
     exists Vs. split; auto.
@@ -494,24 +506,17 @@ Proof.
     { apply rs_label_cond2; auto; try discriminate.
       unfold head_ok. left. reflexivity. }
     exists ob. split; auto.
-    change (ldyn Fc (THead o n C Ts)) with
-      (lheadby (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
-         C (map (ldyn Fc) Ts)) in Hl.
-    change (ldyn Fc (THead o n D Vs)) with
-      (lheadby (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
-         D (map (ldyn Fc) Vs)).
-    destruct (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
-      as [qa la Ca Aa].
-    simpl lheadby in *. destruct Hl as (Hh & As & Hs & Hle).
+    cbn [ldyn map_qual] in Hl |- *.
+destruct Hl as (Hh & As & Hs & Hle).
     destruct (oview_vs_static _ _ _ _ _ _ _ Hsuper L Fc (rqtype (rt_type ob))
                 (olab (g_col G v)) As Hrs) as (Vs0 & Hs0 & Hle0).
-    + intros As0 cs ms q0. exact (Hcond q0).
+    + intros As0 cs ms ks q0. exact (Hcond q0).
     + intros Hx. discriminate.
     + exact Hle.
     + split; [exact Hh|].
       exists Vs0. split; auto. eapply oview_trans; eauto.
   - (* the bottom-qualified type of the class *)
-    exfalso. exact (typable_head_not_bot _ _ _ _ _ _ _ Hty eq_refl).
+    exfalso. exact (typable_head_not_bot _ _ _ _ _ _ _ _ Hty eq_refl).
   - (* transitivity *)
     destruct (IHHsub1 v Hty Hex Hl) as [Hl2 Hex2].
     apply IHHsub2; auto.
@@ -520,16 +525,16 @@ Qed.
 
 (** In a live world, a value held at a type written mutable is exactly in
     it. *)
-Lemma hexp_of_live : forall CT h G L qthis wf mode lc lm T v,
+Lemma hexp_of_live : forall CT h G L qthis wf mode lc lm lk T v,
   List.In wf L ->
-  lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) T) ->
+  lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) T) ->
   hexTp G wf T v.
 Proof.
-  intros CT h G L qthis wf mode lc lm T v HwfL Hl Hw.
-  destruct T as [q0 C args | [|q0] o n | o n C args]; simpl in Hw;
+  intros CT h G L qthis wf mode lc lm lk T v HwfL Hl Hw.
+  destruct T as [q0 C args | [|q0|mp] o n | n C args]; simpl in Hw;
     inversion Hw; subst.
   - destruct Hl as (ob & _ & Hh & _). specialize (Hh eq_refl).
-    change (lab_of (act_frame qthis wf mode lc lm) Mut) with (LIn wf) in Hh.
+    change (lab_of (act_frame qthis wf mode lc lm lk) Mut) with (LIn wf) in Hh.
     rewrite (norm_live _ _ HwfL) in Hh. exact Hh.
   - destruct Hl as (ob & _ & Hl). simpl in Hl.
     destruct (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
@@ -538,7 +543,7 @@ Proof.
     rewrite (norm_live _ _ HwfL) in Hh. exact Hh.
 Qed.
 
-Lemma lhasp_subtype : forall P CT Δ h G L next mt qthis wf mode lc lm ca ma,
+Lemma lhasp_subtype : forall P CT Δ h G L next mt qthis wf mode lc lm lk ca ma ka,
   wf_class_table CT ->
   heapP P CT h G L next ->
   List.In wf L ->
@@ -546,29 +551,29 @@ Lemma lhasp_subtype : forall P CT Δ h G L next mt qthis wf mode lc lm ca ma,
   tv_mode Δ = mt ->
   (forall o n B v,
      tv_bound Δ o n = Some B ->
-     wf_r_typable CT h v (TVar TVSub o n) qthis ca ma ->
-     lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) (TVar TVSub o n)) ->
-     lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) B)) ->
+     wf_r_typable CT h v (TVar TVSub o n) qthis ca ma ka ->
+     lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) (TVar TVSub o n)) ->
+     lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) B)) ->
   (forall o n B, tv_bound Δ o n = Some B -> whead B <> Some Mut) ->
-  frame_bounds_ok CT Δ (qr2q qthis) ca ma ->
-  map erase lc = ca -> map erase lm = ma ->
+  frame_bounds_ok CT Δ (qr2q qthis) ca ma ka ->
+  map erase lc = ca -> map erase lm = ma -> map fst lk = ka ->
   forall T U,
     qualified_type_subtype CT Δ T U ->
     forall v,
-      wf_r_typable CT h v T qthis ca ma ->
-      lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) T) ->
-      lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) U).
+      wf_r_typable CT h v T qthis ca ma ka ->
+      lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) T) ->
+      lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) U).
 Proof.
-  intros P CT Δ h G L next mt qthis wf mode lc lm ca ma
-    Hwf HG HwfL Hrs Hmode Hcb Hfl Hfb Hec Hem T U Hsub v Hty Hl.
-  destruct (lhasp_subtype_ex P CT Δ h G L next mt qthis wf mode lc lm ca ma
-              Hwf HG (fun _ => HwfL) Hrs Hmode Hcb Hfl Hfb Hec Hem T U Hsub v Hty
-              (hexp_of_live _ _ _ _ _ _ _ _ _ _ _ HwfL Hl) Hl) as [H _].
+  intros P CT Δ h G L next mt qthis wf mode lc lm lk ca ma ka
+    Hwf HG HwfL Hrs Hmode Hcb Hfl Hfb Hec Hem Hek T U Hsub v Hty Hl.
+  destruct (lhasp_subtype_ex P CT Δ h G L next mt qthis wf mode lc lm lk ca ma ka
+              Hwf HG (fun _ => HwfL) Hrs Hmode Hcb Hfl Hfb Hec Hem Hek T U Hsub v Hty
+              (hexp_of_live _ _ _ _ _ _ _ _ _ _ _ _ HwfL Hl) Hl) as [H _].
   exact H.
 Qed.
 
 (** A type variable used at its bound, from the payload-aware fit. *)
-Lemma vbp_of_fits : forall CT Δ h G L F ca ma qthis,
+Lemma vbp_of_fits : forall CT Δ h G L F ca ma ka qthis,
   wf_class_table CT ->
   (forall v ob, runtime_getObj h v = Some ob ->
      clsok CT (rctype (rt_type ob)) (length (g_args G v))) ->
@@ -578,16 +583,16 @@ Lemma vbp_of_fits : forall CT Δ h G L F ca ma qthis,
        (class_qualifier (signature def)) = true) ->
   frame_fitsp CT L Δ F ->
   lf_q F = qr2q qthis ->
-  map erase (lf_cargs F) = ca -> map erase (lf_margs F) = ma ->
+  map erase (lf_cargs F) = ca -> map erase (lf_margs F) = ma -> map fst (lf_qargs F) = ka ->
   forall o n B v,
     tv_bound Δ o n = Some B ->
-    wf_r_typable CT h v (TVar TVSub o n) qthis ca ma ->
+    wf_r_typable CT h v (TVar TVSub o n) qthis ca ma ka ->
     lhasp CT h G L v (ldyn F (TVar TVSub o n)) ->
     lhasp CT h G L v (ldyn F B).
 Proof.
-  intros CT Δ h G L F ca ma qthis Hwf Hlv Hag Hfit Hq Hec Hem o n B v Hb Hty Hl.
+  intros CT Δ h G L F ca ma ka qthis Hwf Hlv Hag Hfit Hq Hec Hem Hek o n B v Hb Hty Hl.
   assert (Hty' : loc_has_rtype CT h v (erase (ldyn F (TVar TVSub o n)))).
-  { rewrite erase_ldyn. rewrite Hq. rewrite Hec. rewrite Hem. exact Hty. }
+  { rewrite erase_ldyn. rewrite Hq. rewrite Hec. rewrite Hem. try rewrite Hek. exact Hty. }
   destruct (Hfit o n B Hb) as [Hf | [Hd | [Hi _]]].
   - eapply lsubtp_sound; eauto.
   - exfalso.
@@ -830,20 +835,38 @@ Qed.
 
 Lemma map_qual_requalify : forall g q0 U,
   map_qual g (requalify q0 U) = requalify (g q0) (map_qual g U).
-Proof. intros g q0 [q1 C args|u o n|? ? ? ?]; simpl; auto. destruct u; auto. Qed.
+Proof. intros g q0 [q1 C args|u o n| ? ? ?]; simpl; auto. destruct u; auto. Qed.
 
-Lemma map_qual_headby : forall g U C args,
-  map_qual g (headby U C args) =
-  headby (map_qual g U) C (map (map_qual g) args).
-Proof. intros g [q1 C1 a|[|qv] o n|o n C1 a] C args; reflexivity. Qed.
+(** A qualifier map applied to a written qualifier argument. *)
+Definition gQ (g : q -> q) (a : qarg) : qarg :=
+  match a with
+  | QLit q0 => QLit (g q0)
+  | QVar m => QVar m
+  end.
+
+Lemma map_qual_prequalify : forall g m U,
+  map_qual g (prequalify m U) = prequalify m (map_qual g U).
+Proof. intros g m [q1 C args|u o n| ? ? ?]; simpl; auto. destruct u; auto. Qed.
+
+Lemma map_qual_qrequalify : forall g a U,
+  g RO = RO ->
+  map_qual g (qrequalify a U) =
+  qrequalify (option_map (gQ g) a) (map_qual g U).
+Proof.
+  intros g [[q0|m]|] U Hro; simpl.
+  - apply map_qual_requalify.
+  - apply map_qual_prequalify.
+  - rewrite map_qual_requalify. rewrite Hro. reflexivity.
+Qed.
 
 (** Adapting a substituted type is substituting adapted types. *)
-Lemma map_qual_subst : forall g Ts Us T,
+Lemma map_qual_subst : forall g Ts Us Qs T,
   g RO = RO ->
-  map_qual g (subst Ts Us T) =
-  subst (map (map_qual g) Ts) (map (map_qual g) Us) (map_qual g T).
+  map_qual g (subst Ts Us Qs T) =
+  subst (map (map_qual g) Ts) (map (map_qual g) Us) (map (gQ g) Qs)
+    (map_qual g T).
 Proof.
-  intros g Ts Us T Hro. induction T using qualified_type_ind'.
+  intros g Ts Us Qs T Hro. induction T using qualified_type_ind'.
   - simpl. f_equal. rewrite !map_map.
     induction H; simpl; auto. f_equal; auto.
   - assert (HU : map_qual g
@@ -853,18 +876,18 @@ Proof.
                  | Some U => U | None => default_type end).
     { rewrite tv_lookup_map. destruct (tv_lookup o Ts Us n); simpl; auto.
       rewrite Hro. reflexivity. }
-    destruct u; simpl.
+    destruct u as [|q0|m]; simpl.
     + exact HU.
     + rewrite map_qual_requalify. rewrite HU. reflexivity.
-  - assert (HU : map_qual g
-                   match tv_lookup o Ts Us n with
-                   | Some U => U | None => default_type end =
-                 match tv_lookup o (map (map_qual g) Ts) (map (map_qual g) Us) n with
-                 | Some U => U | None => default_type end).
-    { rewrite tv_lookup_map. destruct (tv_lookup o Ts Us n); simpl; auto.
-      rewrite Hro. reflexivity. }
-    cbn [subst map_qual]. rewrite map_qual_headby. rewrite HU. f_equal.
-    rewrite !map_map. induction H; simpl; auto. f_equal; auto.
+    + rewrite nth_error_map. rewrite map_qual_qrequalify; auto.
+      rewrite HU. reflexivity.
+  - assert (Hargs : map (map_qual g) (map (subst Ts Us Qs) args) =
+              map (subst (map (map_qual g) Ts) (map (map_qual g) Us)
+                     (map (gQ g) Qs)) (map (map_qual g) args)).
+    { rewrite !map_map. induction H; simpl; auto. f_equal; auto. }
+    cbn [subst map_qual]. rewrite nth_error_map.
+    destruct (nth_error Qs n) as [[q0|m]|]; cbn [option_map qhead gQ map_qual];
+      rewrite ?Hro; rewrite Hargs; reflexivity.
 Qed.
 
 Lemma collect_fields_step : forall CT C def P Ss pfs fs,
@@ -908,13 +931,13 @@ Lemma field_chain : forall CT C f D fd0,
     (forall C' As', oview CT qo l C As C' As' ->
        forall cs,
          lc2 L (fun q0 => q0) g
-           (hframe (qr2q qo) l (pclassf CT C' As') As') (lf_with_args Fc cs [])) ->
+           (hframe (qr2q qo) l (pclassf CT C' As') As') (lf_with_args Fc cs [] [])) ->
     Forall2 (lagree L) As W ->
     exists V,
       oview CT qo l C As D V /\
       assignability fd0 = assignability fd /\
       lagree L (ldyn (hfr CT qo l D V) (ftype fd0))
-        (ldyn (lf_with_args Fc W []) (map_qual g (ftype fd))).
+        (ldyn (lf_with_args Fc W [] []) (map_qual g (ftype fd))).
 Proof.
   intros CT C f D fd0 H.
   induction H; intros fs fd1 Hcf Hn L Fc g qo l As W Hro Hstep Hle.
@@ -928,6 +951,7 @@ Proof.
     + unfold hfr. apply (Hstep C As). apply v_refl.
     + exact Hle.
     + constructor.
+    + reflexivity.
   - (* inherited *)
     rewrite (collect_fields_step _ _ _ _ _ _ _ Hfind Hsuper Hpcf Hcf) in Hn.
     rewrite nth_error_app1 in Hn; [rewrite length_map; exact Hlt|].
@@ -937,7 +961,7 @@ Proof.
     assert (Hparent : parent_lookup CT C = Some (P, Ss)).
     { unfold parent_lookup. rewrite Hfind. exact Hsuper. }
     set (As' := hstep false (qr2q qo) (fun q0 => q0) l (pclassf CT C As) As Ss).
-    set (W' := map (fun S => ldyn (lf_with_args Fc W []) (map_qual g S)) Ss).
+    set (W' := map (fun S => ldyn (lf_with_args Fc W [] []) (map_qual g S)) Ss).
     assert (Hle' : Forall2 (lagree L) As' W').
     { unfold As', W', hstep. rewrite rd_map_obj. generalize Ss as Ss0.
       induction Ss0 as [|S Ss0 IH]; simpl; [constructor|].
@@ -945,16 +969,17 @@ Proof.
       apply ldyn_agree2.
       - apply (Hstep C As). apply v_refl.
       - exact Hle.
-      - constructor. }
+      - constructor.
+      - reflexivity. }
     destruct (IHfdecl pfs fdP Hpcf HnP L Fc g qo l As' W' Hro) as (V & Hv & Ha & Hag);
       auto.
     { intros C' As'' Hv' cs. apply Hstep. unfold oview in *.
       eapply v_step; eauto. }
     exists V. refine (conj _ (conj Ha _)).
     + unfold oview in *. eapply v_step; eauto.
-    + simpl ftype. rewrite (map_qual_subst g Ss [] (ftype fdP) Hro).
+    + simpl ftype. rewrite (map_qual_subst g Ss [] [] (ftype fdP) Hro).
       rewrite ldyn_subst. simpl map.
-      assert (HW : map (ldyn (lf_with_args Fc W [])) (map (map_qual g) Ss) = W').
+      assert (HW : map (ldyn (lf_with_args Fc W [] [])) (map (map_qual g) Ss) = W').
       { unfold W'. rewrite map_map. reflexivity. }
       rewrite HW. exact Hag.
 Qed.
@@ -968,16 +993,16 @@ Print Assumptions field_chain.
 
 (** The new object reads its headers as the allocating code reads them
     through the allocation qualifier. *)
-Lemma new_step_cond : forall L mt qthis qc wf mode lc lm pn As' cs,
+Lemma new_step_cond : forall L mt qthis qc wf mode lc lm lk pn As' cs,
   readonly_state_method_scope mt ->
   (qc = Mut_c -> forall q' l', pn = Some (q', l') ->
      q' = Mut /\ norm L l' = norm L (LIn wf)) ->
   lc2 L (fun q0 => q0) (vpa_q mt (qc2q qc))
     (hframe (qr2q (vpa_mutability_object_creation qthis qc))
        (olab (new_color qc wf mode)) pn As')
-    (lf_with_args (act_frame qthis wf mode lc lm) cs []).
+    (lf_with_args (act_frame qthis wf mode lc lm lk) cs [] []).
 Proof.
-  intros L mt qthis qc wf mode lc lm pn As' cs Hrs Hpn q0.
+  intros L mt qthis qc wf mode lc lm lk pn As' cs Hrs Hpn q0.
   assert (HM : qc = Mut_c -> norm L (rd_lab (LIn wf) pn) = norm L (LIn wf)).
   { intros Hq. destruct pn as [[q' l']|]; simpl; auto.
     destruct (Hpn Hq q' l' eq_refl) as [-> Hl]. exact Hl. }
@@ -992,28 +1017,29 @@ Proof.
        || solve [right; right; apply HM; reflexivity] ]).
 Qed.
 
-Lemma alloc_obP : forall CT L Δ qthis wf mode lc lm qc C def Ts,
+Lemma alloc_obP : forall CT L Δ qthis wf mode lc lm lk qc C def Ts,
   wf_class_table CT ->
   readonly_state_method_scope (tv_mode Δ) ->
   (forall o n B, tv_bound Δ o n = Some B -> is_class_type B) ->
-  ffit CT L Δ (act_frame qthis wf mode lc lm) ->
-  fcoh CT L Δ (act_frame qthis wf mode lc lm) ->
+  ffit CT L Δ (act_frame qthis wf mode lc lm lk) ->
+  fcoh CT L Δ (act_frame qthis wf mode lc lm lk) ->
   Forall rlost_free (map erase lc) -> Forall rlost_free (map erase lm) ->
+  Forall (fun q0 => q0 <> Lost) (map fst lk) ->
   find_class CT C = Some def ->
   vpa_mutability_bound (qc2q qc) (class_qualifier (signature def)) = qc2q qc ->
   Forall lost_free Ts -> Forall (sbnd CT Δ) Ts ->
   Forall2
     (fun T B =>
-       lost_free (member_type AbstractState (qc2q qc) Ts [] B) /\
-       bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] B))
+       lost_free (member_type AbstractState (qc2q qc) Ts [] [] B) /\
+       bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] [] B))
     Ts (ctparams (signature def)) ->
   obP CT L (vpa_mutability_object_creation qthis qc) (new_color qc wf mode) C
-    (map (ldyn (act_frame qthis wf mode lc lm)) Ts).
+    (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts).
 Proof.
-  intros CT L Δ qthis wf mode lc lm qc C def Ts Hwf Hrs Hbc [Hfits Hfitp] Hcoh
-    Hlc Hlm Hfind Hqc HlfT HsbT Hbounds.
-  destruct (alloc_hinv CT L Δ qthis wf mode lc lm qc C def Ts Hwf Hrs Hfits Hlc
-              Hlm Hfind Hqc HlfT Hbounds) as [Hi Hk].
+  intros CT L Δ qthis wf mode lc lm lk qc C def Ts Hwf Hrs Hbc [Hfits Hfitp] Hcoh
+    Hlc Hlm Hlk Hfind Hqc HlfT HsbT Hbounds.
+  destruct (alloc_hinv CT L Δ qthis wf mode lc lm lk qc C def Ts Hwf Hrs Hfits Hlc
+              Hlm Hlk Hfind Hqc HlfT Hbounds) as [Hi Hk].
   refine (conj Hi (conj _ _)).
   - intros w Hc.
     assert (w = wf) by (destruct qc, mode; simpl in Hc; congruence). subst w.

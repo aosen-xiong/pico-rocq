@@ -9,9 +9,12 @@ Require Import Syntax Notations Helpers ViewpointAdaptation Subtyping Typing
 
 (** A method that is polymorphic in a qualifier.
 
-    A qualifier parameter is a method type parameter bounded by [@RO Object];
-    [[Q]C<..>] is the class type [C<..>] carrying the qualifier of whatever is
-    supplied for [Q].
+    A qualifier parameter stands for a qualifier only.  It is declared
+    separately from the method's type parameters, it has no bound, and it is
+    instantiated at a call by a qualifier ([@Mut], [@Imm], ..) or by a
+    qualifier parameter of the caller.  [[Q]C<..>] is the class type [C<..>]
+    carrying the qualifier supplied for [Q].  Only a qualifier parameter can
+    be written in the brackets: a type variable there is not expressible.
 
       class Box  { }
       class Cell { rda @RDM Object item; }
@@ -57,9 +60,9 @@ Definition self2_name : method_name := 5.
 
 Definition ROObject : qualified_type := TClass RO 0 [].
 
-(* [Q]C and [Q2]C, for the first and the second method type parameter *)
-Definition tQ (C : class_name) : qualified_type := THead MethodVar 0 C [].
-Definition tQ2 (C : class_name) : qualified_type := THead MethodVar 1 C [].
+(* [Q]C and [Q2]C, for the first and the second qualifier parameter *)
+Definition tQ (C : class_name) : qualified_type := THead 0 C [].
+Definition tQ2 (C : class_name) : qualified_type := THead 1 C [].
 
 Definition ObjectDef : class_def :=
   {| signature := {| class_qualifier := RDM_c; cname := 0; ctparams := [];
@@ -82,7 +85,8 @@ Definition CellDef : class_def :=
 Definition id_def : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
-          mtparams := [ROObject];
+          mtparams := [];
+          mqparams := 1;
           mret := tQ 1;
           mname := id_name;
           mreceiver := TClass RO 3 [];
@@ -92,7 +96,8 @@ Definition id_def : method_def :=
 Definition first_def : method_def :=
   {| msignature :=
        {| mscope := AbstractState;
-          mtparams := [ROObject; ROObject];
+          mtparams := [];
+          mqparams := 2;
           mret := tQ 1;
           mname := first_name;
           mreceiver := TClass RO 3 [];
@@ -102,7 +107,8 @@ Definition first_def : method_def :=
 Definition peek_def : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
-          mtparams := [ROObject];
+          mtparams := [];
+          mqparams := 1;
           mret := ROObject;
           mname := peek_name;
           mreceiver := TClass RO 3 [];
@@ -112,25 +118,27 @@ Definition peek_def : method_def :=
           mreturn := 2 |} |}.
 
 (* The method's own qualifier parameter, as a qualifier argument *)
-Definition ownQ : qualified_type := TVar TVSub MethodVar 0.
+Definition ownQ : qarg := QVar 0.
 
 Definition id2_def : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
-          mtparams := [ROObject];
+          mtparams := [];
+          mqparams := 1;
           mret := tQ 1;
           mname := id2_name;
           mreceiver := TClass RO 3 [];
           mparams := [tQ 1] |};
      mbody :=
-       {| mbody_stmt := SSeq (SLocal (tQ 1) 2) (SCall 2 id_name 0 [ownQ] [1]);
+       {| mbody_stmt := SSeq (SLocal (tQ 1) 2) (SCall 2 id_name 0 [] [ownQ] [1]);
           mreturn := 2 |} |}.
 
 (* The receiver takes its qualifier from the method's qualifier parameter *)
 Definition self_def : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
-          mtparams := [ROObject];
+          mtparams := [];
+          mqparams := 1;
           mret := tQ 3;
           mname := self_name;
           mreceiver := tQ 3;
@@ -140,13 +148,14 @@ Definition self_def : method_def :=
 Definition self2_def : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
-          mtparams := [ROObject];
+          mtparams := [];
+          mqparams := 1;
           mret := tQ 3;
           mname := self2_name;
           mreceiver := tQ 3;
           mparams := [] |};
      mbody :=
-       {| mbody_stmt := SSeq (SLocal (tQ 3) 1) (SCall 1 self_name 0 [ownQ] []);
+       {| mbody_stmt := SSeq (SLocal (tQ 3) 1) (SCall 1 self_name 0 [] [ownQ] []);
           mreturn := 1 |} |}.
 
 Definition UtilDef : class_def :=
@@ -159,7 +168,8 @@ Definition UtilDef : class_def :=
 Definition sub_self_def : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
-          mtparams := [ROObject];
+          mtparams := [];
+          mqparams := 1;
           mret := tQ 4;
           mname := self_name;
           mreceiver := tQ 4;
@@ -170,7 +180,8 @@ Definition sub_self_def : method_def :=
 Definition sub_self2_def : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
-          mtparams := [ROObject];
+          mtparams := [];
+          mqparams := 1;
           mret := tQ 3;
           mname := self2_name;
           mreceiver := TClass RO 4 [];
@@ -216,24 +227,24 @@ Definition prefix : stmt :=
   (SSeq (SNew 7 Mut_c 2 [] [6])
   (SSeq (SNew 12 Imm_c 3 [] [])
   (SSeq (SNew 14 Mut_c 4 [] [])
-  (SSeq (SCall 4 id_name 3 [MutObject] [1])
-  (SSeq (SCall 5 id_name 3 [ImmObject] [2])
-  (SSeq (SCall 9 first_name 3 [MutObject; ImmObject] [1; 2])
-  (SSeq (SCall 10 id2_name 3 [ImmObject] [2])
-        (SCall 13 self2_name 12 [ImmObject] [])))))))))))))))))))))))))).
+  (SSeq (SCall 4 id_name 3 [] [QLit Mut] [1])
+  (SSeq (SCall 5 id_name 3 [] [QLit Imm] [2])
+  (SSeq (SCall 9 first_name 3 [] [QLit Mut; QLit Imm] [1; 2])
+  (SSeq (SCall 10 id2_name 3 [] [QLit Imm] [2])
+        (SCall 13 self2_name 12 [] [QLit Imm] [])))))))))))))))))))))))))).
 
 (* r = u.<@Mut>peek(c) *)
-Definition callP : stmt := SCall 8 peek_name 3 [MutObject] [7].
+Definition callP : stmt := SCall 8 peek_name 3 [] [QLit Mut] [7].
 
 (* u2 = u.<@Mut>self() *)
-Definition callS : stmt := SCall 11 self_name 3 [MutObject] [].
+Definition callS : stmt := SCall 11 self_name 3 [] [QLit Mut] [].
 
 (* u3 = su.<@Mut>self(): the object is a Sub, so Sub.self runs *)
-Definition callO : stmt := SCall 15 self_name 14 [MutObject] [].
+Definition callO : stmt := SCall 15 self_name 14 [] [QLit Mut] [].
 
 Definition main : stmt := SSeq prefix (SSeq callP (SSeq callS callO)).
 
-Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState.
+Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState 0.
 Definition sΓ0 : s_env := [MutObject].
 Definition sΓfinal : s_env :=
   [MutObject; MutBox; ImmBox; MutUtil; MutBox; ImmBox; MutObject; MutCell;
@@ -276,57 +287,57 @@ Ltac refl_sub :=
     [@Mut Box], with [Q := @Imm] it is [@Imm Box], and with the caller's own
     qualifier parameter it is the caller's [[Q']Box]. *)
 Example inst_mut :
-  member_type AbstractState Mut [] [MutObject] (tQ 1) = MutBox.
+  member_type AbstractState Mut [] [] [QLit Mut] (tQ 1) = MutBox.
 Proof. reflexivity. Qed.
 
 Example inst_imm :
-  member_type AbstractState Mut [] [ImmObject] (tQ 1) = ImmBox.
+  member_type AbstractState Mut [] [] [QLit Imm] (tQ 1) = ImmBox.
 Proof. reflexivity. Qed.
 
 Example inst_bot :
-  member_type AbstractState Mut [] [TClass Bot 0 []] (tQ 1) = TClass Bot 1 [].
+  member_type AbstractState Mut [] [] [QLit Bot] (tQ 1) = TClass Bot 1 [].
 Proof. reflexivity. Qed.
 
 Example inst_caller_param :
-  member_type AbstractState Mut [] [TVar TVSub MethodVar 0] (tQ 1) = tQ 1.
+  member_type AbstractState Mut [] [] [QVar 0] (tQ 1) = tQ 1.
 Proof. reflexivity. Qed.
 
 (** Two qualifier parameters are instantiated independently. *)
 Example inst_two :
-  member_type AbstractState Mut [] [MutObject; ImmObject] (tQ 1) = MutBox /\
-  member_type AbstractState Mut [] [MutObject; ImmObject] (tQ2 1) = ImmBox.
+  member_type AbstractState Mut [] [] [QLit Mut; QLit Imm] (tQ 1) = MutBox /\
+  member_type AbstractState Mut [] [] [QLit Mut; QLit Imm] (tQ2 1) = ImmBox.
 Proof. split; reflexivity. Qed.
 
 (** Inside the method the parameter is used through its readonly view, so a
     field declared [@RDM] reads as [@Lost]: [Q |> RDM = Lost]. *)
-Definition ΔQ (m : method_scope) : tv_env := mk_tv_env [] [ROObject] m.
+Definition ΔQ (m : method_scope) : tv_env := mk_tv_env [] [] m 1.
 
 Example view_of_head : forall m, ubound (ΔQ m) (tQ 2) = Some (TClass RO 2 []).
 Proof. reflexivity. Qed.
 
 Example read_through_head : forall m,
-  member_type m RO [] [] (ftype item_field) = TClass Lost 0 [].
+  member_type m RO [] [] [] (ftype item_field) = TClass Lost 0 [].
 Proof. intros []; reflexivity. Qed.
 
 (* ------------------CLASS TABLE WELL-FORMEDNESS------------------*)
 
 Lemma wf_tQ : forall m top C, C < 5 -> wf_stype CT (ΔQ m) top (tQ C).
 Proof.
-  intros m top C HC. eapply wfs_head; [reflexivity|].
+  intros m top C HC. apply wfs_head; [cbn; lia|].
   apply wf_plain_class; [exact HC | discriminate].
 Qed.
 
-Definition ΔQ2 : tv_env := mk_tv_env [] [ROObject; ROObject] AbstractState.
+Definition ΔQ2 : tv_env := mk_tv_env [] [] AbstractState 2.
 
 Lemma wf_tQ_2 : forall top, wf_stype CT ΔQ2 top (tQ 1).
 Proof.
-  intros top. eapply wfs_head; [reflexivity|].
+  intros top. apply wfs_head; [cbn; lia|].
   apply wf_plain_class; [lia | discriminate].
 Qed.
 
 Lemma wf_tQ2_2 : forall top, wf_stype CT ΔQ2 top (tQ2 1).
 Proof.
-  intros top. eapply wfs_head; [reflexivity|].
+  intros top. apply wfs_head; [cbn; lia|].
   apply wf_plain_class; [lia | discriminate].
 Qed.
 
@@ -379,8 +390,8 @@ Lemma sub_tQ_refl : forall Δ C, qualified_type_subtype CT Δ (tQ C) (tQ C).
 Proof. intros. apply qtype_head_args. constructor. Qed.
 
 (** [id] is a readonly-state method.  Its signature writes no mutable
-    position: [[Q]Box] is checked through the bound of [Q], which is
-    [@RO Object]. *)
+    position: [[Q]Box] is checked through its readonly view
+    [@RO Box]. *)
 Lemma wf_id : wf_method CT 3 id_def.
 Proof.
   unfold wf_method. cbn.
@@ -388,8 +399,8 @@ Proof.
   assert (Hwf : wf_senv CT (ΔQ ReadonlyState) [TClass RO 3 []; tQ 1]).
   { split; [cbn; lia|].
     constructor; [wfu|]. constructor; [apply wf_tQ; lia | constructor]. }
-  split; [left; exists RO; reflexivity|].
-  split; [constructor; [split; [exact I | wfu] | constructor]|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
+  split; [constructor|].
   split; [apply wf_tQ; lia|].
   split.
   { exists [TClass RO 3 []; tQ 1], (tQ 1). split; [|split].
@@ -400,7 +411,7 @@ Proof.
   intros _. split.
   - apply nm_class; [discriminate | constructor].
   - constructor; [|constructor].
-    eapply nm_head; [reflexivity | discriminate | constructor].
+    apply nm_head; constructor.
 Qed.
 
 Lemma wf_first : wf_method CT 3 first_def.
@@ -411,10 +422,8 @@ Proof.
   { split; [cbn; lia|].
     constructor; [wfu|]. constructor; [apply wf_tQ_2|].
     constructor; [apply wf_tQ2_2 | constructor]. }
-  split; [left; exists RO; reflexivity|].
-  split.
-  { constructor; [split; [exact I | wfu]|].
-    constructor; [split; [exact I | wfu] | constructor]. }
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
+  split; [constructor|].
   split; [apply wf_tQ_2|].
   split.
   { exists [TClass RO 3 []; tQ 1; tQ2 1], (tQ 1). split; [|split].
@@ -438,8 +447,8 @@ Proof.
   { split; [cbn; lia|].
     constructor; [wfu|]. constructor; [apply wf_tQ; lia|].
     constructor; [wfu | constructor]. }
-  split; [left; exists RO; reflexivity|].
-  split; [constructor; [split; [exact I | wfu] | constructor]|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
+  split; [constructor|].
   split; [wfu|].
   split.
   { exists [TClass RO 3 []; tQ 2; ROObject], ROObject. split; [|split].
@@ -457,7 +466,7 @@ Proof.
   intros _. split.
   - apply nm_class; [discriminate | constructor].
   - constructor; [|constructor].
-    eapply nm_head; [reflexivity | discriminate | constructor].
+    apply nm_head; constructor.
 Qed.
 
 (** [id2] passes its own qualifier parameter on: the call [this.<Q>id(b)]
@@ -474,8 +483,8 @@ Proof.
   { split; [cbn; lia|].
     constructor; [wfu|]. constructor; [apply wf_tQ; lia|].
     constructor; [apply wf_tQ; lia | constructor]. }
-  split; [left; exists RO; reflexivity|].
-  split; [constructor; [split; [exact I | wfu] | constructor]|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
+  split; [constructor|].
   split; [apply wf_tQ; lia|].
   split.
   { exists [TClass RO 3 []; tQ 1; tQ 1], (tQ 1). split; [|split].
@@ -486,27 +495,26 @@ Proof.
           (argtypes := [tQ 1]) (qy := RO) (C := 3) (Ts := []) (D := 3)
           (Vs := []) (mdef := id_def);
           [exact Hwf2 | reflexivity | reflexivity | reflexivity | reflexivity
-          | | | discriminate | | | reflexivity | | | | | apply method_subtyping_refl].
+          | | | discriminate | | | reflexivity | | | | | apply method_subtyping_refl
+          | reflexivity |  | recv_known].
         * eapply FOM_Here; reflexivity.
         * apply si_refl.
-        * constructor; [|constructor].
-          eapply wfs_var; [reflexivity | right; discriminate].
-        * constructor; [exact I | constructor].
-        * constructor; [|constructor]. cbn. split.
-          -- split; [discriminate | exact I].
-          -- intros m. apply qtype_var_bound. reflexivity.
+        * constructor.
+        * constructor.
+        * constructor.
         * cbn. apply sub_tQ_refl.
-        * left. cbn. split; [refl_sub|].
-          left. cbn. split; [discriminate | exact I].
+        * cbn. split; [refl_sub|].
+          cbn. discriminate.
         * constructor; [|constructor]. cbn. split; [apply sub_tQ_refl|].
-          left. exact I.
+          exact I.
+        * constructor; [cbn; lia | constructor].
     - reflexivity.
     - apply sub_tQ_refl. }
   split; [no_override|].
   intros _. split.
   - apply nm_class; [discriminate | constructor].
   - constructor; [|constructor].
-    eapply nm_head; [reflexivity | discriminate | constructor].
+    apply nm_head; constructor.
 Qed.
 
 (** [self] has a receiver of type [[Q]Util] and returns it. *)
@@ -516,8 +524,8 @@ Proof.
   change (method_tv_env CT 3 (msignature self_def)) with (ΔQ ReadonlyState).
   assert (Hwf : wf_senv CT (ΔQ ReadonlyState) [tQ 3]).
   { split; [cbn; lia|]. constructor; [apply wf_tQ; lia | constructor]. }
-  split; [right; exists 0; reflexivity|].
-  split; [constructor; [split; [exact I | wfu] | constructor]|].
+  split; [apply receiver_plain_ok; right; exists 0; reflexivity|].
+  split; [constructor|].
   split; [apply wf_tQ; lia|].
   split.
   { exists [tQ 3], (tQ 3). split; [|split].
@@ -526,7 +534,7 @@ Proof.
     - apply sub_tQ_refl. }
   split; [no_override|].
   intros _. split.
-  - eapply nm_head; [reflexivity | discriminate | constructor].
+  - apply nm_head; constructor.
   - constructor.
 Qed.
 
@@ -541,8 +549,8 @@ Proof.
   assert (Hwf2 : wf_senv CT (ΔQ ReadonlyState) [tQ 3; tQ 3]).
   { split; [cbn; lia|]. constructor; [apply wf_tQ; lia|].
     constructor; [apply wf_tQ; lia | constructor]. }
-  split; [right; exists 0; reflexivity|].
-  split; [constructor; [split; [exact I | wfu] | constructor]|].
+  split; [apply receiver_plain_ok; right; exists 0; reflexivity|].
+  split; [constructor|].
   split; [apply wf_tQ; lia|].
   split.
   { exists [tQ 3; tQ 3], (tQ 3). split; [|split].
@@ -553,38 +561,37 @@ Proof.
           (argtypes := []) (qy := RO) (C := 3) (Ts := []) (D := 3)
           (Vs := []) (mdef := self_def);
           [exact Hwf2 | reflexivity | reflexivity | reflexivity | reflexivity
-          | | | discriminate | | | reflexivity | | | | | apply method_subtyping_refl].
+          | | | discriminate | | | reflexivity | | | | | apply method_subtyping_refl
+          | reflexivity |  | recv_known].
         * eapply FOM_Here; reflexivity.
         * apply si_refl.
-        * constructor; [|constructor].
-          eapply wfs_var; [reflexivity | right; discriminate].
-        * constructor; [exact I | constructor].
-        * constructor; [|constructor]. cbn. split.
-          -- split; [discriminate | exact I].
-          -- intros m. apply qtype_var_bound. reflexivity.
-        * cbn. apply sub_tQ_refl.
-        * left. cbn. split; [apply sub_tQ_refl|]. left. exact I.
         * constructor.
+        * constructor.
+        * constructor.
+        * cbn. apply sub_tQ_refl.
+        * cbn. split; [apply sub_tQ_refl|]. exact I.
+        * constructor.
+        * constructor; [cbn; lia | constructor].
     - reflexivity.
     - apply sub_tQ_refl. }
   split; [no_override|].
   intros _. split.
-  - eapply nm_head; [reflexivity | discriminate | constructor].
+  - apply nm_head; constructor.
   - constructor.
 Qed.
 
 (** A field that is not declared assignable cannot be written through a
     variable whose qualifier is a qualifier parameter, the receiver
     included. *)
-Theorem head_write_untypable : forall CT0 Δ sΓ mt x f y o n C Ts sΓ',
-  static_getType sΓ x = Some (THead o n C Ts) ->
+Theorem head_write_untypable : forall CT0 Δ sΓ mt x f y n C Ts sΓ',
+  static_getType sΓ x = Some (THead n C Ts) ->
   (forall fd, sf_def_rel CT0 C f fd -> assignability fd <> Assignable) ->
   ~ stmt_typing CT0 Δ sΓ mt (SFldWrite x f y) sΓ'.
 Proof.
-  intros CT0 Δ sΓ mt x f y o n C Ts sΓ' Hx Hna Htyp.
+  intros CT0 Δ sΓ mt x f y n C Ts sΓ' Hx Hna Htyp.
   inversion Htyp; subst.
   rewrite Hx in Hget_x. injection Hget_x as <-.
-  simpl in Hub. destruct (tv_bound Δ o n); [|discriminate].
+  simpl in Hub. destruct (Nat.ltb n (qparams Δ)); [|discriminate].
   injection Hub as <- <- <-.
   apply (Hna _ Hfld_def).
   destruct mt, (assignability fieldT); simpl in Hassignable;
@@ -599,7 +606,7 @@ Qed.
     [@Mut ..].  A method whose receiver is [@Mut ..] cannot be overridden by
     one whose receiver is [[Q]..]. *)
 Definition seen (T : qualified_type) : qualified_type :=
-  member_type AbstractState (qc2q RDM_c) [] (method_var_types 1) T.
+  member_type AbstractState (qc2q RDM_c) [] [] (qvar_args 1) T.
 
 Example override_head_by_head :
   qualified_type_subtype CT (ΔQ ReadonlyState)
@@ -609,14 +616,14 @@ Proof. cbn. apply sub_tQ_refl. Qed.
 Example override_head_by_ro :
   qualified_type_subtype CT (ΔQ ReadonlyState)
     (rebase (seen (tQ 3)) (TClass RO 3 [])) (TClass RO 3 []).
-Proof. cbn. eapply qtype_head_ro; [reflexivity | constructor]. Qed.
+Proof. cbn. apply qtype_head_ro; [cbn; lia | constructor]. Qed.
 
 Example override_head_by_mut_rejected :
   ~ qualified_type_subtype CT (ΔQ ReadonlyState)
       (rebase (seen (tQ 3)) (TClass Mut 3 [])) (TClass Mut 3 []).
 Proof.
   cbn. intros H.
-  destruct (proj2 (sub_head_inv _ _ _ _ H) _ _ _ _ eq_refl)
+  destruct (proj2 (sub_head_inv _ _ _ _ H) _ _ _ eq_refl)
     as [(D & Us & E) | (D & Us & E)]; discriminate.
 Qed.
 
@@ -657,8 +664,8 @@ Proof.
   change (method_tv_env CT 4 (msignature sub_self_def)) with (ΔQ ReadonlyState).
   assert (Hwf : wf_senv CT (ΔQ ReadonlyState) [tQ 4]).
   { split; [cbn; lia|]. constructor; [apply wf_tQ; lia | constructor]. }
-  split; [right; exists 0; reflexivity|].
-  split; [constructor; [split; [exact I | wfu] | constructor]|].
+  split; [apply receiver_plain_ok; right; exists 0; reflexivity|].
+  split; [constructor|].
   split; [apply wf_tQ; lia|].
   split.
   { exists [tQ 4], (tQ 4). split; [|split].
@@ -667,15 +674,15 @@ Proof.
     - apply sub_tQ_refl. }
   split.
   { overrides self_def.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split.
     - (* the result: [Q]Sub is a [Q]Util *)
       apply qtype_head_hier. eapply si_step; [reflexivity|]. cbn. apply si_refl.
     - split; [constructor|].
       (* the receiver: the overridden [Q]Util, seen on Sub, is [Q]Sub *)
-      apply sub_tQ_refl. }
+      split; [apply sub_tQ_refl | radmit_plain]. }
   intros _. split.
-  - eapply nm_head; [reflexivity | discriminate | constructor].
+  - apply nm_head; constructor.
   - constructor.
 Qed.
 
@@ -686,8 +693,8 @@ Proof.
   change (method_tv_env CT 4 (msignature sub_self2_def)) with (ΔQ ReadonlyState).
   assert (Hwf : wf_senv CT (ΔQ ReadonlyState) [TClass RO 4 []]).
   { split; [cbn; lia|]. constructor; [wfu | constructor]. }
-  split; [left; exists RO; reflexivity|].
-  split; [constructor; [split; [exact I | wfu] | constructor]|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
+  split; [constructor|].
   split; [apply wf_tQ; lia|].
   split.
   { exists [TClass RO 4 []; tQ 3], (tQ 3). split; [|split].
@@ -697,11 +704,11 @@ Proof.
     - apply sub_tQ_refl. }
   split.
   { overrides self2_def.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [apply sub_tQ_refl|].
     split; [constructor|].
     (* the receiver: the overridden [Q]Util, seen on Sub, is a readonly Sub *)
-    eapply qtype_head_ro; [reflexivity | constructor]. }
+    split; [apply qtype_head_ro; [cbn; lia | constructor] | radmit_plain]. }
   intros _. split.
   - apply nm_class; [discriminate | constructor].
   - constructor.
@@ -715,7 +722,7 @@ Example sub_self_mut_receiver_rejected :
       (TClass Mut 4 []).
 Proof.
   cbn. intros H.
-  destruct (proj2 (sub_head_inv _ _ _ _ H) _ _ _ _ eq_refl)
+  destruct (proj2 (sub_head_inv _ _ _ _ H) _ _ _ eq_refl)
     as [(D & Us & E) | (D & Us & E)]; discriminate.
 Qed.
 
@@ -789,40 +796,41 @@ Lemma call_id_typed : forall sΓ x z qa nm md,
   static_getType sΓ z = Some (TClass qa 1 []) ->
   x <> 0 ->
   stmt_typing CT Δ0 sΓ AbstractState
-    (SCall x nm 3 [TClass qa 0 []] [z]) sΓ.
+    (SCall x nm 3 [] [QLit qa] [z]) sΓ.
 Proof.
   intros sΓ x z qa nm md Hmd Hwf Hqa Hx Hu Hz Hx0.
   assert (Hnl : qa <> Lost) by (destruct Hqa; subst; discriminate).
   assert (Hfind : FindMethodWithName CT 3 nm 3 md).
   { destruct Hmd as [[-> ->] | [-> ->]]; eapply FOM_Here; reflexivity. }
   assert (Hsig : mscope (msignature md) = ReadonlyState /\
-                 mtparams (msignature md) = [ROObject] /\
+                 mtparams (msignature md) = [] /\
+                 mqparams (msignature md) = 1 /\
                  mret (msignature md) = tQ 1 /\
                  mreceiver (msignature md) = TClass RO 3 [] /\
                  mparams (msignature md) = [tQ 1]).
   { destruct Hmd as [[-> ->] | [-> ->]]; repeat split; reflexivity. }
-  destruct Hsig as (Hsc & Htp & Hrt & Hrc & Hpm).
+  destruct Hsig as (Hsc & Htp & Hqp & Hrt & Hrc & Hpm).
   eapply ST_Call with (Tx := TClass qa 1 []) (Ty := MutUtil)
     (argtypes := [TClass qa 1 []])
     (qy := Mut) (C := 3) (Ts := []) (D := 3) (Vs := []) (mdef := md);
     [exact Hwf | exact Hx | exact Hu | | reflexivity
-    | exact Hfind | | exact Hx0 | | | rewrite Htp; reflexivity | | | | | ];
+    | exact Hfind | | exact Hx0 | | | rewrite Htp; reflexivity | | | | |
+    | rewrite Hqp; reflexivity |  | rewrite Hrc; recv_known];
     try rewrite Htp; try rewrite Hrt; try rewrite Hrc; try rewrite Hpm;
     try rewrite Hsc; try apply method_rs_as.
   - cbn. rewrite Hz. reflexivity.
   - apply si_refl.
-  - constructor; [|constructor]. apply wf_use; [lia | exact Hnl].
-  - constructor; [|constructor]. cbn. split; [exact Hnl | exact I].
-  - constructor; [|constructor]. cbn. split.
-    + split; [discriminate | exact I].
-    + intros m. apply sub_to_ROObject.
+  - constructor.
+  - constructor.
+  - constructor.
   - cbn. apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
-  - left. cbn. split.
+  - cbn. split.
     + apply qtype_qual; [cbn; lia | qs | constructor].
-    + left. cbn. split; [discriminate | exact I].
+    + cbn. discriminate.
   - constructor; [|constructor]. cbn. split.
     + apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
-    + left. cbn. split; [exact Hnl | exact I].
+    + cbn. split; [exact Hnl | exact I].
+  - constructor; [exact Hnl | constructor].
 Qed.
 
 (** A call of [self] or [self2] on a receiver of qualifier [qa], with the
@@ -834,7 +842,7 @@ Lemma call_self_typed : forall sΓ x y qa nm md,
   static_getType sΓ x = Some (TClass qa 3 []) ->
   static_getType sΓ y = Some (TClass qa 3 []) ->
   x <> 0 ->
-  stmt_typing CT Δ0 sΓ AbstractState (SCall x nm y [TClass qa 0 []] []) sΓ.
+  stmt_typing CT Δ0 sΓ AbstractState (SCall x nm y [] [QLit qa] []) sΓ.
 Proof.
   intros sΓ x y qa nm md Hmd Hwf Hqa Hx Hy Hx0.
   assert (Hnl : qa <> Lost) by (destruct Hqa; subst; discriminate).
@@ -843,30 +851,31 @@ Proof.
   assert (Hfind : FindMethodWithName CT 3 nm 3 md).
   { destruct Hmd as [[-> ->] | [-> ->]]; eapply FOM_Here; reflexivity. }
   assert (Hsig : mscope (msignature md) = ReadonlyState /\
-                 mtparams (msignature md) = [ROObject] /\
+                 mtparams (msignature md) = [] /\
+                 mqparams (msignature md) = 1 /\
                  mret (msignature md) = tQ 3 /\
                  mreceiver (msignature md) = tQ 3 /\
                  mparams (msignature md) = []).
   { destruct Hmd as [[-> ->] | [-> ->]]; repeat split; reflexivity. }
-  destruct Hsig as (Hsc & Htp & Hrt & Hrc & Hpm).
+  destruct Hsig as (Hsc & Htp & Hqp & Hrt & Hrc & Hpm).
   eapply ST_Call with (Tx := TClass qa 3 []) (Ty := TClass qa 3 [])
     (argtypes := [])
     (qy := qa) (C := 3) (Ts := []) (D := 3) (Vs := []) (mdef := md);
     [exact Hwf | exact Hx | exact Hy | reflexivity | reflexivity
-    | exact Hfind | | exact Hx0 | | | rewrite Htp; reflexivity | | | | | ];
+    | exact Hfind | | exact Hx0 | | | rewrite Htp; reflexivity | | | | |
+    | rewrite Hqp; reflexivity |  | rewrite Hrc; recv_known];
     try rewrite Htp; try rewrite Hrt; try rewrite Hrc; try rewrite Hpm;
     try rewrite Hsc; try apply method_rs_as.
   - apply si_refl.
-  - constructor; [|constructor]. apply wf_use; [lia | exact Hnl].
-  - constructor; [|constructor]. cbn. split; [exact Hnl | exact I].
-  - constructor; [|constructor]. clear Hnl Hvr Hx Hy.
-    destruct Hqa as [-> | ->]; cbn;
-      (split; [split; [discriminate | exact I] | intros m; apply sub_to_ROObject]).
-  - cbn. apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
-  - left. cbn. split.
-    + apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
-    + left. cbn. split; [exact Hnl | exact I].
   - constructor.
+  - constructor.
+  - constructor.
+  - cbn. apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
+  - cbn. split.
+    + apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
+    + cbn. exact Hnl.
+  - constructor.
+  - constructor; [exact Hnl | constructor].
 Qed.
 
 Lemma prefix_typed :
@@ -911,7 +920,7 @@ Proof.
       | apply collect_Cell | | ].
     - constructor; [|constructor]. cbn. split.
       + refl_sub.
-      + left. cbn. split; [discriminate | exact I].
+      + cbn. split; [discriminate | exact I].
     - cbn. refl_sub. }
   ty_seq.
   { eapply ST_New with (Tx := ImmUtil) (argtypes := []) (fds := []);
@@ -940,20 +949,20 @@ Proof.
       (argtypes := [MutBox; ImmBox])
       (qy := Mut) (C := 3) (Ts := []) (D := 3) (Vs := []) (mdef := first_def);
       [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
-      | | | discriminate | | | reflexivity | | | | | apply method_subtyping_refl].
+      | | | discriminate | | | reflexivity | | | | | apply method_subtyping_refl
+          | reflexivity |  | recv_known].
     - eapply FOM_Here; reflexivity.
     - apply si_refl.
-    - constructor; [wfu|]. constructor; [wfu | constructor].
-    - constructor; [cbn; split; [discriminate | exact I]|].
-      constructor; [cbn; split; [discriminate | exact I] | constructor].
-    - constructor; [|constructor; [|constructor]]; cbn; (split;
-        [split; [discriminate | exact I] | intros m; apply sub_to_ROObject]).
+    - constructor.
+    - constructor.
+    - constructor.
     - cbn. refl_sub.
-    - left. cbn. split.
+    - cbn. split.
       + apply qtype_qual; [cbn; lia | qs | constructor].
-      + left. cbn. split; [discriminate | exact I].
+      + cbn. discriminate.
     - constructor; [|constructor; [|constructor]]; cbn; (split;
-        [refl_sub | left; cbn; split; [discriminate | exact I]]). }
+        [refl_sub | cbn; split; [discriminate | exact I]]).
+    - constructor; [discriminate|]. constructor; [discriminate | constructor]. }
   (* i3 = u.<@Imm>id2(i): the callee passes its own parameter on *)
   ty_seq.
   { apply call_id_typed with (qa := Imm) (md := id2_def);
@@ -982,21 +991,21 @@ Proof.
   eapply ST_Call with (Tx := ROObject) (Ty := MutUtil) (argtypes := [MutCell])
     (qy := Mut) (C := 3) (Ts := []) (D := 3) (Vs := []) (mdef := peek_def);
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
-    | | | discriminate | | | reflexivity | | | | | apply method_rs_as].
+    | | | discriminate | | | reflexivity | | | | | apply method_rs_as
+    | reflexivity |  | recv_known].
   - eapply FOM_Here; reflexivity.
   - apply si_refl.
-  - constructor; [wfu | constructor].
-  - constructor; [|constructor]. cbn. split; [discriminate | exact I].
-  - constructor; [|constructor]. cbn. split.
-    + split; [discriminate | exact I].
-    + intros m. apply sub_to_ROObject.
+  - constructor.
+  - constructor.
+  - constructor.
   - cbn. refl_sub.
-  - left. cbn. split.
+  - cbn. split.
     + apply qtype_qual; [cbn; lia | qs | constructor].
-    + left. cbn. split; [discriminate | exact I].
+    + cbn. discriminate.
   - constructor; [|constructor]. cbn. split.
     + refl_sub.
-    + left. cbn. split; [discriminate | exact I].
+    + cbn. split; [discriminate | exact I].
+  - constructor; [discriminate | constructor].
 Qed.
 
 (** The call of [self] on [su], whose static type is [@Mut Util]: it is
@@ -1024,13 +1033,13 @@ Qed.
     parameter: from [[Q]C<..>] only [[Q]..] types and readonly class types
     are reached. *)
 Definition head_or_ro (T : qualified_type) : Prop :=
-  (exists o n C Ts, T = THead o n C Ts) \/ (exists C Ts, T = TClass RO C Ts).
+  (exists n C Ts, T = THead n C Ts) \/ (exists C Ts, T = TClass RO C Ts).
 
 Lemma head_or_ro_closed : forall CT0 Δ T U,
   qualified_type_subtype CT0 Δ T U -> head_or_ro T -> head_or_ro U.
 Proof.
   intros CT0 Δ T U H.
-  induction H; intros [(o0 & n0 & C0 & Ts0 & E) | (C0 & Ts0 & E)];
+  induction H; intros [(n0 & C0 & Ts0 & E) | (C0 & Ts0 & E)];
     try discriminate.
   - injection E as -> -> ->. right. inversion Hqsub; subst; eauto.
   - injection E as -> -> ->. right. eauto.
@@ -1046,40 +1055,83 @@ Qed.
 (** So a value held at [[Q]Box] cannot be passed where [@Mut Box] or
     [@Imm Box] is expected: the body of a qualifier-polymorphic method cannot
     assume what [Q] stands for. *)
-Theorem head_not_mut : forall Δ o n C Ts q0 D Us,
+Theorem head_not_mut : forall Δ n C Ts q0 D Us,
   q0 <> RO ->
-  ~ qualified_type_subtype CT Δ (THead o n C Ts) (TClass q0 D Us).
+  ~ qualified_type_subtype CT Δ (THead n C Ts) (TClass q0 D Us).
 Proof.
-  intros Δ o n C Ts q0 D Us Hq H.
+  intros Δ n C Ts q0 D Us Hq H.
   apply head_or_ro_closed in H; [|left; eauto 6].
-  destruct H as [(o1 & n1 & C1 & Ts1 & E) | (C1 & Ts1 & E)]; [discriminate|].
+  destruct H as [(n1 & C1 & Ts1 & E) | (C1 & Ts1 & E)]; [discriminate|].
   injection E as -> _ _. congruence.
+Qed.
+
+(** A qualifier parameter is not a type: inside a method whose only
+    parameter is the qualifier parameter [Q], there is no type variable to
+    write, so [Q] cannot be used as the type of a variable or as a type
+    argument. *)
+Example qparam_is_not_a_type : forall m top u o n,
+  ~ wf_stype CT (ΔQ m) top (TVar u o n).
+Proof.
+  intros m top u o n H. inversion H; subst.
+  destruct o; destruct n; discriminate.
+Qed.
+
+(** Only a declared qualifier parameter may be written in the brackets. *)
+Example undeclared_qparam_rejected : forall m top C Ts,
+  ~ wf_stype CT (ΔQ m) top (THead 1 C Ts).
+Proof.
+  intros m top C Ts H. inversion H; subst. cbn in *. lia.
+Qed.
+
+(** A qualifier argument is a qualifier or a qualifier parameter in scope;
+    [@Lost] is not accepted, and neither is a parameter that is not
+    declared. *)
+Example qarg_lost_rejected : forall Δ, ~ qarg_ok Δ (QLit Lost).
+Proof. intros Δ H. apply H. reflexivity. Qed.
+
+Example qarg_undeclared_rejected : ~ qarg_ok Δ0 (QVar 0).
+Proof. cbn. lia. Qed.
+
+(** A call must supply exactly as many qualifier arguments as the method
+    declares: [u.id(m)] without one is not typable. *)
+Example call_without_qarg_untypable : forall sΓ sΓ',
+  static_getType sΓ 3 = Some MutUtil ->
+  ~ stmt_typing CT Δ0 sΓ AbstractState (SCall 4 id_name 3 [] [] [1]) sΓ'.
+Proof.
+  intros sΓ sΓ' Hu H. inversion H; subst.
+  rewrite Hu in Hget_y. injection Hget_y as <-.
+  cbn in Hub. injection Hub as <- <- <-.
+  assert (Hh : FindMethodWithName CT 3 id_name 3 id_def)
+    by (eapply FOM_Here; reflexivity).
+  destruct (find_method_with_name_deterministic _ _ _ _ _ _ _ Hfind_m Hh)
+    as [-> ->].
+  cbn in Hqargs_len. discriminate.
 Qed.
 
 (* ------------------EVALUATION------------------*)
 
-Definition rΓ0 : r_env := mkr_env [Iot 0] [] [].
+Definition rΓ0 : r_env := mkr_env [Iot 0] [] [] [].
 Definition h0 : heap := [mkObj (mkruntime_type Mut_r 0 []) []].
 
 (* Before the call of peek: r is still null *)
 Definition rΓA : r_env :=
   mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 1; Iot 2; Iot 4; Iot 5; Null_a;
-           Iot 1; Iot 2; Null_a; Iot 6; Iot 6; Iot 7; Null_a] [] [].
+           Iot 1; Iot 2; Null_a; Iot 6; Iot 6; Iot 7; Null_a] [] [] [].
 
 (* After the call of peek: r is the cell's item *)
 Definition rΓB : r_env :=
   mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 1; Iot 2; Iot 4; Iot 5; Iot 4;
-           Iot 1; Iot 2; Null_a; Iot 6; Iot 6; Iot 7; Null_a] [] [].
+           Iot 1; Iot 2; Null_a; Iot 6; Iot 6; Iot 7; Null_a] [] [] [].
 
 (* After the call of Sub.self: u3 is su *)
 Definition rΓfinal : r_env :=
   mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 1; Iot 2; Iot 4; Iot 5; Iot 4;
-           Iot 1; Iot 2; Iot 3; Iot 6; Iot 6; Iot 7; Iot 7] [] [].
+           Iot 1; Iot 2; Iot 3; Iot 6; Iot 6; Iot 7; Iot 7] [] [] [].
 
 (* After the call of self: u2 is u *)
 Definition rΓC : r_env :=
   mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 1; Iot 2; Iot 4; Iot 5; Iot 4;
-           Iot 1; Iot 2; Iot 3; Iot 6; Iot 6; Iot 7; Null_a] [] [].
+           Iot 1; Iot 2; Iot 3; Iot 6; Iot 6; Iot 7; Null_a] [] [] [].
 
 (* The cell is at location 5 and its item is the object at location 4 *)
 Definition hfinal : heap :=
@@ -1200,12 +1252,12 @@ Proof.
   eapply SBS_Seq; [apply callS_eval | apply callO_eval].
 Qed.
 
-(** Inside the first call the frame's argument for [Q] is [@Mut Object], and
+(** Inside the first call the frame's argument for [Q] is [@Mut], and
     the parameter's type [[Q]Box] is read as [@Mut Box]; inside the second it
     is read as [@Imm Box]. *)
 Example runtime_reading :
-  dyn Mut [] [RClass Mut 0 []] (tQ 1) = RClass Mut 1 [] /\
-  dyn Mut [] [RClass Imm 0 []] (tQ 1) = RClass Imm 1 [].
+  dyn Mut [] [] [Mut] (tQ 1) = RClass Mut 1 [] /\
+  dyn Mut [] [] [Imm] (tQ 1) = RClass Imm 1 [].
 Proof. split; reflexivity. Qed.
 
 (* ------------------THE THEOREMS APPLY------------------*)
@@ -1226,7 +1278,7 @@ Proof.
   - split; simpl; [lia|]. constructor; [wfu | constructor].
   - exists 0, (mkObj (mkruntime_type Mut_r 0 []) []), 0. simpl.
     refine (conj eq_refl (conj eq_refl (conj eq_refl (conj (rsi_refl _ _ _ _)
-             (conj (Forall_nil _) (conj (Forall_nil _) (conj _ _))))))); constructor.
+             (conj (Forall_nil _) (conj (conj (Forall_nil _) (Forall_nil _)) (conj _ _))))))); constructor.
   - intros ι qcontext Hthis Hmut i Hi sqt Hnth.
     simpl in Hi. assert (i = 0) by lia. subst i.
     simpl in Hthis. inversion Hthis; subst ι.
@@ -1247,45 +1299,20 @@ Qed.
 
 (* ------------------THE READONLY-STATE THEOREM APPLIES------------------*)
 
-(** The only type parameters in scope of the two readonly-state methods are
-    their qualifier parameters, bounded by [@RO Object]. *)
+(** No readonly-state method has a type parameter in scope: a qualifier
+    parameter is not a type parameter and has no bound. *)
 Theorem poly_ct_clean_bounds : clean_bounds_ct CT.
 Proof.
   intros C def md Hfind Hin Hrs.
-  assert (Hq : GhostFit.nomut_bounds (ΔQ ReadonlyState)).
-  { intros o n B Hb. destruct o; destruct n as [|n]; cbn in Hb;
-      try discriminate; [|destruct n; discriminate].
-    injection Hb as <-. split; [exact I|].
-    apply nm_class; [discriminate | constructor]. }
+  assert (Hq : forall m k, GhostFit.nomut_bounds (mk_tv_env [] [] m k)).
+  { intros m k o n B Hb. destruct o; destruct n; discriminate. }
   destruct C as [|[|[|[|[|C]]]]]; cbn in Hfind;
-    [| | | |injection Hfind as <-; cbn in Hin;
-            destruct Hin as [<- | [<- | []]]; exact Hq|].
-  - injection Hfind as <-. destruct Hin.
-  - injection Hfind as <-. destruct Hin.
-  - injection Hfind as <-. destruct Hin.
-  - injection Hfind as <-. cbn in Hin.
-    destruct Hin as [<- | [<- | [<- | [<- | [<- | [<- | []]]]]]].
-    + intros o n B Hb. destruct o; destruct n as [|n]; cbn in Hb;
-        try discriminate; [|destruct n; discriminate].
-      injection Hb as <-. split; [exact I|].
-      apply nm_class; [discriminate | constructor].
-    + destruct Hrs; discriminate.
-    + intros o n B Hb. destruct o; destruct n as [|n]; cbn in Hb;
-        try discriminate; [|destruct n; discriminate].
-      injection Hb as <-. split; [exact I|].
-      apply nm_class; [discriminate | constructor].
-    + intros o n B Hb. destruct o; destruct n as [|n]; cbn in Hb;
-        try discriminate; [|destruct n; discriminate].
-      injection Hb as <-. split; [exact I|].
-      apply nm_class; [discriminate | constructor].
-    + intros o n B Hb. destruct o; destruct n as [|n]; cbn in Hb;
-        try discriminate; [|destruct n; discriminate].
-      injection Hb as <-. split; [exact I|].
-      apply nm_class; [discriminate | constructor].
-    + intros o n B Hb. destruct o; destruct n as [|n]; cbn in Hb;
-        try discriminate; [|destruct n; discriminate].
-      injection Hb as <-. split; [exact I|].
-      apply nm_class; [discriminate | constructor].
+    try (injection Hfind as <-; cbn in Hin).
+  - destruct Hin.
+  - destruct Hin.
+  - destruct Hin.
+  - destruct Hin as [<- | [<- | [<- | [<- | [<- | [<- | []]]]]]]; apply Hq.
+  - destruct Hin as [<- | [<- | []]]; apply Hq.
   - destruct C; discriminate.
 Qed.
 
@@ -1340,7 +1367,7 @@ Theorem callP_preserves : forall rΓ' h',
 Proof.
   intros rΓ' h' Heval.
   eapply (readonly_state_preservation_final CT Δ0 sΓfinal AbstractState rΓA
-            hfinal 8 peek_name 3 [MutObject] [7] sΓfinal rΓ' h' 3 3 3 peek_def
+            hfinal 8 peek_name 3 [] [QLit Mut] [7] sΓfinal rΓ' h' 3 3 3 peek_def
             poly_ct_clean_bounds config_A rsfp_A callP_typed Heval).
   - reflexivity.
   - reflexivity.
@@ -1390,7 +1417,7 @@ Theorem callS_preserves_item : forall rΓ' h',
 Proof.
   intros rΓ' h' Heval.
   destruct (readonly_state_preservation_final CT Δ0 sΓfinal AbstractState rΓB
-              hfinal 11 self_name 3 [MutObject] [] sΓfinal rΓ' h' 3 3 3 self_def
+              hfinal 11 self_name 3 [] [QLit Mut] [] sΓfinal rΓ' h' 3 3 3 self_def
               poly_ct_clean_bounds config_B rsfp_B callS_typed Heval
               eq_refl eq_refl ltac:(eapply FOM_Here; reflexivity)
               (or_introl eq_refl)
@@ -1424,7 +1451,7 @@ Theorem callO_preserves_item : forall rΓ' h',
 Proof.
   intros rΓ' h' Heval.
   destruct (readonly_state_preservation_final CT Δ0 sΓfinal AbstractState rΓC
-              hfinal 15 self_name 14 [MutObject] [] sΓfinal rΓ' h' 7 4 4
+              hfinal 15 self_name 14 [] [QLit Mut] [] sΓfinal rΓ' h' 7 4 4
               sub_self_def
               poly_ct_clean_bounds config_C rsfp_C callO_typed Heval
               eq_refl eq_refl ltac:(eapply FOM_Here; reflexivity)
@@ -1443,3 +1470,4 @@ Print Assumptions callP_preserves_item.
 Print Assumptions callS_preserves_item.
 Print Assumptions callO_preserves_item.
 Print Assumptions head_write_untypable.
+Print Assumptions call_without_qarg_untypable.

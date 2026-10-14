@@ -32,7 +32,7 @@ Proof.
   - (* call *)
     subst.
     destruct (call_entry _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-                Hwf Htype Hval_y Hbase Hfind Hargs Hframe)
+                _ Hwf Htype Hval_y Hbase Hfind Hargs Hframe)
       as (ι & o & oy & Tx & Hthis & Hobj & Hoy & Hget_x & Hx & -> &
           Hfb & Hwm & Hcfg & Hthis' & Hret & _).
     pose proof Hwm as
@@ -40,6 +40,7 @@ Proof.
     pose proof (IHHeval eq_refl _ _ _ _ Hcfg Hbody) as Hcfg''.
     destruct (eval_stmt_frame _ _ _ _ _ _ Heval _ _ _ _ Hbody)
       as (Hth_eq & Hca_eq & Hma_eq).
+    pose proof (eval_stmt_qargs _ _ _ _ _ _ _ Heval eq_refl) as Hqa_eq.
     pose proof (eval_stmt_heap_ext _ _ _ _ _ _ _ Heval) as Hext.
     destruct (heap_ext_getObj _ _ _ _ Hext Hoy) as (oy' & Hoy' & Hrt_oy).
     destruct (heap_ext_getObj _ _ _ _ Hext Hobj) as (o' & Hobj' & Hrt_o).
@@ -52,9 +53,10 @@ Proof.
     rewrite Hretval in Hrv.
     assert (Hrv' : val_typable CT h' retval
                      (mret (msignature mdef)) (rqtype (rt_type oy'))
-                     (cargs rΓ'') (margs rΓ'')).
+                     (cargs rΓ'') (margs rΓ'') (qargs rΓ'')).
     { eapply val_typable_subtype; eauto. }
-    rewrite Hca_eq in Hrv'. rewrite Hma_eq in Hrv'. rewrite Hrt_oy in Hrv'.
+    rewrite Hca_eq in Hrv'. rewrite Hma_eq in Hrv'. rewrite Hqa_eq in Hrv'.
+    rewrite Hrt_oy in Hrv'.
     apply Hret in Hrv'.
     pose proof Hcfg'' as (_ & Hheap' & _).
     pose proof (wf_r_config_heap_ext _ _ _ _ _ _ Hwf Hext Hheap') as Hwf'.

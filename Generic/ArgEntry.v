@@ -39,7 +39,7 @@ Proof.
   - unfold oview. eapply v_step; [exact Hparent|].
     replace (hstep false (qr2q q) (fun q0 => q0) LOut
                (pclassf CT C (map lift Rs)) (map lift Rs) Ss)
-      with (map lift (map (dyn qo Rs []) Ss)); [apply IH; auto|].
+      with (map lift (map (dyn qo Rs [] []) Ss)); [apply IH; auto|].
     subst qo. rewrite hstep_obj.
     change (hframe (qr2q q) LOut (pclassf CT C (map lift Rs)) (map lift Rs))
       with (hfr CT q LOut C (map lift Rs)).
@@ -130,7 +130,7 @@ Definition rsfitp_frame (CT : class_table) (Δ : tv_env) (rΓ : r_env) (h : heap
   forall ι o,
     get_this_var_mapping (vars rΓ) = Some ι ->
     runtime_getObj h ι = Some o ->
-    forall L, frame_fitsp CT L Δ (LF (rqtype (rt_type o)) (cargs rΓ) (margs rΓ)).
+    forall L, frame_fitsp CT L Δ (LF (rqtype (rt_type o)) (cargs rΓ) (margs rΓ) (qargs rΓ)).
 
 (** Every object of the heap satisfies the per-object invariant with every
     label outside, and its class can have objects. *)
@@ -147,18 +147,22 @@ Definition rsfitp_heap (CT : class_table) (h : heap) : Prop :=
     methods only.  The entry state satisfies its bounds in the protected
     reading: the earlier form ([RSF], kept by every well-typed execution)
     and the payload form for the heap and for the callee's activation. *)
-Theorem rs_ts_call_preservation_payload :
-  forall CT Δ sΓ mt rΓ h x m y Us zs sΓ' rΓ' h' ly cy D mdef,
+(** The body of a selected readonly-state or transitive-state method, however
+    it ends, leaves the protected fields of the entry heap unchanged. *)
+Lemma rs_ts_body_preservation_payload :
+  forall CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' ly cy D mdef valsc rΓc res rΓ' h',
     clean_bounds_ct CT ->
     wf_r_config CT Δ sΓ rΓ h ->
     RSF CT Δ rΓ h ->
     rsfitp_heap CT h ->
     (forall vals rΓc,
        runtime_lookup_list rΓ zs = Some vals ->
-       callee_env CT rΓ h ly D Us vals rΓc ->
+       callee_env CT rΓ h ly D Us Qs vals rΓc ->
        rsfitp_frame CT (method_tv_env CT D (msignature mdef)) rΓc h) ->
-    stmt_typing CT Δ sΓ mt (SCall x m y Us zs) sΓ' ->
-    eval_stmt CT rΓ h (SCall x m y Us zs) OK rΓ' h' ->
+    stmt_typing CT Δ sΓ mt (SCall x m y Us Qs zs) sΓ' ->
+    runtime_lookup_list rΓ zs = Some valsc ->
+    callee_env CT rΓ h ly D Us Qs valsc rΓc ->
+    eval_stmt CT rΓc h (mbody_stmt (mbody mdef)) res rΓ' h' ->
     runtime_getVal rΓ y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m D mdef ->
@@ -170,16 +174,12 @@ Theorem rs_ts_call_preservation_payload :
         runtime_getObj h' l = Some (mkObj (mkruntime_type qr C Rs) vals') /\
         nth_error vals f = nth_error vals' f.
 Proof.
-  intros CT Δ sΓ mt rΓ h x m y Us zs sΓ' rΓ' h' ly cy D mdef
-    Hcl Hwf HR Hhp Hfp Htype Heval Hvy Hbase Hfind Hrs l qr C Rs vals f Hl Hprot.
+  intros CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' ly cy D mdef valsc rΓc res rΓ' h'
+    Hcl Hwf HR Hhp Hfp Htype Hargs Hframe Heval_body Hvy Hbase Hfind Hrs
+    l qr C Rs vals f Hl Hprot.
   pose proof Hwf as (Hct & Hheap & _).
-  inversion Heval; subst.
-  rewrite Hvy in Hval_y. inversion Hval_y; subst ly0. clear Hval_y.
-  rewrite Hbase in Hbase0. inversion Hbase0; subst cy0. clear Hbase0.
-  destruct (find_method_with_name_deterministic _ _ _ _ _ _ _ Hfind Hfind0)
-    as [<- <-].
   destruct (call_entry _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-              Hwf Htype Hvy Hbase Hfind Hargs Hframe)
+              _ Hwf Htype Hvy Hbase Hfind Hargs Hframe)
     as (ι & o & oy & Tx & _ & _ & _ & _ & _ & _ & _ & Hwm & Hcfg & _).
   destruct (find_method_In _ _ _ _ _ Hfind) as (defD & HfD & HinD).
   pose proof (Hcl _ _ _ HfD HinD Hrs) as Hcb'.
@@ -190,15 +190,18 @@ Proof.
   set (P := fun l0 : Loc => l0 < dom h).
   assert (HF : frameP CT
                  (mreceiver (msignature mdef) :: mparams (msignature mdef))
-                 rΓ'0 h (g_init h) [0] 1 0 false (rqtype (rt_type o2))
-                 (map lift (cargs rΓ'0)) (map lift (margs rΓ'0))).
+                 rΓc h (g_init h) [0] 1 0 false (rqtype (rt_type o2))
+                 (map lift (cargs rΓc)) (map lift (margs rΓc)) (qlift (qargs rΓc))).
   { constructor.
     - left. reflexivity.
     - exists ι2, o2. refine (conj Hth2 (conj Hobj2 (conj eq_refl _))).
       discriminate.
     - apply map_erase_lift.
     - apply map_erase_lift.
+    - apply map_fst_qlift.
     - split; apply Forall_lbound_lift.
+    - unfold qlift. rewrite Forall_map. apply Forall_forall.
+      intros q0 _. simpl. auto.
     - intros x0 T v HT Hv.
       pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hcfg Hth2 Hobj2 HT) as Hty.
       rewrite Hv in Hty.
@@ -207,56 +210,120 @@ Proof.
         - inversion HT; subst. exact Hnm_recv.
         - rewrite Forall_forall in Hnm_par. apply Hnm_par.
           eapply nth_error_In; eauto. }
-      rewrite (ldyn_lift_act _ _ _ _ _ _ HnmT).
+      rewrite (ldyn_lift_act _ _ _ _ _ _ _ HnmT).
       apply lhasp_lift. exact Hty. }
-  pose proof (rsf_call CT Δ sΓ rΓ h mt x m y Us zs sΓ' ly cy D mdef vals0 rΓ'0
+  pose proof (rsf_call CT Δ sΓ rΓ h mt x m y Us Qs zs sΓ' ly cy D mdef valsc rΓc
                 Hwf Htype Hvy Hbase Hfind Hargs Hframe HR) as Hfrc.
-  pose proof (Hfp vals0 rΓ'0 Hargs Hframe) as Hfrp.
+  pose proof (Hfp valsc rΓc Hargs Hframe) as Hfrp.
   assert (Hfl0 : ffit CT [0] (method_tv_env CT D (msignature mdef))
                    (act_frame (rqtype (rt_type o2)) 0 false
-                      (map lift (cargs rΓ'0)) (map lift (margs rΓ'0)))).
+                      (map lift (cargs rΓc)) (map lift (margs rΓc)) (qlift (qargs rΓc)))).
   { split.
     - intros o0 n B Hb.
       pose proof (Hfrc ι2 o2 Hth2 Hobj2 [0] o0 n B Hb) as Hx.
       change (ldyn (act_frame (rqtype (rt_type o2)) 0 false
-                      (map lift (cargs rΓ'0)) (map lift (margs rΓ'0)))
+                      (map lift (cargs rΓc)) (map lift (margs rΓc)) (qlift (qargs rΓc)))
                 (TVar TVSub o0 n))
-        with (ldyn (LF (rqtype (rt_type o2)) (cargs rΓ'0) (margs rΓ'0))
+        with (ldyn (LF (rqtype (rt_type o2)) (cargs rΓc) (margs rΓc) (qargs rΓc))
                 (TVar TVSub o0 n)).
-      rewrite (ldyn_lift_act _ _ _ _ _ _ (proj2 (Hcb' o0 n B Hb))).
+      rewrite (ldyn_lift_act _ _ _ _ _ _ _ (proj2 (Hcb' o0 n B Hb))).
       rewrite <- ldyn_lift_LF. exact Hx.
     - intros o0 n B Hb.
       pose proof (Hfrp ι2 o2 Hth2 Hobj2 [0] o0 n B Hb) as Hx.
       change (ldyn (act_frame (rqtype (rt_type o2)) 0 false
-                      (map lift (cargs rΓ'0)) (map lift (margs rΓ'0)))
+                      (map lift (cargs rΓc)) (map lift (margs rΓc)) (qlift (qargs rΓc)))
                 (TVar TVSub o0 n))
-        with (ldyn (LF (rqtype (rt_type o2)) (cargs rΓ'0) (margs rΓ'0))
+        with (ldyn (LF (rqtype (rt_type o2)) (cargs rΓc) (margs rΓc) (qargs rΓc))
                 (TVar TVSub o0 n)).
-      rewrite (ldyn_lift_act _ _ _ _ _ _ (proj2 (Hcb' o0 n B Hb))).
+      rewrite (ldyn_lift_act _ _ _ _ _ _ _ (proj2 (Hcb' o0 n B Hb))).
       rewrite <- ldyn_lift_LF. exact Hx. }
-  destruct (pg_step P CT Hcl _ _ _ _ _ _ Heval_body eq_refl
+  destruct (pg_step_any P CT Hcl _ _ _ _ _ _ Heval_body
               (method_tv_env CT D (msignature mdef)) _ sΓb (g_init h) [0] 1 0
-              false _ _ _ Hrs Hcb' Hcfg Hbody
+              false _ _ _ _ Hrs Hcb' Hcfg Hbody
               (heapP_init CT h Hct Hheap Hhp) HF Hfl0
               (fun l0 H => H))
-    as (G' & next' & _ & _ & _ & _ & Hpres).
+    as [Hpres _].
   eapply Hpres; eauto.
   unfold P. eapply runtime_getObj_dom; eauto.
 Qed.
 
-(** Readonly-state preservation: non-assignable fields keep their values. *)
-Corollary readonly_state_preservation_payload :
-  forall CT Δ sΓ mt rΓ h x m y Us zs sΓ' rΓ' h' ly cy D mdef,
+(** The call theorem for a call that ends in any way: normally, in a null
+    dereference, or in a rejected write. *)
+Theorem rs_ts_call_preservation_payload_any :
+  forall CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' rΓ' h' ly cy D mdef res,
     clean_bounds_ct CT ->
     wf_r_config CT Δ sΓ rΓ h ->
     RSF CT Δ rΓ h ->
     rsfitp_heap CT h ->
     (forall vals rΓc,
        runtime_lookup_list rΓ zs = Some vals ->
-       callee_env CT rΓ h ly D Us vals rΓc ->
+       callee_env CT rΓ h ly D Us Qs vals rΓc ->
        rsfitp_frame CT (method_tv_env CT D (msignature mdef)) rΓc h) ->
-    stmt_typing CT Δ sΓ mt (SCall x m y Us zs) sΓ' ->
-    eval_stmt CT rΓ h (SCall x m y Us zs) OK rΓ' h' ->
+    stmt_typing CT Δ sΓ mt (SCall x m y Us Qs zs) sΓ' ->
+    eval_stmt CT rΓ h (SCall x m y Us Qs zs) res rΓ' h' ->
+    runtime_getVal rΓ y = Some (Iot ly) ->
+    r_basetype h ly = Some cy ->
+    FindMethodWithName CT cy m D mdef ->
+    readonly_state_method_scope (mscope (msignature mdef)) ->
+    forall l qr C Rs vals f,
+      runtime_getObj h l = Some (mkObj (mkruntime_type qr C Rs) vals) ->
+      prot_cond CT C f (mscope (msignature mdef)) ->
+      exists vals',
+        runtime_getObj h' l = Some (mkObj (mkruntime_type qr C Rs) vals') /\
+        nth_error vals f = nth_error vals' f.
+Proof.
+  intros CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' rΓ' h' ly cy D mdef res
+    Hcl Hwf HR Hhp Hfp Htype Heval Hvy Hbase Hfind Hrs l qr C Rs vals f Hl Hprot.
+  inversion Heval; subst;
+    try (exists vals; split; [exact Hl | reflexivity]);
+    (rewrite Hvy in Hval_y; inversion Hval_y; subst ly0; clear Hval_y;
+     rewrite Hbase in Hbase0; inversion Hbase0; subst cy0; clear Hbase0;
+     destruct (find_method_with_name_deterministic _ _ _ _ _ _ _ Hfind Hfind0)
+       as [<- <-];
+     exact (rs_ts_body_preservation_payload CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ'
+              ly cy D mdef _ _ _ _ _ Hcl Hwf HR Hhp Hfp Htype Hargs Hframe
+              Heval_body Hvy Hbase Hfind Hrs l qr C Rs vals f Hl Hprot)).
+Qed.
+
+Theorem rs_ts_call_preservation_payload :
+  forall CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' rΓ' h' ly cy D mdef,
+    clean_bounds_ct CT ->
+    wf_r_config CT Δ sΓ rΓ h ->
+    RSF CT Δ rΓ h ->
+    rsfitp_heap CT h ->
+    (forall vals rΓc,
+       runtime_lookup_list rΓ zs = Some vals ->
+       callee_env CT rΓ h ly D Us Qs vals rΓc ->
+       rsfitp_frame CT (method_tv_env CT D (msignature mdef)) rΓc h) ->
+    stmt_typing CT Δ sΓ mt (SCall x m y Us Qs zs) sΓ' ->
+    eval_stmt CT rΓ h (SCall x m y Us Qs zs) OK rΓ' h' ->
+    runtime_getVal rΓ y = Some (Iot ly) ->
+    r_basetype h ly = Some cy ->
+    FindMethodWithName CT cy m D mdef ->
+    readonly_state_method_scope (mscope (msignature mdef)) ->
+    forall l qr C Rs vals f,
+      runtime_getObj h l = Some (mkObj (mkruntime_type qr C Rs) vals) ->
+      prot_cond CT C f (mscope (msignature mdef)) ->
+      exists vals',
+        runtime_getObj h' l = Some (mkObj (mkruntime_type qr C Rs) vals') /\
+        nth_error vals f = nth_error vals' f.
+Proof.
+  intros. eapply rs_ts_call_preservation_payload_any; eauto.
+Qed.
+
+(** Readonly-state preservation: non-assignable fields keep their values. *)
+Corollary readonly_state_preservation_payload :
+  forall CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' rΓ' h' ly cy D mdef,
+    clean_bounds_ct CT ->
+    wf_r_config CT Δ sΓ rΓ h ->
+    RSF CT Δ rΓ h ->
+    rsfitp_heap CT h ->
+    (forall vals rΓc,
+       runtime_lookup_list rΓ zs = Some vals ->
+       callee_env CT rΓ h ly D Us Qs vals rΓc ->
+       rsfitp_frame CT (method_tv_env CT D (msignature mdef)) rΓc h) ->
+    stmt_typing CT Δ sΓ mt (SCall x m y Us Qs zs) sΓ' ->
+    eval_stmt CT rΓ h (SCall x m y Us Qs zs) OK rΓ' h' ->
     runtime_getVal rΓ y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m D mdef ->
@@ -274,17 +341,17 @@ Qed.
 
 (** Transitive-state preservation: every field keeps its value. *)
 Corollary transitive_state_preservation_payload :
-  forall CT Δ sΓ mt rΓ h x m y Us zs sΓ' rΓ' h' ly cy D mdef,
+  forall CT Δ sΓ mt rΓ h x m y Us Qs zs sΓ' rΓ' h' ly cy D mdef,
     clean_bounds_ct CT ->
     wf_r_config CT Δ sΓ rΓ h ->
     RSF CT Δ rΓ h ->
     rsfitp_heap CT h ->
     (forall vals rΓc,
        runtime_lookup_list rΓ zs = Some vals ->
-       callee_env CT rΓ h ly D Us vals rΓc ->
+       callee_env CT rΓ h ly D Us Qs vals rΓc ->
        rsfitp_frame CT (method_tv_env CT D (msignature mdef)) rΓc h) ->
-    stmt_typing CT Δ sΓ mt (SCall x m y Us zs) sΓ' ->
-    eval_stmt CT rΓ h (SCall x m y Us zs) OK rΓ' h' ->
+    stmt_typing CT Δ sΓ mt (SCall x m y Us Qs zs) sΓ' ->
+    eval_stmt CT rΓ h (SCall x m y Us Qs zs) OK rΓ' h' ->
     runtime_getVal rΓ y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy m D mdef ->

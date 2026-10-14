@@ -87,6 +87,7 @@ Definition peek : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := RDMPerson;
           mname := 0;
           mreceiver := RDMBoxE;
@@ -102,12 +103,13 @@ Definition BoxDef : class_def :=
                      super := Some (0, []) |};
      body := {| fields := [item_field]; methods := [peek] |} |}.
 
-Definition peekCall : stmt := SCall 5 0 4 [] [].
+Definition peekCall : stmt := SCall 5 0 4 [] [] [].
 
 Definition work : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 0;
           mreceiver := ROTool;
@@ -144,22 +146,22 @@ Definition prefix : stmt :=
   (SSeq (SNew 4 Imm_c 2 [ImmPerson] [3])
         (SNew 5 Mut_c 3 [] [])))))))))).
 
-Definition callW : stmt := SCall 6 0 5 [] [2].
+Definition callW : stmt := SCall 6 0 5 [] [] [2].
 
 Definition main : stmt := SSeq prefix callW.
 
-Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState.
+Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState 0.
 Definition sΓ0 : s_env := [MutObject].
 Definition sΓA : s_env :=
   [MutObject; MutObject; MutPerson; ImmPerson; ImmBoxImmPerson; MutTool;
    ROObject].
 
 (** The bound environment of work: no type parameter is in scope. *)
-Definition ΔW : tv_env := mk_tv_env [] [] ReadonlyState.
+Definition ΔW : tv_env := mk_tv_env [] [] ReadonlyState 0.
 
 (** The bound environment of peek: the class parameter E, bounded by
     @RDM Person. *)
-Definition ΔP : tv_env := mk_tv_env [RDMPerson] [] ReadonlyState.
+Definition ΔP : tv_env := mk_tv_env [RDMPerson] [] ReadonlyState 0.
 
 (* ------------------SMALL TACTICS AND FACTS------------------*)
 
@@ -342,7 +344,7 @@ Proof.
   unfold wf_method.
   change (method_tv_env CT 2 (msignature peek)) with ΔP.
   cbn.
-  split; [left; exists RDM; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RDM; reflexivity|].
   split; [constructor|].
   split; [apply wf_RDMPerson|].
   split.
@@ -380,9 +382,9 @@ Proof.
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | apply find_peek | apply si_refl | discriminate | constructor
     | constructor | reflexivity | constructor | | | constructor
-    | apply method_subtyping_refl].
+    | apply method_subtyping_refl | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - left. cbn. split; [refl_sub | left; cbn; intuition discriminate].
+  - cbn. split; [refl_sub | cbn; intuition discriminate].
 Qed.
 
 Lemma work_body_typed :
@@ -401,7 +403,7 @@ Proof.
       | reflexivity | apply wf_MutPerson | constructor | constructor
       | apply collect_Person | | ].
     - constructor; [|constructor]. cbn. split; [refl_sub|].
-      left. cbn. intuition discriminate.
+      cbn. intuition discriminate.
     - cbn. refl_sub. }
   (* b = new @Mut RDMBox<@Mut Person>(q) *)
   ty_seq.
@@ -412,7 +414,7 @@ Proof.
     - constructor; [|constructor]. cbn. split; [intuition discriminate|].
       intros m. refl_sub.
     - constructor; [|constructor]; cbn.
-      split; [refl_sub | left; cbn; intuition discriminate].
+      split; [refl_sub | cbn; intuition discriminate].
     - cbn. refl_sub. }
   (* r = b.peek() *)
   ty_seq; [apply peekCall_typed|].
@@ -421,7 +423,7 @@ Proof.
     (C := 1) (Ts := []) (fieldT := name_field);
     [wfenv | reflexivity | reflexivity | reflexivity | | | reflexivity].
   - eapply FL_Found; [apply collect_Person | reflexivity].
-  - split; [cbn; refl_sub | left; cbn; intuition discriminate].
+  - split; [cbn; refl_sub | cbn; intuition discriminate].
 Qed.
 
 Lemma wf_work : wf_method CT 3 work.
@@ -429,7 +431,7 @@ Proof.
   unfold wf_method.
   change (method_tv_env CT 3 (msignature work)) with ΔW.
   cbn.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [apply wf_ROObject|].
   split.
@@ -582,7 +584,7 @@ Proof.
       | reflexivity | apply wf_MutPerson | constructor | constructor
       | apply collect_Person | | ].
     - constructor; [|constructor]. cbn. split; [qual_sub|].
-      left. cbn. intuition discriminate.
+      cbn. intuition discriminate.
     - cbn. refl_sub. }
   ty_seq.
   { eapply ST_New with (Tx := ImmPerson) (argtypes := [MutObject]);
@@ -590,7 +592,7 @@ Proof.
       | reflexivity | apply wf_ImmPerson | constructor | constructor
       | apply collect_Person | | ].
     - constructor; [|constructor]. cbn. split; [qual_sub|].
-      left. cbn. intuition discriminate.
+      cbn. intuition discriminate.
     - cbn. refl_sub. }
   ty_seq.
   { eapply ST_New with (Tx := ImmBoxImmPerson) (argtypes := [ImmPerson]);
@@ -600,7 +602,7 @@ Proof.
     - constructor; [|constructor]. cbn. split; [intuition discriminate|].
       intros m. refl_sub.
     - constructor; [|constructor]; cbn.
-      split; [refl_sub | left; cbn; intuition discriminate].
+      split; [refl_sub | cbn; intuition discriminate].
     - cbn. refl_sub. }
   eapply ST_New with (Tx := MutTool) (argtypes := []) (fds := []);
     [wfenv | reflexivity | reflexivity | reflexivity | discriminate
@@ -620,14 +622,14 @@ Proof.
     (mdef := work);
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | apply find_work | apply si_refl | discriminate | | | reflexivity
-    | | | | | apply method_rs_as].
+    | | | | | apply method_rs_as | reflexivity | constructor | recv_known].
   - constructor.
   - constructor.
   - constructor.
   - cbn. refl_sub.
-  - left. cbn. split; [qual_sub | left; cbn; intuition discriminate].
+  - cbn. split; [qual_sub | cbn; intuition discriminate].
   - constructor; [|constructor]; cbn.
-    split; [apply sub_Person_ROObject | left; cbn; intuition discriminate].
+    split; [apply sub_Person_ROObject | cbn; intuition discriminate].
 Qed.
 
 Lemma main_typed : stmt_typing CT Δ0 sΓ0 AbstractState main sΓA.
@@ -639,11 +641,11 @@ Qed.
 (** The states.  Location 0 is main's receiver, 1 is o, 2 is the mutable
     Person c, 3 is the immutable Person ip, 4 is the immutable box ib that
     holds ip, 5 is the Tool. *)
-Definition rΓ0 : r_env := mkr_env [Iot 0] [] [].
+Definition rΓ0 : r_env := mkr_env [Iot 0] [] [] [].
 Definition h0 : heap := [mkObj (mkruntime_type Mut_r 0 []) []].
 
 Definition rΓA : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Iot 5; Null_a] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Iot 5; Null_a] [] [] [].
 
 Definition hA : heap :=
   [ mkObj (mkruntime_type Mut_r 0 []) [];
@@ -684,7 +686,7 @@ Proof.
   - split; simpl; [lia|]. constructor; [apply wf_MutObject | constructor].
   - exists 0, (mkObj (mkruntime_type Mut_r 0 []) []), 0. simpl.
     refine (conj eq_refl (conj eq_refl (conj eq_refl (conj (rsi_refl _ _ _ _)
-             (conj (Forall_nil _) (conj (Forall_nil _) (conj _ _))))))); constructor.
+             (conj (Forall_nil _) (conj (conj (Forall_nil _) (Forall_nil _)) (conj _ _))))))); constructor.
   - intros ι qcontext Hthis Hmut i Hi sqt Hnth.
     simpl in Hi. assert (i = 0) by lia. subst i.
     simpl in Hthis. inversion Hthis; subst ι.
@@ -741,7 +743,7 @@ Proof.
 Qed.
 
 (** The activation of work: receiver the Tool, argument the Person c. *)
-Definition rΓwork : r_env := mkr_env [Iot 5; Iot 2] [] [].
+Definition rΓwork : r_env := mkr_env [Iot 5; Iot 2] [] [] [].
 
 (** The fresh objects: a Person at location 6 and a box at location 7 whose
     stored type argument is the mutable Person type. *)
@@ -759,17 +761,17 @@ Definition hA' : heap :=
 
 (** The activation of work just before and just after the call to peek. *)
 Definition rΓpre : r_env :=
-  mkr_env [Iot 5; Iot 2; Null_a; Iot 6; Iot 7; Null_a] [] [].
+  mkr_env [Iot 5; Iot 2; Null_a; Iot 6; Iot 7; Null_a] [] [] [].
 Definition rΓmid : r_env :=
-  mkr_env [Iot 5; Iot 2; Null_a; Iot 6; Iot 7; Iot 6] [] [].
+  mkr_env [Iot 5; Iot 2; Null_a; Iot 6; Iot 7; Iot 6] [] [] [].
 
 (** The activation of peek: receiver the fresh box, whose type argument,
     resolved at run time, is the mutable Person type. *)
-Definition rΓpeek : r_env := mkr_env [Iot 7] [RClass Mut 1 []] [].
-Definition rΓpeek' : r_env := mkr_env [Iot 7; Iot 6] [RClass Mut 1 []] [].
+Definition rΓpeek : r_env := mkr_env [Iot 7] [RClass Mut 1 []] [] [].
+Definition rΓpeek' : r_env := mkr_env [Iot 7; Iot 6] [RClass Mut 1 []] [] [].
 
 Definition rΓA' : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Iot 5; Iot 2] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 4; Iot 5; Iot 2] [] [] [].
 
 Definition work_allocs : stmt :=
   SSeq (SLocal ROObject 2)
@@ -814,7 +816,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [apply rsi_refl | reflexivity].
   - apply peek_body_eval.
   - reflexivity.
@@ -860,7 +862,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [apply rsi_refl | reflexivity].
   - apply work_body_eval.
   - reflexivity.
@@ -887,7 +889,7 @@ Theorem callW_preserves : forall rΓ' h',
 Proof.
   intros rΓ' h' Heval.
   eapply (readonly_state_preservation_final CT Δ0 sΓA AbstractState rΓA hA
-            6 0 5 [] [2] sΓA rΓ' h' 5 3 3 work
+            6 0 5 [] [] [2] sΓA rΓ' h' 5 3 3 work
             rdm_ct_clean_bounds config_A rsfp_A
             callW_typed Heval).
   - reflexivity.

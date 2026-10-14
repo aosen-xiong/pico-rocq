@@ -21,10 +21,10 @@ Proof.
     clear Hn Hq Hx. revert Hargs.
     induction H as [|t r Ht _ IH]; intros Hargs; simpl; auto.
     inversion Hargs; subst. rewrite Ht; auto.
-  - destruct u as [|q0]; [reflexivity|].
+  - destruct u as [|q0|mp]; [reflexivity| |reflexivity].
     inversion Hn; subst. destruct q0; try reflexivity. congruence.
   - inversion Hn; subst. rewrite has_mut_head.
-    clear Hn Hbound. revert Hargs.
+    clear Hn. revert Hargs.
     induction H as [|t r Ht _ IH]; intros Hargs; simpl; auto.
     inversion Hargs; subst. rewrite Ht; auto.
 Qed.
@@ -49,10 +49,10 @@ Proof.
     clear - H Hargs. induction H as [|t r Ht _ IH]; constructor.
     + intros A. apply Ht. simpl in Hargs. apply orb_false_iff in Hargs. tauto.
     + apply IH. simpl in Hargs. apply orb_false_iff in Hargs. tauto.
-  - destruct u as [|q1]; [reflexivity|]. destruct q1; try reflexivity.
+  - destruct u as [|q1|mp]; [reflexivity| |reflexivity]. destruct q1; try reflexivity.
     simpl in Hn. discriminate.
   - rewrite has_mut_head in Hn.
-    rewrite (pwalk_head CT o n C args q0 l C0 As).
+    rewrite (pwalk_head CT n C args q0 l C0 As).
     destruct (tviewf CT (S C0) q0 l C0 As C) as [Vs|]; auto.
     apply pwalks_none.
     clear - H Hn. induction H as [|t r Ht _ IH]; constructor.

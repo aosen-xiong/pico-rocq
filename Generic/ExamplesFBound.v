@@ -75,6 +75,7 @@ Definition peek : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 0;
           mreceiver := ROSortedE;
@@ -100,16 +101,16 @@ Definition prefix : stmt :=
   (SSeq (SNew 1 Mut_c 2 [] [])
         (SNew 2 Mut_c 3 [ROItem] [1])))).
 
-Definition callP : stmt := SCall 3 0 2 [] [].
+Definition callP : stmt := SCall 3 0 2 [] [] [].
 
 Definition main : stmt := SSeq prefix callP.
 
-Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState.
+Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState 0.
 Definition sΓ0 : s_env := [MutObject].
 Definition sΓA : s_env := [MutObject; MutItem; MutSorted; ROObject].
 
 (** The bound environment of peek: E bounded by @RO Comparable<E>. *)
-Definition ΔP : tv_env := mk_tv_env [ROCompV] [] ReadonlyState.
+Definition ΔP : tv_env := mk_tv_env [ROCompV] [] ReadonlyState 0.
 
 Definition sΓPeek : s_env := [ROSortedE; ROObject].
 
@@ -155,10 +156,10 @@ Qed.
 (** Inside a class whose parameter is bounded by a Comparable of itself, the
     parameter is a readonly Object: first to its bound, then up from
     Comparable to Object. *)
-Lemma sub_tV_ROObject : forall mb mt,
-  qualified_type_subtype CT (mk_tv_env [ROCompV] mb mt) tV ROObject.
+Lemma sub_tV_ROObject : forall mb mt kq,
+  qualified_type_subtype CT (mk_tv_env [ROCompV] mb mt kq) tV ROObject.
 Proof.
-  intros mb mt. eapply qtype_trans.
+  intros mb mt kq. eapply qtype_trans.
   - apply qtype_var_bound with (B := ROCompV). reflexivity.
   - apply qtype_hier with (D := 0) (Vs := []).
     eapply si_step; [reflexivity|]. cbn. apply si_refl.
@@ -168,10 +169,10 @@ Qed.
     argument check asks that the variable be below the bound of Comparable's
     parameter with the variable put in for that parameter, which is the
     variable's own declared bound. *)
-Lemma wf_ROCompV : forall mb mt top,
-  wf_stype CT (mk_tv_env [ROCompV] mb mt) top ROCompV.
+Lemma wf_ROCompV : forall mb mt kq top,
+  wf_stype CT (mk_tv_env [ROCompV] mb mt kq) top ROCompV.
 Proof.
-  intros mb mt top.
+  intros mb mt kq top.
   eapply wfs_class; [reflexivity | right; cbn; qs | reflexivity | |].
   - constructor; [|constructor].
     eapply wfs_var; [reflexivity | left; reflexivity].
@@ -182,7 +183,7 @@ Qed.
 (** What the bound of Sorted's E reads as for the instantiation
     Sorted<@RO Item>: a readonly Comparable of readonly Items. *)
 Lemma MutSorted_bound_read :
-  member_type AbstractState Mut [ROItem] [] ROCompV = ROCompItem.
+  member_type AbstractState Mut [ROItem] [] [] ROCompV = ROCompItem.
 Proof. reflexivity. Qed.
 
 (** A Sorted of readonly Items, with any head but the unknown one.  The
@@ -297,19 +298,19 @@ Ltac no_override :=
     position.  Reading the variable gives the bound, whose only argument is
     the variable again, so the walk never ends; it never meets a mutable
     position either. *)
-Lemma no_mut_tV : forall mb mt,
-  no_mut (mk_tv_env [ROCompV] mb mt) tV.
+Lemma no_mut_tV : forall mb mt kq,
+  no_mut (mk_tv_env [ROCompV] mb mt kq) tV.
 Proof.
-  intros mb mt. cofix IH.
+  intros mb mt kq. cofix IH.
   eapply nm_var; [reflexivity|].
   apply nm_class; [discriminate|].
   constructor; [exact IH | constructor].
 Qed.
 
-Lemma no_mut_ROCompV : forall mb mt,
-  no_mut (mk_tv_env [ROCompV] mb mt) ROCompV.
+Lemma no_mut_ROCompV : forall mb mt kq,
+  no_mut (mk_tv_env [ROCompV] mb mt kq) ROCompV.
 Proof.
-  intros mb mt. apply nm_class; [discriminate|].
+  intros mb mt kq. apply nm_class; [discriminate|].
   constructor; [apply no_mut_tV | constructor].
 Qed.
 
@@ -321,7 +322,7 @@ Qed.
     variable E; E is below its bound @RO Comparable<E>, and that is a
     readonly Object. *)
 Lemma peek_read_head :
-  member_type ReadonlyState RO [tV] [] (ftype head_field) = tV /\
+  member_type ReadonlyState RO [tV] [] [] (ftype head_field) = tV /\
   qualified_type_subtype CT ΔP tV ROCompV /\
   qualified_type_subtype CT ΔP tV ROObject.
 Proof.
@@ -359,7 +360,7 @@ Lemma wf_peek : wf_method CT 3 peek.
 Proof.
   unfold wf_method.
   change (method_tv_env CT 3 (msignature peek)) with ΔP.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [apply wf_ROObject|].
   split.
@@ -552,7 +553,7 @@ Proof.
   - constructor; [|constructor]. cbn.
     split; [lf | intros m; apply sub_ROItem_ROCompItem].
   - constructor; [|constructor]; cbn.
-    split; [qual_sub | left; lf].
+    split; [qual_sub | lf].
   - cbn. refl_sub.
 Qed.
 
@@ -569,9 +570,9 @@ Proof.
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | apply find_peek | apply si_refl | discriminate | constructor
     | constructor | reflexivity | constructor | | | constructor
-    | apply method_rs_as].
+    | apply method_rs_as | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - left. cbn. split; [qual_sub | left; lf].
+  - cbn. split; [qual_sub | lf].
 Qed.
 
 Lemma main_typed : stmt_typing CT Δ0 sΓ0 AbstractState main sΓA.
@@ -582,12 +583,12 @@ Qed.
 
 (** The states.  Location 0 is main's receiver, 1 is the Item, 2 is the
     Sorted that holds it. *)
-Definition rΓ0 : r_env := mkr_env [Iot 0] [] [].
+Definition rΓ0 : r_env := mkr_env [Iot 0] [] [] [].
 Definition h0 : heap := [mkObj (mkruntime_type Mut_r 0 []) []].
 
 Definition rROItem : rtype := RClass RO 2 [].
 
-Definition rΓA : r_env := mkr_env [Iot 0; Iot 1; Iot 2; Null_a] [] [].
+Definition rΓA : r_env := mkr_env [Iot 0; Iot 1; Iot 2; Null_a] [] [] [].
 
 Definition hA : heap :=
   [ mkObj (mkruntime_type Mut_r 0 []) [];
@@ -623,7 +624,7 @@ Proof.
   - split; simpl; [lia|]. constructor; [apply wf_MutObject | constructor].
   - exists 0, (mkObj (mkruntime_type Mut_r 0 []) []), 0. simpl.
     refine (conj eq_refl (conj eq_refl (conj eq_refl (conj (rsi_refl _ _ _ _)
-             (conj (Forall_nil _) (conj (Forall_nil _) (conj _ _))))))); constructor.
+             (conj (Forall_nil _) (conj (conj (Forall_nil _) (Forall_nil _)) (conj _ _))))))); constructor.
   - intros ι qcontext Hthis Hmut i Hi sqt Hnth.
     simpl in Hi. assert (i = 0) by lia. subst i.
     simpl in Hthis. inversion Hthis; subst ι.
@@ -683,10 +684,10 @@ Qed.
 
 (** The activation of peek: receiver the Sorted, with its type argument
     resolved at run time. *)
-Definition rΓpeek : r_env := mkr_env [Iot 2] [rROItem] [].
-Definition rΓpeek' : r_env := mkr_env [Iot 2; Iot 1] [rROItem] [].
+Definition rΓpeek : r_env := mkr_env [Iot 2] [rROItem] [] [].
+Definition rΓpeek' : r_env := mkr_env [Iot 2; Iot 1] [rROItem] [] [].
 
-Definition rΓA' : r_env := mkr_env [Iot 0; Iot 1; Iot 2; Iot 1] [] [].
+Definition rΓA' : r_env := mkr_env [Iot 0; Iot 1; Iot 2; Iot 1] [] [] [].
 
 (** The body of peek, run on the Sorted. *)
 Lemma peek_body_eval :
@@ -713,7 +714,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [apply rsi_refl | reflexivity].
   - apply peek_body_eval.
   - reflexivity.
@@ -740,7 +741,7 @@ Theorem callP_preserves : forall rΓ' h',
 Proof.
   intros rΓ' h' Heval.
   eapply (readonly_state_preservation_final CT Δ0 sΓA AbstractState rΓA hA
-            3 0 2 [] [] sΓA rΓ' h' 2 3 3 peek
+            3 0 2 [] [] [] sΓA rΓ' h' 2 3 3 peek
             fbound_ct_clean_bounds config_A rsfp_A
             callP_typed Heval).
   - reflexivity.

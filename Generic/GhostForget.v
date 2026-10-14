@@ -26,16 +26,32 @@ Proof.
 Qed.
 
 Lemma fT_requalify : forall q0 U, fT (requalify q0 U) = requalify (fl q0) (fT U).
-Proof. intros q0 [q1 C a | [|q1] o n | o n C a]; reflexivity. Qed.
+Proof. intros q0 [q1 C a | [|q1|mp] o n | n C a]; reflexivity. Qed.
 
-Lemma fT_headby : forall U C args,
-  fT (headby U C args) = headby (fT U) C (map fT args).
-Proof. intros [q1 C1 a | [|q1] o n | o n C1 a] C args; reflexivity. Qed.
+(** Forgetting a written mutable qualifier argument. *)
+Definition fQ (a : qarg) : qarg :=
+  match a with
+  | QLit q0 => QLit (fl q0)
+  | QVar m => QVar m
+  end.
 
-Lemma fT_subst : forall Ts Us T,
-  fT (subst Ts Us T) = subst (map fT Ts) (map fT Us) (fT T).
+Lemma fQ_qvar_args : forall k, map fQ (qvar_args k) = qvar_args k.
+Proof. intros. unfold qvar_args. rewrite map_map. reflexivity. Qed.
+
+Lemma fT_prequalify : forall m U, fT (prequalify m U) = prequalify m (fT U).
+Proof. intros m [q1 C a | [|q1|mp] o n | n C a]; reflexivity. Qed.
+
+Lemma fT_qrequalify : forall a U,
+  fT (qrequalify a U) = qrequalify (option_map fQ a) (fT U).
 Proof.
-  intros Ts Us T. induction T using qualified_type_ind'.
+  intros [[q0|m]|] U; simpl;
+    [apply fT_requalify | apply fT_prequalify | apply (fT_requalify RO U)].
+Qed.
+
+Lemma fT_subst : forall Ts Us Qs T,
+  fT (subst Ts Us Qs T) = subst (map fT Ts) (map fT Us) (map fQ Qs) (fT T).
+Proof.
+  intros Ts Us Qs T. induction T using qualified_type_ind'.
   - simpl. f_equal. rewrite map_map. rewrite map_map.
     induction H; simpl; auto. f_equal; auto.
   - assert (Hl : match tv_lookup o (map fT Ts) (map fT Us) n with
@@ -44,7 +60,7 @@ Proof.
                      | Some U => U | None => default_type end)).
     { destruct o; simpl; rewrite nth_error_map;
         destruct (nth_error _ n); reflexivity. }
-    destruct u as [|qv].
+    destruct u as [|qv|mp].
     + change (fT (match tv_lookup o Ts Us n with
                   | Some U => U | None => default_type end) =
               match tv_lookup o (map fT Ts) (map fT Us) n with
@@ -57,20 +73,19 @@ Proof.
                 (match tv_lookup o (map fT Ts) (map fT Us) n with
                  | Some U => U | None => default_type end)).
       rewrite Hl. apply fT_requalify.
-  - assert (Hl : match tv_lookup o (map fT Ts) (map fT Us) n with
-                 | Some U => U | None => default_type end =
-                 fT (match tv_lookup o Ts Us n with
-                     | Some U => U | None => default_type end)).
-    { destruct o; simpl; rewrite nth_error_map;
-        destruct (nth_error _ n); reflexivity. }
-    change (fT (headby (match tv_lookup o Ts Us n with
-                        | Some U => U | None => default_type end)
-                  C (map (subst Ts Us) args)) =
-            headby (match tv_lookup o (map fT Ts) (map fT Us) n with
-                    | Some U => U | None => default_type end)
-              C (map (subst (map fT Ts) (map fT Us)) (map fT args))).
-    rewrite Hl. rewrite fT_headby. f_equal.
-    rewrite !map_map. induction H; simpl; auto. f_equal; auto.
+    + change (fT (qrequalify (nth_error Qs mp)
+                    (match tv_lookup o Ts Us n with
+                     | Some U => U | None => default_type end)) =
+              qrequalify (nth_error (map fQ Qs) mp)
+                (match tv_lookup o (map fT Ts) (map fT Us) n with
+                 | Some U => U | None => default_type end)).
+      rewrite Hl. rewrite nth_error_map. apply fT_qrequalify.
+  - assert (Hargs : map fT (map (subst Ts Us Qs) args) =
+              map (subst (map fT Ts) (map fT Us) (map fQ Qs)) (map fT args)).
+    { rewrite !map_map. induction H; simpl; auto. f_equal; auto. }
+    cbn [subst map_qual]. rewrite nth_error_map.
+    destruct (nth_error Qs n) as [[q0|m]|]; cbn [option_map qhead fQ map_qual];
+      rewrite Hargs; reflexivity.
 Qed.
 
 Lemma targ_sub_fl : forall T U, targ_sub T U -> targ_sub (fT T) (fT U).
@@ -78,7 +93,7 @@ Proof.
   intros T U H. induction H using targ_sub_ind'.
   - destruct u; constructor.
   - simpl. constructor.
-    + destruct H as [-> | [-> [-> | ->]]]; unfold arg_q_sub; simpl; auto.
+    + destruct H as [-> | [-> [-> | [-> | ->]]]]; unfold arg_q_sub; simpl; auto.
     + clear H H0. induction H1; simpl; constructor; auto.
   - simpl. constructor.
     clear H. induction H0; simpl; constructor; auto.
@@ -100,7 +115,7 @@ Proof.
     inversion Hargs; subst. f_equal; auto.
   - inversion Hnm; subst; simpl; auto. rewrite fl_ne; auto.
   - inversion Hnm; subst. simpl. f_equal.
-    clear Hnm Hbound. induction H; simpl; auto.
+    clear Hnm. induction H; simpl; auto.
     inversion Hargs; subst. f_equal; auto.
 Qed.
 
@@ -118,12 +133,12 @@ Proof.
   - rewrite (fl_ne _ E). split; auto.
 Qed.
 
-Lemma fl_label_cond_mut : forall L mt qo b c As qthis wf mode lc lm,
+Lemma fl_label_cond_mut : forall L mt qo b c As qthis wf mode lc lm lk,
   readonly_state_method_scope mt ->
   label_cond L (fun q0 => fl (vpa_q mt Mut q0)) (obj_frame qo b c As)
-    (act_frame qthis wf mode lc lm).
+    (act_frame qthis wf mode lc lm lk).
 Proof.
-  intros L mt qo b c As qthis wf mode lc lm Hrs q0.
+  intros L mt qo b c As qthis wf mode lc lm lk Hrs q0.
   destruct Hrs as [-> | ->]; destruct q0, qo, qthis; simpl; unfold arg_q_sub;
     (split; [ solve [left; reflexivity] || solve [right; split; auto]
             | solve [left; reflexivity] || solve [right; left; discriminate] ]).
@@ -143,45 +158,46 @@ Proof.
   - destruct (IHsuper_inst L qo b c Fc (map (ldyn (obj_frame qo b c As)) Ss) Hcond)
       as [Vs0 [Hs Hle]].
     { assert (Heq : map (ldyn Fc)
-                      (map fT (map (subst Ts []) (map (adapt mt qh) Ss))) =
-                    map (ldyn (lf_with_args Fc (map (ldyn Fc) (map fT Ts)) []))
+                      (map fT (map (subst Ts [] []) (map (adapt mt qh) Ss))) =
+                    map (ldyn (lf_with_args Fc (map (ldyn Fc) (map fT Ts)) [] []))
                       (map (map_qual (fun q0 => fl (vpa_q mt qh q0))) Ss)).
       { clear. induction Ss as [|S Ss IH]; simpl; auto.
         f_equal; auto. rewrite fT_subst. unfold adapt. rewrite map_qual_comp.
         rewrite ldyn_subst. reflexivity. }
       rewrite Heq.
       apply map_ldyn_map_qual_agree.
-      - apply (label_cond_args L _ _ _ As [] (map (ldyn Fc) (map fT Ts)) [] Hcond).
+      - apply (label_cond_args L _ _ _ As [] (map (ldyn Fc) (map fT Ts)) [] _ _ Hcond).
       - exact Hargs.
-      - constructor. }
+      - constructor.
+      - reflexivity. }
     exists Vs0. split; auto. eapply lsi_step; eauto.
 Qed.
 
 (* ------------------SUBTYPING ON FORGOTTEN TYPES------------------*)
 
-Lemma lhas_subtype_fl : forall P CT Δ h G L next mt qthis wf mode lc lm ca ma,
+Lemma lhas_subtype_fl : forall P CT Δ h G L next mt qthis wf mode lc lm lk ca ma ka,
   heapL P CT h G L next ->
   List.In wf L ->
   readonly_state_method_scope mt ->
   tv_mode Δ = mt ->
   (forall o n B v,
      tv_bound Δ o n = Some B ->
-     wf_r_typable CT h v (TVar TVSub o n) qthis ca ma ->
-     lhas CT h G L v (ldyn (act_frame qthis wf mode lc lm) (TVar TVSub o n)) ->
-     lhas CT h G L v (ldyn (act_frame qthis wf mode lc lm) B)) ->
+     wf_r_typable CT h v (TVar TVSub o n) qthis ca ma ka ->
+     lhas CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) (TVar TVSub o n)) ->
+     lhas CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) B)) ->
   (forall o n B, tv_bound Δ o n = Some B -> fT B = B) ->
-  frame_bounds_ok CT Δ (qr2q qthis) ca ma ->
-  map erase lc = ca -> map erase lm = ma ->
+  frame_bounds_ok CT Δ (qr2q qthis) ca ma ka ->
+  map erase lc = ca -> map erase lm = ma -> map fst lk = ka ->
   forall T U,
     qualified_type_subtype CT Δ T U ->
     forall v,
-      wf_r_typable CT h v T qthis ca ma ->
-      lhas CT h G L v (ldyn (act_frame qthis wf mode lc lm) (fT T)) ->
-      lhas CT h G L v (ldyn (act_frame qthis wf mode lc lm) (fT U)).
+      wf_r_typable CT h v T qthis ca ma ka ->
+      lhas CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) (fT T)) ->
+      lhas CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) (fT U)).
 Proof.
-  intros P CT Δ h G L next mt qthis wf mode lc lm ca ma
-    HG HwfL Hrs Hmode Hcb Hfl Hfb Hec Hem T U Hsub.
-  set (Fc := act_frame qthis wf mode lc lm).
+  intros P CT Δ h G L next mt qthis wf mode lc lm lk ca ma ka
+    HG HwfL Hrs Hmode Hcb Hfl Hfb Hec Hem Hek T U Hsub.
+  set (Fc := act_frame qthis wf mode lc lm lk).
   induction Hsub; intros v Hty Hl.
   - (* same class, widen the qualifier *)
     destruct Hl as (o & Ho & Hh & Vs & Hs & Hle).
@@ -189,7 +205,7 @@ Proof.
     + unfold headL. intros Hm. inversion Hqsub; subst.
       * apply Hh. exact Hm.
       * simpl in Hm. discriminate.
-      * exfalso. exact (typable_head_not_bot _ _ _ _ _ _ _ Hty eq_refl).
+      * exfalso. exact (typable_head_not_bot _ _ _ _ _ _ _ _ Hty eq_refl).
     + exists Vs. split; auto.
       eapply Forall2_lagree_trans; [exact Hle|].
       apply map_ldyn_targ_sub.
@@ -203,11 +219,11 @@ Proof.
     { destruct (q_eq_dec q1 Mut) as [-> | Hne].
       - apply fl_label_cond_mut. exact Hrs.
       - apply label_cond_fl.
-        destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hty)
+        destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hty)
           as (o' & Vs' & Ho' & Hhead & _).
         rewrite Ho in Ho'. inversion Ho'; subst o'. clear Ho'.
         assert (Hnb : q1 <> Bot).
-        { intros ->. exact (typable_head_not_bot _ _ _ _ _ _ _ Hty eq_refl). }
+        { intros ->. exact (typable_head_not_bot _ _ _ _ _ _ _ _ Hty eq_refl). }
         change (headL L (g_col G v) (dynq (qr2q qthis) (fl q1))
                   (lab_of Fc (fl q1))) in Hh.
         rewrite (fl_ne _ Hne) in Hh. unfold headL in Hh.
@@ -240,7 +256,7 @@ Proof.
     unfold headL. intros Hm. inversion Hqsub; subst.
     + apply Hh. exact Hm.
     + simpl in Hm. discriminate.
-    + exfalso. eapply (typable_whead_not_bot _ _ _ _ _ _ _ Hty). reflexivity.
+    + exfalso. eapply (typable_whead_not_bot _ _ _ _ _ _ _ _ Hty). reflexivity.
   - (* view the supplied type as readonly *)
     destruct Hl as (ob & Hob & Hl). exists ob. split; auto.
     simpl in *.
@@ -248,10 +264,18 @@ Proof.
       as [qa la Ca Aa].
     simpl in *. destruct Hl as (Hh & Vs & Hs & Hle).
     split; [|eauto]. unfold headL. intros Hm. discriminate.
+  - assumption.
+  - (* a use under a qualifier parameter, viewed as readonly *)
+    destruct Hl as (ob & Hob & Hl). exists ob. split; auto.
+    simpl in *.
+    destruct (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
+      as [qa la Ca Aa].
+    simpl in *. destruct Hl as (Hh & Vs & Hs & Hle).
+    split; [|eauto]. unfold headL. intros Hm. discriminate.
   - (* a qualified variable use at an argument-free bound *)
-    pose proof (wf_r_typable_subtype _ _ _ _ _ _ _ _ _ Hfb
+    pose proof (wf_r_typable_subtype _ _ _ _ _ _ _ _ _ _ Hfb
                   (qtype_qvar_bound CT Δ q1 o n qb C Hsub) Hty) as Hty'.
-    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hty')
+    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hty')
       as (ob & Rs' & Hob & _ & Hrs' & Hle').
     simpl in Hle'. inversion Hle'; subst.
     destruct (lsuper_inst_exists _ _ _ _ _ _ Hrs' (rqtype (rt_type ob))
@@ -268,8 +292,6 @@ Proof.
   - (* a variable-headed class type viewed as readonly *)
     destruct Hl as (ob & Hob & Hl). exists ob. split; auto.
     simpl in *.
-    destruct (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
-      as [qa la Ca Aa].
     simpl in *. destruct Hl as (Hh & Vs & Hs & Hle).
     split; [unfold headL; intros Hm; discriminate|].
     exists Vs. split; auto.
@@ -279,8 +301,6 @@ Proof.
   - (* compatible arguments under the same variable head *)
     destruct Hl as (ob & Hob & Hl). exists ob. split; auto.
     simpl in *.
-    destruct (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
-      as [qa la Ca Aa].
     simpl in *. destruct Hl as (Hh & Vs & Hs & Hle).
     split; [exact Hh|].
     exists Vs. split; auto.
@@ -296,21 +316,14 @@ Proof.
     { apply label_cond_fl. apply rs_label_cond; auto; try discriminate.
       unfold head_ok. left. reflexivity. }
     exists ob. split; auto.
-    change (ldyn Fc (fT (THead o n C Ts))) with
-      (lheadby (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
-         C (map (ldyn Fc) (map fT Ts))) in Hl.
-    change (ldyn Fc (fT (THead o n D Vs))) with
-      (lheadby (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
-         D (map (ldyn Fc) (map fT Vs))).
-    destruct (match tv_lookup o lc lm n with Some A => A | None => ldefault end)
-      as [qa la Ca Aa].
-    simpl lheadby in *. destruct Hl as (Hh & As & Hs & Hle).
+    cbn [ldyn map_qual] in Hl |- *.
+destruct Hl as (Hh & As & Hs & Hle).
     destruct (super_inst_ldyn_fl _ _ _ _ _ _ _ Hsuper L _ _ _ Fc As Hcond Hle)
       as (Vs0 & Hs0 & Hle0).
     split; [exact Hh|].
     exists Vs0. split; auto. eapply lsuper_inst_trans; eauto.
   - (* the bottom-qualified type of the class *)
-    exfalso. exact (typable_head_not_bot _ _ _ _ _ _ _ Hty eq_refl).
+    exfalso. exact (typable_head_not_bot _ _ _ _ _ _ _ _ Hty eq_refl).
   - (* transitivity *)
     apply IHHsub2.
     + eapply wf_r_typable_subtype; eauto.

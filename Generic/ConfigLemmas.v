@@ -107,15 +107,26 @@ Lemma wf_r_config_this : forall CT Δ sΓ rΓ h,
     r_muttype h ι = Some (rqtype (rt_type o)) /\
     Forall rlost_free (cargs rΓ) /\
     Forall rlost_free (margs rΓ) /\
-    frame_bounds_ok CT Δ (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ).
+    frame_bounds_ok CT Δ (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ) (qargs rΓ).
 Proof.
   intros CT Δ sΓ rΓ h Hwf.
   destruct Hwf as (_ & _ & _ & _ & Hframe & _).
-  destruct Hframe as (ι & o & Cthis & Hthis & Hobj & _ & _ & Hlc & Hlm & Hbc & Hbm).
+  destruct Hframe as (ι & o & Cthis & Hthis & Hobj & _ & _ & Hlc & [Hlm _] & Hbc & Hbm).
   exists ι, o.
   refine (conj Hthis (conj Hobj (conj _ (conj Hlc (conj Hlm _))))).
   - unfold r_muttype. rewrite Hobj. reflexivity.
   - apply frame_bounds_ok_of_rbounds; auto.
+Qed.
+
+(** No qualifier argument of the activation is unknown. *)
+Lemma wf_r_config_qargs : forall CT Δ sΓ rΓ h,
+  wf_r_config CT Δ sΓ rΓ h ->
+  Forall (fun q0 => q0 <> Lost) (qargs rΓ).
+Proof.
+  intros CT Δ sΓ rΓ h Hwf.
+  destruct Hwf as (_ & _ & _ & _ & Hframe & _).
+  destruct Hframe as (ι & o & Cthis & _ & _ & _ & _ & _ & [_ Hq] & _).
+  exact Hq.
 Qed.
 
 (** Typability of a variable's value in a well-formed configuration. *)
@@ -126,7 +137,7 @@ Lemma wf_r_config_var : forall CT Δ sΓ rΓ h ι o x T,
   static_getType sΓ x = Some T ->
   match runtime_getVal rΓ x with
   | Some (Iot loc) =>
-      wf_r_typable CT h loc T (rqtype (rt_type o)) (cargs rΓ) (margs rΓ)
+      wf_r_typable CT h loc T (rqtype (rt_type o)) (cargs rΓ) (margs rΓ) (qargs rΓ)
   | Some Null_a => True
   | None => False
   end.
@@ -139,10 +150,10 @@ Proof.
 Qed.
 
 Definition val_typable (CT : class_table) (h : heap) (v : value)
-    (T : qualified_type) (qctx : q_r) (ca ma : list rtype) : Prop :=
+    (T : qualified_type) (qctx : q_r) (ca ma : list rtype) (ka : list q) : Prop :=
   match v with
   | Null_a => True
-  | Iot loc => wf_r_typable CT h loc T qctx ca ma
+  | Iot loc => wf_r_typable CT h loc T qctx ca ma ka
   end.
 
 Lemma wf_r_config_update_var : forall CT Δ sΓ rΓ h x v ι o Tx,
@@ -151,7 +162,7 @@ Lemma wf_r_config_update_var : forall CT Δ sΓ rΓ h x v ι o Tx,
   get_this_var_mapping (vars rΓ) = Some ι ->
   runtime_getObj h ι = Some o ->
   static_getType sΓ x = Some Tx ->
-  val_typable CT h v Tx (rqtype (rt_type o)) (cargs rΓ) (margs rΓ) ->
+  val_typable CT h v Tx (rqtype (rt_type o)) (cargs rΓ) (margs rΓ) (qargs rΓ) ->
   wf_r_config CT Δ sΓ (set_vars rΓ (update x v (vars rΓ))) h.
 Proof.
   intros CT Δ sΓ rΓ h x v ι o Tx Hwf Hx Hthis Hobj HTx Hv.

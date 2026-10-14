@@ -47,13 +47,15 @@ Fixpoint erase (A : ltype) : rtype :=
 (** The labelled view of an activation, or of an object reading its own
     declarations: the mutability through which [RDM] is read, the label of a
     position written mutable, the label of a position written
-    receiver-dependent, and the labelled class and method type arguments. *)
+    receiver-dependent, the labelled class and method type arguments, and the
+    labelled qualifier arguments. *)
 Record lframe := mk_lframe {
   lf_q : q;
   lf_mut : lab;
   lf_rdm : lab;
   lf_cargs : list ltype;
   lf_margs : list ltype;
+  lf_qargs : list (q * lab); (* qualifier arguments, each with its label *)
 }.
 
 Definition lab_of (F : lframe) (q0 : q) : lab :=
@@ -70,11 +72,8 @@ Definition lrehead (q0 : q) (l : lab) (A : ltype) : ltype :=
   | LT _ _ C args => LT q0 l C args
   end.
 
-(** The class type [C<args>] with the qualifier and the label of [A]. *)
-Definition lheadby (A : ltype) (C : class_name) (args : list ltype) : ltype :=
-  match A with
-  | LT q0 l _ _ => LT q0 l C args
-  end.
+(** A labelled qualifier argument; a missing one reads as readonly. *)
+Definition lqnth (qs : list (q * lab)) (n : nat) : q * lab := nth n qs (RO, LOut).
 
 (** Labelled dynamization. *)
 Fixpoint ldyn (F : lframe) (T : qualified_type) : ltype :=
@@ -89,81 +88,132 @@ Fixpoint ldyn (F : lframe) (T : qualified_type) : ltype :=
       match u with
       | TVSub => A
       | TVQual q0 => lrehead (dynq (lf_q F) q0) (lab_of F q0) A
+      | TVPoly m =>
+          lrehead (fst (lqnth (lf_qargs F) m)) (snd (lqnth (lf_qargs F) m)) A
       end
-  | THead o n C args =>
-      lheadby match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A => A
-              | None => ldefault
-              end C (map (ldyn F) args)
+  | THead n C args =>
+      LT (fst (lqnth (lf_qargs F) n)) (snd (lqnth (lf_qargs F) n)) C
+        (map (ldyn F) args)
   end.
+
+(** The labelled value of a qualifier argument, in the caller's view. *)
+Definition lqarg (F : lframe) (a : qarg) : q * lab :=
+  match a with
+  | QLit q0 => (dynq (lf_q F) q0, lab_of F q0)
+  | QVar m => lqnth (lf_qargs F) m
+  end.
+
+Lemma qnth_map_fst : forall qs n, qnth (map fst qs) n = fst (lqnth qs n).
+Proof.
+  intros qs n. unfold qnth, lqnth.
+  change RO with (fst (RO, LOut)). apply map_nth.
+Qed.
+
+Lemma lqnth_map : forall (f : qarg -> q * lab) Qs n,
+  lqnth (map f Qs) n =
+  match nth_error Qs n with Some a => f a | None => (RO, LOut) end.
+Proof.
+  intros f Qs. unfold lqnth.
+  induction Qs as [|a Qs IH]; intros [|n]; simpl; auto.
+Qed.
 
 Lemma erase_lrehead : forall q0 l A,
   erase (lrehead q0 l A) = rrequalify q0 (erase A).
 Proof. intros q0 l [q1 l1 C args]. reflexivity. Qed.
 
-Lemma erase_lheadby : forall A C args,
-  erase (lheadby A C args) = RClass (rhead (erase A)) C (map erase args).
-Proof. intros [q1 l1 C1 args1] C args. reflexivity. Qed.
 
 (** Forgetting the labels of a labelled dynamization gives the ordinary
     one. *)
 Lemma erase_ldyn : forall F T,
   erase (ldyn F T) =
-  dyn (lf_q F) (map erase (lf_cargs F)) (map erase (lf_margs F)) T.
+  dyn (lf_q F) (map erase (lf_cargs F)) (map erase (lf_margs F))
+    (map fst (lf_qargs F)) T.
 Proof.
   intros F T. induction T using qualified_type_ind'.
   - simpl. f_equal. rewrite map_map.
     induction H; simpl; auto. f_equal; auto.
   - simpl. rewrite tv_lookup_map.
     destruct (tv_lookup o (lf_cargs F) (lf_margs F) n) as [A|]; simpl;
-      destruct u; auto using erase_lrehead.
+      destruct u; auto using erase_lrehead;
+      rewrite ?erase_lrehead; rewrite qnth_map_fst; reflexivity.
   - assert (Hargs : map erase (map (ldyn F) args) =
-              map (dyn (lf_q F) (map erase (lf_cargs F)) (map erase (lf_margs F))) args).
+              map (dyn (lf_q F) (map erase (lf_cargs F)) (map erase (lf_margs F))
+    (map fst (lf_qargs F))) args).
     { rewrite map_map. induction H; simpl; auto. f_equal; auto. }
-    simpl. rewrite erase_lheadby. rewrite Hargs. rewrite tv_lookup_map.
-    destruct (tv_lookup o (lf_cargs F) (lf_margs F) n) as [A|]; reflexivity.
+    simpl. rewrite Hargs. rewrite qnth_map_fst. reflexivity.
 Qed.
 
 Lemma map_erase_ldyn : forall F Ts,
   map erase (map (ldyn F) Ts) =
-  map (dyn (lf_q F) (map erase (lf_cargs F)) (map erase (lf_margs F))) Ts.
+  map (dyn (lf_q F) (map erase (lf_cargs F)) (map erase (lf_margs F))
+    (map fst (lf_qargs F))) Ts.
 Proof.
   intros. rewrite map_map. apply map_ext. intros. apply erase_ldyn.
 Qed.
 
-Definition lf_with_args (F : lframe) (cs ms : list ltype) : lframe :=
-  mk_lframe (lf_q F) (lf_mut F) (lf_rdm F) cs ms.
+Definition lf_with_args (F : lframe) (cs ms : list ltype)
+    (qs : list (q * lab)) : lframe :=
+  mk_lframe (lf_q F) (lf_mut F) (lf_rdm F) cs ms qs.
+
+(** Labelled dynamization of a type whose outer qualifier was replaced. *)
+Lemma ldyn_requalify : forall F q0 U,
+  ldyn F (requalify q0 U) =
+  lrehead (dynq (lf_q F) q0) (lab_of F q0) (ldyn F U).
+Proof.
+  intros F q0 U.
+  destruct U as [q1 C1 args1|u1 o1 n1|n1 C1 args1]; simpl; auto.
+  destruct (tv_lookup o1 (lf_cargs F) (lf_margs F) n1) as [A1|];
+    destruct u1; simpl; auto; try (destruct A1; reflexivity).
+Qed.
+
+Lemma ldyn_prequalify : forall F m U,
+  ldyn F (prequalify m U) =
+  lrehead (fst (lqnth (lf_qargs F) m)) (snd (lqnth (lf_qargs F) m)) (ldyn F U).
+Proof.
+  intros F m U.
+  destruct U as [q1 C1 args1|u1 o1 n1|n1 C1 args1]; simpl; auto.
+  destruct (tv_lookup o1 (lf_cargs F) (lf_margs F) n1) as [A1|];
+    destruct u1; simpl; auto; try (destruct A1; reflexivity).
+Qed.
+
+Lemma ldyn_qrequalify : forall F a U,
+  ldyn F (qrequalify a U) =
+  lrehead (fst (match a with Some x => lqarg F x | None => (RO, LOut) end))
+          (snd (match a with Some x => lqarg F x | None => (RO, LOut) end))
+          (ldyn F U).
+Proof.
+  intros F a U. destruct a as [[q0|m]|]; simpl.
+  - apply ldyn_requalify.
+  - apply ldyn_prequalify.
+  - apply (ldyn_requalify F RO U).
+Qed.
 
 (** Labelled dynamization of a substituted type is labelled dynamization
     with labelled arguments. *)
-Lemma ldyn_subst : forall F Ts Us T,
-  ldyn F (subst Ts Us T) =
-  ldyn (lf_with_args F (map (ldyn F) Ts) (map (ldyn F) Us)) T.
+Lemma ldyn_subst : forall F Ts Us Qs T,
+  ldyn F (subst Ts Us Qs T) =
+  ldyn (lf_with_args F (map (ldyn F) Ts) (map (ldyn F) Us)
+         (map (lqarg F) Qs)) T.
 Proof.
-  intros F Ts Us T. induction T using qualified_type_ind'.
+  intros F Ts Us Qs T. induction T using qualified_type_ind'.
   - simpl. f_equal. rewrite map_map.
     induction H; simpl; auto. f_equal; auto.
   - simpl. rewrite tv_lookup_map.
     destruct (tv_lookup o Ts Us n) as [U|]; simpl.
-    + destruct u; auto.
-      destruct U as [q1 C1 args1|u1 o1 n1|o1 n1 C1 args1]; simpl; auto.
-      * destruct (tv_lookup o1 (lf_cargs F) (lf_margs F) n1) as [A1|];
-          destruct u1; simpl; auto;
-          try (destruct A1; reflexivity).
-      * destruct (tv_lookup o1 (lf_cargs F) (lf_margs F) n1) as [A1|];
-          simpl; auto; destruct A1; reflexivity.
-    + destruct u; reflexivity.
-  - assert (Hargs : map (ldyn F) (map (subst Ts Us) args) =
-              map (ldyn (lf_with_args F (map (ldyn F) Ts) (map (ldyn F) Us))) args).
+    + destruct u as [|q0|m]; auto.
+      * exact (ldyn_requalify F q0 U).
+      * cbn [lf_with_args lf_qargs]. rewrite lqnth_map.
+        exact (ldyn_qrequalify F _ U).
+    + destruct u as [|q0|m]; try reflexivity.
+      cbn [lf_with_args lf_qargs]. rewrite lqnth_map.
+      destruct (nth_error Qs m) as [[q0|m']|]; reflexivity.
+  - assert (Hargs : map (ldyn F) (map (subst Ts Us Qs) args) =
+              map (ldyn (lf_with_args F (map (ldyn F) Ts) (map (ldyn F) Us)
+         (map (lqarg F) Qs))) args).
     { rewrite map_map. induction H; simpl; auto. f_equal; auto. }
-    simpl. rewrite tv_lookup_map.
-    destruct (tv_lookup o Ts Us n) as [U|]; simpl.
-    + destruct U as [q1 C1 args1 | u1 o1 n1 | o1 n1 C1 args1]; simpl;
-        rewrite ?Hargs; auto;
-        try (destruct u1; simpl; rewrite ?Hargs; auto);
-        try (destruct (tv_lookup o1 (lf_cargs F) (lf_margs F) n1) as [A1|];
-             simpl; auto; destruct A1; reflexivity).
-    + rewrite Hargs. reflexivity.
+    cbn [subst ldyn lf_with_args lf_qargs]. rewrite lqnth_map.
+    destruct (nth_error Qs n) as [[q0|m]|]; cbn [qhead ldyn lqarg fst snd];
+      rewrite Hargs; reflexivity.
 Qed.
 
 (** Normal form of a label relative to the live worlds: a world that is no
@@ -353,14 +403,11 @@ Proof.
   intros L F T U H. induction H using targ_sub_ind'.
   - apply lagree_refl.
   - simpl. constructor.
-    + destruct H as [-> | [-> [-> | ->]]]; [left; reflexivity| |];
+    + destruct H as [-> | [-> [-> | [-> | ->]]]]; [left; reflexivity| | |];
         right; simpl; auto.
     + destruct H as [-> | [-> _]]; auto.
     + clear H H0. induction H1; simpl; constructor; auto.
-  - simpl.
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A => A | None => ldefault end) as [q0 l0 C0 a0].
-    simpl. constructor; [left; reflexivity | auto |].
+  - simpl. constructor; [left; reflexivity | auto |].
     clear H. induction H0; simpl; constructor; auto.
 Qed.
 
@@ -384,9 +431,10 @@ Lemma ldyn_map_qual_agree : forall L f Fo Fc T,
   label_cond L f Fo Fc ->
   Forall2 (lagree L) (lf_cargs Fo) (lf_cargs Fc) ->
   Forall2 (lagree L) (lf_margs Fo) (lf_margs Fc) ->
+  lf_qargs Fo = lf_qargs Fc ->
   lagree L (ldyn Fo T) (ldyn Fc (map_qual f T)).
 Proof.
-  intros L f Fo Fc T Hq Hc Hm.
+  intros L f Fo Fc T Hq Hc Hm Hqs.
   induction T using qualified_type_ind'.
   - simpl. destruct (Hq qual) as [H1 H2]. constructor; auto.
     induction H; simpl; constructor; auto.
@@ -399,19 +447,12 @@ Proof.
     { destruct (tv_lookup o (lf_cargs Fo) (lf_margs Fo) n),
                (tv_lookup o (lf_cargs Fc) (lf_margs Fc) n);
         try contradiction; auto using lagree_default. }
-    destruct u; simpl; auto.
-    destruct (Hq qual) as [H1 H2].
-    inversion HA; subst. simpl. constructor; auto.
-  - pose proof (tv_lookup_Forall2 (lagree L) o _ _ _ _ n Hc Hm) as Hl.
-    assert (HA : lagree L
-              match tv_lookup o (lf_cargs Fo) (lf_margs Fo) n with
-              | Some A => A | None => ldefault end
-              match tv_lookup o (lf_cargs Fc) (lf_margs Fc) n with
-              | Some A => A | None => ldefault end).
-    { destruct (tv_lookup o (lf_cargs Fo) (lf_margs Fo) n),
-               (tv_lookup o (lf_cargs Fc) (lf_margs Fc) n);
-        try contradiction; auto using lagree_default. }
-    simpl. inversion HA; subst. simpl. constructor; auto.
+    destruct u as [|qual|m]; simpl; auto.
+    + destruct (Hq qual) as [H1 H2].
+      inversion HA; subst. simpl. constructor; auto.
+    + rewrite Hqs. inversion HA; subst. simpl.
+      constructor; auto; left; reflexivity.
+  - simpl. rewrite Hqs. constructor; [left; reflexivity | auto |].
     induction H; simpl; constructor; auto.
 Qed.
 
@@ -419,6 +460,7 @@ Lemma map_ldyn_map_qual_agree : forall L f Fo Fc Ts,
   label_cond L f Fo Fc ->
   Forall2 (lagree L) (lf_cargs Fo) (lf_cargs Fc) ->
   Forall2 (lagree L) (lf_margs Fo) (lf_margs Fc) ->
+  lf_qargs Fo = lf_qargs Fc ->
   Forall2 (lagree L) (map (ldyn Fo) Ts) (map (ldyn Fc) (map (map_qual f) Ts)).
 Proof.
   intros. induction Ts; simpl; constructor; auto using ldyn_map_qual_agree.
@@ -434,16 +476,16 @@ Definition obj_frame (qo : q_r) (birth c : option nat) (args : list ltype)
   mk_lframe (qr2q qo)
     (match birth with Some w => LIn w | None => LOut end)
     (match c with Some w => LIn w | None => LOut end)
-    args [].
+    args [] [].
 
 (** The labelled view of an activation working in world [wf]. *)
 Definition act_frame (qthis : q_r) (wf : nat) (mode : bool)
-    (cs ms : list ltype) : lframe :=
-  mk_lframe (qr2q qthis) (LIn wf) (if mode then LIn wf else LOut) cs ms.
+    (cs ms : list ltype) (ks : list (q * lab)) : lframe :=
+  mk_lframe (qr2q qthis) (LIn wf) (if mode then LIn wf else LOut) cs ms ks.
 
 (** The label side condition for reading a member in readonly-state or
     transitive-state code through a receiver with static qualifier [qx]. *)
-Lemma rs_label_cond : forall L mt qo b c oargs qthis wf mode cs ms qx,
+Lemma rs_label_cond : forall L mt qo b c oargs qthis wf mode cs ms ks qx,
   readonly_state_method_scope mt ->
   head_ok qo (dynq (qr2q qthis) qx) ->
   qx <> Bot ->
@@ -452,9 +494,9 @@ Lemma rs_label_cond : forall L mt qo b c oargs qthis wf mode cs ms qx,
   (qx = RDM -> qo = Mut_r ->
      if mode then c = Some wf else forall w, c = Some w -> ~ List.In w L) ->
   label_cond L (vpa_q mt qx) (obj_frame qo b c oargs)
-    (act_frame qthis wf mode cs ms).
+    (act_frame qthis wf mode cs ms ks).
 Proof.
-  intros L mt qo b c oargs qthis wf mode cs ms qx Hrs Hhead Hnb HwfL Hmut Hrdm q0.
+  intros L mt qo b c oargs qthis wf mode cs ms ks qx Hrs Hhead Hnb HwfL Hmut Hrdm q0.
   split.
   - unfold obj_frame, act_frame. simpl lf_q.
     apply dynq_vpa_q_agree; [apply qr2q_concrete | apply qr2q_concrete | exact Hhead].

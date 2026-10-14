@@ -84,7 +84,7 @@ Lemma field_inherit : forall CT qo Co Ro C Vs,
     exists fd',
       nth_error fsO f = Some fd' /\
       assignability fd' = assignability fd /\
-      dyn qo Ro [] (ftype fd') = dyn qo Vs [] (ftype fd).
+      dyn qo Ro [] [] (ftype fd') = dyn qo Vs [] [] (ftype fd).
 Proof.
   intros CT qo Co Ro C Vs H.
   induction H; intros fsC fsO f fd HcfC HcfO Hnth.
@@ -148,24 +148,29 @@ Qed.
 Lemma ubound_subtype : forall CT Δ T U,
   ubound Δ T = Some U -> T = U \/ qualified_type_subtype CT Δ T U.
 Proof.
-  intros CT Δ T U H. destruct T as [q0 C Ts | u o n | o n C Ts]; simpl in H.
+  intros CT Δ T U H. destruct T as [q0 C Ts | u o n | n C Ts]; simpl in H.
   - left. congruence.
   - destruct (tv_bound Δ o n) as [B|] eqn:Hb; [|destruct u; discriminate].
     destruct B as [qb C Ts| |]; [|destruct u; discriminate..].
-    destruct u as [|q0].
+    destruct u as [|q0|m].
     + inversion H; subst. right. apply qtype_var_bound; auto.
     + destruct Ts; [|discriminate]. inversion H; subst.
       right. eapply qtype_qvar_bound. apply qtype_var_bound. exact Hb.
-  - destruct (tv_bound Δ o n) as [B|] eqn:Hb; [|discriminate].
+    + destruct Ts; [|discriminate].
+      destruct (Nat.ltb m (qparams Δ)); [|discriminate]. inversion H; subst.
+      right. eapply qtype_trans; [apply qtype_pvar_ro|].
+      eapply qtype_qvar_bound. apply qtype_var_bound. exact Hb.
+  - destruct (Nat.ltb n (qparams Δ)) eqn:Hb; [|discriminate].
+    apply PeanoNat.Nat.ltb_lt in Hb.
     inversion H; subst. right. eapply qtype_head_ro; eauto.
     apply Forall2_targ_sub_refl.
 Qed.
 
-Lemma wf_r_typable_ubound : forall CT Δ h ι T U qctx ca ma,
-  frame_bounds_ok CT Δ (qr2q qctx) ca ma ->
+Lemma wf_r_typable_ubound : forall CT Δ h ι T U qctx ca ma ka,
+  frame_bounds_ok CT Δ (qr2q qctx) ca ma ka ->
   ubound Δ T = Some U ->
-  wf_r_typable CT h ι T qctx ca ma ->
-  wf_r_typable CT h ι U qctx ca ma.
+  wf_r_typable CT h ι T qctx ca ma ka ->
+  wf_r_typable CT h ι U qctx ca ma ka.
 Proof.
   intros. destruct (ubound_subtype CT _ _ _ H0) as [-> | Hsub]; auto.
   eapply wf_r_typable_subtype; eauto.
@@ -173,16 +178,16 @@ Qed.
 
 (** What a receiver's runtime typability at a class type says about its
     object. *)
-Lemma wf_r_typable_class_inv : forall CT h ι qx C Ts qctx ca ma,
-  wf_r_typable CT h ι (TClass qx C Ts) qctx ca ma ->
+Lemma wf_r_typable_class_inv : forall CT h ι qx C Ts qctx ca ma ka,
+  wf_r_typable CT h ι (TClass qx C Ts) qctx ca ma ka ->
   exists o Vs,
     runtime_getObj h ι = Some o /\
     head_ok (rqtype (rt_type o)) (dynq (qr2q qctx) qx) /\
     rsuper_inst CT (qr2q (rqtype (rt_type o)))
       (rctype (rt_type o)) (rtargs (rt_type o)) C Vs /\
-    Forall2 rarg_sub Vs (map (dyn (qr2q qctx) ca ma) Ts).
+    Forall2 rarg_sub Vs (map (dyn (qr2q qctx) ca ma ka) Ts).
 Proof.
-  intros CT h ι qx C Ts qctx ca ma H.
+  intros CT h ι qx C Ts qctx ca ma ka H.
   unfold wf_r_typable, loc_has_rtype in H. simpl in H.
   destruct (runtime_getObj h ι) as [o|]; [|contradiction].
   destruct H as [Hhead [Vs [Hsup Hle]]]. eauto 8.
@@ -201,7 +206,7 @@ Lemma object_field_typable : forall CT h ι o C Vs f fd v,
   match v with
   | Null_a => True
   | Iot loc =>
-      loc_has_rtype CT h loc (dyn (qr2q (rqtype (rt_type o))) Vs [] (ftype fd))
+      loc_has_rtype CT h loc (dyn (qr2q (rqtype (rt_type o))) Vs [] [] (ftype fd))
   end.
 Proof.
   intros CT h ι o C Vs f fd v Hheap Hobj Hsup Hfld Hval.
@@ -221,10 +226,10 @@ Lemma expr_eval_typable : forall CT Δ sΓ rΓ h mt e T v ι o,
   wf_r_config CT Δ sΓ rΓ h ->
   get_this_var_mapping (vars rΓ) = Some ι ->
   runtime_getObj h ι = Some o ->
-  frame_bounds_ok CT Δ (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ) ->
+  frame_bounds_ok CT Δ (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ) (qargs rΓ) ->
   expr_has_type CT Δ sΓ mt e T ->
   eval_expr CT rΓ h e v OK rΓ h ->
-  val_typable CT h v T (rqtype (rt_type o)) (cargs rΓ) (margs rΓ).
+  val_typable CT h v T (rqtype (rt_type o)) (cargs rΓ) (margs rΓ) (qargs rΓ).
 Proof.
   intros CT Δ sΓ rΓ h mt e T v ι o Hwf Hthis Hobj Hfb Htype Heval.
   inversion Htype; subst; inversion Heval; subst.
@@ -233,8 +238,8 @@ Proof.
     rewrite Hval in Hv. destruct v; auto.
   - pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_x) as Hv.
     rewrite Hval in Hv.
-    pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ Hfb Hub Hv) as Hv'.
-    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hv')
+    pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ _ Hfb Hub Hv) as Hv'.
+    destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hv')
       as (ox & Vs & Hobjx & Hhead & Hsup & Hle).
     rewrite Hobj0 in Hobjx. inversion Hobjx; subst ox. clear Hobjx.
     destruct Hwf as (_ & Hheap & _).
@@ -247,11 +252,11 @@ Qed.
 
 (* ------------------ASSIGNMENT AND CAST------------------*)
 
-Lemma val_typable_subtype : forall CT Δ h v T U qctx ca ma,
-  frame_bounds_ok CT Δ (qr2q qctx) ca ma ->
+Lemma val_typable_subtype : forall CT Δ h v T U qctx ca ma ka,
+  frame_bounds_ok CT Δ (qr2q qctx) ca ma ka ->
   qualified_type_subtype CT Δ T U ->
-  val_typable CT h v T qctx ca ma ->
-  val_typable CT h v U qctx ca ma.
+  val_typable CT h v T qctx ca ma ka ->
+  val_typable CT h v U qctx ca ma ka.
 Proof.
   intros. destruct v; simpl in *; auto.
   eapply wf_r_typable_subtype; eauto.
@@ -280,17 +285,17 @@ Proof.
     exfalso; apply H2; reflexivity.
 Qed.
 
-Lemma cast_narrowing_typable : forall CT h ι S T qctx ca ma,
+Lemma cast_narrowing_typable : forall CT h ι S T qctx ca ma ka,
   wf_class_table CT -> wf_heap CT h ->
   cast_narrowing_ok CT S T ->
-  wf_r_typable CT h ι S qctx ca ma ->
-  wf_r_typable CT h ι T qctx ca ma.
+  wf_r_typable CT h ι S qctx ca ma ka ->
+  wf_r_typable CT h ι T qctx ca ma ka.
 Proof.
-  intros CT h ι S T qctx ca ma Hct Hheap Hnarrow Hty.
+  intros CT h ι S T qctx ca ma ka Hct Hheap Hnarrow Hty.
   destruct S as [qs Cs args_s| |]; [|contradiction..].
   destruct T as [qt Ct args_t| |]; [|contradiction..].
   destruct Hnarrow as (-> & -> & Hqt & _ & _ & dD & HD & Hpin).
-  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hty)
+  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hty)
     as (o & Vs & Hobj & Hhead & Hsup & Hle).
   pose proof (Hheap ι (runtime_getObj_dom _ _ _ Hobj)) as Hwfo.
   unfold wf_obj in Hwfo. rewrite Hobj in Hwfo.
@@ -366,43 +371,45 @@ Proof.
     + rewrite update_field_getObj_diff; auto.
 Qed.
 
-Lemma val_typable_bot_null : forall CT h v C Ts qctx ca ma,
-  val_typable CT h v (TClass Bot C Ts) qctx ca ma -> v = Null_a.
+Lemma val_typable_bot_null : forall CT h v C Ts qctx ca ma ka,
+  val_typable CT h v (TClass Bot C Ts) qctx ca ma ka -> v = Null_a.
 Proof.
-  intros CT h [|loc] C Ts qctx ca ma H; auto.
+  intros CT h [|loc] C Ts qctx ca ma ka H; auto.
   simpl in H. unfold wf_r_typable, loc_has_rtype in H. simpl in H.
   destruct (runtime_getObj h loc); [|contradiction].
   destruct H as [Hh _]. exfalso. eapply head_ok_not_bot; eauto.
 Qed.
 
 (** A value that may be stored where the client sees a member at type
-    [member_type mt qx Ts Us T] inhabits the declaration [T] read in the
+    [member_type mt qx Ts Us Qs T] inhabits the declaration [T] read in the
     target's own activation. *)
-Lemma assignable_to_member : forall CT Δ h v A mt qx Ts Us T qctx ca ma qo Vs Ms,
-  frame_bounds_ok CT Δ (qr2q qctx) ca ma ->
+Lemma assignable_to_member : forall CT Δ h v A mt qx Ts Us Qs T qctx ca ma ka qo Vs Ms,
+  frame_bounds_ok CT Δ (qr2q qctx) ca ma ka ->
   Forall rlost_free ca -> Forall rlost_free ma ->
-  assignable_to CT Δ A (member_type mt qx Ts Us T) ->
-  val_typable CT h v A qctx ca ma ->
+  Forall (fun q0 => q0 <> Lost) ka ->
+  assignable_to CT Δ A (member_type mt qx Ts Us Qs T) ->
+  val_typable CT h v A qctx ca ma ka ->
   head_ok qo (dynq (qr2q qctx) qx) ->
-  Forall2 rarg_sub Vs (map (dyn (qr2q qctx) ca ma) Ts) ->
-  Forall2 rarg_sub Ms (map (dyn (qr2q qctx) ca ma) Us) ->
+  Forall2 rarg_sub Vs (map (dyn (qr2q qctx) ca ma ka) Ts) ->
+  Forall2 rarg_sub Ms (map (dyn (qr2q qctx) ca ma ka) Us) ->
   match v with
   | Null_a => True
-  | Iot loc => loc_has_rtype CT h loc (dyn (qr2q qo) Vs Ms T)
+  | Iot loc =>
+      loc_has_rtype CT h loc
+        (dyn (qr2q qo) Vs Ms (map (rqarg (qr2q qctx) ka) Qs) T)
   end.
 Proof.
-  intros CT Δ h v A mt qx Ts Us T qctx ca ma qo Vs Ms
-    Hfb Hlc Hlm [Hsub Hok] Hv Hhead HVs HMs.
-  destruct Hok as [Hlf | (C & Ts' & ->)].
-  - destruct v as [|loc]; [exact I|]. simpl in Hv.
-    pose proof (wf_r_typable_subtype _ _ _ _ _ _ _ _ _ Hfb Hsub Hv) as Hv'.
-    unfold wf_r_typable, member_type in Hv'. rewrite dyn_subst in Hv'.
-    rewrite (dyn_adapt_exact mt qo qctx qx Vs
-               (map (dyn (qr2q qctx) ca ma) Ts) Ms
-               (map (dyn (qr2q qctx) ca ma) Us) T); auto.
-    rewrite <- dyn_subst.
-    apply dyn_lost_free; auto using qr2q_concrete.
-  - apply val_typable_bot_null in Hv. subst v. exact I.
+  intros CT Δ h v A mt qx Ts Us Qs T qctx ca ma ka qo Vs Ms
+    Hfb Hlc Hlm Hka [Hsub Hlf] Hv Hhead HVs HMs.
+  destruct v as [|loc]; [exact I|]. simpl in Hv.
+  pose proof (wf_r_typable_subtype _ _ _ _ _ _ _ _ _ _ Hfb Hsub Hv) as Hv'.
+  unfold wf_r_typable, member_type in Hv'. rewrite dyn_subst in Hv'.
+  rewrite (dyn_adapt_exact mt qo qctx qx Vs
+             (map (dyn (qr2q qctx) ca ma ka) Ts) Ms
+             (map (dyn (qr2q qctx) ca ma ka) Us)
+             (map (rqarg (qr2q qctx) ka) Qs) T); auto.
+  rewrite <- dyn_subst.
+  apply dyn_lost_free; auto using qr2q_concrete.
 Qed.
 
 Lemma preservation_fldwrite : forall CT Δ sΓ rΓ h mt x f y sΓ' lx ox vf vy,
@@ -420,16 +427,17 @@ Proof.
     as (ι & o & Hthis & Hobj & _ & Hlc & Hlm & Hfb).
   pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_x) as Hxty.
   rewrite Hvx in Hxty.
-  pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ Hfb Hub Hxty) as Hxty'.
-  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hxty')
+  pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ _ Hfb Hub Hxty) as Hxty'.
+  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hxty')
     as (ox' & Vs & Hox' & Hhead & Hsup & Hle).
   rewrite Hox in Hox'. inversion Hox'; subst ox'. clear Hox'.
   pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_y) as Hyty.
   rewrite Hvy in Hyty.
-  assert (Hyval : val_typable CT h vy Ty (rqtype (rt_type o)) (cargs rΓ) (margs rΓ)).
+  assert (Hyval : val_typable CT h vy Ty (rqtype (rt_type o)) (cargs rΓ) (margs rΓ) (qargs rΓ)).
   { destruct vy; auto. }
-  pose proof (assignable_to_member _ _ _ _ _ _ _ _ _ _ _ _ _
-                (rqtype (rt_type ox)) Vs [] Hfb Hlc Hlm Hsub Hyval Hhead Hle
+  pose proof (assignable_to_member _ _ _ _ _ _ _ _ _ [] _ _ _ _ _
+                (rqtype (rt_type ox)) Vs [] Hfb Hlc Hlm
+                (wf_r_config_qargs _ _ _ _ _ Hwf) Hsub Hyval Hhead Hle
                 (Forall2_nil _)) as Hstore.
   eapply wf_r_config_heap_ext; eauto using update_field_heap_ext.
   destruct Hwf as (Hct & Hheap & _).
@@ -449,7 +457,7 @@ Proof.
            | Null_a => True
            | Iot loc =>
                wf_r_typable CT h loc (ftype fdef)
-                 (rqtype (rt_type ox)) (rtargs (rt_type ox)) []
+                 (rqtype (rt_type ox)) (rtargs (rt_type ox)) [] []
            end).
       * intros [|loc] fd Hx; auto. unfold wf_r_typable in *.
         eauto using loc_has_rtype_ext, update_field_heap_ext.
@@ -528,7 +536,7 @@ Lemma lookup_list_typable : forall CT Δ sΓ rΓ h ι o args argtypes vals,
   runtime_getObj h ι = Some o ->
   static_getType_list sΓ args = Some argtypes ->
   runtime_lookup_list rΓ args = Some vals ->
-  Forall2 (fun v A => val_typable CT h v A (rqtype (rt_type o)) (cargs rΓ) (margs rΓ))
+  Forall2 (fun v A => val_typable CT h v A (rqtype (rt_type o)) (cargs rΓ) (margs rΓ) (qargs rΓ))
     vals argtypes.
 Proof.
   intros CT Δ sΓ rΓ h ι o args argtypes vals Hwf Hthis Hobj.
@@ -577,19 +585,20 @@ Lemma preservation_new : forall CT Δ sΓ rΓ h mt x qc C Ts ys sΓ' l1 qthisr v
     (set_vars rΓ (update x (Iot (dom h)) (vars rΓ)))
     (h ++ [mkObj
              (mkruntime_type (vpa_mutability_object_creation qthisr qc) C
-                (map (dyn (qr2q qthisr) (cargs rΓ) (margs rΓ)) Ts))
+                (map (dyn (qr2q qthisr) (cargs rΓ) (margs rΓ) (qargs rΓ)) Ts))
              vals]).
 Proof.
   intros CT Δ sΓ rΓ h mt x qc C Ts ys sΓ' l1 qthisr vals
     Hwf Htype Hthis0 Hvals Hmut.
   inversion Htype; subst.
+  pose proof (wf_r_config_qargs _ _ _ _ _ Hwf) as Hka.
   destruct (wf_r_config_this _ _ _ _ _ Hwf)
     as (ι & o & Hthis & Hobj & Hmut' & Hlc & Hlm & Hfb).
   apply get_this_runtime_getVal in Hthis0.
   assert (l1 = ι) by congruence. subst l1.
   assert (qthisr = rqtype (rt_type o)) by congruence. subst qthisr.
   set (qo := vpa_mutability_object_creation (rqtype (rt_type o)) qc) in *.
-  set (Rs := map (dyn (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ)) Ts) in *.
+  set (Rs := map (dyn (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ) (qargs rΓ)) Ts) in *.
   set (onew := mkObj (mkruntime_type qo C Rs) vals).
   pose proof (heap_ext_app h onew) as Hext.
   pose proof (lookup_list_typable _ _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_args Hvals)
@@ -607,20 +616,20 @@ Proof.
       + apply map_dyn_lost_free; auto using qr2q_concrete.
       + unfold rbounds_ok. eapply Forall2_map_left; [exact Hbounds|].
         intros T B [Hlf Hsub]. apply bound_sub_self in Hsub. simpl in Hlf, Hsub.
-        pose proof (subtype_dyn _ _ _ _ _ _ _ (qr2q_concrete _) Hfb Hsub) as Hrs.
+        pose proof (subtype_dyn _ _ _ _ _ _ _ _ (qr2q_concrete _) Hfb Hsub) as Hrs.
         unfold member_type in Hrs. rewrite dyn_subst in Hrs. simpl map in Hrs.
         rewrite (dyn_adapt_exact AbstractState qo (rqtype (rt_type o)) (qc2q qc)
-                   Rs Rs [] [] B); auto using Forall2_rarg_sub_refl.
-        fold Rs. change (@nil rtype) with
-          (map (dyn (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ)) []).
-        unfold Rs. rewrite <- dyn_subst.
+                   Rs Rs [] [] [] B); auto using Forall2_rarg_sub_refl.
+        fold Rs. unfold Rs.
+        rewrite <- (dyn_subst (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ)
+                      (qargs rΓ) Ts [] []).
         apply dyn_lost_free; auto using qr2q_concrete.
     - exists fds. split; [exact Hfields|]. split.
       + rewrite <- (Forall2_length Harg_sub). apply (Forall2_length Hvals_ty).
       + eapply Forall2_compose; [exact Hvals_ty | exact Harg_sub |].
         intros v A fd Hv Hassign. simpl in Hv, Hassign.
         pose proof (assignable_to_member _ _ _ _ _ _ _ _ _ _ _ _ _
-                      qo Rs [] Hfb Hlc Hlm Hassign Hv Hhead
+                      _ _ qo Rs [] Hfb Hlc Hlm Hka Hassign Hv Hhead
                       (Forall2_rarg_sub_refl _) (Forall2_nil _)) as Hstore.
         destruct v as [|loc]; auto.
         unfold wf_r_typable. simpl. eapply loc_has_rtype_ext; eauto. }

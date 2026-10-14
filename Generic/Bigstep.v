@@ -68,10 +68,10 @@ Definition vpa_mutability_runtime_bound_agree (q1: q_r)(q2 : q_c) : bool :=
 (* ------------------RUNTIME WELLFORMEDNESS RULES------------------*)
 
 (** Runtime type arguments [Rs] satisfy the declared bounds [Bs], with the
-    bounds resolved through [qctx] and the arguments [ca], [ma]. *)
-Definition rbounds_ok (CT : class_table) (qctx : q) (ca ma : list rtype)
+    bounds resolved through [qctx] and the arguments [ca], [ma], [ka]. *)
+Definition rbounds_ok (CT : class_table) (qctx : q) (ca ma : list rtype) (ka : list q)
     (Rs : list rtype) (Bs : list qualified_type) : Prop :=
-  Forall2 (fun R B => rtype_subtype CT R (dyn qctx ca ma B)) Rs Bs.
+  Forall2 (fun R B => rtype_subtype CT R (dyn qctx ca ma ka B)) Rs Bs.
 
 (** Well-formed runtime object type: the mutability agrees with the class
     declaration, and the stored type arguments are fully known and satisfy
@@ -83,7 +83,7 @@ Definition wf_rtypeuse (CT: class_table) (rt : runtime_type) : Prop :=
       vpa_mutability_runtime_bound_agree (rqtype rt)
         (class_qualifier (signature def)) /\
       Forall rlost_free (rtargs rt) /\
-      rbounds_ok CT (qr2q (rqtype rt)) (rtargs rt) [] (rtargs rt)
+      rbounds_ok CT (qr2q (rqtype rt)) (rtargs rt) [] [] (rtargs rt)
         (ctparams (signature def))
   end.
 
@@ -107,10 +107,10 @@ Definition loc_has_rtype (CT : class_table) (h : heap) (ι : Loc) (R : rtype) : 
 
 (** The object at [ι] inhabits static type [T], read in an activation whose
     receiver has mutability [qcontext] and whose runtime class and method type
-    arguments are [ca] and [ma]. *)
+    arguments are [ca] and [ma], [ka]. *)
 Definition wf_r_typable (CT: class_table) (h: heap) (ι: Loc)
-    (T: qualified_type) (qcontext: q_r) (ca ma : list rtype) : Prop :=
-  loc_has_rtype CT h ι (dyn (qr2q qcontext) ca ma T).
+    (T: qualified_type) (qcontext: q_r) (ca ma : list rtype) (ka : list q) : Prop :=
+  loc_has_rtype CT h ι (dyn (qr2q qcontext) ca ma ka T).
 
 (* Wellformed Runtime Object: an object is well-formed if itself and its fields' type are well formed *)
 Definition wf_obj (CT: class_table) (h: heap) (ι: Loc) : Prop :=
@@ -127,7 +127,7 @@ Definition wf_obj (CT: class_table) (h: heap) (ι: Loc) : Prop :=
         | Null_a => True
         | Iot loc =>
             wf_r_typable CT h loc (ftype fdef)
-              (rqtype (rt_type o)) (rtargs (rt_type o)) []
+              (rqtype (rt_type o)) (rtargs (rt_type o)) [] []
         end) (fields_map o) field_defs
   end.
 
@@ -155,7 +155,7 @@ Definition wf_heap (CT: class_table) (h: heap) : Prop :=
     [Δ] of the code it runs.  [Cthis] is the class whose type parameters [Δ]
     lists: the receiver object, viewed at [Cthis], has exactly the class
     arguments recorded in the environment, and both argument lists are fully
-    known and satisfy their bounds. *)
+    known and satisfy their bounds, and no qualifier argument is [Lost]. *)
 Definition wf_frame_targs (CT : class_table) (Δ : tv_env) (rΓ : r_env) (h : heap)
     : Prop :=
   exists ι o Cthis,
@@ -165,10 +165,11 @@ Definition wf_frame_targs (CT : class_table) (Δ : tv_env) (rΓ : r_env) (h : he
     rsuper_inst CT (qr2q (rqtype (rt_type o)))
       (rctype (rt_type o)) (rtargs (rt_type o)) Cthis (cargs rΓ) /\
     Forall rlost_free (cargs rΓ) /\
-    Forall rlost_free (margs rΓ) /\
-    rbounds_ok CT (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ)
+    (Forall rlost_free (margs rΓ) /\
+     Forall (fun q0 => q0 <> Lost) (qargs rΓ)) /\
+    rbounds_ok CT (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ) (qargs rΓ)
       (cargs rΓ) (class_bounds Δ) /\
-    rbounds_ok CT (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ)
+    rbounds_ok CT (qr2q (rqtype (rt_type o))) (cargs rΓ) (margs rΓ) (qargs rΓ)
       (margs rΓ) (method_bounds Δ).
 
 (** A runtime configuration is well formed when its class table, heap, and
@@ -195,7 +196,7 @@ Definition wf_r_config (CT: class_table) (Δ : tv_env) (sΓ: s_env) (rΓ: r_env)
     nth_error sΓ i = Some sqt ->
     match runtime_getVal rΓ i with
     | Some (Iot loc) =>
-        wf_r_typable CT h loc sqt qcontext (cargs rΓ) (margs rΓ)
+        wf_r_typable CT h loc sqt qcontext (cargs rΓ) (margs rΓ) (qargs rΓ)
     | Some Null_a => True
     | None => False
     end.
@@ -261,10 +262,13 @@ Qed.
 
 (** The environment of a callee activation.  [ly] is the receiver object, [D]
     the class declaring the selected method.  The class arguments are the
-    receiver's own arguments viewed at [D]; the method arguments are the
-    written ones, resolved in the caller's activation. *)
+    receiver's own arguments viewed at [D]; the method type arguments and the
+    qualifier arguments are the written ones, resolved in the caller's
+    activation: a written [RDM] stands for the caller's receiver, and a
+    qualifier parameter of the caller for the qualifier the caller holds. *)
 Definition callee_env (CT : class_table) (rΓ : r_env) (h : heap)
-    (ly : Loc) (D : class_name) (Us : list qualified_type) (vals : list value)
+    (ly : Loc) (D : class_name) (Us : list qualified_type) (Qs : list qarg)
+    (vals : list value)
     (rΓ' : r_env) : Prop :=
   exists lthis qthis oy cargs',
     runtime_getVal rΓ 0 = Some (Iot lthis) /\
@@ -273,7 +277,8 @@ Definition callee_env (CT : class_table) (rΓ : r_env) (h : heap)
     rsuper_inst CT (qr2q (rqtype (rt_type oy)))
       (rctype (rt_type oy)) (rtargs (rt_type oy)) D cargs' /\
     rΓ' = mkr_env (Iot ly :: vals) cargs'
-            (map (dyn (qr2q qthis) (cargs rΓ) (margs rΓ)) Us).
+            (map (dyn (qr2q qthis) (cargs rΓ) (margs rΓ) (qargs rΓ)) Us)
+            (map (rqarg (qr2q qthis) (qargs rΓ)) Qs).
 
 (* PICO Statement evaluation *)
 Inductive eval_stmt : class_table -> r_env -> heap -> stmt -> eval_result -> r_env -> heap -> Prop :=
@@ -337,50 +342,50 @@ Inductive eval_stmt : class_table -> r_env -> heap -> stmt -> eval_result -> r_e
       (Hadapt   : vpa_mutability_object_creation qthisr q_c = qadapted)
       (Hobj     : o = mkObj
                         (mkruntime_type qadapted c
-                           (map (dyn (qr2q qthisr) (cargs rΓ) (margs rΓ)) Ts))
+                           (map (dyn (qr2q qthisr) (cargs rΓ) (margs rΓ) (qargs rΓ)) Ts))
                         vals)
       (Hheap    : h' = h++[o])
       (Henv     : rΓ' = (set_vars rΓ (update x (Iot (dom h)) rΓ.(vars)))),
       eval_stmt CT rΓ h (SNew x q_c c Ts ys) OK rΓ' h'
 
   (* evaluate method call statement *)
-  | SBS_Call : forall CT rΓ h x y m Us zs vals ly cy D mdef mstmt mret retval h' rΓ' rΓ'' rΓ'''
+  | SBS_Call : forall CT rΓ h x y m Us Qs zs vals ly cy D mdef mstmt mret retval h' rΓ' rΓ'' rΓ'''
       (Hval_y      : runtime_getVal rΓ y = Some (Iot ly))
       (Hbase       : r_basetype h ly = Some cy)
       (Hfind       : FindMethodWithName CT cy m D mdef)
       (Hstmt       : mstmt = (mbody mdef).(mbody_stmt))
       (Hret        : mret = (mbody mdef).(mreturn))
       (Hargs       : runtime_lookup_list rΓ zs = Some vals)
-      (Hframe      : callee_env CT rΓ h ly D Us vals rΓ')
+      (Hframe      : callee_env CT rΓ h ly D Us Qs vals rΓ')
       (Heval_body  : eval_stmt CT rΓ' h mstmt OK rΓ'' h')
       (Hretval     : runtime_getVal rΓ'' mret = Some retval)
       (Henv        : rΓ''' = (set_vars rΓ (update x retval rΓ.(vars)))),
-      eval_stmt CT rΓ h (SCall x m y Us zs) OK rΓ''' h'
+      eval_stmt CT rΓ h (SCall x m y Us Qs zs) OK rΓ''' h'
 
   (* evaluate method call statement NPE *)
-  | SBS_Call_NPE : forall CT rΓ h x y m Us zs
+  | SBS_Call_NPE : forall CT rΓ h x y m Us Qs zs
       (Hnull : runtime_getVal rΓ y = Some (Null_a)),
-      eval_stmt CT rΓ h (SCall x m y Us zs) NPE rΓ h
+      eval_stmt CT rΓ h (SCall x m y Us Qs zs) NPE rΓ h
 
-  | SBS_Call_NPE_Body : forall CT rΓ h x y m Us zs vals ly cy D mdef mstmt h' rΓ' rΓ''
+  | SBS_Call_NPE_Body : forall CT rΓ h x y m Us Qs zs vals ly cy D mdef mstmt h' rΓ' rΓ''
       (Hval_y     : runtime_getVal rΓ y = Some (Iot ly))
       (Hbase      : r_basetype h ly = Some cy)
       (Hfind      : FindMethodWithName CT cy m D mdef)
       (Hstmt      : mstmt = (mbody mdef).(mbody_stmt))
       (Hargs      : runtime_lookup_list rΓ zs = Some vals)
-      (Hframe     : callee_env CT rΓ h ly D Us vals rΓ')
+      (Hframe     : callee_env CT rΓ h ly D Us Qs vals rΓ')
       (Heval_body : eval_stmt CT rΓ' h mstmt NPE rΓ'' h'),
-      eval_stmt CT rΓ h (SCall x m y Us zs) NPE rΓ'' h'
+      eval_stmt CT rΓ h (SCall x m y Us Qs zs) NPE rΓ'' h'
 
-  | SBS_Call_MUTATIONEXP_Body : forall CT rΓ h x y m Us zs vals ly cy D mdef mstmt h' rΓ' rΓ''
+  | SBS_Call_MUTATIONEXP_Body : forall CT rΓ h x y m Us Qs zs vals ly cy D mdef mstmt h' rΓ' rΓ''
       (Hval_y     : runtime_getVal rΓ y = Some (Iot ly))
       (Hbase      : r_basetype h ly = Some cy)
       (Hfind      : FindMethodWithName CT cy m D mdef)
       (Hstmt      : mstmt = (mbody mdef).(mbody_stmt))
       (Hargs      : runtime_lookup_list rΓ zs = Some vals)
-      (Hframe     : callee_env CT rΓ h ly D Us vals rΓ')
+      (Hframe     : callee_env CT rΓ h ly D Us Qs vals rΓ')
       (Heval_body : eval_stmt CT rΓ' h mstmt MUTATIONEXP rΓ'' h'),
-      eval_stmt CT rΓ h (SCall x m y Us zs) MUTATIONEXP rΓ'' h'
+      eval_stmt CT rΓ h (SCall x m y Us Qs zs) MUTATIONEXP rΓ'' h'
 
   (* evaluate cast statement: the value is copied unchanged and the cast
      never fails; the type system admits only casts for which this is right *)

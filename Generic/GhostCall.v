@@ -24,8 +24,8 @@ Qed.
 
 
 
-Lemma lab_of_with_args : forall F cs ms q0,
-  lab_of (lf_with_args F cs ms) q0 = lab_of F q0.
+Lemma lab_of_with_args : forall F cs ms ks q0,
+  lab_of (lf_with_args F cs ms ks) q0 = lab_of F q0.
 Proof. intros. destruct q0; reflexivity. Qed.
 
 
@@ -55,15 +55,15 @@ Qed.
 (** Before the call: the callee's reading of an overridden parameter type
     against the caller's reading of the adapted one.  Written mutable
     positions do not occur in such a type. *)
-Lemma lc_call_pre : forall L Lc next a qr b c Fc wf' m0 cs ms cs' ms',
+Lemma lc_call_pre : forall L Lc next a qr b c Fc wf' m0 cs ms ks cs' ms' ks',
   label_cond L a (obj_frame qr b c []) Fc ->
   (forall l, lab_bound next l -> norm Lc l = norm L l) ->
   lab_bound next (olab c) -> frame_bound next Fc ->
   (qr = Mut_r -> norm Lc (olab c) = norm Lc (if m0 then LIn wf' else LOut)) ->
   label_cond Lc (fun q0 => match q0 with Mut => Lost | _ => a q0 end)
-    (act_frame qr wf' m0 cs ms) (lf_with_args Fc cs' ms').
+    (act_frame qr wf' m0 cs ms ks) (lf_with_args Fc cs' ms' ks').
 Proof.
-  intros L Lc next a qr b c Fc wf' m0 cs ms cs' ms' Hc W13 Hbc HFb W4 q0.
+  intros L Lc next a qr b c Fc wf' m0 cs ms ks cs' ms' ks' Hc W13 Hbc HFb W4 q0.
   destruct (Hc q0) as [Ha Hb]. rewrite lab_of_with_args.
   destruct (q_eq_dec q0 Mut) as [-> | Hnm].
   - split; [simpl; unfold arg_q_sub; right; split; auto | left; reflexivity].
@@ -74,7 +74,7 @@ Proof.
     destruct (q_eq_dec q0 RDM) as [-> | Hnr].
     + destruct qr; [|right; left; simpl; discriminate].
       right. right.
-      change (lab_of (act_frame Mut_r wf' m0 cs ms) RDM)
+      change (lab_of (act_frame Mut_r wf' m0 cs ms ks) RDM)
         with (if m0 then LIn wf' else LOut).
       rewrite <- (W4 eq_refl). rewrite (W13 _ Hbc).
       rewrite (W13 (lab_of Fc (a RDM)) (lab_of_bound _ _ _ HFb)). exact H.
@@ -82,24 +82,24 @@ Proof.
 Qed.
 
 (** After the call. *)
-Lemma lc_call_post : forall L a qr b c Fc wf' mtop cs ms cs' ms',
+Lemma lc_call_post : forall L a qr b c Fc wf' mtop cs ms ks cs' ms' ks',
   label_cond L a (obj_frame qr b c []) Fc ->
   norm L (olab b) = norm L (LIn wf') ->
   (qr = Mut_r -> norm L (olab c) = norm L (if mtop then LIn wf' else LOut)) ->
-  label_cond L a (act_frame qr wf' mtop cs ms) (lf_with_args Fc cs' ms').
+  label_cond L a (act_frame qr wf' mtop cs ms ks) (lf_with_args Fc cs' ms' ks').
 Proof.
-  intros L a qr b c Fc wf' mtop cs ms cs' ms' Hc N1 N2 q0.
+  intros L a qr b c Fc wf' mtop cs ms ks cs' ms' ks' Hc N1 N2 q0.
   destruct (Hc q0) as [Ha Hb]. rewrite lab_of_with_args.
   split; [exact Ha|].
   destruct Hb as [H | [H | H]]; [left; exact H | right; left; exact H |].
   destruct (q_eq_dec q0 Mut) as [-> | Hnm].
   - right. right.
-    change (lab_of (act_frame qr wf' mtop cs ms) Mut) with (LIn wf').
+    change (lab_of (act_frame qr wf' mtop cs ms ks) Mut) with (LIn wf').
     rewrite <- N1. exact H.
   - destruct (q_eq_dec q0 RDM) as [-> | Hnr].
     + destruct qr; [|right; left; simpl; discriminate].
       right. right.
-      change (lab_of (act_frame Mut_r wf' mtop cs ms) RDM)
+      change (lab_of (act_frame Mut_r wf' mtop cs ms ks) RDM)
         with (if mtop then LIn wf' else LOut).
       rewrite <- (N2 eq_refl). exact H.
     + right. left. destruct q0; simpl; congruence.

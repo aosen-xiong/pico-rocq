@@ -43,7 +43,7 @@ Lemma hdr_cond : forall L qo cq lmP lmC l cs,
   norm L lmP = norm L lmC ->
   (cq = Mut_c -> norm L lmC = norm L l) ->
   label_cond L (vpa_q AbstractState (qc2q cq))
-    (mk_lframe (qr2q qo) lmP l cs []) (mk_lframe (qr2q qo) lmC l cs []).
+    (mk_lframe (qr2q qo) lmP l cs [] []) (mk_lframe (qr2q qo) lmC l cs [] []).
 Proof.
   intros L qo cq lmP lmC l cs Hag H1 H2 q0.
   destruct qo, cq; try discriminate Hag; destruct q0;
@@ -56,7 +56,7 @@ Lemma hdr_cond_unm : forall L qo cq lmP lmC l cs,
   vpa_mutability_runtime_bound_agree qo cq = true ->
   (cq = Mut_c -> norm L lmC = norm L l) ->
   label_cond L (unm (vpa_q AbstractState (qc2q cq)))
-    (mk_lframe (qr2q qo) lmP l cs []) (mk_lframe (qr2q qo) lmC l cs []).
+    (mk_lframe (qr2q qo) lmP l cs [] []) (mk_lframe (qr2q qo) lmC l cs [] []).
 Proof.
   intros L qo cq lmP lmC l cs Hag H2 q0.
   assert (H1 : LOut = LOut) by reflexivity.
@@ -93,10 +93,10 @@ Lemma hfit_of_fits : forall CT L qo cq l lm0 C def As,
   Forall2
     (fun A B =>
        lsubt CT L A
-         (ldyn (mk_lframe (qr2q qo) lm0 l As [])
+         (ldyn (mk_lframe (qr2q qo) lm0 l As [] [])
             (map_qual (vpa_q AbstractState (qc2q cq)) B)) /\
        rlost_free (erase
-         (ldyn (mk_lframe (qr2q qo) lm0 l As [])
+         (ldyn (mk_lframe (qr2q qo) lm0 l As [] [])
             (map_qual (vpa_q AbstractState (qc2q cq)) B))))
     As (ctparams (signature def)) ->
   hfit CT L qo l C As /\
@@ -105,7 +105,7 @@ Lemma hfit_of_fits : forall CT L qo cq l lm0 C def As,
 Proof.
   intros CT L qo cq l lm0 C def As Hwf Hfind Hag Hmc Hall.
   remember (vpa_q AbstractState (qc2q cq)) as f eqn:Hf.
-  remember (mk_lframe (qr2q qo) lm0 l As []) as Fa eqn:HFa.
+  remember (mk_lframe (qr2q qo) lm0 l As [] []) as Fa eqn:HFa.
   assert (HfM : f Mut = Mut) by (rewrite Hf; destruct cq; reflexivity).
   assert (Hpay : forall q' l', pclassf CT C As = Some (q', l') ->
             q' = Mut /\ norm L l' = norm L lm0).
@@ -128,7 +128,7 @@ Proof.
   pose proof (class_bounds_class _ _ _ Hwf Hfind) as Hcls.
   rewrite Forall_forall in Hcls.
   pose proof (Hcls _ (nth_error_In _ _ Hnb)) as HBc.
-  destruct B as [qb D Bs|u o0 n0|? ? ? ?]; [|contradiction..].
+  destruct B as [qb D Bs|u o0 n0| ? ? ?]; [|contradiction..].
   destruct A as [q1 l1 C1 As1].
   destruct (q_eq_dec q1 Bot) as [-> | Hq1].
   - (* an argument no value has: only shapes matter *)
@@ -151,12 +151,14 @@ Proof.
         apply hdr_cond; auto.
       * rewrite HFa. simpl. apply Forall2_lagree_refl.
       * rewrite HFa. simpl. constructor.
+      * rewrite HFa. reflexivity.
     + (* the bound writes none *)
       rewrite (no_mut_lit_unm f _ Hm). apply ldyn_map_qual_agree.
       * unfold hfr, hframe. rewrite HFa. rewrite Hf.
         apply hdr_cond_unm; auto.
       * rewrite HFa. simpl. apply Forall2_lagree_refl.
       * rewrite HFa. simpl. constructor.
+      * rewrite HFa. reflexivity.
 Qed.
 
 (* ------------------THE STEP TO THE PARENT CLASS------------------*)
@@ -189,8 +191,8 @@ Proof.
   { rewrite HFh. unfold hfr. simpl. destruct qo; auto. }
   assert (Hfit' : frame_fits CT L (class_env def) Fh).
   { rewrite HFh. exact (Hfit def Hfind). }
-  assert (HFa : lf_with_args Fh (map (ldyn Fh) Ss) [] =
-                mk_lframe (qr2q qo) (lf_mut Fh) l (map (ldyn Fh) Ss) []).
+  assert (HFa : lf_with_args Fh (map (ldyn Fh) Ss) [] [] =
+                mk_lframe (qr2q qo) (lf_mut Fh) l (map (ldyn Fh) Ss) [] []).
   { rewrite HFh. reflexivity. }
   eapply (hfit_of_fits CT L qo (class_qualifier (signature def)) l (lf_mut Fh)
             P sd (map (ldyn Fh) Ss) Hwf Hsd Hag Hmc).
@@ -199,19 +201,19 @@ Proof.
             Forall2
               (fun T B =>
                  lost_free (member_type AbstractState
-                              (qc2q (class_qualifier (signature def))) Ss [] B) /\
+                              (qc2q (class_qualifier (signature def))) Ss [] [] B) /\
                  bound_sub CT (class_env def) T
                    (member_type AbstractState
-                      (qc2q (class_qualifier (signature def))) Ss [] B))
+                      (qc2q (class_qualifier (signature def))) Ss [] [] B))
               Xs Bs ->
             Forall2
               (fun A B =>
                  lsubt CT L A
-                   (ldyn (lf_with_args Fh (map (ldyn Fh) Ss) [])
+                   (ldyn (lf_with_args Fh (map (ldyn Fh) Ss) [] [])
                       (map_qual (vpa_q AbstractState
                                    (qc2q (class_qualifier (signature def)))) B)) /\
                  rlost_free (erase
-                   (ldyn (lf_with_args Fh (map (ldyn Fh) Ss) [])
+                   (ldyn (lf_with_args Fh (map (ldyn Fh) Ss) [] [])
                       (map_qual (vpa_q AbstractState
                                    (qc2q (class_qualifier (signature def)))) B))))
               (map (ldyn Fh) Xs) Bs).
@@ -223,7 +225,7 @@ Proof.
                   _ _ (Hbs ReadonlyState)) as Hs.
     assert (Hrl : rlost_free (erase (ldyn Fh
               (member_type AbstractState
-                 (qc2q (class_qualifier (signature def))) Ss [] B)))).
+                 (qc2q (class_qualifier (signature def))) Ss [] [] B)))).
     { rewrite erase_ldyn. rewrite HFh. unfold hfr. simpl.
       apply dyn_lost_free; auto; try apply qr2q_concrete; try constructor. }
     unfold member_type, adapt in Hs, Hrl. rewrite ldyn_subst in Hs, Hrl.
@@ -396,13 +398,13 @@ Ltac rd_solve :=
     allocating frame and in a frame with the new object's mutability, the
     allocating world for written mutable positions and the new object's
     colour for receiver-dependent ones. *)
-Lemma alloc_read_cond : forall L qthis qc wf mode cs cs' ms',
+Lemma alloc_read_cond : forall L qthis qc wf mode cs cs' ms' ks',
   label_cond2 L (vpa_q AbstractState (qc2q qc)) (vpa_q AbstractState (qc2q qc))
-    (lf_with_args (act_frame qthis wf mode cs' ms') cs [])
+    (lf_with_args (act_frame qthis wf mode cs' ms' ks') cs [] [])
     (mk_lframe (qr2q (vpa_mutability_object_creation qthis qc)) (LIn wf)
-       (olab (new_color qc wf mode)) cs []).
+       (olab (new_color qc wf mode)) cs [] []).
 Proof.
-  intros L qthis qc wf mode cs cs' ms' q0.
+  intros L qthis qc wf mode cs cs' ms' ks' q0.
   destruct q0, qc, qthis, mode;
     cbv [act_frame lf_with_args lf_q lab_of lf_mut lf_rdm vpa_q
          vpa_mutability_qq_abstract_state qc2q qr2q dynq olab
@@ -410,13 +412,13 @@ Proof.
     rd_solve.
 Qed.
 
-Lemma alloc_read_cond_rev : forall L qthis qc wf mode cs cs' ms',
+Lemma alloc_read_cond_rev : forall L qthis qc wf mode cs cs' ms' ks',
   label_cond2 L (vpa_q AbstractState (qc2q qc)) (vpa_q AbstractState (qc2q qc))
     (mk_lframe (qr2q (vpa_mutability_object_creation qthis qc)) (LIn wf)
-       (olab (new_color qc wf mode)) cs [])
-    (lf_with_args (act_frame qthis wf mode cs' ms') cs []).
+       (olab (new_color qc wf mode)) cs [] [])
+    (lf_with_args (act_frame qthis wf mode cs' ms' ks') cs [] []).
 Proof.
-  intros L qthis qc wf mode cs cs' ms' q0.
+  intros L qthis qc wf mode cs cs' ms' ks' q0.
   destruct q0, qc, qthis, mode;
     cbv [act_frame lf_with_args lf_q lab_of lf_mut lf_rdm vpa_q
          vpa_mutability_qq_abstract_state qc2q qr2q dynq olab
@@ -427,28 +429,29 @@ Qed.
 (** At an allocation: the new object's arguments fit its class's bounds in
     the header frame, whatever its mutability and colour, and its payload,
     when there is one, is a mutable node of the allocating world. *)
-Lemma alloc_hfit : forall CT L Δ qthis wf mode lc lm qc C def Ts,
+Lemma alloc_hfit : forall CT L Δ qthis wf mode lc lm lk qc C def Ts,
   wf_class_table CT ->
   readonly_state_method_scope (tv_mode Δ) ->
-  frame_fits CT L Δ (act_frame qthis wf mode lc lm) ->
+  frame_fits CT L Δ (act_frame qthis wf mode lc lm lk) ->
   Forall rlost_free (map erase lc) -> Forall rlost_free (map erase lm) ->
+  Forall (fun q0 => q0 <> Lost) (map fst lk) ->
   find_class CT C = Some def ->
   Forall lost_free Ts ->
   Forall2
     (fun T B =>
-       lost_free (member_type AbstractState (qc2q qc) Ts [] B) /\
-       bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] B))
+       lost_free (member_type AbstractState (qc2q qc) Ts [] [] B) /\
+       bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] [] B))
     Ts (ctparams (signature def)) ->
   hfit CT L (vpa_mutability_object_creation qthis qc)
     (olab (new_color qc wf mode)) C
-    (map (ldyn (act_frame qthis wf mode lc lm)) Ts) /\
+    (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts) /\
   (forall q' l',
-     pclassf CT C (map (ldyn (act_frame qthis wf mode lc lm)) Ts) = Some (q', l') ->
+     pclassf CT C (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts) = Some (q', l') ->
      q' = Mut /\ norm L l' = norm L (LIn wf)).
 Proof.
-  intros CT L Δ qthis wf mode lc lm qc C def Ts Hwf Hrs Hfits Hlc Hlm Hfind
+  intros CT L Δ qthis wf mode lc lm lk qc C def Ts Hwf Hrs Hfits Hlc Hlm Hlk Hfind
     HlfT Hbounds.
-  remember (act_frame qthis wf mode lc lm) as Fc eqn:HFc.
+  remember (act_frame qthis wf mode lc lm lk) as Fc eqn:HFc.
   assert (Hconc : lf_q Fc = Mut \/ lf_q Fc = Imm).
   { rewrite HFc. simpl. destruct qthis; auto. }
   assert (HlfA : Forall rlost_free (map erase (map (ldyn Fc) Ts))).
@@ -462,8 +465,8 @@ Proof.
   - assert (Hgen : forall Xs Bs,
               Forall2
                 (fun T B =>
-                   lost_free (member_type AbstractState (qc2q qc) Ts [] B) /\
-                   bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] B))
+                   lost_free (member_type AbstractState (qc2q qc) Ts [] [] B) /\
+                   bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] [] B))
                 Xs Bs ->
               Forall2
                 (fun A B =>
@@ -471,13 +474,13 @@ Proof.
                      (ldyn (mk_lframe
                               (qr2q (vpa_mutability_object_creation qthis qc))
                               (LIn wf) (olab (new_color qc wf mode))
-                              (map (ldyn Fc) Ts) [])
+                              (map (ldyn Fc) Ts) [] [])
                         (map_qual (vpa_q AbstractState (qc2q qc)) B)) /\
                    rlost_free (erase
                      (ldyn (mk_lframe
                               (qr2q (vpa_mutability_object_creation qthis qc))
                               (LIn wf) (olab (new_color qc wf mode))
-                              (map (ldyn Fc) Ts) [])
+                              (map (ldyn Fc) Ts) [] [])
                         (map_qual (vpa_q AbstractState (qc2q qc)) B))))
                 (map (ldyn Fc) Xs) Bs).
     { intros Xs Bs HF. induction HF as [|T B Xs Bs [Hlf Hbs] HF IH]; simpl;
@@ -485,35 +488,37 @@ Proof.
       pose proof (sub_lsubt CT Δ L Fc Hrs Hconc Hfits _ _
                     (bound_sub_self _ _ _ _ Hbs)) as Hs.
       assert (Hrl : rlost_free (erase (ldyn Fc
-                (member_type AbstractState (qc2q qc) Ts [] B)))).
+                (member_type AbstractState (qc2q qc) Ts [] [] B)))).
       { rewrite erase_ldyn. rewrite HFc. simpl.
         apply dyn_lost_free; auto. apply qr2q_concrete. }
       unfold member_type, adapt in Hs, Hrl. rewrite ldyn_subst in Hs, Hrl.
       simpl map in Hs, Hrl.
       assert (Hfwd : lagree L
-                (ldyn (lf_with_args Fc (map (ldyn Fc) Ts) [])
+                (ldyn (lf_with_args Fc (map (ldyn Fc) Ts) [] [])
                    (map_qual (vpa_q AbstractState (qc2q qc)) B))
                 (ldyn (mk_lframe
                          (qr2q (vpa_mutability_object_creation qthis qc))
                          (LIn wf) (olab (new_color qc wf mode))
-                         (map (ldyn Fc) Ts) [])
+                         (map (ldyn Fc) Ts) [] [])
                    (map_qual (vpa_q AbstractState (qc2q qc)) B))).
       { apply ldyn_map_qual_agree2.
         - rewrite HFc. apply alloc_read_cond.
         - simpl. apply Forall2_lagree_refl.
-        - simpl. constructor. }
+        - simpl. constructor.
+        - reflexivity. }
       assert (Hbwd : lagree L
                 (ldyn (mk_lframe
                          (qr2q (vpa_mutability_object_creation qthis qc))
                          (LIn wf) (olab (new_color qc wf mode))
-                         (map (ldyn Fc) Ts) [])
+                         (map (ldyn Fc) Ts) [] [])
                    (map_qual (vpa_q AbstractState (qc2q qc)) B))
-                (ldyn (lf_with_args Fc (map (ldyn Fc) Ts) [])
+                (ldyn (lf_with_args Fc (map (ldyn Fc) Ts) [] [])
                    (map_qual (vpa_q AbstractState (qc2q qc)) B))).
       { apply ldyn_map_qual_agree2.
         - rewrite HFc. apply alloc_read_cond_rev.
         - simpl. apply Forall2_lagree_refl.
-        - simpl. constructor. }
+        - simpl. constructor.
+        - reflexivity. }
       split.
       - eapply lsubt_agree_r; eauto.
       - rewrite (lagree_erase_eq L _ _ Hbwd Hrl). exact Hrl. }
@@ -522,29 +527,30 @@ Qed.
 
 (** The whole bundle for a new object; and when the object is in the
     allocating world, its payload is of its own label. *)
-Lemma alloc_hinv : forall CT L Δ qthis wf mode lc lm qc C def Ts,
+Lemma alloc_hinv : forall CT L Δ qthis wf mode lc lm lk qc C def Ts,
   wf_class_table CT ->
   readonly_state_method_scope (tv_mode Δ) ->
-  frame_fits CT L Δ (act_frame qthis wf mode lc lm) ->
+  frame_fits CT L Δ (act_frame qthis wf mode lc lm lk) ->
   Forall rlost_free (map erase lc) -> Forall rlost_free (map erase lm) ->
+  Forall (fun q0 => q0 <> Lost) (map fst lk) ->
   find_class CT C = Some def ->
   vpa_mutability_bound (qc2q qc) (class_qualifier (signature def)) = qc2q qc ->
   Forall lost_free Ts ->
   Forall2
     (fun T B =>
-       lost_free (member_type AbstractState (qc2q qc) Ts [] B) /\
-       bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] B))
+       lost_free (member_type AbstractState (qc2q qc) Ts [] [] B) /\
+       bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] [] B))
     Ts (ctparams (signature def)) ->
   hinv CT L (vpa_mutability_object_creation qthis qc)
     (olab (new_color qc wf mode)) C
-    (map (ldyn (act_frame qthis wf mode lc lm)) Ts) /\
+    (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts) /\
   (new_color qc wf mode = Some wf ->
-   pown CT L (LIn wf) C (map (ldyn (act_frame qthis wf mode lc lm)) Ts)).
+   pown CT L (LIn wf) C (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts)).
 Proof.
-  intros CT L Δ qthis wf mode lc lm qc C def Ts Hwf Hrs Hfits Hlc Hlm Hfind
+  intros CT L Δ qthis wf mode lc lm lk qc C def Ts Hwf Hrs Hfits Hlc Hlm Hlk Hfind
     Hqc HlfT Hbounds.
-  destruct (alloc_hfit CT L Δ qthis wf mode lc lm qc C def Ts Hwf Hrs Hfits
-              Hlc Hlm Hfind HlfT Hbounds) as [Hfit Hpay].
+  destruct (alloc_hfit CT L Δ qthis wf mode lc lm lk qc C def Ts Hwf Hrs Hfits
+              Hlc Hlm Hlk Hfind HlfT Hbounds) as [Hfit Hpay].
   split.
   - refine (conj Hfit (conj _ _)).
     + rewrite map_erase_ldyn. simpl.
@@ -556,7 +562,7 @@ Proof.
       * intros Hm. rewrite Hm in Hqc.
         assert (qc = Mut_c) by (destruct qc; simpl in Hqc; congruence).
         subst qc. unfold hfr, hframe. cbn [lf_mut].
-        destruct (pclassf CT C (map (ldyn (act_frame qthis wf mode lc lm)) Ts))
+        destruct (pclassf CT C (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts))
           as [[q' l']|] eqn:Hp; [|reflexivity].
         destruct (Hpay q' l' eq_refl) as [-> Hl]. simpl. exact Hl.
   - intros Hc q' l' Hp. exact (Hpay q' l' Hp).
@@ -566,10 +572,10 @@ Qed.
 
 Lemma static_read_cond : forall L F cs,
   label_cond2 L (vpa_q AbstractState Mut) (vpa_q AbstractState Mut)
-    (lf_with_args F cs [])
-    (mk_lframe Mut (lf_mut F) (lf_mut F) cs []).
+    (lf_with_args F cs [] [])
+    (mk_lframe Mut (lf_mut F) (lf_mut F) cs [] []).
 Proof.
-  intros L [qF lm lr c0 m0] cs q0.
+  intros L [qF lm lr c0 m0 k0] cs q0.
   destruct q0;
     cbv [lf_with_args lf_q lab_of lf_mut lf_rdm vpa_q
          vpa_mutability_qq_abstract_state dynq arg_q_sub];
@@ -578,10 +584,10 @@ Qed.
 
 Lemma static_read_cond_rev : forall L F cs,
   label_cond2 L (vpa_q AbstractState Mut) (vpa_q AbstractState Mut)
-    (mk_lframe Mut (lf_mut F) (lf_mut F) cs [])
-    (lf_with_args F cs []).
+    (mk_lframe Mut (lf_mut F) (lf_mut F) cs [] [])
+    (lf_with_args F cs [] []).
 Proof.
-  intros L [qF lm lr c0 m0] cs q0.
+  intros L [qF lm lr c0 m0 k0] cs q0.
   destruct q0;
     cbv [lf_with_args lf_q lab_of lf_mut lf_rdm vpa_q
          vpa_mutability_qq_abstract_state dynq arg_q_sub];
@@ -598,21 +604,22 @@ Lemma static_mut_pcoh : forall CT L Δ F C Ts def,
   frame_fits CT L Δ F ->
   Forall rlost_free (map erase (lf_cargs F)) ->
   Forall rlost_free (map erase (lf_margs F)) ->
+  Forall (fun q0 => q0 <> Lost) (map fst (lf_qargs F)) ->
   find_class CT C = Some def ->
   class_qualifier (signature def) <> Imm_c ->
   Forall2
     (fun T B =>
-       lost_free (subst Ts [] (adapt AbstractState Mut B)) ->
-       bound_sub CT Δ T (subst Ts [] (adapt AbstractState Mut B)))
+       lost_free (subst Ts [] [] (adapt AbstractState Mut B)) ->
+       bound_sub CT Δ T (subst Ts [] [] (adapt AbstractState Mut B)))
     Ts (ctparams (signature def)) ->
   Forall lost_free Ts ->
-  Forall (fun B => lost_free (subst Ts [] (adapt AbstractState Mut B)))
+  Forall (fun B => lost_free (subst Ts [] [] (adapt AbstractState Mut B)))
     (ctparams (signature def)) ->
   hinv CT L Mut_r (lf_mut F) C (map (ldyn F) Ts) /\
   pown CT L (lf_mut F) C (map (ldyn F) Ts) /\
   pcoh CT L Mut (lf_mut F) C (map (ldyn F) Ts) (lf_mut F).
 Proof.
-  intros CT L Δ F C Ts def Hwf Hrs Hconc Hfits Hlc Hlm Hfind Hhead Hbounds HlfT HlfB.
+  intros CT L Δ F C Ts def Hwf Hrs Hconc Hfits Hlc Hlm Hlk Hfind Hhead Hbounds HlfT HlfB.
   assert (HlfA : Forall rlost_free (map erase (map (ldyn F) Ts))).
   { rewrite map_erase_ldyn. apply map_dyn_lost_free; auto. }
   assert (Hmain :
@@ -624,20 +631,20 @@ Proof.
     assert (Hgen : forall Xs Bs,
               Forall2
                 (fun T B =>
-                   lost_free (subst Ts [] (adapt AbstractState Mut B)) ->
-                   bound_sub CT Δ T (subst Ts [] (adapt AbstractState Mut B)))
+                   lost_free (subst Ts [] [] (adapt AbstractState Mut B)) ->
+                   bound_sub CT Δ T (subst Ts [] [] (adapt AbstractState Mut B)))
                 Xs Bs ->
-              Forall (fun B => lost_free (subst Ts [] (adapt AbstractState Mut B)))
+              Forall (fun B => lost_free (subst Ts [] [] (adapt AbstractState Mut B)))
                 Bs ->
               Forall2
                 (fun A B =>
                    lsubt CT L A
                      (ldyn (mk_lframe (qr2q Mut_r) (lf_mut F) (lf_mut F)
-                              (map (ldyn F) Ts) [])
+                              (map (ldyn F) Ts) [] [])
                         (map_qual (vpa_q AbstractState (qc2q Mut_c)) B)) /\
                    rlost_free (erase
                      (ldyn (mk_lframe (qr2q Mut_r) (lf_mut F) (lf_mut F)
-                              (map (ldyn F) Ts) [])
+                              (map (ldyn F) Ts) [] [])
                         (map_qual (vpa_q AbstractState (qc2q Mut_c)) B))))
                 (map (ldyn F) Xs) Bs).
     { intros Xs Bs HF. induction HF as [|T B Xs Bs Hb HF IH]; intros HlB; simpl;
@@ -645,28 +652,30 @@ Proof.
       pose proof (sub_lsubt CT Δ L F Hrs Hconc Hfits _ _
                     (bound_sub_self _ _ _ _ (Hb Hlf))) as Hs.
       assert (Hrl : rlost_free (erase (ldyn F
-                (subst Ts [] (adapt AbstractState Mut B))))).
+                (subst Ts [] [] (adapt AbstractState Mut B))))).
       { rewrite erase_ldyn. apply dyn_lost_free; auto. }
       unfold adapt in Hs, Hrl. rewrite ldyn_subst in Hs, Hrl.
       simpl map in Hs, Hrl.
       assert (Hfwd : lagree L
-                (ldyn (lf_with_args F (map (ldyn F) Ts) [])
+                (ldyn (lf_with_args F (map (ldyn F) Ts) [] [])
                    (map_qual (vpa_q AbstractState Mut) B))
-                (ldyn (mk_lframe Mut (lf_mut F) (lf_mut F) (map (ldyn F) Ts) [])
+                (ldyn (mk_lframe Mut (lf_mut F) (lf_mut F) (map (ldyn F) Ts) [] [])
                    (map_qual (vpa_q AbstractState Mut) B))).
       { apply ldyn_map_qual_agree2.
         - apply static_read_cond.
         - simpl. apply Forall2_lagree_refl.
-        - simpl. constructor. }
+        - simpl. constructor.
+        - reflexivity. }
       assert (Hbwd : lagree L
-                (ldyn (mk_lframe Mut (lf_mut F) (lf_mut F) (map (ldyn F) Ts) [])
+                (ldyn (mk_lframe Mut (lf_mut F) (lf_mut F) (map (ldyn F) Ts) [] [])
                    (map_qual (vpa_q AbstractState Mut) B))
-                (ldyn (lf_with_args F (map (ldyn F) Ts) [])
+                (ldyn (lf_with_args F (map (ldyn F) Ts) [] [])
                    (map_qual (vpa_q AbstractState Mut) B))).
       { apply ldyn_map_qual_agree2.
         - apply static_read_cond_rev.
         - simpl. apply Forall2_lagree_refl.
-        - simpl. constructor. }
+        - simpl. constructor.
+        - reflexivity. }
       split.
       - eapply lsubt_agree_r; eauto.
       - rewrite (lagree_erase_eq L _ _ Hbwd Hrl). exact Hrl. }
@@ -723,11 +732,11 @@ Definition sbnd (CT : class_table) (Δ : tv_env) (T : qualified_type) : Prop :=
       q0 = Mut -> exists def, find_class CT C = Some def /\
         Forall2
           (fun T B =>
-             lost_free (subst Ts [] (adapt AbstractState Mut B)) ->
-             bound_sub CT Δ T (subst Ts [] (adapt AbstractState Mut B)))
+             lost_free (subst Ts [] [] (adapt AbstractState Mut B)) ->
+             bound_sub CT Δ T (subst Ts [] [] (adapt AbstractState Mut B)))
           Ts (ctparams (signature def))
   | TVar _ _ _ => True
-  | THead _ _ _ _ => True
+  | THead _ _ _ => True
   end.
 
 Lemma sbnd_of_wf : forall CT Δ top T, wf_stype CT Δ top T -> sbnd CT Δ T.
@@ -739,7 +748,7 @@ Qed.
 
 Lemma sbnd_mode : forall CT Δ m T, sbnd CT Δ T -> sbnd CT (with_mode Δ m) T.
 Proof.
-  intros CT Δ m [q0 C Ts|u o n|? ? ? ?]; simpl; auto.
+  intros CT Δ m [q0 C Ts|u o n| ? ? ?]; simpl; auto.
 Qed.
 
 Lemma wf_class_super_sbnd : forall CT C def P Ss,
@@ -770,17 +779,18 @@ Lemma cohT_static : forall CT L Δ F T,
   frame_fits CT L Δ F -> frame_fitsp CT L Δ F -> fcoh CT L Δ F ->
   Forall rlost_free (map erase (lf_cargs F)) ->
   Forall rlost_free (map erase (lf_margs F)) ->
+  Forall (fun q0 => q0 <> Lost) (map fst (lf_qargs F)) ->
   sbnd CT Δ T -> lost_free T ->
   ~ deadA CT (ldyn F T) -> ~ insaneA CT (ldyn F T) ->
   reachm Δ T -> cohT CT L F (ldyn F T) T.
 Proof.
-  intros CT L Δ F T Hwf Hrs Hconc Hbc Hfits Hfitp Hcoh Hlc Hlm Hsb Hlf Hnd Hsn Hr.
-  destruct T as [q0 C Ts|u o n|? ? ? ?].
+  intros CT L Δ F T Hwf Hrs Hconc Hbc Hfits Hfitp Hcoh Hlc Hlm Hlk Hsb Hlf Hnd Hsn Hr.
+  destruct T as [q0 C Ts|u o n| ? ? ?].
   - cbn [ldyn] in Hnd, Hsn |- *. simpl. intros Hq Hl Va Hva.
     simpl in Hr. destruct Hr as [-> | ->]; [|simpl in Hq; discriminate].
     destruct (Hsb eq_refl) as (def & Hfind & Hb).
     apply lost_free_class in Hlf. destruct Hlf as [_ HlfT].
-    assert (HlfB : Forall (fun B => lost_free (subst Ts [] (adapt AbstractState Mut B)))
+    assert (HlfB : Forall (fun B => lost_free (subst Ts [] [] (adapt AbstractState Mut B)))
                      (ctparams (signature def))).
     { simpl in Hnd.
       destruct (clsok_dec CT C (length (map (ldyn F) Ts))) as [Hok | Hno];
@@ -790,13 +800,13 @@ Proof.
       apply lost_free_inst; auto. intros q1 Hq1. destruct q1; simpl; congruence. }
     assert (Hni : class_qualifier (signature def) <> Imm_c).
     { intros Hi. apply Hsn. simpl. split; [exact Hq | eauto]. }
-    destruct (static_mut_pcoh CT L Δ F C Ts def Hwf Hrs Hconc Hfits Hlc Hlm Hfind
+    destruct (static_mut_pcoh CT L Δ F C Ts def Hwf Hrs Hconc Hfits Hlc Hlm Hlk Hfind
                 Hni Hb HlfT HlfB) as (_ & _ & Hp).
     assert (Va = map (ldyn F) Ts).
     { unfold tview in Hva. simpl in Hva.
       exact (view_deterministic _ _ _ _ _ _ _ _ _ Hwf Hva _ (v_refl _ _ _ _ _ _ _)). }
     subst Va. exact Hp.
-  - destruct u as [|qv].
+  - destruct u as [|qv|mp].
     + destruct (ldyn F (TVar TVSub o n)); simpl; auto.
     + cbn [ldyn] in Hnd, Hsn |- *.
       destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
@@ -812,6 +822,7 @@ Proof.
         destruct (ctparams (signature d0)); [reflexivity | discriminate].
       * intros Hi. apply Hsn. simpl. split; [exact Hq|].
         exact (view_imm _ _ _ _ _ _ _ _ _ Hwf Hv d0 Hd0 Hi).
+    + simpl in Hr. contradiction.
   - simpl in Hr. contradiction.
 Qed.
 
@@ -823,13 +834,14 @@ Lemma fit3 : forall CT L Δ F,
   frame_fits CT L Δ F -> frame_fitsp CT L Δ F -> fcoh CT L Δ F ->
   Forall rlost_free (map erase (lf_cargs F)) ->
   Forall rlost_free (map erase (lf_margs F)) ->
+  Forall (fun q0 => q0 <> Lost) (map fst (lf_qargs F)) ->
   forall T U, sbnd CT Δ T -> lost_free T -> qualified_type_subtype CT Δ T U ->
     fit3p CT L (ldyn F T) (ldyn F U) /\
     (forall q0 K Xs, U = TClass q0 K Xs -> q0 = Mut ->
        ~ deadA CT (ldyn F T) -> ~ insaneA CT (ldyn F T) ->
        scoh CT L (ldyn F T) K).
 Proof.
-  intros CT L Δ F Hwf Hrs Hconc Hbc Hfits Hfitp Hcoh Hlc Hlm T U Hsb Hlf Hsub.
+  intros CT L Δ F Hwf Hrs Hconc Hbc Hfits Hfitp Hcoh Hlc Hlm Hlk T U Hsb Hlf Hsub.
   pose proof (hvb_of_coh CT L Δ F Hwf Hbc Hfitp Hcoh) as Hvb.
   destruct (deadA_dec CT (ldyn F T)) as [Hd | Hnd].
   { split; [right; left; exact Hd|]. intros; contradiction. }
@@ -843,7 +855,7 @@ Proof.
   destruct (sub_lsubtp CT Δ L F Hwf Hrs Hconc Hbc Hfitp Hvb T U Hsub (ldyn F T)
               Hnd Hsn
               (fun Hr => cohT_static CT L Δ F T Hwf Hrs Hconc Hbc Hfits Hfitp
-                           Hcoh Hlc Hlm Hsb Hlf Hnd Hsn Hr)
+                           Hcoh Hlc Hlm Hlk Hsb Hlf Hnd Hsn Hr)
               (lsubtp_refl _ _ _)) as [Hs Hc].
   split; [left; exact Hs|].
   intros q0 K Xs -> -> _ _.
@@ -868,13 +880,13 @@ Lemma pfit_of_fits : forall CT L qo cq l lm0 C def As,
   Forall2
     (fun A B =>
        (lsubt CT L A
-          (ldyn (mk_lframe (qr2q qo) lm0 l As [])
+          (ldyn (mk_lframe (qr2q qo) lm0 l As [] [])
              (map_qual (vpa_q AbstractState (qc2q cq)) B)) /\
         rlost_free (erase
-          (ldyn (mk_lframe (qr2q qo) lm0 l As [])
+          (ldyn (mk_lframe (qr2q qo) lm0 l As [] [])
              (map_qual (vpa_q AbstractState (qc2q cq)) B)))) /\
        fit3p CT L A
-         (ldyn (mk_lframe (qr2q qo) lm0 l As [])
+         (ldyn (mk_lframe (qr2q qo) lm0 l As [] [])
             (map_qual (vpa_q AbstractState (qc2q cq)) B)) /\
        (forall q0 K Xs, B = TClass q0 K Xs -> q0 = Mut ->
           ~ deadA CT A -> ~ insaneA CT A -> scoh CT L A K))
@@ -886,17 +898,17 @@ Proof.
   assert (Hold : Forall2
             (fun A B =>
                lsubt CT L A
-                 (ldyn (mk_lframe (qr2q qo) lm0 l As [])
+                 (ldyn (mk_lframe (qr2q qo) lm0 l As [] [])
                     (map_qual (vpa_q AbstractState (qc2q cq)) B)) /\
                rlost_free (erase
-                 (ldyn (mk_lframe (qr2q qo) lm0 l As [])
+                 (ldyn (mk_lframe (qr2q qo) lm0 l As [] [])
                     (map_qual (vpa_q AbstractState (qc2q cq)) B))))
             As (ctparams (signature def))).
   { eapply Forall2_impl; [|exact Hall]. intros a b [Ha _]. exact Ha. }
   destruct (hfit_of_fits CT L qo cq l lm0 C def As Hwf Hfind Hag Hmc Hold)
     as [_ Hpay].
   remember (vpa_q AbstractState (qc2q cq)) as f eqn:Hf.
-  remember (mk_lframe (qr2q qo) lm0 l As []) as Fa eqn:HFa.
+  remember (mk_lframe (qr2q qo) lm0 l As [] []) as Fa eqn:HFa.
   assert (HfM : f Mut = Mut) by (rewrite Hf; destruct cq; reflexivity).
   assert (HXg : forall n A, nth_error As n = Some A ->
             ldyn (hfr CT qo l C As) (TVar TVSub ClassVar n) = A).
@@ -912,7 +924,7 @@ Proof.
     pose proof (class_bounds_class _ _ _ Hwf Hfind) as Hcls.
     rewrite Forall_forall in Hcls.
     pose proof (Hcls _ (nth_error_In _ _ Hnb)) as HBc.
-    destruct B as [qb D Bs|u o0 n0|? ? ? ?]; [|contradiction..].
+    destruct B as [qb D Bs|u o0 n0| ? ? ?]; [|contradiction..].
     destruct A as [q1 l1 C1 As1].
     assert (Hagr : q1 <> Bot ->
               lagree L (ldyn Fa (map_qual f (TClass qb D Bs)))
@@ -929,11 +941,13 @@ Proof.
           apply hdr_cond; auto.
         * rewrite HFa. simpl. apply Forall2_lagree_refl.
         * rewrite HFa. simpl. constructor.
+        * rewrite HFa. reflexivity.
       + rewrite (no_mut_lit_unm f _ Hm). apply ldyn_map_qual_agree.
         * unfold hfr, hframe. rewrite HFa. rewrite Hf.
           apply hdr_cond_unm; auto.
         * rewrite HFa. simpl. apply Forall2_lagree_refl.
-        * rewrite HFa. simpl. constructor. }
+        * rewrite HFa. simpl. constructor.
+        * rewrite HFa. reflexivity. }
     destruct Hp as [Hp | [Hp | [Hi Hp]]]; [ | right; left; exact Hp | ].
     + left. destruct (q_eq_dec q1 Bot) as [-> | Hq1].
       * cbn [ldyn map_qual] in Hp |- *. left. split; [reflexivity|].
@@ -955,52 +969,55 @@ Proof.
 Qed.
 
 (** The arguments of a new object, each read against its class's bound. *)
-Lemma alloc_fits2 : forall CT L Δ qthis wf mode lc lm qc Ts,
+Lemma alloc_fits2 : forall CT L Δ qthis wf mode lc lm lk qc Ts,
   wf_class_table CT ->
   readonly_state_method_scope (tv_mode Δ) ->
   (forall o n B, tv_bound Δ o n = Some B -> is_class_type B) ->
-  frame_fits CT L Δ (act_frame qthis wf mode lc lm) ->
-  frame_fitsp CT L Δ (act_frame qthis wf mode lc lm) ->
-  fcoh CT L Δ (act_frame qthis wf mode lc lm) ->
+  frame_fits CT L Δ (act_frame qthis wf mode lc lm lk) ->
+  frame_fitsp CT L Δ (act_frame qthis wf mode lc lm lk) ->
+  fcoh CT L Δ (act_frame qthis wf mode lc lm lk) ->
   Forall rlost_free (map erase lc) -> Forall rlost_free (map erase lm) ->
+  Forall (fun q0 => q0 <> Lost) (map fst lk) ->
   Forall lost_free Ts ->
   forall Xs Bs,
     Forall (sbnd CT Δ) Xs -> Forall lost_free Xs ->
     Forall2
       (fun T B =>
-         lost_free (member_type AbstractState (qc2q qc) Ts [] B) /\
-         bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] B))
+         lost_free (member_type AbstractState (qc2q qc) Ts [] [] B) /\
+         bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] [] B))
       Xs Bs ->
     Forall2
       (fun A B =>
          (lsubt CT L A
             (ldyn (mk_lframe (qr2q (vpa_mutability_object_creation qthis qc))
                      (LIn wf) (olab (new_color qc wf mode))
-                     (map (ldyn (act_frame qthis wf mode lc lm)) Ts) [])
+                     (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts) [] [])
                (map_qual (vpa_q AbstractState (qc2q qc)) B)) /\
           rlost_free (erase
             (ldyn (mk_lframe (qr2q (vpa_mutability_object_creation qthis qc))
                      (LIn wf) (olab (new_color qc wf mode))
-                     (map (ldyn (act_frame qthis wf mode lc lm)) Ts) [])
+                     (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts) [] [])
                (map_qual (vpa_q AbstractState (qc2q qc)) B)))) /\
          fit3p CT L A
            (ldyn (mk_lframe (qr2q (vpa_mutability_object_creation qthis qc))
                     (LIn wf) (olab (new_color qc wf mode))
-                    (map (ldyn (act_frame qthis wf mode lc lm)) Ts) [])
+                    (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts) [] [])
               (map_qual (vpa_q AbstractState (qc2q qc)) B)) /\
          (forall q0 K Xs', B = TClass q0 K Xs' -> q0 = Mut ->
             ~ deadA CT A -> ~ insaneA CT A -> scoh CT L A K))
-      (map (ldyn (act_frame qthis wf mode lc lm)) Xs) Bs.
+      (map (ldyn (act_frame qthis wf mode lc lm lk)) Xs) Bs.
 Proof.
-  intros CT L Δ qthis wf mode lc lm qc Ts Hwf Hrs Hbc Hfits Hfitp Hcoh Hlc Hlm
+  intros CT L Δ qthis wf mode lc lm lk qc Ts Hwf Hrs Hbc Hfits Hfitp Hcoh Hlc Hlm Hlk
     HlfT Xs Bs HsbX HlfX HF.
-  remember (act_frame qthis wf mode lc lm) as Fc eqn:HFc.
+  remember (act_frame qthis wf mode lc lm lk) as Fc eqn:HFc.
   assert (Hconc : lf_q Fc = Mut \/ lf_q Fc = Imm).
   { rewrite HFc. simpl. destruct qthis; auto. }
   assert (Hlc' : Forall rlost_free (map erase (lf_cargs Fc))).
   { rewrite HFc. exact Hlc. }
   assert (Hlm' : Forall rlost_free (map erase (lf_margs Fc))).
   { rewrite HFc. exact Hlm. }
+  assert (Hlk' : Forall (fun q0 => q0 <> Lost) (map fst (lf_qargs Fc))).
+  { rewrite HFc. exact Hlk. }
   revert HsbX HlfX.
   induction HF as [|T B Xs Bs [Hlf Hbs] HF IH]; intros HsbX HlfX; simpl;
     constructor.
@@ -1009,38 +1026,40 @@ Proof.
   pose proof (sub_lsubt CT Δ L Fc Hrs Hconc Hfits _ _
                 (bound_sub_self _ _ _ _ Hbs)) as Hs.
   assert (Hrl : rlost_free (erase (ldyn Fc
-            (member_type AbstractState (qc2q qc) Ts [] B)))).
+            (member_type AbstractState (qc2q qc) Ts [] [] B)))).
   { rewrite erase_ldyn. rewrite HFc. simpl.
     apply dyn_lost_free; auto. apply qr2q_concrete. }
-  destruct (fit3 CT L Δ Fc Hwf Hrs Hconc Hbc Hfits Hfitp Hcoh Hlc' Hlm' T
-              (member_type AbstractState (qc2q qc) Ts [] B) HsbT HlfT0
+  destruct (fit3 CT L Δ Fc Hwf Hrs Hconc Hbc Hfits Hfitp Hcoh Hlc' Hlm' Hlk' T
+              (member_type AbstractState (qc2q qc) Ts [] [] B) HsbT HlfT0
               (bound_sub_self _ _ _ _ Hbs)) as [H3 Hc3].
   unfold member_type, adapt in Hs, Hrl, H3. rewrite ldyn_subst in Hs, Hrl, H3.
   simpl map in Hs, Hrl, H3.
   assert (Hfwd : lagree L
-            (ldyn (lf_with_args Fc (map (ldyn Fc) Ts) [])
+            (ldyn (lf_with_args Fc (map (ldyn Fc) Ts) [] [])
                (map_qual (vpa_q AbstractState (qc2q qc)) B))
             (ldyn (mk_lframe
                      (qr2q (vpa_mutability_object_creation qthis qc))
                      (LIn wf) (olab (new_color qc wf mode))
-                     (map (ldyn Fc) Ts) [])
+                     (map (ldyn Fc) Ts) [] [])
                (map_qual (vpa_q AbstractState (qc2q qc)) B))).
   { apply ldyn_map_qual_agree2.
     - rewrite HFc. apply alloc_read_cond.
     - simpl. apply Forall2_lagree_refl.
-    - simpl. constructor. }
+    - simpl. constructor.
+    - reflexivity. }
   assert (Hbwd : lagree L
             (ldyn (mk_lframe
                      (qr2q (vpa_mutability_object_creation qthis qc))
                      (LIn wf) (olab (new_color qc wf mode))
-                     (map (ldyn Fc) Ts) [])
+                     (map (ldyn Fc) Ts) [] [])
                (map_qual (vpa_q AbstractState (qc2q qc)) B))
-            (ldyn (lf_with_args Fc (map (ldyn Fc) Ts) [])
+            (ldyn (lf_with_args Fc (map (ldyn Fc) Ts) [] [])
                (map_qual (vpa_q AbstractState (qc2q qc)) B))).
   { apply ldyn_map_qual_agree2.
     - rewrite HFc. apply alloc_read_cond_rev.
     - simpl. apply Forall2_lagree_refl.
-    - simpl. constructor. }
+    - simpl. constructor.
+    - reflexivity. }
   refine (conj (conj _ _) (conj _ _)).
   - eapply lsubt_agree_r; eauto.
   - rewrite (lagree_erase_eq L _ _ Hbwd Hrl). exact Hrl.
@@ -1051,32 +1070,33 @@ Proof.
     + destruct qc; reflexivity.
 Qed.
 
-Lemma alloc_fitsp : forall CT L Δ qthis wf mode lc lm qc C def Ts,
+Lemma alloc_fitsp : forall CT L Δ qthis wf mode lc lm lk qc C def Ts,
   wf_class_table CT ->
   readonly_state_method_scope (tv_mode Δ) ->
   (forall o n B, tv_bound Δ o n = Some B -> is_class_type B) ->
-  frame_fits CT L Δ (act_frame qthis wf mode lc lm) ->
-  frame_fitsp CT L Δ (act_frame qthis wf mode lc lm) ->
-  fcoh CT L Δ (act_frame qthis wf mode lc lm) ->
+  frame_fits CT L Δ (act_frame qthis wf mode lc lm lk) ->
+  frame_fitsp CT L Δ (act_frame qthis wf mode lc lm lk) ->
+  fcoh CT L Δ (act_frame qthis wf mode lc lm lk) ->
   Forall rlost_free (map erase lc) -> Forall rlost_free (map erase lm) ->
+  Forall (fun q0 => q0 <> Lost) (map fst lk) ->
   find_class CT C = Some def ->
   Forall lost_free Ts -> Forall (sbnd CT Δ) Ts ->
   Forall2
     (fun T B =>
-       lost_free (member_type AbstractState (qc2q qc) Ts [] B) /\
-       bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] B))
+       lost_free (member_type AbstractState (qc2q qc) Ts [] [] B) /\
+       bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] [] B))
     Ts (ctparams (signature def)) ->
   frame_fitsp CT L (class_env def)
     (hfr CT (vpa_mutability_object_creation qthis qc)
        (olab (new_color qc wf mode)) C
-       (map (ldyn (act_frame qthis wf mode lc lm)) Ts)) /\
+       (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts)) /\
   fcoh CT L (class_env def)
     (hfr CT (vpa_mutability_object_creation qthis qc)
        (olab (new_color qc wf mode)) C
-       (map (ldyn (act_frame qthis wf mode lc lm)) Ts)).
+       (map (ldyn (act_frame qthis wf mode lc lm lk)) Ts)).
 Proof.
-  intros CT L Δ qthis wf mode lc lm qc C def Ts Hwf Hrs Hbc Hfits Hfitp Hcoh
-    Hlc Hlm Hfind HlfT HsbT Hbounds.
+  intros CT L Δ qthis wf mode lc lm lk qc C def Ts Hwf Hrs Hbc Hfits Hfitp Hcoh
+    Hlc Hlm Hlk Hfind HlfT HsbT Hbounds.
   eapply (pfit_of_fits CT L (vpa_mutability_object_creation qthis qc) qc
             (olab (new_color qc wf mode)) (LIn wf) C def _ Hwf Hfind).
   - destruct qthis, qc; reflexivity.
@@ -1125,8 +1145,10 @@ Proof.
   { rewrite HFh. exact Hlf. }
   assert (Hlm' : Forall rlost_free (map erase (lf_margs Fh))).
   { rewrite HFh. constructor. }
-  assert (HFa : lf_with_args Fh (map (ldyn Fh) Ss) [] =
-                mk_lframe (qr2q qo) (lf_mut Fh) l (map (ldyn Fh) Ss) []).
+  assert (Hlk' : Forall (fun q0 => q0 <> Lost) (map fst (lf_qargs Fh))).
+  { rewrite HFh. constructor. }
+  assert (HFa : lf_with_args Fh (map (ldyn Fh) Ss) [] [] =
+                mk_lframe (qr2q qo) (lf_mut Fh) l (map (ldyn Fh) Ss) [] []).
   { rewrite HFh. reflexivity. }
   eapply (pfit_of_fits CT L qo (class_qualifier (signature def)) l (lf_mut Fh)
             P sd (map (ldyn Fh) Ss) Hwf Hsd Hag Hmc).
@@ -1136,23 +1158,23 @@ Proof.
             Forall2
               (fun T B =>
                  lost_free (member_type AbstractState
-                              (qc2q (class_qualifier (signature def))) Ss [] B) /\
+                              (qc2q (class_qualifier (signature def))) Ss [] [] B) /\
                  bound_sub CT (class_env def) T
                    (member_type AbstractState
-                      (qc2q (class_qualifier (signature def))) Ss [] B))
+                      (qc2q (class_qualifier (signature def))) Ss [] [] B))
               Xs Bs ->
             Forall2
               (fun A B =>
                  (lsubt CT L A
-                    (ldyn (lf_with_args Fh (map (ldyn Fh) Ss) [])
+                    (ldyn (lf_with_args Fh (map (ldyn Fh) Ss) [] [])
                        (map_qual (vpa_q AbstractState
                                     (qc2q (class_qualifier (signature def)))) B)) /\
                   rlost_free (erase
-                    (ldyn (lf_with_args Fh (map (ldyn Fh) Ss) [])
+                    (ldyn (lf_with_args Fh (map (ldyn Fh) Ss) [] [])
                        (map_qual (vpa_q AbstractState
                                     (qc2q (class_qualifier (signature def)))) B)))) /\
                  fit3p CT L A
-                   (ldyn (lf_with_args Fh (map (ldyn Fh) Ss) [])
+                   (ldyn (lf_with_args Fh (map (ldyn Fh) Ss) [] [])
                       (map_qual (vpa_q AbstractState
                                    (qc2q (class_qualifier (signature def)))) B)) /\
                  (forall q0 K Xs', B = TClass q0 K Xs' -> q0 = Mut ->
@@ -1169,7 +1191,7 @@ Proof.
                   _ _ (Hbs ReadonlyState)) as Hs.
     assert (Hrl : rlost_free (erase (ldyn Fh
               (member_type AbstractState
-                 (qc2q (class_qualifier (signature def))) Ss [] B)))).
+                 (qc2q (class_qualifier (signature def))) Ss [] [] B)))).
     { rewrite erase_ldyn. rewrite HFh. unfold hfr. simpl.
       apply dyn_lost_free; auto; try apply qr2q_concrete; try constructor. }
     destruct (fit3 CT L (with_mode (class_env def) ReadonlyState) Fh Hwf
@@ -1178,9 +1200,9 @@ Proof.
                 (fun o0 n0 B0 Hb0 => Hfit' o0 n0 B0 Hb0)
                 (fun o0 n0 B0 Hb0 => Hfitp o0 n0 B0 Hb0)
                 (fun o0 n0 K0 Bs0 Hb0 => Hcoh o0 n0 K0 Bs0 Hb0)
-                Hlc' Hlm' T
+                Hlc' Hlm' Hlk' T
                 (member_type AbstractState
-                   (qc2q (class_qualifier (signature def))) Ss [] B)
+                   (qc2q (class_qualifier (signature def))) Ss [] [] B)
                 (sbnd_mode _ _ _ _ HsbT) HlfT0 (Hbs ReadonlyState))
       as [H3 Hc3].
     unfold member_type, adapt in Hs, Hrl, H3. rewrite ldyn_subst in Hs, Hrl, H3.

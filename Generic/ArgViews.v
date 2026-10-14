@@ -47,7 +47,7 @@ Definition rd_lab (d : lab) (pn : option (q * lab)) : lab :=
     arguments [As] reads its class's header. *)
 Definition hframe (hq : q) (d : lab) (pn : option (q * lab)) (As : list ltype)
     : lframe :=
-  mk_lframe hq (rd_lab d pn) d As [].
+  mk_lframe hq (rd_lab d pn) d As [] [].
 
 Definition hstep (k : bool) (hq : q) (g : q -> q) (d : lab)
     (pn : option (q * lab)) (As : list ltype) (Ss : list qualified_type)
@@ -99,7 +99,7 @@ Fixpoint pwalk (CT : class_table) (B : qualified_type) (A : ltype)
           | None => None
           end
       end
-  | THead _ _ D Bs, LT q0 l C As =>
+  | THead _ D Bs, LT q0 l C As =>
       match tviewf CT (S C) q0 l C As D with
       | Some Vs =>
           (fix go (Bs : list qualified_type) (Vs : list ltype)
@@ -255,9 +255,10 @@ Lemma ldyn_agree2 : forall L g f Fo Fc T,
   lc2 L g f Fo Fc ->
   Forall2 (lagree L) (lf_cargs Fo) (lf_cargs Fc) ->
   Forall2 (lagree L) (lf_margs Fo) (lf_margs Fc) ->
+  lf_qargs Fo = lf_qargs Fc ->
   lagree L (ldyn Fo (map_qual g T)) (ldyn Fc (map_qual f T)).
 Proof.
-  intros L g f Fo Fc T Hq Hc Hm.
+  intros L g f Fo Fc T Hq Hc Hm Hqs.
   induction T using qualified_type_ind'.
   - simpl. destruct (Hq qual) as [H1 H2]. constructor; auto.
     induction H; simpl; constructor; auto.
@@ -270,19 +271,12 @@ Proof.
     { destruct (tv_lookup o (lf_cargs Fo) (lf_margs Fo) n),
                (tv_lookup o (lf_cargs Fc) (lf_margs Fc) n);
         try contradiction; auto using lagree_default. }
-    destruct u; simpl; auto.
-    destruct (Hq qual) as [H1 H2].
-    inversion HA; subst. simpl. constructor; auto.
-  - pose proof (tv_lookup_Forall2 (lagree L) o _ _ _ _ n Hc Hm) as Hl.
-    assert (HA : lagree L
-              match tv_lookup o (lf_cargs Fo) (lf_margs Fo) n with
-              | Some A => A | None => ldefault end
-              match tv_lookup o (lf_cargs Fc) (lf_margs Fc) n with
-              | Some A => A | None => ldefault end).
-    { destruct (tv_lookup o (lf_cargs Fo) (lf_margs Fo) n),
-               (tv_lookup o (lf_cargs Fc) (lf_margs Fc) n);
-        try contradiction; auto using lagree_default. }
-    simpl. inversion HA; subst. simpl. constructor; auto.
+    destruct u as [|qual|m]; simpl; auto.
+    + destruct (Hq qual) as [H1 H2].
+      inversion HA; subst. simpl. constructor; auto.
+    + rewrite Hqs. inversion HA; subst. simpl.
+      constructor; auto; left; reflexivity.
+  - simpl. rewrite Hqs. constructor; [left; reflexivity | auto |].
     induction H; simpl; constructor; auto.
 Qed.
 
@@ -327,8 +321,8 @@ Proof.
               (lm = d /\ lm' = d') ->
               arg_q_sub (dynq hq (g Mut)) (dynq hq' (g' Mut)) /\
               (dynq hq' (g' Mut) = Lost \/ dynq hq (g Mut) <> Mut \/
-               norm L (lab_of (mk_lframe hq lm d As []) (g Mut)) =
-               norm L (lab_of (mk_lframe hq' lm' d' As' []) (g' Mut)))).
+               norm L (lab_of (mk_lframe hq lm d As [] []) (g Mut)) =
+               norm L (lab_of (mk_lframe hq' lm' d' As' [] []) (g' Mut)))).
     { intros lm lm' Hlm. destruct (Hr Mut) as [H1 H2]. split; [exact H1|].
       destruct Hgm as [E | E]; rewrite E in H1, H2 |- *;
         [|right; left; simpl; discriminate].
@@ -392,7 +386,7 @@ Proof.
     destruct (q_eq_dec q0 Mut) as [-> | Hne].
     + destruct Hl as [Hx | [Hx | Hx]]; try congruence. auto.
     + right. left. destruct q0, q1; simpl; congruence.
-  - destruct Hm as [-> | ->]; destruct q1; simpl; unfold arg_q_sub;
+  - destruct Hm as [-> | [-> | ->]]; destruct q1; simpl; unfold arg_q_sub;
       (split; [auto | auto]); try (right; left; discriminate).
 Qed.
 
@@ -407,6 +401,7 @@ Proof.
   - apply step_cond; auto.
   - exact Hle.
   - constructor.
+  - reflexivity.
 Qed.
 
 (* ------------------THE PAYLOAD RESPECTS AGREEMENT------------------*)
@@ -468,14 +463,14 @@ Proof.
     destruct (tviewf CT (S C) q0 l C As D); auto.
 Qed.
 
-Lemma pwalk_head : forall CT o n D Bs q0 l C As,
-  pwalk CT (THead o n D Bs) (LT q0 l C As) =
+Lemma pwalk_head : forall CT n D Bs q0 l C As,
+  pwalk CT (THead n D Bs) (LT q0 l C As) =
   match tviewf CT (S C) q0 l C As D with
   | Some Vs => pwalks CT Bs Vs
   | None => None
   end.
 Proof.
-  intros CT o n D Bs q0 l C As.
+  intros CT n D Bs q0 l C As.
   assert (Hgo : forall Bs0 Vs0,
             (fix go (Bs : list qualified_type) (Vs : list ltype)
                : option (q * lab) :=
@@ -527,10 +522,10 @@ Proof.
         simpl in Hv; try contradiction; [|exact I].
       apply pwalks_agree; auto.
   - inversion Hle as [q1 l1 q2 l2 C0 As As' Hq Hlab Hargs]; subst.
-    destruct u as [|[]]; simpl; try exact I. split; auto.
+    destruct u as [|[]|]; simpl; try exact I. split; auto.
   - inversion Hle as [q1 l1 q2 l2 C0 As As' Hq Hlab Hargs]; subst.
-    rewrite (pwalk_head CT o n C args q1 l1 C0 As).
-    rewrite (pwalk_head CT o n C args q2 l2 C0 As').
+    rewrite (pwalk_head CT n C args q1 l1 C0 As).
+    rewrite (pwalk_head CT n C args q2 l2 C0 As').
     pose proof (tviewf_agree CT L (S C0) q1 l1 q2 l2 C0 As As' C Hq Hlab Hargs)
       as Hv.
     destruct (tviewf CT (S C0) q1 l1 C0 As C) as [Vs|],
@@ -546,7 +541,7 @@ Proof.
   inversion Hle as [q1 l1 q2 l2 C0 As As' Hq Hlab Hargs]; subst.
   destruct (q_eq_dec q1 Bot) as [-> | Hq1].
   - assert (q2 = Bot).
-    { unfold arg_q_sub in Hq. destruct Hq as [Hx | [_ [Hx | Hx]]]; congruence. }
+    { unfold arg_q_sub in Hq. destruct Hq as [Hx | [_ [Hx | [Hx | Hx]]]]; congruence. }
     subst q2. exact I.
   - assert (Hq2 : q2 <> Bot).
     { unfold arg_q_sub in Hq. destruct Hq as [Hx | [Hx _]]; congruence. }
@@ -672,7 +667,7 @@ Proof. intros [[[] l]|]; reflexivity. Qed.
 
 Lemma map_erase_hstep_obj : forall qo c pn As Ss,
   map erase (hstep false (qr2q qo) (fun q0 => q0) c pn As Ss) =
-  map (dyn (qr2q qo) (map erase As) []) Ss.
+  map (dyn (qr2q qo) (map erase As) [] []) Ss.
 Proof.
   intros qo c pn As Ss. unfold hstep. rewrite rd_map_obj.
   rewrite map_map. apply map_ext. intros S.

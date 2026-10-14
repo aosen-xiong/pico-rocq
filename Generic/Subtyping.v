@@ -35,8 +35,7 @@ Qed.
 
 (** Qualifier Ordering *)
 Inductive q_subtype : q -> q -> Prop :=
-  | q_refl : forall q1
-      (Hnot_lost : q1 <> Lost),
+  | q_refl : forall q1,
       q_subtype q1 q1
   | q_rd : forall q1,
       q_subtype q1 RO
@@ -44,12 +43,6 @@ Inductive q_subtype : q -> q -> Prop :=
       q_subtype Bot q1
 where "q1 ⊑ q2" := (q_subtype q1 q2).
 Global Hint Constructors q_subtype: typ.
-
-Example lost_subtype_refl: Lost ⊑ Lost -> False.
-Proof.
-  intros H.
-  inversion H; subst; try congruence.
-Qed.
 
 Lemma q_subtype_trans: forall μ1 μ2 μ3, μ1 ⊑ μ2 -> μ2 ⊑ μ3 -> μ1 ⊑ μ3.
 Proof.
@@ -97,7 +90,7 @@ Inductive super_inst (CT : class_table) (mt : method_scope) (qh : q)
   | si_step : forall C Ts P Ss D Vs
       (Hparent : parent_lookup CT C = Some (P, Ss))
       (Hrest : super_inst CT mt qh P
-                 (map (subst Ts []) (map (adapt mt qh) Ss)) D Vs),
+                 (map (subst Ts [] []) (map (adapt mt qh) Ss)) D Vs),
       super_inst CT mt qh C Ts D Vs.
 
 (** Runtime superclass instantiation: the same walk over runtime type
@@ -108,13 +101,13 @@ Inductive rsuper_inst (CT : class_table) (qh : q)
       rsuper_inst CT qh C Rs C Rs
   | rsi_step : forall C Rs P Ss D Vs
       (Hparent : parent_lookup CT C = Some (P, Ss))
-      (Hrest : rsuper_inst CT qh P (map (dyn qh Rs []) Ss) D Vs),
+      (Hrest : rsuper_inst CT qh P (map (dyn qh Rs [] []) Ss) D Vs),
       rsuper_inst CT qh C Rs D Vs.
 
 (** Type-argument compatibility.  Arguments are invariant, except that a
-    mutable or immutable head may be forgotten to [Lost]. *)
+    mutable, immutable or readonly head may be forgotten to [Lost]. *)
 Definition arg_q_sub (q1 q2 : q) : Prop :=
-  q2 = q1 \/ (q2 = Lost /\ (q1 = Mut \/ q1 = Imm)).
+  q2 = q1 \/ (q2 = Lost /\ (q1 = Mut \/ q1 = Imm \/ q1 = RO)).
 
 Inductive targ_sub : qualified_type -> qualified_type -> Prop :=
   | tas_var : forall u o n,
@@ -123,9 +116,22 @@ Inductive targ_sub : qualified_type -> qualified_type -> Prop :=
       (Hq : arg_q_sub q1 q2)
       (Hargs : Forall2 targ_sub Ts Us),
       targ_sub (TClass q1 C Ts) (TClass q2 C Us)
-  | tas_head : forall o n C Ts Us
+  | tas_head : forall n C Ts Us
       (Hargs : Forall2 targ_sub Ts Us),
-      targ_sub (THead o n C Ts) (THead o n C Us).
+      targ_sub (THead n C Ts) (THead n C Us).
+
+(** A readonly argument may be forgotten to [Lost], like a mutable or an
+    immutable one; a receiver-dependent or bottom argument may not. *)
+Example targ_ro_to_lost : forall C,
+  targ_sub (TClass RO C []) (TClass Lost C []).
+Proof. intros. constructor; [right; auto | constructor]. Qed.
+
+Example targ_rdm_not_to_lost : forall C,
+  ~ targ_sub (TClass RDM C []) (TClass Lost C []).
+Proof.
+  intros C H. inversion H as [|? ? ? ? ? Hq _|]; subst.
+  destruct Hq as [Hq | [_ [Hq | [Hq | Hq]]]]; discriminate.
+Qed.
 
 Section targ_sub_ind'.
   Variable P : qualified_type -> qualified_type -> Prop.
@@ -135,10 +141,10 @@ Section targ_sub_ind'.
     Forall2 targ_sub Ts Us ->
     Forall2 P Ts Us ->
     P (TClass q1 C Ts) (TClass q2 C Us).
-  Hypothesis Hhead : forall o n C Ts Us,
+  Hypothesis Hhead : forall n C Ts Us,
     Forall2 targ_sub Ts Us ->
     Forall2 P Ts Us ->
-    P (THead o n C Ts) (THead o n C Us).
+    P (THead n C Ts) (THead n C Us).
 
   Fixpoint targ_sub_ind' T U (H : targ_sub T U) : P T U :=
     match H with
@@ -151,8 +157,8 @@ Section targ_sub_ind'.
               | Forall2_cons t u Ht Hr =>
                   Forall2_cons t u (targ_sub_ind' t u Ht) (go _ _ Hr)
               end) Ts Us Hargs)
-    | tas_head o n C Ts Us Hargs =>
-        Hhead o n C Ts Us Hargs
+    | tas_head n C Ts Us Hargs =>
+        Hhead n C Ts Us Hargs
           ((fix go Ts Us (Hl : Forall2 targ_sub Ts Us) : Forall2 P Ts Us :=
               match Hl with
               | Forall2_nil _ => Forall2_nil P
@@ -220,40 +226,49 @@ Inductive qualified_type_subtype (CT : class_table) (Δ : tv_env)
       qualified_type_subtype CT Δ (TVar (TVQual q1) o n) (TVar (TVQual q2) o n)
   | qtype_var_ro : forall o n,
       qualified_type_subtype CT Δ (TVar TVSub o n) (TVar (TVQual RO) o n)
+  (* A use under a qualifier parameter of the enclosing method is a subtype
+     of itself and may be viewed as readonly, the view valid for every
+     qualifier the parameter may stand for. *)
+  | qtype_pvar_refl : forall m o n,
+      qualified_type_subtype CT Δ (TVar (TVPoly m) o n) (TVar (TVPoly m) o n)
+  | qtype_pvar_ro : forall m o n,
+      qualified_type_subtype CT Δ (TVar (TVPoly m) o n) (TVar (TVQual RO) o n)
   (* A qualified use may be viewed at an argument-free class that bounds the
      variable.  With no arguments there is nothing whose meaning could depend
      on the replaced qualifier. *)
   | qtype_qvar_bound : forall q1 o n qb C
       (Hbound : qualified_type_subtype CT Δ (TVar TVSub o n) (TClass qb C [])),
       qualified_type_subtype CT Δ (TVar (TVQual q1) o n) (TClass q1 C [])
-  (* A class type whose qualifier is that of a type variable's argument: it
+  (* A class type under a qualifier parameter of the enclosing method: it
      may be viewed as readonly, its arguments stay compatible, and the
      bottom-qualified type of the class is below it. *)
-  | qtype_head_ro : forall o n C Ts Us B
-      (Hbound : tv_bound Δ o n = Some B)
+  | qtype_head_ro : forall n C Ts Us
+      (Hbound : n < qparams Δ)
       (Hargs : Forall2 targ_sub Ts Us),
-      qualified_type_subtype CT Δ (THead o n C Ts) (TClass RO C Us)
-  | qtype_head_args : forall o n C Ts Us
+      qualified_type_subtype CT Δ (THead n C Ts) (TClass RO C Us)
+  | qtype_head_args : forall n C Ts Us
       (Hargs : Forall2 targ_sub Ts Us),
-      qualified_type_subtype CT Δ (THead o n C Ts) (THead o n C Us)
+      qualified_type_subtype CT Δ (THead n C Ts) (THead n C Us)
   (* Up the class hierarchy with the same qualifier.  The superclass arguments
      are read through the readonly view, the only one valid for every
      qualifier the variable may stand for. *)
-  | qtype_head_hier : forall o n C Ts D Vs
+  | qtype_head_hier : forall n C Ts D Vs
       (Hsuper : super_inst CT (tv_mode Δ) RO C Ts D Vs),
-      qualified_type_subtype CT Δ (THead o n C Ts) (THead o n D Vs)
-  | qtype_head_bot : forall o n C Ts Us
+      qualified_type_subtype CT Δ (THead n C Ts) (THead n D Vs)
+  | qtype_head_bot : forall n C Ts Us
       (Hdom  : C < dom CT)
       (Hargs : Forall2 targ_sub Ts Us),
-      qualified_type_subtype CT Δ (TClass Bot C Ts) (THead o n C Us)
+      qualified_type_subtype CT Δ (TClass Bot C Ts) (THead n C Us)
   | qtype_trans : forall T1 T2 T3
       (Hsub12 : qualified_type_subtype CT Δ T1 T2)
       (Hsub23 : qualified_type_subtype CT Δ T2 T3),
       qualified_type_subtype CT Δ T1 T3.
 
-(** Runtime head-qualifier order between runtime types. *)
+(** Runtime head-qualifier order between runtime types.  [RO] and [Lost]
+    are both tops: every object may be seen through either. *)
 Definition rq_sub (q1 q2 : q) : Prop :=
-  q2 = q1 \/ q2 = RO \/ (q2 = Lost /\ (q1 = Mut \/ q1 = Imm)).
+  q2 = q1 \/ q2 = RO \/
+  (q2 = Lost /\ (q1 = Mut \/ q1 = Imm \/ q1 = RO \/ q1 = RDM \/ q1 = Bot)).
 
 (** Runtime subtyping between runtime types.  A bottom-headed runtime type
     (the type of null only) is below every runtime type of a superclass with
@@ -272,13 +287,13 @@ Definition rtype_subtype (CT : class_table) (R1 R2 : rtype) : Prop :=
 (** A type argument satisfies a bound when it is below the bound in every
     protection mode: the same type use is visible from code of every mode. *)
 Definition with_mode (Δ : tv_env) (m : method_scope) : tv_env :=
-  mk_tv_env (class_bounds Δ) (method_bounds Δ) m.
+  mk_tv_env (class_bounds Δ) (method_bounds Δ) m (qparams Δ).
 
 Definition bound_sub (CT : class_table) (Δ : tv_env) (T B : qualified_type) : Prop :=
   forall m, qualified_type_subtype CT (with_mode Δ m) T B.
 
 Lemma with_mode_self : forall Δ, with_mode Δ (tv_mode Δ) = Δ.
-Proof. intros [cb mb m]. reflexivity. Qed.
+Proof. intros [cb mb m k]. reflexivity. Qed.
 
 Lemma bound_sub_self : forall CT Δ T B,
   bound_sub CT Δ T B -> qualified_type_subtype CT Δ T B.

@@ -162,6 +162,7 @@ Definition mix : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 0;
           mreceiver := RDMBoxEX;
@@ -193,6 +194,7 @@ Definition attack : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 1;
           mreceiver := RDMOwner;
@@ -210,7 +212,7 @@ Definition attack : method_def :=
             (SSeq (SNew 5 Mut_c 1 [] [3; 4])
             (SSeq (SNew 6 Mut_c 3 [] [5])
             (SSeq (SFldWrite 2 0 6)
-            (SSeq (SCall 7 0 2 [] [])
+            (SSeq (SCall 7 0 2 [] [] [])
             (SSeq (SVarAss 8 (EField 5 0))
                   (SFldWrite 8 1 1)))))))))))));
           mreturn := 1 |} |}.
@@ -238,15 +240,15 @@ Definition prefix : stmt :=
   (SSeq (SNew 6 Mut_c 5 [] [5])
         (SNew 7 Mut_c 0 [] [])))))))))))).
 
-Definition callA : stmt := SCall 8 1 6 [] [7].
+Definition callA : stmt := SCall 8 1 6 [] [] [7].
 
 Definition main : stmt := SSeq prefix callA.
 
 (** Bound environments: main and the class-level checks; the body of mix;
     the body of attack. *)
-Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState.
-Definition ΔMix : tv_env := mk_tv_env [RODX; RDMCell] [] ReadonlyState.
-Definition ΔR : tv_env := mk_tv_env [] [] ReadonlyState.
+Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState 0.
+Definition ΔMix : tv_env := mk_tv_env [RODX; RDMCell] [] ReadonlyState 0.
+Definition ΔR : tv_env := mk_tv_env [] [] ReadonlyState 0.
 
 (* ------------------SMALL TACTICS AND FACTS------------------*)
 
@@ -292,7 +294,7 @@ Qed.
 
 (** Inside Box2, X is below its bound and hence a readonly Object. *)
 Lemma sub_tX_ROObject : forall mt,
-  qualified_type_subtype CT (mk_tv_env [RODX; RDMCell] [] mt) tX ROObject.
+  qualified_type_subtype CT (mk_tv_env [RODX; RDMCell] [] mt 0) tX ROObject.
 Proof.
   intros mt. eapply qtype_trans.
   - apply qtype_var_bound with (B := RDMCell). reflexivity.
@@ -302,7 +304,7 @@ Qed.
 (** The bound of E, @RO D<X>, is a well-formed type inside Box2.  Its one
     bound check (X below @RO Object) is performed and passes. *)
 Lemma wf_RODX : forall mt top,
-  wf_stype CT (mk_tv_env [RODX; RDMCell] [] mt) top RODX.
+  wf_stype CT (mk_tv_env [RODX; RDMCell] [] mt 0) top RODX.
 Proof.
   intros mt top.
   eapply wfs_class; [reflexivity | right; cbn; qs | reflexivity | |].
@@ -313,7 +315,7 @@ Qed.
 
 Lemma wf_tvar : forall mt top n B,
   nth_error [RODX; RDMCell] n = Some B ->
-  wf_stype CT (mk_tv_env [RODX; RDMCell] [] mt) top (TVar TVSub ClassVar n).
+  wf_stype CT (mk_tv_env [RODX; RDMCell] [] mt 0) top (TVar TVSub ClassVar n).
 Proof.
   intros. eapply wfs_var; [exact H | right; discriminate].
 Qed.
@@ -321,10 +323,10 @@ Qed.
 (** In abstract-state code a readonly K is a readonly D of mutable Cells:
     the superclass argument @Mut Cell read through the @RO head stays
     @Mut Cell. *)
-Lemma sub_ROK_RODMutCell : forall cb mb,
-  qualified_type_subtype CT (mk_tv_env cb mb AbstractState) ROK RODMutCell.
+Lemma sub_ROK_RODMutCell : forall cb mb kq,
+  qualified_type_subtype CT (mk_tv_env cb mb AbstractState kq) ROK RODMutCell.
 Proof.
-  intros cb mb. apply qtype_hier.
+  intros cb mb kq. apply qtype_hier.
   eapply si_step; [reflexivity|]. cbn. apply si_refl.
 Qed.
 
@@ -332,8 +334,8 @@ Qed.
     the bound of E reads @RO D<@Mut Cell> and the bound of X reads @Mut Cell,
     both fully known. *)
 Lemma step_g_bounds_read :
-  subst [ROK; MutCell] [] (adapt AbstractState Mut RODX) = RODMutCell /\
-  subst [ROK; MutCell] [] (adapt AbstractState Mut RDMCell) = MutCell /\
+  subst [ROK; MutCell] [] [] (adapt AbstractState Mut RODX) = RODMutCell /\
+  subst [ROK; MutCell] [] [] (adapt AbstractState Mut RDMCell) = MutCell /\
   lost_free RODMutCell /\ lost_free MutCell.
 Proof.
   split; [reflexivity|]. split; [reflexivity|]. split; lf.
@@ -347,9 +349,9 @@ Qed.
     bound of X is @Lost Cell; both contain @Lost, so both checks are
     skipped. *)
 Lemma step_b_bounds_skipped :
-  subst [ROK; LostCell] [] (adapt AbstractState RO RODX)
+  subst [ROK; LostCell] [] [] (adapt AbstractState RO RODX)
     = TClass RO 2 [LostCell] /\
-  subst [ROK; LostCell] [] (adapt AbstractState RO RDMCell) = LostCell /\
+  subst [ROK; LostCell] [] [] (adapt AbstractState RO RDMCell) = LostCell /\
   ~ lost_free (TClass RO 2 [LostCell]) /\
   ~ lost_free LostCell.
 Proof.
@@ -531,7 +533,7 @@ Definition sΓMix : s_env :=
     d = this.item: through the @RDM receiver the field reads as the bare
     variable E, and E is below its bound @RO D<X>. *)
 Lemma step_e_read_item :
-  member_type ReadonlyState RDM [tE; tX] [] (ftype item_field) = tE /\
+  member_type ReadonlyState RDM [tE; tX] [] [] (ftype item_field) = tE /\
   qualified_type_subtype CT ΔMix tE RODX.
 Proof.
   split; [reflexivity|]. apply qtype_var_bound. reflexivity.
@@ -541,7 +543,7 @@ Qed.
     Reading through the @RO receiver adapts written qualifiers only; a bare
     type variable has none, so the field reads as exactly X. *)
 Lemma step_e_read_f :
-  member_type ReadonlyState RO [tX] [] (ftype f_field) = tX.
+  member_type ReadonlyState RO [tX] [] [] (ftype f_field) = tX.
 Proof. reflexivity. Qed.
 
 (** yy = x: X is below its bound @RDM Cell. *)
@@ -551,7 +553,7 @@ Proof. apply qtype_var_bound. reflexivity. Qed.
 (** yy.cache = h: through the @RDM reference yy the field cache reads
     @RDM Cell, which is the type of h, and the slot is assignable. *)
 Lemma step_e_write_cache :
-  member_type ReadonlyState RDM [] [] (ftype cache_field) = RDMCell /\
+  member_type ReadonlyState RDM [] [] [] (ftype cache_field) = RDMCell /\
   vpa_a ReadonlyState RDM (assignability cache_field) = Assignable.
 Proof. split; reflexivity. Qed.
 
@@ -596,7 +598,7 @@ Proof.
     (C := 1) (Ts := []) (fieldT := cache_field);
     [wfenv | reflexivity | reflexivity | reflexivity | fl collect_Cell
     | | reflexivity].
-  split; [cbn; refl_sub | left; lf].
+  split; [cbn; refl_sub | lf].
 Qed.
 
 (** STEP (f).  The signature of mix has no mutable position, reading the
@@ -618,7 +620,7 @@ Lemma wf_mix : wf_method CT 4 mix.
 Proof.
   unfold wf_method.
   change (method_tv_env CT 4 (msignature mix)) with ΔMix.
-  split; [left; exists RDM; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RDM; reflexivity|].
   split; [constructor|].
   split; [apply wf_ROObject|].
   split.
@@ -642,7 +644,7 @@ Definition sΓAtk : s_env :=
     rb, @RO Box2<@RO K, @Lost Cell> (the head widens to @RO, the arguments
     are the same). *)
 Lemma step_a_field_read :
-  member_type ReadonlyState RDM [] [] (ftype bx_field) = LostBoxT /\
+  member_type ReadonlyState RDM [] [] [] (ftype bx_field) = LostBoxT /\
   (forall Δ, qualified_type_subtype CT Δ LostBoxT ROBoxT).
 Proof.
   split; [reflexivity|]. intros Δ.
@@ -673,7 +675,7 @@ Proof.
     | reflexivity | apply wf_MutCell | constructor | constructor
     | apply collect_Cell | | ].
   - constructor; [|constructor; [|constructor]]; cbn;
-      (split; [refl_sub | left; lf]).
+      (split; [refl_sub | lf]).
   - cbn. refl_sub.
 Qed.
 
@@ -682,7 +684,7 @@ Qed.
     is a @Mut Cell.  (This is where the earlier probe was stopped: it
     allocated the K as @RDM.) *)
 Lemma alloc_K_field_read :
-  member_type ReadonlyState (qc2q Mut_c) [] [] (ftype Kf_field) = MutCell.
+  member_type ReadonlyState (qc2q Mut_c) [] [] [] (ftype Kf_field) = MutCell.
 Proof. reflexivity. Qed.
 
 Lemma alloc_v_typed :
@@ -693,7 +695,7 @@ Proof.
     [wfenv | reflexivity | reflexivity | reflexivity | discriminate
     | reflexivity | apply wf_MutK | constructor | constructor
     | apply collect_K | | ].
-  - constructor; [|constructor]; cbn. split; [refl_sub | left; lf].
+  - constructor; [|constructor]; cbn. split; [refl_sub | lf].
   - cbn. refl_sub.
 Qed.
 
@@ -702,7 +704,7 @@ Qed.
     the slot is assignable through a readonly reference in readonly-state
     code. *)
 Lemma step_c_field_write_typed :
-  member_type ReadonlyState RO [ROK; LostCell] [] (ftype item_field) = ROK /\
+  member_type ReadonlyState RO [ROK; LostCell] [] [] (ftype item_field) = ROK /\
   lost_free ROK /\
   (forall Δ, qualified_type_subtype CT Δ MutK ROK) /\
   vpa_a ReadonlyState RO (assignability item_field) = Assignable /\
@@ -714,14 +716,15 @@ Proof.
     (C := 4) (Ts := [ROK; LostCell]) (fieldT := item_field);
     [unfold sΓAtk; wfenv | reflexivity | reflexivity | reflexivity
     | fl collect_Box | | reflexivity].
-  split; [cbn; qual_sub | left; lf].
+  split; [cbn; qual_sub | lf].
 Qed.
 
-(** STEP (d).  ig = rb.mix() is typed by the special receiver case: a
-    readonly receiver calling a method whose declared receiver is @RDM.  The
-    ordinary receiver check is not used. *)
+(** STEP (d).  ig = rb.mix() is typed.  The declared receiver of mix is
+    @RDM Box2<E,X>; receiver adaptation makes it the caller's view,
+    @RO Box2<@RO K, @Lost Cell>.  Its qualifier is known, which is all the
+    receiver check asks; the unknown type argument is the reference's own. *)
 Lemma step_d_call_typed :
-  stmt_typing CT ΔR sΓAtk ReadonlyState (SCall 7 0 2 [] []) sΓAtk.
+  stmt_typing CT ΔR sΓAtk ReadonlyState (SCall 7 0 2 [] [] []) sΓAtk.
 Proof.
   eapply ST_Call with (Tx := ROObject) (Ty := ROBoxT)
     (argtypes := []) (qy := RO) (C := 4) (Ts := [ROK; LostCell]) (D := 4)
@@ -729,16 +732,16 @@ Proof.
     [unfold sΓAtk; wfenv | reflexivity | reflexivity | reflexivity
     | reflexivity | apply find_mix | apply si_refl | discriminate
     | constructor | constructor | reflexivity | constructor | | |
-    | apply method_subtyping_refl].
+    | apply method_subtyping_refl | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - right. split; [reflexivity|]. eexists. reflexivity.
+  - split; [cbn; apply qtype_hier; apply si_refl | discriminate].
   - constructor.
 Qed.
 
 (** m = c0.cache: through the mutable c0 the receiver-dependent field reads
     @Mut Cell. *)
 Lemma read_cache_typed :
-  member_type ReadonlyState Mut [] [] (ftype cache_field) = MutCell /\
+  member_type ReadonlyState Mut [] [] [] (ftype cache_field) = MutCell /\
   stmt_typing CT ΔR sΓAtk ReadonlyState (SVarAss 8 (EField 5 0)) sΓAtk.
 Proof.
   split; [reflexivity|]. unfold sΓAtk.
@@ -760,7 +763,7 @@ Proof.
     (C := 1) (Ts := []) (fieldT := value_field);
     [unfold sΓAtk; wfenv | reflexivity | reflexivity | reflexivity
     | fl collect_Cell | | reflexivity].
-  split; [cbn; refl_sub | left; lf].
+  split; [cbn; refl_sub | lf].
 Qed.
 
 Lemma attack_body_typed :
@@ -794,7 +797,7 @@ Lemma wf_attack : wf_method CT 5 attack.
 Proof.
   unfold wf_method.
   change (method_tv_env CT 5 (msignature attack)) with ΔR.
-  split; [left; exists RDM; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RDM; reflexivity|].
   split; [constructor|].
   split; [apply wf_ROObject|].
   split.
@@ -925,7 +928,7 @@ Proof.
       inversion Hl; subst.
       inversion Hab as [|qa qb Ca Tsa Usa Hq Hargs'|]; subst.
       inversion Hargs'; subst.
-      destruct Hq as [-> | [_ [Hq | Hq]]]; try discriminate.
+      destruct Hq as [-> | [_ [Hq | [Hq | Hq]]]]; try discriminate.
       right. left. reflexivity.
     + inversion Hargs; subst. right. right. reflexivity.
   - assert (Hr : q1 = RO /\ reach C Ts).
@@ -934,6 +937,8 @@ Proof.
     destruct Hr as [-> Hr].
     destruct (super_inst_reach _ _ _ _ _ Hmode Hsuper Hr)
       as [[-> ->] | [[-> ->] | [-> ->]]]; auto.
+  - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
+  - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
   - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
   - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
   - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
@@ -967,12 +972,12 @@ Proof.
   destruct (supertypes_of_ROK Δ _ Hmode H) as [E | [E | E]]; discriminate.
 Qed.
 
-Corollary ROK_not_below_RODMutCell_RS : forall cb mb,
-  ~ qualified_type_subtype CT (mk_tv_env cb mb ReadonlyState) ROK RODMutCell.
+Corollary ROK_not_below_RODMutCell_RS : forall cb mb kq,
+  ~ qualified_type_subtype CT (mk_tv_env cb mb ReadonlyState kq) ROK RODMutCell.
 Proof. intros. apply ROK_not_below_RODMutCell. left. reflexivity. Qed.
 
-Corollary ROK_not_below_RODMutCell_TS : forall cb mb,
-  ~ qualified_type_subtype CT (mk_tv_env cb mb TransitiveState) ROK RODMutCell.
+Corollary ROK_not_below_RODMutCell_TS : forall cb mb kq,
+  ~ qualified_type_subtype CT (mk_tv_env cb mb TransitiveState kq) ROK RODMutCell.
 Proof. intros. apply ROK_not_below_RODMutCell. right. reflexivity. Qed.
 
 (** What it is instead. *)
@@ -980,7 +985,7 @@ Theorem ROK_below_RODLostCell : forall Δ,
   tv_mode Δ = ReadonlyState \/ tv_mode Δ = TransitiveState ->
   qualified_type_subtype CT Δ ROK (TClass RO 2 [LostCell]).
 Proof.
-  intros [cb mb mt] Hmode. cbn in Hmode. apply qtype_hier. cbn.
+  intros [cb mb mt kq] Hmode. cbn in Hmode. apply qtype_hier. cbn.
   eapply si_step; [reflexivity|].
   destruct Hmode as [-> | ->]; cbn; apply si_refl.
 Qed.
@@ -991,7 +996,7 @@ Theorem ROK_below_RODMutCell_other_modes : forall Δ,
   tv_mode Δ = AbstractState \/ tv_mode Δ = ConcreteState ->
   qualified_type_subtype CT Δ ROK RODMutCell.
 Proof.
-  intros [cb mb mt] Hmode. cbn in Hmode. apply qtype_hier. cbn.
+  intros [cb mb mt kq] Hmode. cbn in Hmode. apply qtype_hier. cbn.
   eapply si_step; [reflexivity|].
   destruct Hmode as [-> | ->]; cbn; apply si_refl.
 Qed.

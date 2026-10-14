@@ -55,8 +55,8 @@ Proof.
         as (ι & othis & Hthis & Hobjt & _ & _ & _ & Hfb).
       pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobjt HTx) as Hxty.
       rewrite Hval_x in Hxty.
-      pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ Hfb Hub Hxty) as Hxty'.
-      destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hxty')
+      pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ _ Hfb Hub Hxty) as Hxty'.
+      destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hxty')
         as (ox & Vs & Hox & _ & Hsup & _).
       rewrite Hl in Hox. inversion Hox; subst ox. simpl in Hsup.
       destruct Hassign as (fdO & HlookO & Ha).

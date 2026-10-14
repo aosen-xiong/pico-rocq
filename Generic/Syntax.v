@@ -43,20 +43,27 @@ Inductive tv_owner : Type :=
 
 (** How a type variable is used.  [TVSub] stands for exactly the supplied
     type.  [TVQual q] keeps the supplied class and arguments and replaces the
-    outer qualifier by [q]. *)
+    outer qualifier by [q].  [TVPoly m] does the same with the [m]-th
+    qualifier parameter of the enclosing method. *)
 Inductive tv_use : Type :=
   | TVSub
-  | TVQual (qual : q).
+  | TVQual (qual : q)
+  | TVPoly (param : nat).
 
 (** Qualified types: a qualified class type with type arguments, a use of a
-    declared type variable, or a class type whose qualifier is that of the
-    type supplied for a type variable.  The last form models a qualifier
-    parameter: the parameter is a type parameter, and [THead o n C args] is
-    [C<args>] with the qualifier of its argument. *)
+    declared type variable, or a class type whose qualifier is a qualifier
+    parameter of the enclosing method: [THead n C args] is [C<args>] under
+    the method's [n]-th qualifier parameter. *)
 Inductive qualified_type : Type :=
   | TClass : q -> class_name -> list qualified_type -> qualified_type
   | TVar : tv_use -> tv_owner -> nat -> qualified_type
-  | THead : tv_owner -> nat -> class_name -> list qualified_type -> qualified_type.
+  | THead : nat -> class_name -> list qualified_type -> qualified_type.
+
+(** A qualifier argument of a call: a written qualifier, or one of the
+    calling method's own qualifier parameters. *)
+Inductive qarg : Type :=
+  | QLit : q -> qarg
+  | QVar : nat -> qarg.
 
 (** Induction principle that also covers the nested argument lists. *)
 Section qualified_type_ind'.
@@ -64,8 +71,8 @@ Section qualified_type_ind'.
   Hypothesis Hclass : forall qual C args,
     Forall P args -> P (TClass qual C args).
   Hypothesis Hvar : forall u o n, P (TVar u o n).
-  Hypothesis Hhead : forall o n C args,
-    Forall P args -> P (THead o n C args).
+  Hypothesis Hhead : forall n C args,
+    Forall P args -> P (THead n C args).
 
   Fixpoint qualified_type_ind' (T : qualified_type) : P T :=
     match T with
@@ -77,8 +84,8 @@ Section qualified_type_ind'.
               | t :: r => Forall_cons t (qualified_type_ind' t) (go r)
               end) args)
     | TVar u o n => Hvar u o n
-    | THead o n C args =>
-        Hhead o n C args
+    | THead n C args =>
+        Hhead n C args
           ((fix go (l : list qualified_type) : Forall P l :=
               match l with
               | [] => Forall_nil P
@@ -101,8 +108,10 @@ Inductive stmt: Type :=
   | SFldWrite: var -> var -> var -> stmt (* x.f = y *)
   | SNew: var -> q_c -> class_name -> list qualified_type -> list var -> stmt
       (* x = new q_c C<Ts>(y1, ..., yn) *)
-  | SCall: var -> method_name -> var -> list qualified_type -> list var -> stmt
-      (* x = y.m<Ts>(z1, ..., zn) *)
+  | SCall: var -> method_name -> var -> list qualified_type -> list qarg ->
+           list var -> stmt
+      (* x = y.<Ts; Qs>m(z1, ..., zn): type arguments, then qualifier
+         arguments *)
   | SCast: var -> qualified_type -> var -> stmt (* x = (T) y *)
   | SSeq: stmt -> stmt -> stmt. (* s1; s2 *)
 
@@ -138,11 +147,13 @@ Record tv_env := mk_tv_env {
   class_bounds : list qualified_type;
   method_bounds : list qualified_type;
   tv_mode : method_scope;
+  qparams : nat; (* number of qualifier parameters of the enclosing method *)
 }.
 
 Record method_sig := {
   mscope: method_scope;
   mtparams : list qualified_type; (* bounds of the method's type parameters *)
+  mqparams : nat; (* number of the method's qualifier parameters *)
   mret : qualified_type; (* Return type *)
   mname : method_name; (* Method name *)
   mreceiver: qualified_type; (* T this *)
@@ -170,11 +181,6 @@ Record class_sig := {
 Record class_def := {
   signature : class_sig; (* Class signature *)
   body : class_body; (* Class body *)
-}.
-
-Record program_def := {
-  classes: list class_def; (* List of class declarations *)
-  main_statement: stmt; (* Main statement *)
 }.
 
 (* Class table is a list of class declarations *)
@@ -236,15 +242,17 @@ Definition var_mapping := list value.
 
 (** Runtime environment of one activation: the variables, the runtime type
     arguments of the receiver viewed at the class that declares the running
-    method, and the runtime type arguments of the method itself. *)
+    method, the runtime type arguments of the method itself, and the
+    qualifiers supplied for the method's qualifier parameters. *)
 Record r_env := mkr_env {
   vars: var_mapping;
   cargs: list rtype;
   margs: list rtype;
+  qargs: list q; (* the activation's qualifier arguments *)
 }.
 
 Definition set_vars (rΓ : r_env) (vars' : var_mapping) : r_env :=
-  mkr_env vars' (cargs rΓ) (margs rΓ).
+  mkr_env vars' (cargs rΓ) (margs rΓ) (qargs rΓ).
 
 (** Field mapping *)
 Definition fields_mapping := list value.

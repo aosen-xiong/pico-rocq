@@ -67,6 +67,7 @@ Definition hack : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 0;
           mreceiver := ROTool;
@@ -130,7 +131,7 @@ Proof.
       inversion Hl; subst.
       inversion Hab as [|qa qb Ca Tsa Usa Hq Hargs'|]; subst.
       inversion Hargs'; subst.
-      destruct Hq as [-> | [_ [Hq | Hq]]]; try discriminate.
+      destruct Hq as [-> | [_ [Hq | [Hq | Hq]]]]; try discriminate.
       right. left. reflexivity.
     + inversion Hargs; subst. right. right. reflexivity.
   - (* same qualifier, up the class hierarchy *)
@@ -141,6 +142,8 @@ Proof.
     destruct Hr as [-> Hr].
     destruct (super_inst_reach _ _ _ _ Hsuper Hr)
       as [[-> ->] | [[-> ->] | [-> ->]]]; unfold sup_ROC; auto.
+  - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
+  - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
   - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
   - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
   - destruct Hs as [Hs | [Hs | Hs]]; discriminate.
@@ -178,7 +181,7 @@ Qed.
 (** The same statement for the environment the task names: readonly-state
     mode and empty bounds. *)
 Corollary upcast_rejected_empty_bounds :
-  ~ qualified_type_subtype CT (mk_tv_env [] [] ReadonlyState)
+  ~ qualified_type_subtype CT (mk_tv_env [] [] ReadonlyState 0)
       (TClass RO 3 []) (TClass RO 2 [TClass Mut 1 []]).
 Proof. apply upcast_rejected. reflexivity. Qed.
 
@@ -204,7 +207,7 @@ Qed.
 
 (** Reading item through @RO P<@Lost Cell> in readonly-state code. *)
 Theorem item_read_type :
-  member_type ReadonlyState RO [TClass Lost 1 []] [] (TVar TVSub ClassVar 0)
+  member_type ReadonlyState RO [TClass Lost 1 []] [] [] (TVar TVSub ClassVar 0)
   = TClass Lost 1 [].
 Proof. reflexivity. Qed.
 
@@ -297,6 +300,7 @@ Definition get : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := tE;
           mname := 0;
           mreceiver := TClass RO 2 [tE];
@@ -342,7 +346,7 @@ Qed.
 (** The declared return type of get, seen by the call rule through that
     view. *)
 Theorem get_result_type :
-  member_type ReadonlyState RO [TClass Lost 1 []] []
+  member_type ReadonlyState RO [TClass Lost 1 []] [] []
     (TVar TVSub ClassVar 0) = TClass Lost 1 [].
 Proof. reflexivity. Qed.
 
@@ -354,7 +358,7 @@ Theorem inherited_route_closed :
   super_inst CT2 ReadonlyState RO 3 [] 2 [TClass Lost 1 []] /\
   (forall Vs, super_inst CT2 ReadonlyState RO 3 [] 2 Vs ->
               Vs = [TClass Lost 1 []]) /\
-  member_type ReadonlyState RO [TClass Lost 1 []] []
+  member_type ReadonlyState RO [TClass Lost 1 []] [] []
     (TVar TVSub ClassVar 0) = TClass Lost 1 [].
 Proof.
   split; [apply super_C_P_lost|].
@@ -363,49 +367,63 @@ Qed.
 
 (** As specified, the getter declares its receiver @RO P<E>.  In
     readonly-state code that receiver, seen from a readonly C, is
-    @RO P<@Lost Cell>, and a type with an unknown position accepts only a
-    bottom-typed source.  So the call c.get() itself is rejected, at the
-    receiver, before its result type matters. *)
-Theorem get_receiver_rejected : forall Δ,
-  ~ assignable_to CT2 Δ (TClass RO 3 [])
-      (member_type ReadonlyState RO [TClass Lost 1 []] []
-         (mreceiver (msignature get))).
+    @RO P<@Lost Cell>.  Only the receiver's qualifier has to be known, so the
+    call c.get() is accepted at the receiver; what protects the cell is the
+    result type.  Every typing of k = c.get() forces @Lost Cell to be a
+    subtype of the type of k, so k cannot be a @Mut Cell. *)
+Theorem get_receiver_accepted : forall Δ,
+  tv_mode Δ = ReadonlyState ->
+  receiver_ok CT2 Δ (TClass RO 3 [])
+    (member_recv RO [TClass Lost 1 []] [] []
+       (mreceiver (msignature get))).
 Proof.
-  intros Δ [_ [Hlf | (C' & Ts' & E)]].
-  - cbn in Hlf. destruct Hlf as [_ [[Hl _] _]]. apply Hl. reflexivity.
-  - discriminate.
+  intros Δ Hm. split; [|discriminate].
+  cbn. apply qtype_hier. rewrite Hm. apply super_C_P_lost.
 Qed.
 
-Theorem get_call_untypable : forall Δ sΓ sΓ' x y Us args,
+Theorem get_call_result : forall Δ sΓ sΓ' x y Us Qs args Tx,
   static_getType sΓ y = Some ROC ->
-  ~ stmt_typing CT2 Δ sΓ ReadonlyState (SCall x 0 y Us args) sΓ'.
+  static_getType sΓ x = Some Tx ->
+  stmt_typing CT2 Δ sΓ ReadonlyState (SCall x 0 y Us Qs args) sΓ' ->
+  qualified_type_subtype CT2 Δ (TClass Lost 1 []) Tx.
 Proof.
-  intros Δ sΓ sΓ' x y Us args Hy H.
+  intros Δ sΓ sΓ' x y Us Qs args Tx Hy Hx H.
   inversion H; subst.
   rewrite Hy in Hget_y. injection Hget_y as <-.
+  rewrite Hx in Hget_x. injection Hget_x as <-.
   cbn in Hub. injection Hub as <- <- <-.
   destruct (find_method_with_name_deterministic _ _ _ _ _ _ _ Hfind_m find_get)
     as [-> ->].
   apply super_C_P_unique in Hsuper. subst Vs.
-  destruct Hrcv_sub as [Ha | [_ (Rargs & E)]].
-  - destruct Ha as [_ [Hlf | (C' & Ts' & E)]].
-    + cbn in Hlf. destruct Hlf as [_ [[Hl _] _]]. apply Hl. reflexivity.
-    + discriminate.
-  - discriminate.
+  exact Hret_sub.
 Qed.
 
-(** The variant in which the call is accepted: the same getter with the
-    receiver declared @RDM P<E>,
+Theorem get_call_not_mut : forall Δ sΓ sΓ' x y Us Qs args,
+  static_getType sΓ y = Some ROC ->
+  static_getType sΓ x = Some (TClass Mut 1 []) ->
+  ~ stmt_typing CT2 Δ sΓ ReadonlyState (SCall x 0 y Us Qs args) sΓ'.
+Proof.
+  intros Δ sΓ sΓ' x y Us Qs args Hy Hx H.
+  pose proof (get_call_result _ _ _ _ _ _ _ _ _ Hy Hx H) as Hsub.
+  assert (Hh : lost_or_ro_head (TClass Mut 1 [])).
+  { eapply lost_or_ro_head_closed; [exact Hsub|].
+    exists Lost, 1, (@nil qualified_type).
+    split; [reflexivity | left; reflexivity]. }
+  destruct Hh as (q0 & C0 & Ts0 & E & [-> | ->]); discriminate.
+Qed.
+
+(** The same getter with the receiver declared @RDM P<E>,
 
       @RS E get(@RDM P<E> this) { E r; r = this.item; return r; }
 
-    A readonly receiver is then allowed.  Every typing of k = c.get() in
-    readonly-state code with c a @RO C forces @Lost Cell to be a subtype of
-    the type of k, so k cannot be a @Mut Cell. *)
+    Receiver adaptation turns the declared @RDM into the caller's own view,
+    @RO, and the call is accepted in the same way.  The result is the same:
+    k cannot be a @Mut Cell. *)
 Definition get_rdm : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := tE;
           mname := 0;
           mreceiver := TClass RDM 2 [tE];
@@ -441,13 +459,13 @@ Proof.
   cbn in Hp3. discriminate.
 Qed.
 
-Theorem get_rdm_call_result : forall Δ sΓ sΓ' x y Us args Tx,
+Theorem get_rdm_call_result : forall Δ sΓ sΓ' x y Us Qs args Tx,
   static_getType sΓ y = Some ROC ->
   static_getType sΓ x = Some Tx ->
-  stmt_typing CT3 Δ sΓ ReadonlyState (SCall x 0 y Us args) sΓ' ->
+  stmt_typing CT3 Δ sΓ ReadonlyState (SCall x 0 y Us Qs args) sΓ' ->
   qualified_type_subtype CT3 Δ (TClass Lost 1 []) Tx.
 Proof.
-  intros Δ sΓ sΓ' x y Us args Tx Hy Hx H.
+  intros Δ sΓ sΓ' x y Us Qs args Tx Hy Hx H.
   inversion H; subst.
   rewrite Hy in Hget_y. injection Hget_y as <-.
   rewrite Hx in Hget_x. injection Hget_x as <-.
@@ -458,13 +476,13 @@ Proof.
   exact Hret_sub.
 Qed.
 
-Theorem get_rdm_call_not_mut : forall Δ sΓ sΓ' x y Us args,
+Theorem get_rdm_call_not_mut : forall Δ sΓ sΓ' x y Us Qs args,
   static_getType sΓ y = Some ROC ->
   static_getType sΓ x = Some (TClass Mut 1 []) ->
-  ~ stmt_typing CT3 Δ sΓ ReadonlyState (SCall x 0 y Us args) sΓ'.
+  ~ stmt_typing CT3 Δ sΓ ReadonlyState (SCall x 0 y Us Qs args) sΓ'.
 Proof.
-  intros Δ sΓ sΓ' x y Us args Hy Hx H.
-  pose proof (get_rdm_call_result _ _ _ _ _ _ _ _ Hy Hx H) as Hsub.
+  intros Δ sΓ sΓ' x y Us Qs args Hy Hx H.
+  pose proof (get_rdm_call_result _ _ _ _ _ _ _ _ _ Hy Hx H) as Hsub.
   assert (Hh : lost_or_ro_head (TClass Mut 1 [])).
   { eapply lost_or_ro_head_closed; [exact Hsub|].
     exists Lost, 1, (@nil qualified_type).
@@ -481,7 +499,7 @@ Print Assumptions lost_cell_not_mut.
 Print Assumptions assignment_rejected.
 Print Assumptions hack_not_wf.
 Print Assumptions inherited_route_closed.
-Print Assumptions get_receiver_rejected.
-Print Assumptions get_call_untypable.
+Print Assumptions get_receiver_accepted.
+Print Assumptions get_call_not_mut.
 Print Assumptions get_rdm_call_result.
 Print Assumptions get_rdm_call_not_mut.

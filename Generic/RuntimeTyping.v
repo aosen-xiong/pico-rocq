@@ -21,7 +21,7 @@ Proof.
   intros CT qb C Rs D Vs H.
   induction H; intros qa Rs0 Hq Hargs.
   - exists Rs0. split; auto. apply rsi_refl.
-  - destruct (IHrsuper_inst qa (map (dyn qa Rs0 []) Ss) Hq) as [Vs0 [Hsup Hle]].
+  - destruct (IHrsuper_inst qa (map (dyn qa Rs0 [] []) Ss) Hq) as [Vs0 [Hsup Hle]].
     { apply map_dyn_mono; auto. }
     exists Vs0. split; auto. eapply rsi_step; eauto.
 Qed.
@@ -30,17 +30,17 @@ Qed.
     positions. *)
 Lemma super_inst_dyn : forall CT mt qh C Ts D Vs,
   super_inst CT mt qh C Ts D Vs ->
-  forall qa qctx ca ma Rs,
+  forall qa qctx ca ma ka Rs,
     (forall q0, arg_q_sub (dynq qa q0)
                   (dynq qctx (vpa_q mt qh q0))) ->
-    Forall2 rarg_sub Rs (map (dyn qctx ca ma) Ts) ->
+    Forall2 rarg_sub Rs (map (dyn qctx ca ma ka) Ts) ->
     exists Vs0, rsuper_inst CT qa C Rs D Vs0 /\
-                Forall2 rarg_sub Vs0 (map (dyn qctx ca ma) Vs).
+                Forall2 rarg_sub Vs0 (map (dyn qctx ca ma ka) Vs).
 Proof.
   intros CT mt qh C Ts D Vs H.
-  induction H; intros qa qctx ca ma Rs Hq Hargs.
+  induction H; intros qa qctx ca ma ka Rs Hq Hargs.
   - exists Rs. split; auto. apply rsi_refl.
-  - destruct (IHsuper_inst qa qctx ca ma (map (dyn qa Rs []) Ss) Hq)
+  - destruct (IHsuper_inst qa qctx ca ma ka (map (dyn qa Rs [] []) Ss) Hq)
       as [Vs0 [Hsup Hle]].
     { rewrite map_dyn_subst. simpl map at 3.
       apply map_dyn_map_qual_mono; auto. }
@@ -51,17 +51,14 @@ Lemma rq_sub_dynq : forall q1 q2 q0,
   rq_sub q1 q2 -> arg_q_sub (dynq q1 q0) (dynq q2 q0).
 Proof.
   intros q1 q2 q0 H. unfold rq_sub, arg_q_sub in *.
-  destruct H as [-> | [-> | [-> [-> | ->]]]]; auto;
-    destruct q0; simpl; auto; destruct q1; simpl; auto.
+  destruct q1, q2, q0; simpl; intuition congruence.
 Qed.
 
 Lemma rq_sub_trans : forall q1 q2 q3,
   rq_sub q1 q2 -> rq_sub q2 q3 -> rq_sub q1 q3.
 Proof.
   unfold rq_sub. intros q1 q2 q3 H12 H23.
-  destruct H12 as [-> | [-> | [-> H1]]]; auto;
-    destruct H23 as [-> | [-> | [-> H2]]]; auto.
-  destruct H2; discriminate.
+  destruct q1, q2, q3; intuition congruence.
 Qed.
 
 Lemma rtype_subtype_refl : forall CT R, rtype_subtype CT R R.
@@ -86,7 +83,7 @@ Lemma rsuper_inst_rehead : forall CT qa C Rs D Vs,
 Proof.
   intros CT qa C Rs D Vs H. induction H; intros qb Rs' Hlen.
   - exists Rs'. split; auto. apply rsi_refl.
-  - destruct (IHrsuper_inst qb (map (dyn qb Rs' []) Ss)) as [Vs' [Hs Hl]].
+  - destruct (IHrsuper_inst qb (map (dyn qb Rs' [] []) Ss)) as [Vs' [Hs Hl]].
     { rewrite !length_map. reflexivity. }
     exists Vs'. split; auto. eapply rsi_step; eauto.
 Qed.
@@ -98,7 +95,7 @@ Lemma super_inst_rsuper_len : forall CT mt qh C Ts D Vs,
 Proof.
   intros CT mt qh C Ts D Vs H. induction H; intros qa Rs Hlen.
   - exists Rs. split; auto. apply rsi_refl.
-  - destruct (IHsuper_inst qa (map (dyn qa Rs []) Ss)) as [Vs0 [Hs Hl]].
+  - destruct (IHsuper_inst qa (map (dyn qa Rs [] []) Ss)) as [Vs0 [Hs Hl]].
     { rewrite !length_map. reflexivity. }
     exists Vs0. split; auto. eapply rsi_step; eauto.
 Qed.
@@ -134,17 +131,17 @@ Qed.
 (** The runtime bounds an activation must respect: every declared type
     variable's runtime argument is below its dynamized bound. *)
 Definition frame_bounds_ok (CT : class_table) (Δ : tv_env)
-    (qctx : q) (ca ma : list rtype) : Prop :=
+    (qctx : q) (ca ma : list rtype) (ka : list q) : Prop :=
   forall o n B,
     tv_bound Δ o n = Some B ->
-    rtype_subtype CT (dyn qctx ca ma (TVar TVSub o n)) (dyn qctx ca ma B).
+    rtype_subtype CT (dyn qctx ca ma ka (TVar TVSub o n)) (dyn qctx ca ma ka B).
 
-Lemma frame_bounds_ok_of_rbounds : forall CT Δ qctx ca ma,
-  rbounds_ok CT qctx ca ma ca (class_bounds Δ) ->
-  rbounds_ok CT qctx ca ma ma (method_bounds Δ) ->
-  frame_bounds_ok CT Δ qctx ca ma.
+Lemma frame_bounds_ok_of_rbounds : forall CT Δ qctx ca ma ka,
+  rbounds_ok CT qctx ca ma ka ca (class_bounds Δ) ->
+  rbounds_ok CT qctx ca ma ka ma (method_bounds Δ) ->
+  frame_bounds_ok CT Δ qctx ca ma ka.
 Proof.
-  intros CT Δ qctx ca ma Hc Hm o n B Hb.
+  intros CT Δ qctx ca ma ka Hc Hm o n B Hb.
   unfold tv_bound in Hb. unfold rbounds_ok in *.
   destruct o; simpl in *.
   - pose proof (Forall2_nth_error_rel _ _ _ n Hc) as Hn.
@@ -183,27 +180,27 @@ Lemma q_eq_dec : forall q1 q2 : q, {q1 = q2} + {q1 <> q2}.
 Proof. decide equality. Qed.
 
 (** Static subtyping is sound for dynamized types. *)
-Lemma subtype_dyn : forall CT Δ qctx ca ma T U,
+Lemma subtype_dyn : forall CT Δ qctx ca ma ka T U,
   concrete_q qctx ->
-  frame_bounds_ok CT Δ qctx ca ma ->
+  frame_bounds_ok CT Δ qctx ca ma ka ->
   qualified_type_subtype CT Δ T U ->
-  rtype_subtype CT (dyn qctx ca ma T) (dyn qctx ca ma U).
+  rtype_subtype CT (dyn qctx ca ma ka T) (dyn qctx ca ma ka U).
 Proof.
-  intros CT Δ qctx ca ma T U Hc Hframe H.
+  intros CT Δ qctx ca ma ka T U Hc Hframe H.
   induction H.
   - (* same class, widen qualifier *)
     simpl. destruct (q_eq_dec q1 Bot) as [-> | Hnb].
-    + left. split; auto. exists (map (dyn qctx ca ma) Ts).
+    + left. split; auto. exists (map (dyn qctx ca ma ka) Ts).
       split; [apply rsi_refl|]. rewrite !length_map. apply (Forall2_length Hargs).
     + right. split; [apply q_subtype_rq_sub; auto|].
-      exists (map (dyn qctx ca ma) Ts). split.
+      exists (map (dyn qctx ca ma ka) Ts). split.
       * apply rsi_refl.
       * apply map_dyn_targ_sub; auto.
   - (* up the hierarchy *)
     simpl. destruct (q_eq_dec q1 Bot) as [-> | Hnb].
     + left. split; auto.
       destruct (super_inst_rsuper_len _ _ _ _ _ _ _ Hsuper Bot
-                  (map (dyn qctx ca ma) Ts)) as (Vs0 & Hs & Hl).
+                  (map (dyn qctx ca ma ka) Ts)) as (Vs0 & Hs & Hl).
       { apply length_map. }
       exists Vs0. split; auto. rewrite length_map. exact Hl.
     + right. split; [left; reflexivity|].
@@ -219,6 +216,13 @@ Proof.
     + right. split; [apply q_subtype_rq_sub; auto|].
       exists Rs0. split; [apply rsi_refl | apply Forall2_rarg_sub_refl].
   - (* view the supplied type as readonly *)
+    simpl.
+    destruct (match tv_lookup o ca ma n with Some R => R | None => default_rtype end)
+      as [q0 C0 Rs0].
+    simpl. right. split; [right; left; reflexivity|].
+    exists Rs0. split; [apply rsi_refl | apply Forall2_rarg_sub_refl].
+  - apply rtype_subtype_refl.
+  - (* a use under a qualifier parameter, viewed as readonly *)
     simpl.
     destruct (match tv_lookup o ca ma n with Some R => R | None => default_rtype end)
       as [q0 C0 Rs0].
@@ -243,17 +247,17 @@ Proof.
     + right. split; [left; reflexivity|]. exists (@nil rtype). split; auto.
   - (* view a variable-headed class type as readonly *)
     simpl. right. split; [right; left; reflexivity|].
-    exists (map (dyn qctx ca ma) Ts).
+    exists (map (dyn qctx ca ma ka) Ts).
     split; [apply rsi_refl | apply map_dyn_targ_sub; auto].
   - (* compatible arguments under the same variable head *)
     simpl. right. split; [left; reflexivity|].
-    exists (map (dyn qctx ca ma) Ts).
+    exists (map (dyn qctx ca ma ka) Ts).
     split; [apply rsi_refl | apply map_dyn_targ_sub; auto].
   - (* up the hierarchy under the same variable head *)
     simpl. right. split; [left; reflexivity|].
     eapply super_inst_dyn; eauto using dynq_ro_agree, Forall2_rarg_sub_refl.
   - (* the bottom-qualified type of the class *)
-    simpl. left. split; auto. exists (map (dyn qctx ca ma) Ts).
+    simpl. left. split; auto. exists (map (dyn qctx ca ma ka) Ts).
     split; [apply rsi_refl|]. rewrite !length_map. apply (Forall2_length Hargs).
   - eapply rtype_subtype_trans; eauto.
 Qed.
@@ -299,6 +303,7 @@ Lemma rarg_sub_rtype_subtype : forall CT R R',
 Proof.
   intros CT R R' H. inversion H; subst. simpl. right. split.
   - unfold rq_sub. destruct Hq as [-> | [-> Hc]]; auto.
+    right. right. split; [reflexivity|]. tauto.
   - exists Rs. split; [apply rsi_refl | auto].
 Qed.
 
@@ -309,11 +314,11 @@ Proof.
 Qed.
 
 (** Subsumption for runtime typability. *)
-Lemma wf_r_typable_subtype : forall CT Δ h ι T U qctx ca ma,
-  frame_bounds_ok CT Δ (qr2q qctx) ca ma ->
+Lemma wf_r_typable_subtype : forall CT Δ h ι T U qctx ca ma ka,
+  frame_bounds_ok CT Δ (qr2q qctx) ca ma ka ->
   qualified_type_subtype CT Δ T U ->
-  wf_r_typable CT h ι T qctx ca ma ->
-  wf_r_typable CT h ι U qctx ca ma.
+  wf_r_typable CT h ι T qctx ca ma ka ->
+  wf_r_typable CT h ι U qctx ca ma ka.
 Proof.
   unfold wf_r_typable. intros.
   eapply loc_has_rtype_sub; eauto.
@@ -338,11 +343,11 @@ Qed.
     [qctx], with its class arguments [Vs] agreeing with the client's [Ws] and
     method arguments [Ms] agreeing with [Ms']: whatever inhabits the object's
     own reading of [T] inhabits the client's adapted reading. *)
-Lemma loc_has_rtype_adapt : forall CT h ι mt qo qctx qx Vs Ws Ms Ms' T,
+Lemma loc_has_rtype_adapt : forall CT h ι mt qo qctx qx Vs Ws Ms Ms' Ks T,
   head_ok qo (dynq (qr2q qctx) qx) ->
   Forall2 rarg_sub Vs Ws -> Forall2 rarg_sub Ms Ms' ->
-  loc_has_rtype CT h ι (dyn (qr2q qo) Vs Ms T) ->
-  loc_has_rtype CT h ι (dyn (qr2q qctx) Ws Ms' (adapt mt qx T)).
+  loc_has_rtype CT h ι (dyn (qr2q qo) Vs Ms Ks T) ->
+  loc_has_rtype CT h ι (dyn (qr2q qctx) Ws Ms' Ks (adapt mt qx T)).
 Proof.
   intros. eapply loc_has_rtype_rarg_sub; eauto.
   unfold adapt. apply dyn_map_qual_mono; auto.
@@ -351,11 +356,11 @@ Qed.
 
 (** The converse direction, when the client's adapted reading is fully known:
     the two readings are then the same runtime type. *)
-Lemma dyn_adapt_exact : forall mt qo qctx qx Vs Ws Ms Ms' T,
+Lemma dyn_adapt_exact : forall mt qo qctx qx Vs Ws Ms Ms' Ks T,
   head_ok qo (dynq (qr2q qctx) qx) ->
   Forall2 rarg_sub Vs Ws -> Forall2 rarg_sub Ms Ms' ->
-  rlost_free (dyn (qr2q qctx) Ws Ms' (adapt mt qx T)) ->
-  dyn (qr2q qo) Vs Ms T = dyn (qr2q qctx) Ws Ms' (adapt mt qx T).
+  rlost_free (dyn (qr2q qctx) Ws Ms' Ks (adapt mt qx T)) ->
+  dyn (qr2q qo) Vs Ms Ks T = dyn (qr2q qctx) Ws Ms' Ks (adapt mt qx T).
 Proof.
   intros. apply rarg_sub_lost_free_eq; auto.
   unfold adapt. apply dyn_map_qual_mono; auto.

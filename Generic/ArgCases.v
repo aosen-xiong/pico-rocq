@@ -64,26 +64,28 @@ Qed.
 
 (* ------------------TRANSPORT------------------*)
 
-Lemma frameP_local : forall CT sΓ rΓ h G L next wf mode qthis lc lm T,
+Lemma frameP_local : forall CT sΓ rΓ h G L next wf mode qthis lc lm lk T,
   dom sΓ = dom (vars rΓ) ->
-  frameP CT sΓ rΓ h G L next wf mode qthis lc lm ->
+  frameP CT sΓ rΓ h G L next wf mode qthis lc lm lk ->
   frameP CT (sΓ ++ [T]) (set_vars rΓ (vars rΓ ++ [Null_a])) h G L next wf mode
-    qthis lc lm.
+    qthis lc lm lk.
 Proof.
-  intros CT sΓ rΓ h G L next wf mode qthis lc lm T Hlen HF.
+  intros CT sΓ rΓ h G L next wf mode qthis lc lm lk T Hlen HF.
   constructor.
-  - exact (fp_live _ _ _ _ _ _ _ _ _ _ _ _ HF).
-  - destruct (fp_this _ _ _ _ _ _ _ _ _ _ _ _ HF) as (ι & o & Hth & Hrest).
+  - exact (fp_live _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - destruct (fp_this _ _ _ _ _ _ _ _ _ _ _ _ _ HF) as (ι & o & Hth & Hrest).
     exists ι, o. simpl. rewrite get_this_var_mapping_app_null_last. auto.
-  - exact (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ HF).
-  - exact (fp_em _ _ _ _ _ _ _ _ _ _ _ _ HF).
-  - exact (fp_bound _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_em _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_ek _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_bound _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+  - exact (fp_kbound _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
   - intros x T0 v HT Hv. unfold static_getType in HT.
     unfold runtime_getVal in Hv. simpl in Hv.
     destruct (Nat.lt_ge_cases x (dom sΓ)) as [Hlt | Hge].
     + rewrite nth_error_app1 in HT; auto.
       rewrite nth_error_app1 in Hv; [lia|].
-      eapply (fp_vars _ _ _ _ _ _ _ _ _ _ _ _ HF); eauto.
+      eapply (fp_vars _ _ _ _ _ _ _ _ _ _ _ _ _ HF); eauto.
     + rewrite nth_error_app2 in Hv; [lia|].
       destruct (x - dom (vars rΓ)) as [|k]; simpl in Hv; [discriminate|].
       destruct k; discriminate.
@@ -144,20 +146,20 @@ Proof.
       exact (hp_cls _ _ _ _ _ _ HG _ _ Ho).
 Qed.
 
-Lemma frame_ctx_p : forall CT Δ sΓ rΓ h G L next wf mode qthis lc lm,
+Lemma frame_ctx_p : forall CT Δ sΓ rΓ h G L next wf mode qthis lc lm lk,
   wf_r_config CT Δ sΓ rΓ h ->
-  frameP CT sΓ rΓ h G L next wf mode qthis lc lm ->
+  frameP CT sΓ rΓ h G L next wf mode qthis lc lm lk ->
   exists ι o,
     get_this_var_mapping (vars rΓ) = Some ι /\
     runtime_getObj h ι = Some o /\
     rqtype (rt_type o) = qthis /\
     Forall rlost_free (cargs rΓ) /\ Forall rlost_free (margs rΓ) /\
-    frame_bounds_ok CT Δ (qr2q qthis) (cargs rΓ) (margs rΓ).
+    frame_bounds_ok CT Δ (qr2q qthis) (cargs rΓ) (margs rΓ) (qargs rΓ).
 Proof.
-  intros CT Δ sΓ rΓ h G L next wf mode qthis lc lm Hwf HF.
+  intros CT Δ sΓ rΓ h G L next wf mode qthis lc lm lk Hwf HF.
   destruct (wf_r_config_this _ _ _ _ _ Hwf)
     as (ι & o & Hthis & Hobj & _ & Hlc & Hlm & Hfb).
-  destruct (fp_this _ _ _ _ _ _ _ _ _ _ _ _ HF) as (ι' & o' & Hth' & Ho' & Hq & _).
+  destruct (fp_this _ _ _ _ _ _ _ _ _ _ _ _ _ HF) as (ι' & o' & Hth' & Ho' & Hq & _).
   assert (ι' = ι) by congruence. subst ι'.
   rewrite Hobj in Ho'. inversion Ho'; subst o'.
   exists ι, o. rewrite <- Hq. auto 10.
@@ -166,38 +168,38 @@ Qed.
 (** The label side condition for a member access through a receiver, from
     the receiver's ordinary and label typing. *)
 Lemma recv_label_cond_p : forall P CT h G L next mt v o qx C Ts qthis wf mode
-    lc lm ca ma,
+    lc lm lk ca ma ka,
   heapP P CT h G L next ->
   List.In wf L ->
   readonly_state_method_scope mt ->
   runtime_getObj h v = Some o ->
-  wf_r_typable CT h v (TClass qx C Ts) qthis ca ma ->
-  lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm) (TClass qx C Ts)) ->
+  wf_r_typable CT h v (TClass qx C Ts) qthis ca ma ka ->
+  lhasp CT h G L v (ldyn (act_frame qthis wf mode lc lm lk) (TClass qx C Ts)) ->
   label_cond L (vpa_q mt qx)
     (obj_frame (rqtype (rt_type o)) (g_col G v) (g_col G v) [])
-    (act_frame qthis wf mode lc lm).
+    (act_frame qthis wf mode lc lm lk).
 Proof.
-  intros P CT h G L next mt v o qx C Ts qthis wf mode lc lm ca ma
+  intros P CT h G L next mt v o qx C Ts qthis wf mode lc lm lk ca ma ka
     HG HwfL Hrs Ho Hty Hl.
-  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hty)
+  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hty)
     as (o' & Vs & Ho' & Hhead & _).
   rewrite Ho in Ho'. inversion Ho'; subst o'. clear Ho'.
   assert (Hnb : qx <> Bot).
-  { intros ->. exact (typable_head_not_bot _ _ _ _ _ _ _ Hty eq_refl). }
+  { intros ->. exact (typable_head_not_bot _ _ _ _ _ _ _ _ Hty eq_refl). }
   destruct Hl as (o' & Ho' & Hh & _).
   change (headL L (g_col G v) (dynq (qr2q qthis) qx)
-            (lab_of (act_frame qthis wf mode lc lm) qx)) in Hh.
+            (lab_of (act_frame qthis wf mode lc lm lk) qx)) in Hh.
   unfold headL in Hh.
   apply rs_label_cond; auto.
   - intros ->. specialize (Hh eq_refl).
-    change (lab_of (act_frame qthis wf mode lc lm) Mut) with (LIn wf) in Hh.
+    change (lab_of (act_frame qthis wf mode lc lm lk) Mut) with (LIn wf) in Hh.
     rewrite (norm_live _ _ HwfL) in Hh. split; auto.
   - intros -> Hqo. rewrite Hqo in Hhead.
     assert (qthis = Mut_r).
     { destruct qthis; auto. unfold head_ok in Hhead. simpl in Hhead.
       destruct Hhead as [Hx | [Hx | Hx]]; discriminate. }
     subst qthis. specialize (Hh eq_refl).
-    change (lab_of (act_frame Mut_r wf mode lc lm) RDM)
+    change (lab_of (act_frame Mut_r wf mode lc lm lk) RDM)
       with (if mode then LIn wf else LOut) in Hh.
     destruct mode.
     + rewrite (norm_live _ _ HwfL) in Hh. exact Hh.
@@ -210,7 +212,7 @@ Section Cases.
   Variables (P : Loc -> Prop) (CT : class_table) (Δ : tv_env).
   Variables (sΓ : s_env) (rΓ : r_env) (h : heap) (G : ghost).
   Variables (L : list nat) (next wf : nat) (mode : bool).
-  Variables (lc lm : list ltype).
+  Variables (lc lm : list ltype) (lk : list (q * lab)).
   Variables (ι : Loc) (o : Obj).
   Local Notation mt := (tv_mode Δ).
   Local Notation qthis := (rqtype (rt_type o)).
@@ -218,49 +220,49 @@ Section Cases.
   Hypothesis Hnb : nomut_bounds Δ.
   Hypothesis Hwf : wf_r_config CT Δ sΓ rΓ h.
   Hypothesis HG : heapP P CT h G L next.
-  Hypothesis HF : frameP CT sΓ rΓ h G L next wf mode qthis lc lm.
+  Hypothesis HF : frameP CT sΓ rΓ h G L next wf mode qthis lc lm lk.
   Hypothesis Hthis : get_this_var_mapping (vars rΓ) = Some ι.
   Hypothesis Hobj : runtime_getObj h ι = Some o.
-  Hypothesis Hfb : frame_bounds_ok CT Δ (qr2q qthis) (cargs rΓ) (margs rΓ).
+  Hypothesis Hfb : frame_bounds_ok CT Δ (qr2q qthis) (cargs rΓ) (margs rΓ) (qargs rΓ).
   Hypothesis Hlfc : Forall rlost_free (cargs rΓ).
   Hypothesis Hlfm : Forall rlost_free (margs rΓ).
-  Hypothesis Hfit : ffit CT L Δ (act_frame qthis wf mode lc lm).
+  Hypothesis Hfit : ffit CT L Δ (act_frame qthis wf mode lc lm lk).
   Hypothesis Hbc : forall o0 n0 B0,
     tv_bound Δ o0 n0 = Some B0 -> is_class_type B0.
 
-  Let Fc := act_frame qthis wf mode lc lm.
+  Let Fc := act_frame qthis wf mode lc lm lk.
 
   Lemma pvar_typed : forall x T v,
     static_getType sΓ x = Some T ->
     runtime_getVal rΓ x = Some (Iot v) ->
-    wf_r_typable CT h v T qthis (cargs rΓ) (margs rΓ) /\
+    wf_r_typable CT h v T qthis (cargs rΓ) (margs rΓ) (qargs rΓ) /\
     lhasp CT h G L v (ldyn Fc T).
   Proof.
     intros x T v HT Hv. split.
     - pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj HT) as Hty.
       rewrite Hv in Hty. exact Hty.
-    - exact (fp_vars _ _ _ _ _ _ _ _ _ _ _ _ HF _ _ _ HT Hv).
+    - exact (fp_vars _ _ _ _ _ _ _ _ _ _ _ _ _ HF _ _ _ HT Hv).
   Qed.
 
   Lemma plsub : forall T U v,
     qualified_type_subtype CT Δ T U ->
-    wf_r_typable CT h v T qthis (cargs rΓ) (margs rΓ) ->
+    wf_r_typable CT h v T qthis (cargs rΓ) (margs rΓ) (qargs rΓ) ->
     lhasp CT h G L v (ldyn Fc T) ->
     lhasp CT h G L v (ldyn Fc U).
   Proof.
     intros T U v Hsub Hty Hl.
     pose proof Hwf as (Hct & _).
-    exact (lhasp_subtype P CT Δ h G L next mt qthis wf mode lc lm _ _
-             Hct HG (fp_live _ _ _ _ _ _ _ _ _ _ _ _ HF) Hrs eq_refl
-             (vbp_of_fits CT Δ h G L (act_frame qthis wf mode lc lm) _ _ qthis
+    exact (lhasp_subtype P CT Δ h G L next mt qthis wf mode lc lm lk _ _
+             _ Hct HG (fp_live _ _ _ _ _ _ _ _ _ _ _ _ _ HF) Hrs eq_refl
+             (vbp_of_fits CT Δ h G L (act_frame qthis wf mode lc lm lk) _ _ _ qthis
                 Hct (hp_cls _ _ _ _ _ _ HG)
                 (fun v0 ob def Hob Hdef =>
                    proj1 (proj2 (proj2 (proj1 (hp_obj _ _ _ _ _ _ HG v0 ob Hob)))
                             def Hdef))
                 (proj2 Hfit) eq_refl
-                (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ HF) (fp_em _ _ _ _ _ _ _ _ _ _ _ _ HF))
+                (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ _ HF) (fp_em _ _ _ _ _ _ _ _ _ _ _ _ _ HF) (fp_ek _ _ _ _ _ _ _ _ _ _ _ _ _ HF))
              (fun o0 n0 B0 Hb0 => nomut_bounds_head Δ o0 n0 B0 Hnb Hb0) Hfb
-             (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ HF) (fp_em _ _ _ _ _ _ _ _ _ _ _ _ HF)
+             (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ _ HF) (fp_em _ _ _ _ _ _ _ _ _ _ _ _ _ HF) (fp_ek _ _ _ _ _ _ _ _ _ _ _ _ _ HF)
              T U Hsub v Hty Hl).
   Qed.
 
@@ -270,11 +272,11 @@ Section Cases.
       activation's reading of the adapted one. *)
   Lemma precv_view : forall T v qx C Ts,
     ubound Δ T = Some (TClass qx C Ts) ->
-    wf_r_typable CT h v T qthis (cargs rΓ) (margs rΓ) ->
+    wf_r_typable CT h v T qthis (cargs rΓ) (margs rΓ) (qargs rΓ) ->
     lhasp CT h G L v (ldyn Fc T) ->
     exists ov As,
       runtime_getObj h v = Some ov /\
-      wf_r_typable CT h v (TClass qx C Ts) qthis (cargs rΓ) (margs rΓ) /\
+      wf_r_typable CT h v (TClass qx C Ts) qthis (cargs rΓ) (margs rΓ) (qargs rΓ) /\
       headL L (g_col G v) (dynq (qr2q qthis) qx) (lab_of Fc qx) /\
       oview CT (rqtype (rt_type ov)) (olab (g_col G v))
         (rctype (rt_type ov)) (g_args G v) C As /\
@@ -285,25 +287,25 @@ Section Cases.
            lc2 L (fun q0 => q0) (vpa_q mt qx)
              (hframe (qr2q (rqtype (rt_type ov))) (olab (g_col G v))
                 (pclassf CT C' As') As')
-             (lf_with_args Fc cs [])).
+             (lf_with_args Fc cs [] [])).
   Proof.
     intros T v qx C Ts Hub Hty Hl.
     pose proof Hwf as (Hct & _).
     assert (Hty' : wf_r_typable CT h v (TClass qx C Ts) qthis
-                     (cargs rΓ) (margs rΓ)).
+                     (cargs rΓ) (margs rΓ) (qargs rΓ)).
     { eapply wf_r_typable_ubound; eauto. }
     assert (Hl' : lhasp CT h G L v (ldyn Fc (TClass qx C Ts))).
     { destruct (ubound_subtype CT _ _ _ Hub) as [-> | Hsub]; auto.
       eapply plsub; eauto. }
     pose proof Hl' as (ov & Hov & Hh & As & Hs & Hle).
     pose proof (recv_label_cond_p _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-                  HG (fp_live _ _ _ _ _ _ _ _ _ _ _ _ HF) Hrs Hov Hty' Hl')
+                  _ _ HG (fp_live _ _ _ _ _ _ _ _ _ _ _ _ _ HF) Hrs Hov Hty' Hl')
       as Hcond.
     exists ov, As. refine (conj Hov (conj Hty' (conj Hh (conj Hs (conj Hle _))))).
     intros C' As' Hv' cs.
     rewrite <- (rd_map_obj (pclassf CT C' As')).
     apply (ostatic_step_cond L mt Fc (qr2q (rqtype (rt_type ov)))
-             (olab (g_col G v)) qx (pclassf CT C' As') As' cs [] Hrs).
+             (olab (g_col G v)) qx (pclassf CT C' As') As' cs [] _ Hrs).
     - intros As0 q0. exact (Hcond q0).
     - intros ->.
       destruct (pclassf CT C' As') as [[qp lp]|] eqn:Hp; auto.
@@ -311,7 +313,7 @@ Section Cases.
       assert (Hc : g_col G v = Some wf).
       { unfold headL in Hh. specialize (Hh eq_refl).
         change (lab_of Fc Mut) with (LIn wf) in Hh.
-        rewrite (norm_live _ _ (fp_live _ _ _ _ _ _ _ _ _ _ _ _ HF)) in Hh.
+        rewrite (norm_live _ _ (fp_live _ _ _ _ _ _ _ _ _ _ _ _ _ HF)) in Hh.
         exact Hh. }
       destruct (hp_obj _ _ _ _ _ _ HG v ov Hov) as (Hi & Hk & _).
       specialize (Hk wf Hc). rewrite Hc in Hi, Hs, Hv', Hp |- *.
@@ -350,7 +352,7 @@ Section Cases.
     stmt_typing CT Δ sΓ mt (SVarAss x e) sΓ ->
     eval_expr CT rΓ h e v OK rΓ h ->
     frameP CT sΓ (set_vars rΓ (update x v (vars rΓ))) h G L next wf mode
-      qthis lc lm.
+      qthis lc lm lk.
   Proof.
     intros x e v Htype Heval. inversion Htype; subst.
     eapply frameP_update; eauto.
@@ -364,7 +366,7 @@ Section Cases.
     stmt_typing CT Δ sΓ mt (SCast x T y) sΓ ->
     runtime_getVal rΓ y = Some v ->
     frameP CT sΓ (set_vars rΓ (update x v (vars rΓ))) h G L next wf mode
-      qthis lc lm.
+      qthis lc lm lk.
   Proof.
     intros x T y v Htype Hval. inversion Htype; subst.
     eapply frameP_update; eauto.
@@ -420,11 +422,10 @@ Section Cases.
       eapply lhasp_agree; [exact Hm|]. apply lagree_sym.
       + unfold member_type, adapt. rewrite ldyn_subst. exact Hag.
       + rewrite erase_ldyn. simpl.
-        rewrite (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ HF).
-        rewrite (fp_em _ _ _ _ _ _ _ _ _ _ _ _ HF).
-        destruct Hok as [Hlf | (C' & Ts' & ->)].
-        * apply dyn_lost_free; auto. apply qr2q_concrete.
-        * exfalso. eapply (typable_head_not_bot _ _ _ _ _ _ _ Hyty). reflexivity.
+        rewrite (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+        rewrite (fp_em _ _ _ _ _ _ _ _ _ _ _ _ _ HF). try rewrite (fp_ek _ _ _ _ _ _ _ _ _ _ _ _ _ HF).
+        pose proof Hok as Hlf.
+          apply dyn_lost_free; auto. apply qr2q_concrete.
     - intros l qr C0 Rs0 vals f HP Hl Hprot.
       destruct (Nat.eq_dec lx l) as [-> | Hne].
       + rewrite Hl in Hox. inversion Hox; subst ox. simpl in *.
@@ -454,7 +455,7 @@ Section Cases.
           subst qx.
           unfold headL in Hhead. specialize (Hhead eq_refl).
           change (lab_of Fc Mut) with (LIn wf) in Hhead.
-          rewrite (norm_live _ _ (fp_live _ _ _ _ _ _ _ _ _ _ _ _ HF)) in Hhead.
+          rewrite (norm_live _ _ (fp_live _ _ _ _ _ _ _ _ _ _ _ _ _ HF)) in Hhead.
           destruct (hp_col _ _ _ _ _ _ HG _ _ Hhead) as (_ & HnP & _). auto.
         * symmetry. apply update_diff; auto.
       + rewrite update_field_getObj_diff; auto. exists vals. split; auto.
@@ -476,11 +477,11 @@ Section Cases.
     (forall l, P l -> l < dom h) ->
     let onew := mkObj
                   (mkruntime_type (vpa_mutability_object_creation qthisr qc) C
-                     (map (dyn (qr2q qthisr) (cargs rΓ) (margs rΓ)) Ts)) vals in
+                     (map (dyn (qr2q qthisr) (cargs rΓ) (margs rΓ) (qargs rΓ)) Ts)) vals in
     let G' := g_new G (dom h) (new_color qc wf mode) None (map (ldyn Fc) Ts) in
     heapP P CT (h ++ [onew]) G' L next /\
     frameP CT sΓ (set_vars rΓ (update x (Iot (dom h)) (vars rΓ))) (h ++ [onew])
-      G' L next wf mode qthis lc lm /\
+      G' L next wf mode qthis lc lm lk /\
     gext h G G'.
   Proof.
     intros x qc C Ts ys l1 qthisr vals Htype Hthis0 Hvals Hmut HPdom onew G'.
@@ -493,16 +494,19 @@ Section Cases.
     pose proof (heap_ext_app h onew) as Hext.
     pose proof (gext_new h G (new_color qc wf mode) None (map (ldyn Fc) Ts))
       as Hgx. fold G' in Hgx.
-    pose proof (fp_live _ _ _ _ _ _ _ _ _ _ _ _ HF) as HwfL.
+    pose proof (fp_live _ _ _ _ _ _ _ _ _ _ _ _ _ HF) as HwfL.
     pose proof (hp_live _ _ _ _ _ _ HG _ HwfL) as Hwn.
-    destruct (fp_bound _ _ _ _ _ _ _ _ _ _ _ _ HF) as [Hblc Hblm].
-    pose proof (act_frame_bound next qthis wf mode lc lm Hwn Hblc Hblm) as HFb.
-    pose proof (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ HF) as Hec.
-    pose proof (fp_em _ _ _ _ _ _ _ _ _ _ _ _ HF) as Hem.
+    destruct (fp_bound _ _ _ _ _ _ _ _ _ _ _ _ _ HF) as [Hblc Hblm].
+    pose proof (fp_kbound _ _ _ _ _ _ _ _ _ _ _ _ _ HF) as Hblk.
+    pose proof (act_frame_bound next qthis wf mode lc lm lk Hwn Hblc Hblm Hblk) as HFb.
+    pose proof (fp_ec _ _ _ _ _ _ _ _ _ _ _ _ _ HF) as Hec.
+    pose proof (fp_em _ _ _ _ _ _ _ _ _ _ _ _ _ HF) as Hem.
+    pose proof (fp_ek _ _ _ _ _ _ _ _ _ _ _ _ _ HF) as Hek.
     pose proof Hwf as (Hct & Hheap & Hrenv & _).
     set (qn := vpa_mutability_object_creation qthis qc) in *.
     assert (HlcE : Forall rlost_free (map erase lc)) by (rewrite Hec; exact Hlfc).
     assert (HlmE : Forall rlost_free (map erase lm)) by (rewrite Hem; exact Hlfm).
+    assert (HlkE : Forall (fun q0 => q0 <> Lost) (map fst lk)) by (rewrite Hek; auto).
     assert (Hshape : Forall (sbnd CT Δ) Ts /\
                      length Ts = length (ctparams (signature def))).
     { inversion Hwf_new as [? ? ? ? def' Hfind' Hhead' Hlen' Hargs' Hbnd'| |].
@@ -511,8 +515,8 @@ Section Cases.
       exact (sbnd_of_wf _ _ _ _ Ha). }
     destruct Hshape as [HsbT HlenT].
     assert (Hob : obP CT L qn (new_color qc wf mode) C (map (ldyn Fc) Ts)).
-    { exact (alloc_obP CT L Δ qthis wf mode lc lm qc C def Ts Hct Hrs Hbc Hfit
-               pfcoh HlcE HlmE Hfind Hqc Hlost_free HsbT Hbounds). }
+    { exact (alloc_obP CT L Δ qthis wf mode lc lm lk qc C def Ts Hct Hrs Hbc Hfit
+               pfcoh HlcE HlmE HlkE Hfind Hqc Hlost_free HsbT Hbounds). }
     pose proof Hob as (Hi & Hk & _).
     assert (Hkk : qc = Mut_c -> forall C' As',
               oview CT qn (olab (new_color qc wf mode)) C (map (ldyn Fc) Ts)
@@ -549,10 +553,9 @@ Section Cases.
       - rewrite (oview_deterministic _ _ _ _ _ _ _ Hct Hvw _ HvV).
         eapply lhasp_agree; [exact Hm|]. apply lagree_sym.
         + unfold member_type, adapt. rewrite ldyn_subst. exact Hag.
-        + rewrite erase_ldyn. simpl. rewrite Hec. rewrite Hem.
-          destruct Hok as [Hlf | (C' & Ts' & ->)].
-          * apply dyn_lost_free; auto. apply qr2q_concrete.
-          * exfalso. eapply (typable_head_not_bot _ _ _ _ _ _ _ Hty). reflexivity. }
+        + rewrite erase_ldyn. simpl. rewrite Hec. rewrite Hem. try rewrite Hek.
+          pose proof Hok as Hlf.
+            apply dyn_lost_free; auto. apply qr2q_concrete. }
     assert (Hold : forall l, l < dom h ->
               g_col G' l = g_col G l /\ g_birth G' l = g_birth G l /\
               g_args G' l = g_args G l) by exact Hgx.
@@ -564,12 +567,12 @@ Section Cases.
     { assert (Hgen : forall Xs Bs,
                 Forall2
                   (fun T B =>
-                     lost_free (member_type AbstractState (qc2q qc) Ts [] B) /\
-                     bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] B))
+                     lost_free (member_type AbstractState (qc2q qc) Ts [] [] B) /\
+                     bound_sub CT Δ T (member_type AbstractState (qc2q qc) Ts [] [] B))
                   Xs Bs -> Forall lost_free Bs).
       { intros Xs Bs HF2. induction HF2 as [|T B Xs Bs [Hlf _] _ IH];
           constructor; auto.
-        apply (lost_free_inst_inv (vpa_q AbstractState (qc2q qc)) Ts [] B);
+        apply (lost_free_inst_inv (vpa_q AbstractState (qc2q qc)) Ts [] [] B);
           [destruct qc; reflexivity | exact Hlf]. }
       exact (Hgen _ _ Hbounds). }
     assert (HG' : heapP P CT (h ++ [onew]) G' L next).
@@ -586,7 +589,7 @@ Section Cases.
             apply creation_mut.
             destruct qc, mode; simpl in Hc; try discriminate; auto.
             right. split; auto.
-            destruct (fp_this _ _ _ _ _ _ _ _ _ _ _ _ HF)
+            destruct (fp_this _ _ _ _ _ _ _ _ _ _ _ _ _ HF)
               as (ι0 & o0 & Hth0 & Ho0 & _ & Hc0).
             assert (ι0 = ι) by congruence. subst ι0.
             destruct (hp_col _ _ _ _ _ _ HG _ _ (Hc0 eq_refl))
@@ -604,7 +607,7 @@ Section Cases.
         + unfold onew in Ho. rewrite runtime_getObj_last in Ho.
           inversion Ho; subst o0.
           unfold G'. rewrite g_new_args_same. rewrite map_erase_ldyn. simpl.
-          rewrite Hec. rewrite Hem. reflexivity.
+          rewrite Hec. rewrite Hem. try rewrite Hek. reflexivity.
         + pose proof (Hlt _ _ Ho Hne) as Hl.
           unfold onew in Ho. rewrite runtime_getObj_last2 in Ho; auto.
           destruct (Hold _ Hl) as (_ & _ & Ha). rewrite Ha.
@@ -661,20 +664,20 @@ Section Cases.
           destruct (Hold _ Hl) as (_ & _ & Hc3). rewrite Hc3.
           exact (hp_cls _ _ _ _ _ _ HG _ _ Ho). }
     refine (conj HG' (conj _ Hgx)).
-    assert (HF0 : frameP CT sΓ rΓ (h ++ [onew]) G' L next wf mode qthis lc lm).
+    assert (HF0 : frameP CT sΓ rΓ (h ++ [onew]) G' L next wf mode qthis lc lm lk).
     { eapply frameP_ext; eauto. }
     eapply frameP_update; eauto.
     intros w Hw. inversion Hw; subst w.
-    apply (lhasp_subtype P CT Δ (h ++ [onew]) G' L next mt qthis wf mode lc lm
-             _ _ Hct HG' HwfL Hrs eq_refl
-             (vbp_of_fits CT Δ (h ++ [onew]) G' L Fc _ _ qthis Hct
+    apply (lhasp_subtype P CT Δ (h ++ [onew]) G' L next mt qthis wf mode lc lm lk
+             _ _ _ Hct HG' HwfL Hrs eq_refl
+             (vbp_of_fits CT Δ (h ++ [onew]) G' L Fc _ _ _ qthis Hct
                 (hp_cls _ _ _ _ _ _ HG')
                 (fun v0 ob d0 Hob0 Hd0 =>
                    proj1 (proj2 (proj2 (proj1 (hp_obj _ _ _ _ _ _ HG' v0 ob Hob0)))
                             d0 Hd0))
-                (proj2 Hfit) eq_refl Hec Hem)
+                (proj2 Hfit) eq_refl Hec Hem Hek)
              (fun o0 n0 B0 Hb0 => nomut_bounds_head Δ o0 n0 B0 Hnb Hb0)
-             Hfb Hec Hem _ _ Hresult_sub).
+             Hfb Hec Hem Hek _ _ Hresult_sub).
     + unfold wf_r_typable, loc_has_rtype. simpl.
       unfold onew. rewrite runtime_getObj_last. simpl.
       split.

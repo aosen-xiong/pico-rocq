@@ -10,7 +10,7 @@ Import ListNotations.
     type parameters are replaced by the declared superclass arguments. *)
 Definition subst_field (Ss : list qualified_type) (fd : field_def) : field_def :=
   {| assignability := assignability fd;
-     ftype := subst Ss [] (ftype fd) |}.
+     ftype := subst Ss [] [] (ftype fd) |}.
 
 (** All fields of a class, inherited fields first, every declared type
     expressed over the class's own type parameters. *)
@@ -174,9 +174,28 @@ Qed.
 (* ------------------STATIC WELL-FORMEDNESS------------------*)
 
 (** Well-formed type use.  The flag says whether the type stands at the top of
-    a declaration ([true]) or in an argument position ([false]); [Lost] may be
-    written only in argument positions.  A type argument is checked against its
+    a declaration ([true]) or in an argument position ([false]).  In an
+    argument position [Lost] may always be written; at the top it may be
+    written on a class declared receiver-dependent, like any other qualifier,
+    since the qualifier order is reflexive at [Lost].  A type argument is checked against its
     declared bound, adapted through the head qualifier. *)
+(** When a use of a type variable may be written.  A use under a qualifier
+    parameter needs that parameter in scope; any other use may be [Lost] only
+    inside a type argument. *)
+Definition tv_use_ok (Δ : tv_env) (top : bool) (u : tv_use) : Prop :=
+  match u with
+  | TVPoly m => m < qparams Δ
+  | _ => top = false \/ u <> TVQual Lost
+  end.
+
+(** A use that is plain or carries a written qualifier, not a qualifier
+    parameter. *)
+Definition tv_concrete (u : tv_use) : Prop :=
+  match u with
+  | TVPoly _ => False
+  | _ => True
+  end.
+
 Inductive wf_stype (CT : class_table) (Δ : tv_env) : bool -> qualified_type -> Prop :=
   | wfs_class : forall top q0 C Ts def
       (Hfind   : find_class CT C = Some def)
@@ -188,21 +207,20 @@ Inductive wf_stype (CT : class_table) (Δ : tv_env) : bool -> qualified_type -> 
       (Hbounds : Forall2
                    (fun T B =>
                       bound_sub CT Δ T
-                        (subst Ts [] (adapt AbstractState q0 B)))
+                        (subst Ts [] [] (adapt AbstractState q0 B)))
                    Ts (ctparams (signature def))),
       wf_stype CT Δ top (TClass q0 C Ts)
   | wfs_var : forall top u o n B
       (Hbound : tv_bound Δ o n = Some B)
-      (Huse   : top = false \/ u <> TVQual Lost),
+      (Huse   : tv_use_ok Δ top u),
       wf_stype CT Δ top (TVar u o n)
-  (* A class type carrying the qualifier of a method type variable's argument
-     is checked through its readonly view, the view valid for every
-     qualifier the variable may stand for.  Only a method's own type
-     variables may be used this way. *)
-  | wfs_head : forall top n C Ts B
-      (Hbound : tv_bound Δ MethodVar n = Some B)
+  (* A class type under a qualifier parameter of the enclosing method is
+     checked through its readonly view, the view valid for every qualifier
+     the parameter may stand for. *)
+  | wfs_head : forall top n C Ts
+      (Hbound : n < qparams Δ)
       (Hview  : wf_stype CT Δ top (TClass RO C Ts)),
-      wf_stype CT Δ top (THead MethodVar n C Ts).
+      wf_stype CT Δ top (THead n C Ts).
 
 Definition wf_stypeuse (CT : class_table) (Δ : tv_env) (T : qualified_type) : Prop :=
   wf_stype CT Δ true T.
@@ -230,26 +248,67 @@ Definition ubound (Δ : tv_env) (T : qualified_type) : option qualified_type :=
       | Some (TClass qb C []) => Some (TClass q0 C [])
       | _ => None
       end
-  | THead o n C Ts =>
+  | TVar (TVPoly m) o n =>
       match tv_bound Δ o n with
-      | Some _ => Some (TClass RO C Ts)
-      | None => None
+      | Some (TClass qb C []) =>
+          if Nat.ltb m (qparams Δ) then Some (TClass RO C []) else None
+      | _ => None
       end
+  | THead n C Ts =>
+      if Nat.ltb n (qparams Δ) then Some (TClass RO C Ts) else None
   end.
 
 (** A declared member type as seen through a receiver: adapt the written
     qualifiers through the receiver's qualifier, then substitute the
     receiver's class arguments [Vs] and the method arguments [Us]. *)
 Definition member_type (mt : method_scope) (qrecv : q)
-    (Vs Us : list qualified_type) (T : qualified_type) : qualified_type :=
-  subst Vs Us (adapt mt qrecv T).
+    (Vs Us : list qualified_type) (Qs : list qarg) (T : qualified_type)
+    : qualified_type :=
+  subst Vs Us Qs (adapt mt qrecv T).
 
-(** A value of static type [A] may be stored where [F] is expected.  When [F]
-    has an unknown position, only a bottom-typed source is accepted. *)
+(** The declared receiver of a method as a client with receiver qualifier
+    [qrecv] must supply it: receiver adaptation, then substitution. *)
+Definition member_recv (qrecv : q)
+    (Vs Us : list qualified_type) (Qs : list qarg) (T : qualified_type)
+    : qualified_type :=
+  subst Vs Us Qs (map_qual (vpa_recv qrecv) T).
+
+(** The qualifier of a type is known: it is not [Lost]. *)
+Definition head_known (T : qualified_type) : Prop :=
+  match T with
+  | TClass q0 _ _ => q0 <> Lost
+  | _ => True
+  end.
+
+(** A reference of static type [A] may be the receiver of a call whose
+    adapted declared receiver is [R]: [A] is a subtype of [R], and the
+    qualifier of [R] is known.  The type arguments of [R] are the reference's
+    own, viewed at the declaring class; they are not required to be known. *)
+Definition receiver_ok (CT : class_table) (Δ : tv_env)
+    (A R : qualified_type) : Prop :=
+  qualified_type_subtype CT Δ A R /\ head_known R.
+
+(** The type arguments of a class type. *)
+Definition targs (T : qualified_type) : list qualified_type :=
+  match T with
+  | TClass _ _ args => args
+  | THead _ _ args => args
+  | TVar _ _ _ => []
+  end.
+
+(** A declared receiver may requalify a type parameter of its class.  At a
+    call, such a written qualifier, seen through the caller's view of the
+    receiver in the caller's mode, must be known. *)
+Definition recv_args_known (mt : method_scope) (qrecv : q)
+    (R : qualified_type) : Prop :=
+  forall u o n, List.In (TVar (TVQual u) o n) (targs R) ->
+    vpa_q mt qrecv u <> Lost.
+
+(** A value of static type [A] may be stored where [F] is expected: [F] has
+    no unknown position, and [A] is a subtype of it. *)
 Definition assignable_to (CT : class_table) (Δ : tv_env)
     (A F : qualified_type) : Prop :=
-  qualified_type_subtype CT Δ A F /\
-  (lost_free F \/ exists C Ts, A = TClass Bot C Ts).
+  qualified_type_subtype CT Δ A F /\ lost_free F.
 
 (* ------------------EXPRESSION TYPING------------------*)
 Inductive expr_has_type
@@ -274,7 +333,7 @@ Inductive expr_has_type
       (Hub      : ubound Δ T = Some (TClass qx C Ts))
       (Hfld_def : sf_def_rel CT C f fDef),
       expr_has_type CT Δ Γ mt (EField x f)
-        (member_type mt qx Ts [] (ftype fDef)).
+        (member_type mt qx Ts [] [] (ftype fDef)).
 
 (* ------------------CASTS------------------*)
 
@@ -302,6 +361,14 @@ Definition cast_target_ok_in_scope (CT : class_table) (mt : method_scope)
   match mt with
   | AbstractState | ConcreteState => True
   | ReadonlyState | TransitiveState => ~ cast_narrowing_ok CT S T
+  end.
+
+(** A qualifier argument of a call: a written qualifier other than [Lost],
+    or one of the calling method's own qualifier parameters. *)
+Definition qarg_ok (Δ : tv_env) (a : qarg) : Prop :=
+  match a with
+  | QLit q0 => q0 <> Lost
+  | QVar m => m < qparams Δ
   end.
 
 (* ------------------STATEMENT TYPING------------------*)
@@ -346,7 +413,7 @@ Inductive stmt_typing
       (Hub         : ubound Δ Tx = Some (TClass qx C Ts))
       (Hfld_def    : sf_def_rel CT C f fieldT)
       (Hsub        : assignable_to CT Δ Ty
-                       (member_type mt qx Ts [] (ftype fieldT)))
+                       (member_type mt qx Ts [] [] (ftype fieldT)))
       (Hassignable : vpa_a mt qx (assignability fieldT) = Assignable),
       stmt_typing CT Δ sΓ mt (SFldWrite x f y) sΓ
 
@@ -365,22 +432,22 @@ Inductive stmt_typing
       (Hlost_free  : Forall lost_free Ts)
       (Hbounds     : Forall2
                        (fun T B =>
-                          lost_free (member_type AbstractState (qc2q qc) Ts [] B) /\
+                          lost_free (member_type AbstractState (qc2q qc) Ts [] [] B) /\
                           bound_sub CT Δ T
-                            (member_type AbstractState (qc2q qc) Ts [] B))
+                            (member_type AbstractState (qc2q qc) Ts [] [] B))
                        Ts (ctparams (signature def)))
       (Hfields     : CollectFields CT C fds)
       (Harg_sub    : Forall2
                        (fun A fd =>
                           assignable_to CT Δ A
-                            (member_type mt (qc2q qc) Ts [] (ftype fd)))
+                            (member_type mt (qc2q qc) Ts [] [] (ftype fd)))
                        argtypes fds)
       (Hresult_sub : qualified_type_subtype CT Δ (TClass (qc2q qc) C Ts) Tx),
       stmt_typing CT Δ sΓ mt (SNew x qc C Ts args) sΓ
 
   (* Method call.  The callee's mode must be at least as strong as the
      caller's, and the caller's mode selects the mutability adaptation. *)
-  | ST_Call : forall CT Δ sΓ mt x m y Us args argtypes Tx Ty qy C Ts D Vs mdef
+  | ST_Call : forall CT Δ sΓ mt x m y Us Qs args argtypes Tx Ty qy C Ts D Vs mdef
       (Hwf         : wf_senv CT Δ sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
@@ -394,21 +461,21 @@ Inductive stmt_typing
       (Htargs_len  : length Us = length (mtparams (msignature mdef)))
       (Htargs_bnd  : Forall2
                        (fun U B =>
-                          lost_free (member_type mt qy Vs Us B) /\
-                          bound_sub CT Δ U (member_type mt qy Vs Us B))
+                          lost_free (member_type mt qy Vs Us Qs B) /\
+                          bound_sub CT Δ U (member_type mt qy Vs Us Qs B))
                        Us (mtparams (msignature mdef)))
       (Hret_sub    : qualified_type_subtype CT Δ
-                       (member_type mt qy Vs Us (mret (msignature mdef))) Tx)
-      (Hrcv_sub    : assignable_to CT Δ Ty
-                       (member_type mt qy Vs Us (mreceiver (msignature mdef)))
-                     \/ (qy = RO /\
-                         exists Rargs,
-                           mreceiver (msignature mdef) = TClass RDM D Rargs))
+                       (member_type mt qy Vs Us Qs (mret (msignature mdef))) Tx)
+      (Hrcv_sub    : receiver_ok CT Δ Ty
+                       (member_recv qy Vs Us Qs (mreceiver (msignature mdef))))
       (Harg_sub    : Forall2
-                       (fun A P => assignable_to CT Δ A (member_type mt qy Vs Us P))
+                       (fun A P => assignable_to CT Δ A (member_type mt qy Vs Us Qs P))
                        argtypes (mparams (msignature mdef)))
-      (Hscope      : method_scope_subtype (mscope (msignature mdef)) mt),
-      stmt_typing CT Δ sΓ mt (SCall x m y Us args) sΓ
+      (Hscope      : method_scope_subtype (mscope (msignature mdef)) mt)
+      (Hqargs_len  : length Qs = mqparams (msignature mdef))
+      (Hqargs_ok   : Forall (qarg_ok Δ) Qs)
+      (Hrcv_args   : recv_args_known mt qy (mreceiver (msignature mdef))),
+      stmt_typing CT Δ sΓ mt (SCall x m y Us Qs args) sΓ
 
   (* Cast.  The value is copied unchanged; the checker admits only casts that
      cannot fail. *)
@@ -450,46 +517,132 @@ Definition class_tparams (CT : class_table) (C : class_name) : list qualified_ty
 
 (** The bound environment in which a method body is checked. *)
 Definition method_tv_env (CT : class_table) (C : class_name) (msig : method_sig) : tv_env :=
-  mk_tv_env (class_tparams CT C) (mtparams msig) (mscope msig).
+  mk_tv_env (class_tparams CT C) (mtparams msig) (mscope msig) (mqparams msig).
 
 (** The declared receiver of a method of class [C]: [C] applied to its own
-    type parameters, under a written qualifier or under the qualifier of one
-    of the method's type variables. *)
+    type parameters, each written plainly or under a qualifier, the whole
+    under a written qualifier or under one of the method's qualifier
+    parameters. *)
+Definition recv_args (n : nat) (args : list qualified_type) : Prop :=
+  length args = n /\
+  forall i T, nth_error args i = Some T -> exists u, T = TVar u ClassVar i.
+
 Definition receiver_shape (CT : class_table) (C : class_name) (T : qualified_type) : Prop :=
+  exists args, recv_args (length (class_tparams CT C)) args /\
+    ((exists qr, T = TClass qr C args) \/ (exists n, T = THead n C args)).
+
+(** The receiver names every type parameter plainly. *)
+Definition receiver_plain (CT : class_table) (C : class_name) (T : qualified_type) : Prop :=
   (exists qr, T = TClass qr C (class_var_types (length (class_tparams CT C)))) \/
-  (exists n, T = THead MethodVar n C (class_var_types (length (class_tparams CT C)))).
+  (exists n, T = THead n C (class_var_types (length (class_tparams CT C)))).
+
+Lemma recv_args_plain : forall n, recv_args n (class_var_types n).
+Proof.
+  intros n. unfold class_var_types. split; [rewrite length_map; rewrite length_seq; reflexivity|].
+  intros i T H. rewrite nth_error_map in H.
+  destruct (nth_error (seq 0 n) i) as [j|] eqn:Hj; [|discriminate].
+  assert (Hlt : i < length (seq 0 n)) by (apply nth_error_Some; congruence).
+  rewrite length_seq in Hlt.
+  apply (nth_error_nth _ _ 0) in Hj. assert (Hs : nth i (seq 0 n) 0 = 0 + i) by (apply seq_nth; exact Hlt). rewrite Hs in Hj.
+  simpl in Hj. subst j. simpl in H. inversion H. exists TVSub. reflexivity.
+Qed.
+
+Lemma receiver_plain_shape : forall CT C T,
+  receiver_plain CT C T -> receiver_shape CT C T.
+Proof.
+  intros CT C T H. exists (class_var_types (length (class_tparams CT C))).
+  split; [apply recv_args_plain | exact H].
+Qed.
+
+(** What a method well-formedness proof for a plainly written receiver needs. *)
+Lemma receiver_plain_ok : forall CT C T (P Q : Prop),
+  receiver_plain CT C T ->
+  receiver_shape CT C T /\ (P -> receiver_plain CT C T \/ Q).
+Proof. intros. split; [apply receiver_plain_shape; assumption | auto]. Qed.
+
+Lemma plain_targs : forall CT C T,
+  receiver_plain CT C T -> targs T = class_var_types (length (class_tparams CT C)).
+Proof. intros CT C T [[q0 ->] | [n ->]]; reflexivity. Qed.
+
+(** An object of mutability [qr] whose type arguments, at the receiver's
+    class, are [ca] satisfies what the declared receiver [R] asks of them in
+    a call whose qualifier arguments are [ka]. *)
+Definition radmit (qr : q) (ca : list rtype) (ka : list q)
+    (R : qualified_type) : Prop :=
+  forall ma, Forall2 rarg_sub ca (map (dyn qr ca ma ka) (targs R)).
+
+Lemma recv_args_known_plain : forall CT C T mt qrecv,
+  receiver_plain CT C T -> recv_args_known mt qrecv T.
+Proof.
+  intros CT C T mt qrecv H u o n Hin. rewrite (plain_targs _ _ _ H) in Hin.
+  unfold class_var_types in Hin. apply in_map_iff in Hin.
+  destruct Hin as (i & E & _). discriminate.
+Qed.
+
+(** Closes the receiver-argument premise of a call on a concrete signature. *)
+Ltac recv_known :=
+  let H := fresh in
+  intros ? ? ? H; cbn in H; intuition discriminate.
+
+(** Closes the receiver-admission part of an override check when the
+    overriding receiver names its class's parameters plainly. *)
+Ltac radmit_plain :=
+  let H := fresh "H" in let ca := fresh "ca" in
+  intros ? ca ? _ _ H _ _ ?; cbn in H;
+  repeat (destruct ca as [|? ca]; cbn in H; try discriminate H);
+  cbn; repeat (constructor; [apply rarg_sub_refl|]); constructor.
 
 (** A type moved to the class and the arguments of another type, keeping its
     qualifier. *)
+Definition rehead (T : qualified_type) (C : class_name)
+    (args : list qualified_type) : qualified_type :=
+  match T with
+  | TClass q0 _ _ => TClass q0 C args
+  | THead n _ _ => THead n C args
+  | TVar _ _ _ => T
+  end.
+
 Definition rebase (T R : qualified_type) : qualified_type :=
   match R with
-  | TClass _ C args => headby T C args
-  | THead _ _ C args => headby T C args
+  | TClass _ C args => rehead T C args
+  | THead _ C args => rehead T C args
   | TVar _ _ _ => T
   end.
 
 (** Viewpoint-adapted behavioral subtyping for one override.  [Vs] expresses
     the overridden method's declaring class over the overriding class's type
-    parameters.  Scope and the method type-parameter bounds are invariant; the
-    return is covariant; the receiver and ordinary parameters are
-    contravariant: the overridden receiver, seen from the overriding class,
-    is a subtype of the overriding method's receiver. *)
+    parameters.  Scope, the method type-parameter bounds and the number of
+    qualifier parameters are invariant; the return is covariant; the ordinary
+    parameters are contravariant.  The receiver is contravariant in its
+    qualifier only: the overridden receiver, seen from the overriding class
+    and moved onto the overriding receiver's class and arguments, is a
+    subtype of the overriding method's receiver.  A receiver under a
+    qualifier parameter may so be kept under the same parameter or declared
+    readonly. *)
 Definition method_override_compatible
     (CT : class_table) (Δ : tv_env) (qc : q_c) (Vs : list qualified_type)
     (overrider overridden : method_sig) : Prop :=
   let ms := method_var_types (length (mtparams overridden)) in
-  let view := member_type AbstractState (qc2q qc) Vs ms in
+  let ks := qvar_args (mqparams overridden) in
+  let view := member_type AbstractState (qc2q qc) Vs ms ks in
   mname overrider = mname overridden /\
   mscope overrider = mscope overridden /\
-  mtparams overrider = map view (mtparams overridden) /\
+  (mtparams overrider = map view (mtparams overridden) /\
+   mqparams overrider = mqparams overridden) /\
   qualified_type_subtype CT Δ (mret overrider) (view (mret overridden)) /\
   Forall2
     (fun overridden_param overrider_param =>
       qualified_type_subtype CT Δ (view overridden_param) overrider_param)
     (mparams overridden) (mparams overrider) /\
-  qualified_type_subtype CT Δ
-    (rebase (view (mreceiver overridden)) (mreceiver overrider))
-    (mreceiver overrider).
+  (qualified_type_subtype CT Δ
+     (rebase (view (mreceiver overridden)) (mreceiver overrider))
+     (mreceiver overrider) /\
+   forall (qr : q_r) (ca : list rtype) (ka : list q),
+     (qc = Mut_c -> qr = Mut_r) -> (qc = Imm_c -> qr = Imm_r) ->
+     length ca = length (class_bounds Δ) ->
+     length ka = mqparams overridden ->
+     radmit (qr2q qr) (map (dyn (qr2q qr) ca [] []) Vs) ka (mreceiver overridden) ->
+     radmit (qr2q qr) ca ka (mreceiver overrider)).
 
 (** No mutable position, reading type variables through their bounds.  This is
     the paper's predicate on a readonly-state or transitive-state signature.
@@ -510,11 +663,13 @@ CoInductive no_mut (Δ : tv_env) : qualified_type -> Prop :=
       (Hbound : tv_bound Δ o n = Some (TClass qb C Ts))
       (Hargs : Forall (no_mut Δ) Ts),
       no_mut Δ (TVar (TVQual q0) o n)
-  | nm_head : forall o n C Ts qb D Bs
-      (Hbound : tv_bound Δ o n = Some (TClass qb D Bs))
-      (Hq : qb <> Mut)
+  | nm_pvar : forall m o n qb C Ts
+      (Hbound : tv_bound Δ o n = Some (TClass qb C Ts))
       (Hargs : Forall (no_mut Δ) Ts),
-      no_mut Δ (THead o n C Ts).
+      no_mut Δ (TVar (TVPoly m) o n)
+  | nm_head : forall n C Ts
+      (Hargs : Forall (no_mut Δ) Ts),
+      no_mut Δ (THead n C Ts).
 
 Definition signature_has_no_mutable_roots (Δ : tv_env) (msig : method_sig) : Prop :=
   no_mut Δ (mreceiver msig) /\ Forall (no_mut Δ) (mparams msig).
@@ -524,16 +679,28 @@ Definition is_class_type (T : qualified_type) : Prop :=
   match T with
   | TClass _ _ _ => True
   | TVar _ _ _ => False
-  | THead _ _ _ _ => False
+  | THead _ _ _ => False
   end.
+
+(** The receiver of a readonly-state or transitive-state method may requalify
+    a type parameter of its class, but not as mutable, and then the bounds of
+    the class's type parameters reach no mutable position.  (With a plainly written receiver the same follows from the
+    rule on the receiver type.) *)
+Definition recv_protected (Δ : tv_env) (R : qualified_type) : Prop :=
+  Forall (no_mut Δ) (class_bounds Δ) /\
+  forall u o n, List.In (TVar (TVQual u) o n) (targs R) -> u <> Mut.
 
 Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : Prop :=
   let msig := msignature mdef in
   let methodbody := mbody mdef in
   let Δ := method_tv_env CT C msig in
   let sΓ := mreceiver msig :: mparams msig in
-  receiver_shape CT C (mreceiver msig) /\
-  Forall (fun B => is_class_type B /\ wf_stypeuse CT Δ B) (mtparams msig) /\
+  (receiver_shape CT C (mreceiver msig) /\
+   (readonly_state_method_scope (mscope msig) ->
+    receiver_plain CT C (mreceiver msig) \/ recv_protected Δ (mreceiver msig))) /\
+  Forall (fun B => is_class_type B /\ wf_stypeuse CT Δ B /\
+                   (readonly_state_method_scope (mscope msig) -> no_mut Δ B))
+    (mtparams msig) /\
   wf_stypeuse CT Δ (mret msig) /\
   (exists sΓ' mbodyrettype,
     stmt_typing CT Δ sΓ (mscope msig) (mbody_stmt methodbody) sΓ' /\
@@ -574,7 +741,7 @@ Inductive wf_class : class_table -> class_def -> Prop :=
     let bod := cdef.(body) in
     let C := cname sig in
     let qC := class_qualifier sig in
-    let Δ := mk_tv_env (ctparams sig) [] AbstractState in
+    let Δ := mk_tv_env (ctparams sig) [] AbstractState 0 in
     (* type-parameter bounds are well-formed class types *)
     Forall (fun B => is_class_type B /\ wf_stypeuse CT Δ B) (ctparams sig) ->
     (* the superclass type is well formed and its arguments are fully known
@@ -583,8 +750,8 @@ Inductive wf_class : class_table -> class_def -> Prop :=
     Forall lost_free Ss ->
     Forall2
       (fun T B =>
-         lost_free (member_type AbstractState (qc2q qC) Ss [] B) /\
-         bound_sub CT Δ T (member_type AbstractState (qc2q qC) Ss [] B))
+         lost_free (member_type AbstractState (qc2q qC) Ss [] [] B) /\
+         bound_sub CT Δ T (member_type AbstractState (qc2q qC) Ss [] [] B))
       Ss (ctparams (signature super_def)) ->
     (* a subclass keeps a pinned superclass mutability *)
     (qC = class_qualifier (signature super_def) \/

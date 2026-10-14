@@ -102,7 +102,7 @@ Require Import Syntax Notations Helpers ViewpointAdaptation Subtyping Typing
     @Mut Cell.  In readonly-state code, a @Mut field type read through an
     @RDM allocation is @Lost Cell: the allocating code does not know whether
     the new K will be seen as mutable or not.  A target type with an unknown
-    position accepts only a bottom-typed source, and c0 is a @Mut Cell.  So
+    position accepts no source, and c0 is a @Mut Cell.  So
     v = new @RDM K(c0, s) has no typing inside attack, attack is not a
     well-formed method, and the class table is not well formed.
 
@@ -176,6 +176,7 @@ Definition mix : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 1;
           mreceiver := RDMBoxEX;
@@ -204,6 +205,7 @@ Definition factory_make : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROBoxT;
           mname := 0;
           mreceiver := RDMFactory;
@@ -219,6 +221,7 @@ Definition mf_make : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := MutBox;
           mname := 0;
           mreceiver := ROMF;
@@ -244,6 +247,7 @@ Definition attack : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 2;
           mreceiver := RDMOwner;
@@ -260,12 +264,12 @@ Definition attack : method_def :=
             (SSeq (SLocal ROObject 9)
             (SSeq (SLocal MutCell 10)
             (SSeq (SVarAss 2 (EField 0 0))
-            (SSeq (SCall 3 0 2 [] [])
+            (SSeq (SCall 3 0 2 [] [] [])
             (SSeq (SNew 6 Mut_c 1 [] [4; 5])
             (SSeq (SVarAss 7 (EField 0 1))
             (SSeq (SNew 8 RDM_c 3 [] [6; 7])
             (SSeq (SFldWrite 3 0 8)
-            (SSeq (SCall 9 1 3 [] [])
+            (SSeq (SCall 9 1 3 [] [] [])
             (SSeq (SVarAss 10 (EField 6 0))
                   (SFldWrite 10 1 1)))))))))))))))));
           mreturn := 1 |} |}.
@@ -292,13 +296,13 @@ Definition prefix : stmt :=
   (SSeq (SNew 5 Mut_c 7 [] [4; 3])
         (SNew 6 Mut_c 0 [] []))))))))))).
 
-Definition callA : stmt := SCall 7 2 5 [] [6].
+Definition callA : stmt := SCall 7 2 5 [] [] [6].
 
 Definition main : stmt := SSeq prefix callA.
 
 (** The bound environments of the four method bodies. *)
-Definition ΔMix : tv_env := mk_tv_env [RDMDX; RDMCell] [] ReadonlyState.
-Definition ΔR : tv_env := mk_tv_env [] [] ReadonlyState.
+Definition ΔMix : tv_env := mk_tv_env [RDMDX; RDMCell] [] ReadonlyState 0.
+Definition ΔR : tv_env := mk_tv_env [] [] ReadonlyState 0.
 
 (* ------------------SMALL TACTICS AND FACTS------------------*)
 
@@ -344,7 +348,7 @@ Qed.
 
 (** Inside Box3, X is below its bound and hence a readonly Object. *)
 Lemma sub_tX_ROObject : forall mt,
-  qualified_type_subtype CT (mk_tv_env [RDMDX; RDMCell] [] mt) tX ROObject.
+  qualified_type_subtype CT (mk_tv_env [RDMDX; RDMCell] [] mt 0) tX ROObject.
 Proof.
   intros mt. eapply qtype_trans.
   - apply qtype_var_bound with (B := RDMCell). reflexivity.
@@ -353,7 +357,7 @@ Qed.
 
 (** The bound of E, @RDM D<X>, is a well-formed type inside Box3. *)
 Lemma wf_RDMDX : forall mt top,
-  wf_stype CT (mk_tv_env [RDMDX; RDMCell] [] mt) top RDMDX.
+  wf_stype CT (mk_tv_env [RDMDX; RDMCell] [] mt 0) top RDMDX.
 Proof.
   intros mt top.
   eapply wfs_class; [reflexivity | right; cbn; qs | reflexivity | |].
@@ -364,7 +368,7 @@ Qed.
 
 Lemma wf_tvar : forall mt top n B,
   nth_error [RDMDX; RDMCell] n = Some B ->
-  wf_stype CT (mk_tv_env [RDMDX; RDMCell] [] mt) top (TVar TVSub ClassVar n).
+  wf_stype CT (mk_tv_env [RDMDX; RDMCell] [] mt 0) top (TVar TVSub ClassVar n).
 Proof.
   intros. eapply wfs_var; [exact H | right; discriminate].
 Qed.
@@ -373,7 +377,7 @@ Qed.
 Lemma sub_MutK_MutDMutCell : forall Δ,
   qualified_type_subtype CT Δ MutK MutDMutCell.
 Proof.
-  intros [cb mb mt]. apply qtype_hier.
+  intros [cb mb mt kq]. apply qtype_hier.
   eapply si_step; [reflexivity|].
   destruct mt; cbn; apply si_refl.
 Qed.
@@ -396,9 +400,9 @@ Qed.
 (** The two skipped checks, spelled out: the adapted bounds are
     @Lost D<@Lost Cell> and @Lost Cell. *)
 Lemma leniency_a_bounds_skipped :
-  subst [RDMK; LostCell] [] (adapt AbstractState RO RDMDX)
+  subst [RDMK; LostCell] [] [] (adapt AbstractState RO RDMDX)
     = TClass Lost 2 [LostCell] /\
-  subst [RDMK; LostCell] [] (adapt AbstractState RO RDMCell) = LostCell /\
+  subst [RDMK; LostCell] [] [] (adapt AbstractState RO RDMCell) = LostCell /\
   ~ lost_free (TClass Lost 2 [LostCell]) /\
   ~ lost_free LostCell.
 Proof.
@@ -640,7 +644,7 @@ Proof.
     (C := 1) (Ts := []) (fieldT := cache_field);
     [wfenv | reflexivity | reflexivity | reflexivity | fl collect_Cell
     | | reflexivity].
-  split; [cbn; refl_sub | left; lf].
+  split; [cbn; refl_sub | lf].
 Qed.
 
 Lemma wf_mix : wf_method CT 4 mix.
@@ -648,7 +652,7 @@ Proof.
   unfold wf_method.
   change (method_tv_env CT 4 (msignature mix)) with ΔMix.
   cbn.
-  split; [left; exists RDM; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RDM; reflexivity|].
   split; [constructor|].
   split; [apply wf_ROObject|].
   split.
@@ -684,7 +688,7 @@ Proof.
   - constructor; [|constructor; [|constructor]]; cbn.
     + split; [intuition discriminate | intros m; apply sub_MutK_MutDMutCell].
     + split; [intuition discriminate | intros m; refl_sub].
-  - constructor; [|constructor]. cbn. split; [refl_sub | left; lf].
+  - constructor; [|constructor]. cbn. split; [refl_sub | lf].
   - cbn. refl_sub.
 Qed.
 
@@ -701,10 +705,10 @@ Qed.
     return type as seen from the @Mut class, @RO Box3<@Mut K, @Lost Cell>:
     head Mut below RO, argument @Mut Cell forgotten to @Lost Cell. *)
 Lemma leniency_b_override_return : forall Δ Vs,
-  member_type AbstractState Mut Vs [] ROBoxT
+  member_type AbstractState Mut Vs [] [] ROBoxT
     = TClass RO 4 [MutK; LostCell] /\
   qualified_type_subtype CT Δ MutBox
-    (member_type AbstractState Mut Vs [] ROBoxT).
+    (member_type AbstractState Mut Vs [] [] ROBoxT).
 Proof.
   intros Δ Vs. split; [reflexivity|].
   cbn. apply qtype_qual; [cbn; lia | apply q_rd |].
@@ -719,17 +723,17 @@ Lemma mf_make_overrides : forall Vs,
     (msignature mf_make) (msignature factory_make).
 Proof.
   intros Vs. unfold method_override_compatible.
-  split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+  split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
   split; [apply (leniency_b_override_return ΔR Vs)|].
   split; [constructor|].
-  cbn. apply qtype_qual; [cbn; lia | cbn; apply q_rd | apply Forall2_targ_sub_refl].
+  cbn. split; [apply qtype_qual; [cbn; lia | cbn; apply q_rd | apply Forall2_targ_sub_refl] | radmit_plain].
 Qed.
 
 Lemma wf_mf_make : wf_method CT 6 mf_make.
 Proof.
   unfold wf_method.
   change (method_tv_env CT 6 (msignature mf_make)) with ΔR.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [apply wf_MutBox|].
   split.
@@ -759,7 +763,7 @@ Definition sΓAtk : s_env :=
 (** *** The classes *)
 
 Definition ΔA (bs : list qualified_type) : tv_env :=
-  mk_tv_env bs [] AbstractState.
+  mk_tv_env bs [] AbstractState 0.
 
 Ltac wf_other sc ss sd :=
   eapply WFOtherDef with (superC := sc) (Ss := ss) (super_def := sd);
@@ -853,31 +857,29 @@ Proof. reflexivity. Qed.
 (** In readonly-state code, that field type read through an @RDM allocation
     is @Lost Cell. *)
 Lemma K_first_field_read_readonly_state :
-  member_type ReadonlyState (qc2q RDM_c) [] [] (ftype Kf_field) = LostCell.
+  member_type ReadonlyState (qc2q RDM_c) [] [] [] (ftype Kf_field) = LostCell.
 Proof. reflexivity. Qed.
 
 (** The same in transitive-state code. *)
 Lemma K_first_field_read_transitive_state :
-  member_type TransitiveState (qc2q RDM_c) [] [] (ftype Kf_field) = LostCell.
+  member_type TransitiveState (qc2q RDM_c) [] [] [] (ftype Kf_field) = LostCell.
 Proof. reflexivity. Qed.
 
 (** In abstract-state and concrete-state code it stays @Mut Cell. *)
 Lemma K_first_field_read_abstract_state :
-  member_type AbstractState (qc2q RDM_c) [] [] (ftype Kf_field) = MutCell /\
-  member_type ConcreteState (qc2q RDM_c) [] [] (ftype Kf_field) = MutCell.
+  member_type AbstractState (qc2q RDM_c) [] [] [] (ftype Kf_field) = MutCell /\
+  member_type ConcreteState (qc2q RDM_c) [] [] [] (ftype Kf_field) = MutCell.
 Proof. split; reflexivity. Qed.
 
 Lemma LostCell_not_lost_free : ~ lost_free LostCell.
 Proof. intros [Hl _]. apply Hl. reflexivity. Qed.
 
 (** A @Mut Cell cannot be stored where a @Lost Cell is expected: the target
-    has an unknown position and the source is not bottom-headed. *)
+    has an unknown position. *)
 Lemma MutCell_not_assignable_to_LostCell : forall CT0 Δ,
   ~ assignable_to CT0 Δ MutCell LostCell.
 Proof.
-  intros CT0 Δ [_ [Hlf | (C' & Ts' & E)]].
-  - apply LostCell_not_lost_free. exact Hlf.
-  - discriminate.
+  intros CT0 Δ [_ Hlf]. apply LostCell_not_lost_free. exact Hlf.
 Qed.
 
 (* ------------------2. THE ALLOCATION IS REJECTED------------------*)
@@ -1073,7 +1075,7 @@ Qed.
     @RDM Cell, which is not a @Mut Cell.  So new @Mut K(c0, s) is not typable
     as an allocation either, whatever it is assigned to. *)
 Lemma K_second_field_read_through_Mut : forall mt,
-  member_type mt (qc2q Mut_c) [] [] (ftype prot_field) = MutCell.
+  member_type mt (qc2q Mut_c) [] [] [] (ftype prot_field) = MutCell.
 Proof. intros mt. destruct mt; reflexivity. Qed.
 
 Theorem RDMCell_not_MutCell : forall CT0 Δ,
@@ -1122,7 +1124,7 @@ Proof.
     | reflexivity | apply wf_MutK | constructor | constructor
     | apply collect_K | | ].
   - constructor; [|constructor; [|constructor]]; cbn;
-      (split; [refl_sub | left; lf]).
+      (split; [refl_sub | lf]).
   - cbn. refl_sub.
 Qed.
 

@@ -61,6 +61,7 @@ Definition tool_peek : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 0;
           mreceiver := ROTool;
@@ -76,6 +77,7 @@ Definition tool_look : method_def :=
   {| msignature :=
        {| mscope := TransitiveState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 1;
           mreceiver := ROTool;
@@ -101,12 +103,12 @@ Definition prefix : stmt :=
   (SSeq (SNew 2 Mut_c 1 [] [1; 5])
         (SNew 3 Mut_c 2 [] []))))))).
 
-Definition callA : stmt := SCall 4 0 3 [] [2].
-Definition callB : stmt := SCall 4 1 3 [] [2].
+Definition callA : stmt := SCall 4 0 3 [] [] [2].
+Definition callB : stmt := SCall 4 1 3 [] [] [2].
 
 Definition main : stmt := SSeq prefix (SSeq callA callB).
 
-Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState.
+Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState 0.
 Definition sΓ0 : s_env := [MutObject].
 Definition sΓA : s_env :=
   [MutObject; MutObject; MutCell; MutTool; ROObject; ROObject].
@@ -188,7 +190,7 @@ Proof. eapply FOM_Here; reflexivity. Qed.
 Lemma wf_tool_peek : wf_method CT 2 tool_peek.
 Proof.
   unfold wf_method. cbn.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [wfp|].
   split.
@@ -210,7 +212,7 @@ Proof.
             (C := 1) (Ts := []) (fieldT := cache_field);
             [wfenv | reflexivity | reflexivity | reflexivity | | | reflexivity].
           -- eapply FL_Found; [apply collect_Cell | reflexivity].
-          -- split; [cbn; refl_sub | left; cbn; intuition discriminate].
+          -- split; [cbn; refl_sub | cbn; intuition discriminate].
     - reflexivity.
     - refl_sub. }
   split.
@@ -227,7 +229,7 @@ Qed.
 Lemma wf_tool_look : wf_method CT 2 tool_look.
 Proof.
   unfold wf_method. cbn.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [wfp|].
   split.
@@ -291,7 +293,7 @@ Proof.
   - injection Hfind as <-. split; [reflexivity | constructor].
   - injection Hfind as <-. split; [reflexivity | constructor].
   - injection Hfind as <-. split; [reflexivity|].
-    constructor; [reflexivity|]. constructor; [reflexivity | constructor].
+    repeat (constructor; [split; reflexivity|]). constructor.
   - destruct C; discriminate.
 Qed.
 
@@ -344,9 +346,9 @@ Proof.
       | apply collect_Cell | | ].
     - constructor; [|constructor; [|constructor]]; cbn; split.
       + qual_sub.
-      + left. cbn. intuition discriminate.
+      + cbn. intuition discriminate.
       + refl_sub.
-      + left. cbn. intuition discriminate.
+      + cbn. intuition discriminate.
     - cbn. refl_sub. }
   (* t = new @Mut Tool() *)
   eapply ST_New with (Tx := MutTool) (argtypes := []) (fds := []);
@@ -368,11 +370,11 @@ Proof.
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | apply find_peek | apply si_refl | discriminate | constructor
     | constructor | reflexivity
-    | constructor | | | | apply method_rs_as].
+    | constructor | | | | apply method_rs_as | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - left. cbn. split; [qual_sub|]. left. cbn. intuition discriminate.
+  - cbn. split; [qual_sub|]. cbn. intuition discriminate.
   - constructor; [|constructor]. cbn. split; [qual_sub|].
-    left. cbn. intuition discriminate.
+    cbn. intuition discriminate.
 Qed.
 
 Lemma callB_typed : stmt_typing CT Δ0 sΓA AbstractState callB sΓA.
@@ -385,11 +387,11 @@ Proof.
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | apply find_look | apply si_refl | discriminate | constructor
     | constructor | reflexivity
-    | constructor | | | | apply method_ts_as].
+    | constructor | | | | apply method_ts_as | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - left. cbn. split; [qual_sub|]. left. cbn. intuition discriminate.
+  - cbn. split; [qual_sub|]. cbn. intuition discriminate.
   - constructor; [|constructor]. cbn. split; [qual_sub|].
-    left. cbn. intuition discriminate.
+    cbn. intuition discriminate.
 Qed.
 
 Lemma main_typed : stmt_typing CT Δ0 sΓ0 AbstractState main sΓA.
@@ -401,11 +403,11 @@ Qed.
 
 (** The states.  Location 0 is main's receiver, 1 is o, 2 is the Cell, 3 is
     the Tool. *)
-Definition rΓ0 : r_env := mkr_env [Iot 0] [] [].
+Definition rΓ0 : r_env := mkr_env [Iot 0] [] [] [].
 Definition h0 : heap := [mkObj (mkruntime_type Mut_r 0 []) []].
 
 Definition rΓA : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Null_a; Null_a] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Null_a; Null_a] [] [] [].
 
 Definition hA : heap :=
   [ mkObj (mkruntime_type Mut_r 0 []) [];
@@ -441,7 +443,7 @@ Proof.
   - split; simpl; [lia|]. constructor; [wfp | constructor].
   - exists 0, (mkObj (mkruntime_type Mut_r 0 []) []), 0. simpl.
     refine (conj eq_refl (conj eq_refl (conj eq_refl (conj (rsi_refl _ _ _ _)
-             (conj (Forall_nil _) (conj (Forall_nil _) (conj _ _))))))); constructor.
+             (conj (Forall_nil _) (conj (conj (Forall_nil _) (Forall_nil _)) (conj _ _))))))); constructor.
   - intros ι qcontext Hthis Hmut i Hi sqt Hnth.
     simpl in Hi. assert (i = 0) by lia. subst i.
     simpl in Hthis. inversion Hthis; subst ι.
@@ -463,7 +465,7 @@ Qed.
 
 (** After call A, x holds o, and the Cell's cache slot holds o as well. *)
 Definition rΓA' : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 1; Null_a] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 3; Iot 1; Null_a] [] [] [].
 
 Definition hA' : heap :=
   [ mkObj (mkruntime_type Mut_r 0 []) [];
@@ -475,8 +477,8 @@ Lemma callA_eval : eval_stmt CT rΓA hA callA OK rΓA' hA'.
 Proof.
   unfold callA, rΓA, hA.
   eapply SBS_Call with (mdef := tool_peek) (D := 2)
-    (rΓ' := mkr_env [Iot 3; Iot 2] [] [])
-    (rΓ'' := mkr_env [Iot 3; Iot 2; Iot 1] [] []).
+    (rΓ' := mkr_env [Iot 3; Iot 2] [] [] [])
+    (rΓ'' := mkr_env [Iot 3; Iot 2; Iot 1] [] [] []).
   - reflexivity.
   - reflexivity.
   - apply find_peek.
@@ -484,7 +486,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [apply rsi_refl | reflexivity].
   - cbn. eapply SBS_Seq; [apply SBS_Local; reflexivity|]. cbn.
     eapply SBS_Seq.
@@ -507,7 +509,7 @@ Theorem callA_preserves_value : forall rΓ' h',
 Proof.
   intros rΓ' h' Heval.
   eapply (readonly_state_preservation_flat CT Δ0 sΓA AbstractState rΓA hA
-            4 0 3 [] [2] sΓA rΓ' h' 3 2 2 tool_peek
+            4 0 3 [] _ [2] sΓA rΓ' h' 3 2 2 tool_peek
             ro_no_tparams ro_no_rdm_fields config_A callA_typed Heval).
   - reflexivity.
   - reflexivity.
@@ -567,7 +569,7 @@ Lemma callB_eval : eval_stmt CT rΓA' hA' callB OK rΓA' hA'.
 Proof.
   unfold callB, rΓA', hA'.
   eapply SBS_Call with (mdef := tool_look) (D := 2)
-    (rΓ' := mkr_env [Iot 3; Iot 2] [] []).
+    (rΓ' := mkr_env [Iot 3; Iot 2] [] [] []).
   - reflexivity.
   - reflexivity.
   - apply find_look.
@@ -575,7 +577,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [apply rsi_refl | reflexivity].
   - cbn. eapply SBS_Seq; [apply SBS_Local; reflexivity|]. cbn.
     eapply SBS_Assign; [reflexivity|]. eapply EBS_Field; reflexivity.
@@ -603,7 +605,7 @@ Theorem callB_preserves_everything : forall rΓ' h',
 Proof.
   intros rΓ' h' Heval.
   eapply (transitive_state_preservation_flat CT Δ0 sΓA AbstractState rΓA' hA'
-            4 1 3 [] [2] sΓA rΓ' h' 3 2 2 tool_look
+            4 1 3 [] _ [2] sΓA rΓ' h' 3 2 2 tool_look
             ro_no_tparams ro_no_rdm_fields config_B callB_typed Heval).
   - reflexivity.
   - reflexivity.

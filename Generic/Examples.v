@@ -28,6 +28,7 @@ Definition get_def : method_def :=
   {| msignature :=
        {| mscope := AbstractState;
           mtparams := [];
+          mqparams := 0;
           mret := tE;
           mname := get_name;
           mreceiver := TClass RO 2 [tE];
@@ -65,12 +66,12 @@ Definition main : stmt :=
   (SSeq (SLocal MutMPerson 6)
   (SSeq (SNew 1 Mut_c 1 [] [])
   (SSeq (SNew 2 Imm_c 2 [MutPerson] [1])
-  (SSeq (SCall 3 get_name 2 [] [])
+  (SSeq (SCall 3 get_name 2 [] [] [])
   (SSeq (SCast 4 ROPerson 3)
   (SSeq (SNew 5 Mut_c 3 [] [])
         (SCast 6 MutMPerson 5))))))))))).
 
-Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState.
+Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState 0.
 Definition sΓ0 : s_env := [TClass Mut 0 []].
 Definition sΓfinal : s_env :=
   [TClass Mut 0 []; MutPerson; ImmBox; MutPerson; ROPerson; ROMPerson; MutMPerson].
@@ -97,7 +98,7 @@ Lemma wf_any_Object : forall Δ top q0, q0 <> Lost -> wf_stype CT Δ top (TClass
 Proof.
   intros. eapply wfs_class;
     [reflexivity | right | reflexivity | constructor | constructor].
-  destruct q0; cbn; try qs. congruence.
+  destruct q0; cbn; try qs; congruence.
 Qed.
 
 Lemma wf_MutPerson : forall Δ top, wf_stype CT Δ top MutPerson.
@@ -138,7 +139,7 @@ Ltac refl_sub :=
 
 (* ------------------CLASS TABLE WELL-FORMEDNESS------------------*)
 
-Definition ΔBox : tv_env := mk_tv_env [TClass RO 0 []] [] AbstractState.
+Definition ΔBox : tv_env := mk_tv_env [TClass RO 0 []] [] AbstractState 0.
 
 Lemma wf_tE : forall top, wf_stype CT ΔBox top tE.
 Proof.
@@ -195,7 +196,7 @@ Proof.
   assert (Hwf2 : wf_senv CT ΔBox [TClass RO 2 [tE]; tE]).
   { split; [cbn; lia|].
     constructor; [apply wf_ROBoxE|]. constructor; [apply wf_tE | constructor]. }
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [apply wf_tE|].
   split.
@@ -285,7 +286,7 @@ Proof.
       intros m. apply sub_MutPerson_ROObject.
     - constructor; [|constructor]. cbn. split.
       + refl_sub.
-      + left. cbn. intuition discriminate.
+      + cbn. intuition discriminate.
     - cbn. refl_sub. }
   (* q = b.get(): the result type is the type argument itself *)
   ty_seq.
@@ -294,13 +295,13 @@ Proof.
       (mdef := get_def);
       [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
       | | | discriminate | constructor | constructor | reflexivity
-      | constructor | | | constructor | apply method_subtyping_refl].
+      | constructor | | | constructor | apply method_subtyping_refl | reflexivity | constructor | recv_known].
     - eapply FOM_Here; reflexivity.
     - apply si_refl; try (cbn; lia).
     - cbn. refl_sub.
-    - left. cbn. split.
+    - cbn. split.
       + apply qtype_qual; [cbn; lia | qs | apply Forall2_targ_sub_refl].
-      + left. cbn. intuition discriminate. }
+      + cbn. intuition discriminate. }
   (* o = (@RO Person) q *)
   ty_seq.
   { eapply ST_Cast with (Tx := ROPerson) (Ty := MutPerson);
@@ -325,7 +326,7 @@ Proof.
 Qed.
 
 Lemma example_main_typed :
-  exists sΓ', stmt_typing CT (mk_tv_env [] [] AbstractState) [TClass Mut 0 []] AbstractState main sΓ'.
+  exists sΓ', stmt_typing CT (mk_tv_env [] [] AbstractState 0) [TClass Mut 0 []] AbstractState main sΓ'.
 Proof. exists sΓfinal. apply example_main_typed_exact. Qed.
 
 (* ------------------NEGATIVE CHECKS------------------*)
@@ -380,11 +381,11 @@ Qed.
 
 (* ------------------EVALUATION------------------*)
 
-Definition rΓ0 : r_env := mkr_env [Iot 0] [] [].
+Definition rΓ0 : r_env := mkr_env [Iot 0] [] [] [].
 Definition h0 : heap := [mkObj (mkruntime_type Mut_r 0 []) []].
 
 Definition rΓfinal : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 1; Iot 1; Iot 3; Iot 3] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 1; Iot 1; Iot 3; Iot 3] [] [] [].
 
 (** The Box object (location 2) is immutable and stores the runtime type
     argument [@Mut Person]; its field holds the Person at location 1. *)
@@ -412,7 +413,7 @@ Proof.
     - reflexivity.
     - reflexivity.
     - unfold callee_env. do 4 eexists.
-      split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+      split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
       split; [apply rsi_refl; try (cbn; lia) | reflexivity].
     - cbn. eapply SBS_Seq; [apply SBS_Local; reflexivity|]. cbn.
       eapply SBS_Assign; [reflexivity|].
@@ -432,6 +433,6 @@ Qed.
 
 Lemma example_main_eval :
   exists rΓ' h',
-    eval_stmt CT (mkr_env [Iot 0] [] []) [mkObj (mkruntime_type Mut_r 0 []) []]
+    eval_stmt CT (mkr_env [Iot 0] [] [] []) [mkObj (mkruntime_type Mut_r 0 []) []]
       main OK rΓ' h'.
 Proof. exists rΓfinal, hfinal. apply example_main_eval_exact. Qed.

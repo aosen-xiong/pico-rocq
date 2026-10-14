@@ -22,8 +22,8 @@ Proof.
     as (ι & othis & Hthis & Hobj & _ & _ & _ & Hfb).
   pose proof (wf_r_config_var _ _ _ _ _ _ _ _ _ Hwf Hthis Hobj Hget_x) as Hxty.
   rewrite Hvx in Hxty.
-  pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ Hfb Hub Hxty) as Hxty'.
-  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ Hxty')
+  pose proof (wf_r_typable_ubound _ _ _ _ _ _ _ _ _ _ Hfb Hub Hxty) as Hxty'.
+  destruct (wf_r_typable_class_inv _ _ _ _ _ _ _ _ _ _ Hxty')
     as (ox' & Vs & Hox' & Hhead & Hsup & _).
   rewrite Hox in Hox'. inversion Hox'; subst ox'. clear Hox'.
   destruct Hassign as (fdO & HlookO & Ha).
@@ -53,7 +53,7 @@ Proof.
   - eapply fldwrite_no_mutation_exp; eauto.
   - subst.
     destruct (call_entry _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-                Hwf Htype Hval_y Hbase Hfind Hargs Hframe)
+                _ Hwf Htype Hval_y Hbase Hfind Hargs Hframe)
       as (ι & o & oy & Tx & _ & _ & _ & _ & _ & _ &
           _ & Hwm & Hcfg & _).
     pose proof Hwm as (_ & _ & _ & (sΓb & Tb & Hbody & _ & _) & _ & _).

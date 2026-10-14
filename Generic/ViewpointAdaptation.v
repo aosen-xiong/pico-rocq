@@ -30,6 +30,15 @@ Definition vpa_q (mt : method_scope) (q1 q2 : q) : q :=
   | ReadonlyState | TransitiveState => vpa_mutability_qq_readonly_state q1 q2
   end.
 
+(** Adaptation of a declared method receiver: a receiver declared [RDM] is
+    the caller's view of the receiver unchanged; every other declared
+    qualifier stays as declared, in every mode. *)
+Definition vpa_recv (q1 q2 : q) : q :=
+  match q2 with
+  | RDM => q1
+  | _ => q2
+  end.
+
 (* Viewpoint adaptation of assignability qualifiers *)
 Definition vpa_assignability (q1: q) (a1: a) : a :=
   match q1, a1 with
@@ -119,7 +128,8 @@ Fixpoint map_qual (f : q -> q) (T : qualified_type) : qualified_type :=
   | TClass q0 C args => TClass (f q0) C (map (map_qual f) args)
   | TVar TVSub o n => TVar TVSub o n
   | TVar (TVQual q0) o n => TVar (TVQual (f q0)) o n
-  | THead o n C args => THead o n C (map (map_qual f) args)
+  | TVar (TVPoly m) o n => TVar (TVPoly m) o n
+  | THead n C args => THead n C (map (map_qual f) args)
   end.
 
 (** Adapt a declared type through a receiver qualifier.  Written qualifiers are
@@ -132,17 +142,34 @@ Definition requalify (q0 : q) (T : qualified_type) : qualified_type :=
   match T with
   | TClass _ C args => TClass q0 C args
   | TVar _ o n => TVar (TVQual q0) o n
-  | THead _ _ C args => TClass q0 C args
+  | THead _ C args => TClass q0 C args
   end.
 
-(** The class type [C<args>] with the qualifier of the type [U]. *)
-Definition headby (U : qualified_type) (C : class_name)
+(** Replace the outer qualifier of a static type by a qualifier parameter. *)
+Definition prequalify (m : nat) (T : qualified_type) : qualified_type :=
+  match T with
+  | TClass _ C args => THead m C args
+  | TVar _ o n => TVar (TVPoly m) o n
+  | THead _ C args => THead m C args
+  end.
+
+(** Replace the outer qualifier of a static type by a qualifier argument.  A
+    missing argument reads as readonly. *)
+Definition qrequalify (a : option qarg) (T : qualified_type) : qualified_type :=
+  match a with
+  | Some (QLit q0) => requalify q0 T
+  | Some (QVar m) => prequalify m T
+  | None => requalify RO T
+  end.
+
+(** The class type [C<args>] under a qualifier argument.  A missing argument
+    reads as readonly. *)
+Definition qhead (a : option qarg) (C : class_name)
     (args : list qualified_type) : qualified_type :=
-  match U with
-  | TClass q0 _ _ => TClass q0 C args
-  | TVar TVSub o n => THead o n C args
-  | TVar (TVQual q0) _ _ => TClass q0 C args
-  | THead o n _ _ => THead o n C args
+  match a with
+  | Some (QLit q0) => TClass q0 C args
+  | Some (QVar m) => THead m C args
+  | None => TClass RO C args
   end.
 
 Definition default_type : qualified_type := TClass RO 0 [].
@@ -154,11 +181,13 @@ Definition tv_lookup {A : Type} (o : tv_owner) (cs ms : list A) (n : nat) : opti
   end.
 
 (** Substitute class type arguments [cs] and method type arguments [ms] for
-    type variables.  A qualified use of a variable keeps the supplied class and
-    arguments and replaces the outer qualifier. *)
-Fixpoint subst (cs ms : list qualified_type) (T : qualified_type) : qualified_type :=
+    type variables, and qualifier arguments [qs] for qualifier parameters.  A
+    qualified use of a variable keeps the supplied class and arguments and
+    replaces the outer qualifier. *)
+Fixpoint subst (cs ms : list qualified_type) (qs : list qarg)
+    (T : qualified_type) : qualified_type :=
   match T with
-  | TClass q0 C args => TClass q0 C (map (subst cs ms) args)
+  | TClass q0 C args => TClass q0 C (map (subst cs ms qs) args)
   | TVar u o n =>
       let U := match tv_lookup o cs ms n with
                | Some U => U
@@ -167,12 +196,9 @@ Fixpoint subst (cs ms : list qualified_type) (T : qualified_type) : qualified_ty
       match u with
       | TVSub => U
       | TVQual q0 => requalify q0 U
+      | TVPoly m => qrequalify (nth_error qs m) U
       end
-  | THead o n C args =>
-      headby (match tv_lookup o cs ms n with
-              | Some U => U
-              | None => default_type
-              end) C (map (subst cs ms) args)
+  | THead n C args => qhead (nth_error qs n) C (map (subst cs ms qs) args)
   end.
 
 (** The identity instantiation of [n] class type parameters. *)
@@ -182,7 +208,13 @@ Definition class_var_types (n : nat) : list qualified_type :=
 Definition method_var_types (n : nat) : list qualified_type :=
   map (fun i => TVar TVSub MethodVar i) (seq 0 n).
 
+(** The identity instantiation of [n] qualifier parameters. *)
+Definition qvar_args (n : nat) : list qarg := map QVar (seq 0 n).
+
 Definition default_rtype : rtype := RClass RO 0 [].
+
+(** A runtime qualifier argument; a missing one reads as readonly. *)
+Definition qnth (qa : list q) (n : nat) : q := nth n qa RO.
 
 Definition rhead (R : rtype) : q :=
   match R with RClass q0 _ _ => q0 end.
@@ -194,11 +226,13 @@ Definition rrequalify (q0 : q) (R : rtype) : rtype :=
 
 (** Dynamization: resolve a static type to a runtime type.  [qctx] is the
     mutability through which [RDM] is read, [ca] and [ma] are the runtime class
-    and method type arguments.  [Lost] stays [Lost]: it marks a position whose
-    concrete mutability the static type does not know. *)
-Fixpoint dyn (qctx : q) (ca ma : list rtype) (T : qualified_type) : rtype :=
+    and method type arguments, [qa] the runtime qualifier arguments.  [Lost]
+    stays [Lost]: it marks a position whose concrete mutability the static
+    type does not know. *)
+Fixpoint dyn (qctx : q) (ca ma : list rtype) (qa : list q)
+    (T : qualified_type) : rtype :=
   match T with
-  | TClass q0 C args => RClass (dynq qctx q0) C (map (dyn qctx ca ma) args)
+  | TClass q0 C args => RClass (dynq qctx q0) C (map (dyn qctx ca ma qa) args)
   | TVar u o n =>
       let R := match tv_lookup o ca ma n with
                | Some R => R
@@ -207,12 +241,16 @@ Fixpoint dyn (qctx : q) (ca ma : list rtype) (T : qualified_type) : rtype :=
       match u with
       | TVSub => R
       | TVQual q0 => rrequalify (dynq qctx q0) R
+      | TVPoly m => rrequalify (qnth qa m) R
       end
-  | THead o n C args =>
-      RClass (rhead (match tv_lookup o ca ma n with
-                     | Some R => R
-                     | None => default_rtype
-                     end)) C (map (dyn qctx ca ma) args)
+  | THead n C args => RClass (qnth qa n) C (map (dyn qctx ca ma qa) args)
+  end.
+
+(** The runtime value of a qualifier argument, in the caller's activation. *)
+Definition rqarg (qctx : q) (qa : list q) (a : qarg) : q :=
+  match a with
+  | QLit q0 => dynq qctx q0
+  | QVar m => qnth qa m
   end.
 
 (** No [Lost] anywhere in a type. *)
@@ -227,7 +265,8 @@ Fixpoint lost_free (T : qualified_type) : Prop :=
          end) args
   | TVar TVSub _ _ => True
   | TVar (TVQual q0) _ _ => q0 <> Lost
-  | THead _ _ _ args =>
+  | TVar (TVPoly _) _ _ => True
+  | THead _ _ args =>
       (fix go (l : list qualified_type) : Prop :=
          match l with
          | [] => True
@@ -258,7 +297,8 @@ Fixpoint rdm_free (T : qualified_type) : Prop :=
          end) args
   | TVar TVSub _ _ => True
   | TVar (TVQual q0) _ _ => q0 <> RDM
-  | THead _ _ _ args =>
+  | TVar (TVPoly _) _ _ => True
+  | THead _ _ args =>
       (fix go (l : list qualified_type) : Prop :=
          match l with
          | [] => True
@@ -320,8 +360,8 @@ Proof.
   intros. simpl. rewrite rdm_free_go_Forall. reflexivity.
 Qed.
 
-Lemma lost_free_head : forall o n C args,
-  lost_free (THead o n C args) <-> Forall lost_free args.
+Lemma lost_free_head : forall n C args,
+  lost_free (THead n C args) <-> Forall lost_free args.
 Proof.
   intros. simpl. rewrite lost_free_go_Forall. reflexivity.
 Qed.

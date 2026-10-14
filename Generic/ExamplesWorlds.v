@@ -82,6 +82,7 @@ Definition j_make : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := RDMD;
           mname := 0;
           mreceiver := RDMJ;
@@ -94,6 +95,7 @@ Definition j_run : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := ROObject;
           mname := 1;
           mreceiver := RDMJ;
@@ -102,7 +104,7 @@ Definition j_run : method_def :=
        {| mbody_stmt :=
             SSeq (SLocal RDMD 1)
             (SSeq (SLocal RDMD 2)
-            (SSeq (SCall 1 0 0 [] [])
+            (SSeq (SCall 1 0 0 [] [] [])
             (SSeq (SVarAss 2 (EField 0 0))
                   (SFldWrite 1 0 2))));
           mreturn := 2 |} |}.
@@ -116,6 +118,7 @@ Definition k_make : method_def :=
   {| msignature :=
        {| mscope := ReadonlyState;
           mtparams := [];
+          mqparams := 0;
           mret := MutD;
           mname := 0;
           mreceiver := ROK;
@@ -144,11 +147,11 @@ Definition prefix : stmt :=
   (SSeq (SNew 2 Mut_c 3 [] [1])
         (SVarAss 3 (EVar 2)))))))).
 
-Definition callA : stmt := SCall 4 1 3 [] [].
+Definition callA : stmt := SCall 4 1 3 [] [] [].
 
 Definition main : stmt := SSeq prefix callA.
 
-Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState.
+Definition Δ0 : tv_env := mk_tv_env [] [] AbstractState 0.
 Definition sΓ0 : s_env := [MutObject].
 Definition sΓA : s_env := [MutObject; MutD; MutK; ROJ; ROObject; MutObject].
 
@@ -278,7 +281,7 @@ Qed.
 Lemma wf_j_make : wf_method CT 2 j_make.
 Proof.
   unfold wf_method. cbn.
-  split; [left; exists RDM; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RDM; reflexivity|].
   split; [constructor|].
   split; [wfp|].
   split.
@@ -309,7 +312,7 @@ Qed.
 Lemma wf_j_run : wf_method CT 2 j_run.
 Proof.
   unfold wf_method. cbn.
-  split; [left; exists RDM; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RDM; reflexivity|].
   split; [constructor|].
   split; [wfp|].
   split.
@@ -327,9 +330,9 @@ Proof.
           [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
           | apply find_j_make | apply si_refl | discriminate | constructor
           | constructor | reflexivity
-          | constructor | | | constructor | apply method_subtyping_refl].
+          | constructor | | | constructor | apply method_subtyping_refl | reflexivity | constructor | recv_known].
         - cbn. refl_sub.
-        - left. cbn. split; [refl_sub|]. left. cbn. intuition discriminate. }
+        - cbn. split; [refl_sub|]. cbn. intuition discriminate. }
       eapply ST_Seq; [wfenv | |].
       { (* old = this.d *)
         eapply ST_VarAss with (Tx := RDMD);
@@ -344,7 +347,7 @@ Proof.
         (C := 1) (Ts := []) (fieldT := slot_field);
         [wfenv | reflexivity | reflexivity | reflexivity | | | reflexivity].
       + eapply FL_Found; [apply collect_D | reflexivity].
-      + split; [cbn; hier_sub | left; cbn; intuition discriminate].
+      + split; [cbn; hier_sub | cbn; intuition discriminate].
     - reflexivity.
     - (* @RDM D <: @RO Object *)
       eapply qtype_trans; [hier_sub | qual_sub]. }
@@ -363,7 +366,7 @@ Qed.
 Lemma wf_k_make : wf_method CT 3 k_make.
 Proof.
   unfold wf_method. cbn.
-  split; [left; exists RO; reflexivity|].
+  split; [apply receiver_plain_ok; left; exists RO; reflexivity|].
   split; [constructor|].
   split; [wfp|].
   split.
@@ -378,7 +381,7 @@ Proof.
         | reflexivity | wfp | constructor | constructor
         | apply collect_D | | ].
       + constructor; [|constructor]. cbn. split; [refl_sub|].
-        left. cbn. intuition discriminate.
+        cbn. intuition discriminate.
       + cbn. refl_sub.
     - reflexivity.
     - refl_sub. }
@@ -389,10 +392,10 @@ Proof.
     destruct (find_method_with_name_deterministic _ _ _ _ _ _ _ Hfm find_j_make)
       as [-> ->].
     unfold method_override_compatible. cbn.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [refl_sub|].
     split; [constructor|].
-    cbn. apply qtype_qual; [cbn; lia | cbn; qs | apply Forall2_targ_sub_refl]. }
+    cbn. split; [apply qtype_qual; [cbn; lia | cbn; qs | apply Forall2_targ_sub_refl] | radmit_plain]. }
   intros _. split.
   - constructor; [discriminate | constructor].
   - constructor.
@@ -444,9 +447,9 @@ Proof.
   - injection Hfind as <-. split; [reflexivity | constructor].
   - injection Hfind as <-. split; [reflexivity | constructor].
   - injection Hfind as <-. split; [reflexivity|].
-    constructor; [reflexivity|]. constructor; [reflexivity | constructor].
+    constructor; [split; reflexivity|]. constructor; [split; reflexivity | constructor].
   - injection Hfind as <-. split; [reflexivity|].
-    constructor; [reflexivity | constructor].
+    constructor; [split; reflexivity | constructor].
   - destruct C; discriminate.
 Qed.
 
@@ -471,7 +474,7 @@ Proof.
       | reflexivity | wfp | constructor | constructor
       | apply collect_D | | ].
     - constructor; [|constructor]. cbn. split; [refl_sub|].
-      left. cbn. intuition discriminate.
+      cbn. intuition discriminate.
     - cbn. refl_sub. }
   (* k = new @Mut K(d0): the inherited field d, declared @RDM D, is seen
      through the allocation's @Mut as @Mut D *)
@@ -481,7 +484,7 @@ Proof.
       | reflexivity | wfp | constructor | constructor
       | apply collect_K | | ].
     - constructor; [|constructor]. cbn. split; [refl_sub|].
-      left. cbn. intuition discriminate.
+      cbn. intuition discriminate.
     - cbn. refl_sub. }
   (* j = k: @Mut K <: @RO J *)
   eapply ST_VarAss with (Tx := ROJ) (Te := MutK);
@@ -490,11 +493,9 @@ Proof.
   - apply qtype_trans with (T2 := ROK); [qual_sub | hier_sub].
 Qed.
 
-(** Call A is typed through the readonly receiver j.  The ordinary receiver
-    check would fail (a receiver-dependent receiver type seen through a
-    readonly reference is unknown); the call is accepted by the rule for
-    readonly receivers calling a method whose declared receiver is
-    receiver-dependent. *)
+(** Call A is typed through the readonly receiver j.  The declared receiver
+    is receiver-dependent, so receiver adaptation makes it the caller's own
+    view, readonly, and the receiver check is readonly against readonly. *)
 Lemma callA_typed : stmt_typing CT Δ0 sΓA AbstractState callA sΓA.
 Proof.
   unfold callA, sΓA, Δ0.
@@ -505,9 +506,9 @@ Proof.
     [wfenv | reflexivity | reflexivity | reflexivity | reflexivity
     | apply find_j_run | apply si_refl | discriminate | constructor
     | constructor | reflexivity
-    | constructor | | | constructor | apply method_rs_as].
+    | constructor | | | constructor | apply method_rs_as | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - right. split; [reflexivity|]. exists (@nil qualified_type). reflexivity.
+  - cbn. split; [refl_sub | discriminate].
 Qed.
 
 Lemma main_typed : stmt_typing CT Δ0 sΓ0 AbstractState main sΓA.
@@ -517,11 +518,11 @@ Proof.
 Qed.
 
 (** The states.  Location 0 is main's receiver, 1 is d0, 2 is the K object. *)
-Definition rΓ0 : r_env := mkr_env [Iot 0] [] [].
+Definition rΓ0 : r_env := mkr_env [Iot 0] [] [] [].
 Definition h0 : heap := [mkObj (mkruntime_type Mut_r 0 []) []].
 
 Definition rΓA : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 2; Null_a; Null_a] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 2; Null_a; Null_a] [] [] [].
 
 Definition hA : heap :=
   [ mkObj (mkruntime_type Mut_r 0 []) [];
@@ -537,7 +538,7 @@ Proof.
   eapply SBS_Seq; [eapply SBS_New; reflexivity|]. cbn.
   eapply SBS_Seq; [eapply SBS_New; reflexivity|]. cbn.
   refine (SBS_Assign _
-            (mkr_env [Iot 0; Iot 1; Iot 2; Null_a; Null_a; Null_a] [] [])
+            (mkr_env [Iot 0; Iot 1; Iot 2; Null_a; Null_a; Null_a] [] [] [])
             _ 3 _ Null_a (Iot 2) eq_refl _).
   apply EBS_Val. reflexivity.
 Qed.
@@ -560,7 +561,7 @@ Proof.
   - split; simpl; [lia|]. constructor; [wfp | constructor].
   - exists 0, (mkObj (mkruntime_type Mut_r 0 []) []), 0. simpl.
     refine (conj eq_refl (conj eq_refl (conj eq_refl (conj (rsi_refl _ _ _ _)
-             (conj (Forall_nil _) (conj (Forall_nil _) (conj _ _))))))); constructor.
+             (conj (Forall_nil _) (conj (conj (Forall_nil _) (Forall_nil _)) (conj _ _))))))); constructor.
   - intros ι qcontext Hthis Hmut i Hi sqt Hnth.
     simpl in Hi. assert (i = 0) by lia. subst i.
     simpl in Hthis. inversion Hthis; subst ι.
@@ -583,7 +584,7 @@ Qed.
 (** After call A: x holds d0, and a fresh D (location 3), allocated by
     K.make, holds d0 in its slot. *)
 Definition rΓA' : r_env :=
-  mkr_env [Iot 0; Iot 1; Iot 2; Iot 2; Iot 1; Null_a] [] [].
+  mkr_env [Iot 0; Iot 1; Iot 2; Iot 2; Iot 1; Null_a] [] [] [].
 
 Definition hA' : heap :=
   [ mkObj (mkruntime_type Mut_r 0 []) [];
@@ -595,15 +596,15 @@ Definition hA' : heap :=
     lookup starts at the object's class K and selects K.make, which
     allocates the fresh D at location 3. *)
 Lemma inner_make_eval :
-  eval_stmt CT (mkr_env [Iot 2; Null_a; Null_a] [] []) hA
-    (SCall 1 0 0 [] []) OK
-    (mkr_env [Iot 2; Iot 3; Null_a] [] [])
+  eval_stmt CT (mkr_env [Iot 2; Null_a; Null_a] [] [] []) hA
+    (SCall 1 0 0 [] [] []) OK
+    (mkr_env [Iot 2; Iot 3; Null_a] [] [] [])
     (hA ++ [mkObj (mkruntime_type Mut_r 1 []) [Null_a]]).
 Proof.
   unfold hA.
   eapply SBS_Call with (mdef := k_make) (D := 3) (cy := 3)
-    (rΓ' := mkr_env [Iot 2] [] [])
-    (rΓ'' := mkr_env [Iot 2; Iot 3; Null_a] [] []).
+    (rΓ' := mkr_env [Iot 2] [] [] [])
+    (rΓ'' := mkr_env [Iot 2; Iot 3; Null_a] [] [] []).
   - reflexivity.
   - reflexivity.
   - apply find_k_make.
@@ -611,7 +612,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [apply rsi_refl | reflexivity].
   - cbn. eapply SBS_Seq; [apply SBS_Local; reflexivity|]. cbn.
     eapply SBS_Seq; [apply SBS_Local; reflexivity|]. cbn.
@@ -624,8 +625,8 @@ Lemma callA_eval : eval_stmt CT rΓA hA callA OK rΓA' hA'.
 Proof.
   unfold callA, rΓA.
   eapply SBS_Call with (mdef := j_run) (D := 2) (cy := 3)
-    (rΓ' := mkr_env [Iot 2] [] [])
-    (rΓ'' := mkr_env [Iot 2; Iot 3; Iot 1] [] []).
+    (rΓ' := mkr_env [Iot 2] [] [] [])
+    (rΓ'' := mkr_env [Iot 2; Iot 3; Iot 1] [] [] []).
   - reflexivity.
   - reflexivity.
   - apply find_run_from_K.
@@ -633,7 +634,7 @@ Proof.
   - reflexivity.
   - reflexivity.
   - unfold callee_env. do 4 eexists.
-    split; [reflexivity|]. split; [reflexivity|]. split; [reflexivity|].
+    split; [reflexivity|]. split; [reflexivity|]. split; [split; reflexivity|].
     split; [|reflexivity].
     cbn. eapply rsi_step; [reflexivity | cbn; apply rsi_refl].
   - cbn. eapply SBS_Seq; [apply SBS_Local; reflexivity|]. cbn.
@@ -666,7 +667,7 @@ Theorem callA_preserves_d : forall rΓ' h',
 Proof.
   intros rΓ' h' Heval.
   eapply (readonly_state_preservation_rdm CT Δ0 sΓA AbstractState rΓA hA
-            4 1 3 [] [] sΓA rΓ' h' 2 3 2 j_run
+            4 1 3 [] [] _ sΓA rΓ' h' 2 3 2 j_run
             worlds_no_tparams config_A callA_typed Heval).
   - reflexivity.
   - reflexivity.

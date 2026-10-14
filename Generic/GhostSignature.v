@@ -42,6 +42,19 @@ Proof.
   apply in_map_iff. exists i. split; auto. apply in_seq. lia.
 Qed.
 
+(** The method rule checks the bounds of the type parameters of every
+    readonly-state and transitive-state method, so a well-formed class table
+    satisfies the condition. *)
+Lemma clean_method_bounds_of_wf : forall CT,
+  wf_class_table CT -> clean_method_bounds_ct CT.
+Proof.
+  intros CT Hct C def md Hfind Hin Hrs.
+  pose proof (class_method_wf _ _ _ _ Hct Hfind Hin) as Hwm.
+  destruct Hwm as (_ & Hmb & _).
+  eapply Forall_impl; [|exact Hmb].
+  intros B (_ & _ & H). exact (H Hrs).
+Qed.
+
 Lemma clean_bounds_of_signature : forall CT,
   wf_class_table CT -> clean_method_bounds_ct CT -> clean_bounds_ct CT.
 Proof.
@@ -58,9 +71,12 @@ Proof.
     split.
     + pose proof (class_bounds_class _ _ _ Hct Hfind) as Hall.
       rewrite Forall_forall in Hall. apply Hall. eapply nth_error_In; eauto.
-    + assert (Hargs : Forall (no_mut (method_tv_env CT C (msignature md)))
+    + destruct (proj2 Hshape Hrs) as [Hplain | [Hcb _]].
+      2:{ rewrite Forall_forall in Hcb. apply Hcb.
+          unfold tv_bound in Hb. simpl in Hb. eapply nth_error_In; eauto. }
+      assert (Hargs : Forall (no_mut (method_tv_env CT C (msignature md)))
                         (class_var_types (length (class_tparams CT C)))).
-      { destruct Hshape as [[qr Hr] | [n0 Hr]]; rewrite Hr in Hrecv;
+      { destruct Hplain as [[qr Hr] | [n0 Hr]]; rewrite Hr in Hrecv;
           inversion Hrecv; subst; assumption. }
       rewrite Forall_forall in Hargs.
       assert (Hlt : n < length (class_tparams CT C)).

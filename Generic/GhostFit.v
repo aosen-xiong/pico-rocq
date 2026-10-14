@@ -66,7 +66,7 @@ Definition tg (qA : q) (q0 : q) : q :=
   end.
 
 Definition tframe (qA : q) (lA : lab) (As : list ltype) : lframe :=
-  mk_lframe qA lA lA As [].
+  mk_lframe qA lA lA As [] [].
 
 Definition tstep (qA : q) (lA : lab) (As : list ltype)
     (Ss : list qualified_type) : list ltype :=
@@ -125,9 +125,10 @@ Proof.
       as (Ws0 & Hs & Hle').
     { unfold tstep. rewrite <- (map_map (map_qual (tg qA)) (ldyn (tframe qA lA As))).
       apply map_ldyn_map_qual_agree.
-      - exact (label_cond_args L _ _ _ Vs0 [] As [] Hcond).
+      - exact (label_cond_args L _ _ _ Vs0 [] As [] _ _ Hcond).
       - exact Hle.
-      - constructor. }
+      - constructor.
+      - reflexivity. }
     exists Ws0. split; auto. eapply lsi_step; eauto.
 Qed.
 
@@ -182,9 +183,10 @@ Lemma ldyn_map_qual_agree2 : forall L g f Fo Fc T,
   label_cond2 L g f Fo Fc ->
   Forall2 (lagree L) (lf_cargs Fo) (lf_cargs Fc) ->
   Forall2 (lagree L) (lf_margs Fo) (lf_margs Fc) ->
+  lf_qargs Fo = lf_qargs Fc ->
   lagree L (ldyn Fo (map_qual g T)) (ldyn Fc (map_qual f T)).
 Proof.
-  intros L g f Fo Fc T Hq Hc Hm.
+  intros L g f Fo Fc T Hq Hc Hm Hqs.
   induction T using qualified_type_ind'.
   - simpl. destruct (Hq qual) as [H1 H2]. constructor; auto.
     induction H; simpl; constructor; auto.
@@ -197,19 +199,12 @@ Proof.
     { destruct (tv_lookup o (lf_cargs Fo) (lf_margs Fo) n),
                (tv_lookup o (lf_cargs Fc) (lf_margs Fc) n);
         try contradiction; auto using lagree_default. }
-    destruct u; simpl; auto.
-    destruct (Hq qual) as [H1 H2].
-    inversion HA; subst. simpl. constructor; auto.
-  - pose proof (tv_lookup_Forall2 (lagree L) o _ _ _ _ n Hc Hm) as Hl.
-    assert (HA : lagree L
-              match tv_lookup o (lf_cargs Fo) (lf_margs Fo) n with
-              | Some A => A | None => ldefault end
-              match tv_lookup o (lf_cargs Fc) (lf_margs Fc) n with
-              | Some A => A | None => ldefault end).
-    { destruct (tv_lookup o (lf_cargs Fo) (lf_margs Fo) n),
-               (tv_lookup o (lf_cargs Fc) (lf_margs Fc) n);
-        try contradiction; auto using lagree_default. }
-    simpl. inversion HA; subst. simpl. constructor; auto.
+    destruct u as [|qual|m]; simpl; auto.
+    + destruct (Hq qual) as [H1 H2].
+      inversion HA; subst. simpl. constructor; auto.
+    + rewrite Hqs. inversion HA; subst. simpl.
+      constructor; auto; left; reflexivity.
+  - simpl. rewrite Hqs. constructor; [left; reflexivity | auto |].
     induction H; simpl; constructor; auto.
 Qed.
 
@@ -217,6 +212,7 @@ Lemma map_ldyn_map_qual_agree2 : forall L g f Fo Fc Ss,
   label_cond2 L g f Fo Fc ->
   Forall2 (lagree L) (lf_cargs Fo) (lf_cargs Fc) ->
   Forall2 (lagree L) (lf_margs Fo) (lf_margs Fc) ->
+  lf_qargs Fo = lf_qargs Fc ->
   Forall2 (lagree L) (map (fun S => ldyn Fo (map_qual g S)) Ss)
     (map (fun S => ldyn Fc (map_qual f S)) Ss).
 Proof.
@@ -328,13 +324,13 @@ Qed.
 
 (** The view of a labelled reading against the reading of the static view,
     in a protected mode. *)
-Lemma hier_cond : forall L mt F q1 As cs ms,
+Lemma hier_cond : forall L mt F q1 As cs ms ks,
   readonly_state_method_scope mt ->
   (lf_q F = Mut \/ lf_q F = Imm) ->
   label_cond2 L (tg (dynq (lf_q F) q1)) (vpa_q mt q1)
-    (tframe (dynq (lf_q F) q1) (lab_of F q1) As) (lf_with_args F cs ms).
+    (tframe (dynq (lf_q F) q1) (lab_of F q1) As) (lf_with_args F cs ms ks).
 Proof.
-  intros L mt [qF lm lr c0 m0] q1 As cs ms Hrs Hq q0. simpl in Hq.
+  intros L mt [qF lm lr c0 m0 k0] q1 As cs ms ks Hrs Hq q0. simpl in Hq.
   destruct Hrs as [-> | ->]; destruct Hq as [-> | ->]; destruct q1, q0;
     cbv [tg tframe lf_with_args lf_q lab_of lf_mut lf_rdm dynq arg_q_sub vpa_q
          vpa_mutability_qq_readonly_state];
@@ -359,8 +355,8 @@ Proof.
   - destruct (IHsuper_inst L F
                 (tstep (dynq (lf_q F) qh) (lab_of F qh) As Ss) Hrs Hq)
       as (Vs' & Hv & Hle).
-    { assert (Heq : map (ldyn F) (map (subst Ts []) (map (adapt mt qh) Ss)) =
-                    map (fun S => ldyn (lf_with_args F (map (ldyn F) Ts) [])
+    { assert (Heq : map (ldyn F) (map (subst Ts [] []) (map (adapt mt qh) Ss)) =
+                    map (fun S => ldyn (lf_with_args F (map (ldyn F) Ts) [] [])
                                     (map_qual (vpa_q mt qh) S)) Ss).
       { clear. induction Ss as [|S Ss IH]; simpl; auto.
         f_equal; auto. rewrite ldyn_subst. reflexivity. }
@@ -368,7 +364,8 @@ Proof.
       apply map_ldyn_map_qual_agree2.
       - apply hier_cond; auto.
       - exact Hargs.
-      - constructor. }
+      - constructor.
+      - reflexivity. }
     exists Vs'. split; auto. eapply lts_step; eauto.
 Qed.
 
@@ -377,9 +374,9 @@ Qed.
 Lemma type_vs_static_view_g : forall CT mt qh C Ts D Vs,
   super_inst CT mt qh C Ts D Vs ->
   forall L F qa la As,
-    (forall As0 cs ms,
+    (forall As0 cs ms ks,
        label_cond2 L (tg qa) (vpa_q mt qh)
-         (tframe qa la As0) (lf_with_args F cs ms)) ->
+         (tframe qa la As0) (lf_with_args F cs ms ks)) ->
     Forall2 (lagree L) As (map (ldyn F) Ts) ->
     exists Vs', ltsuper CT qa la C As D Vs' /\
                 Forall2 (lagree L) Vs' (map (ldyn F) Vs).
@@ -389,8 +386,8 @@ Proof.
   - exists As. split; [apply lts_refl | exact Hargs].
   - destruct (IHsuper_inst L F qa la (tstep qa la As Ss) Hcond)
       as (Vs' & Hv & Hle).
-    { assert (Heq : map (ldyn F) (map (subst Ts []) (map (adapt mt qh) Ss)) =
-                    map (fun S => ldyn (lf_with_args F (map (ldyn F) Ts) [])
+    { assert (Heq : map (ldyn F) (map (subst Ts [] []) (map (adapt mt qh) Ss)) =
+                    map (fun S => ldyn (lf_with_args F (map (ldyn F) Ts) [] [])
                                     (map_qual (vpa_q mt qh) S)) Ss).
       { clear. induction Ss as [|S Ss IH]; simpl; auto.
         f_equal; auto. rewrite ldyn_subst. reflexivity. }
@@ -398,19 +395,20 @@ Proof.
       apply map_ldyn_map_qual_agree2.
       - apply Hcond.
       - exact Hargs.
-      - constructor. }
+      - constructor.
+      - reflexivity. }
     exists Vs'. split; auto. eapply lts_step; eauto.
 Qed.
 
 (** A head that is not the bottom qualifier reads a superclass declaration
     no more precisely than the readonly view does. *)
-Lemma head_ro_cond : forall L mt F qa la As cs ms,
+Lemma head_ro_cond : forall L mt F qa la As cs ms ks,
   readonly_state_method_scope mt ->
   (lf_q F = Mut \/ lf_q F = Imm) ->
   qa <> Bot ->
-  label_cond2 L (tg qa) (vpa_q mt RO) (tframe qa la As) (lf_with_args F cs ms).
+  label_cond2 L (tg qa) (vpa_q mt RO) (tframe qa la As) (lf_with_args F cs ms ks).
 Proof.
-  intros L mt [qF lm lr c0 m0] qa la As cs ms Hrs Hq Hnb q0. simpl in Hq.
+  intros L mt [qF lm lr c0 m0 k0] qa la As cs ms ks Hrs Hq Hnb q0. simpl in Hq.
   destruct Hrs as [-> | ->]; destruct Hq as [-> | ->]; destruct qa, q0;
     try congruence;
     cbv [tg tframe lf_with_args lf_q lab_of lf_mut lf_rdm dynq arg_q_sub vpa_q
@@ -479,6 +477,15 @@ Proof.
     + right. left. reflexivity.
     + intros Hm. discriminate.
     + exists Aa. split; [apply lts_refl | apply Forall2_lagree_refl].
+  - apply lsubt_refl.
+  - (* a use under a qualifier parameter, viewed as readonly *)
+    cbn [ldyn].
+    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
+              | Some A => A | None => ldefault end) as [qa la Ca Aa].
+    simpl lrehead. right. refine (conj _ (conj _ _)).
+    + right. left. reflexivity.
+    + intros Hm. discriminate.
+    + exists Aa. split; [apply lts_refl | apply Forall2_lagree_refl].
   - (* a qualified variable use at an argument-free bound *)
     cbn [ldyn] in *.
     destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
@@ -497,26 +504,26 @@ Proof.
     exists (@nil ltype). split; [exact Hv' | constructor].
   - (* a variable-headed class type viewed as readonly *)
     cbn [ldyn].
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A => A | None => ldefault end) as [qa la Ca Aa].
-    simpl lheadby. right. refine (conj _ (conj _ _)).
+    remember (fst (lqnth (lf_qargs F) n)) as qa eqn:Hqa0.
+    remember (snd (lqnth (lf_qargs F) n)) as la eqn:Hla0.
+    idtac. right. refine (conj _ (conj _ _)).
     + right. left. reflexivity.
     + intros Hm. discriminate.
     + exists (map (ldyn F) Ts). split; [apply lts_refl|].
       apply map_ldyn_targ_sub; auto.
   - (* compatible arguments under the same variable head *)
     cbn [ldyn].
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A => A | None => ldefault end) as [qa la Ca Aa].
-    simpl lheadby. right. refine (conj _ (conj (fun _ => eq_refl) _)).
+    remember (fst (lqnth (lf_qargs F) n)) as qa eqn:Hqa0.
+    remember (snd (lqnth (lf_qargs F) n)) as la eqn:Hla0.
+    idtac. right. refine (conj _ (conj (fun _ => eq_refl) _)).
     + left. reflexivity.
     + exists (map (ldyn F) Ts). split; [apply lts_refl|].
       apply map_ldyn_targ_sub; auto.
   - (* up the hierarchy under the same variable head *)
     cbn [ldyn].
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A => A | None => ldefault end) as [qa la Ca Aa].
-    simpl lheadby.
+    remember (fst (lqnth (lf_qargs F) n)) as qa eqn:Hqa0.
+    remember (snd (lqnth (lf_qargs F) n)) as la eqn:Hla0.
+    idtac.
     destruct (q_eq_dec qa Bot) as [-> | Hnb].
     + left. split; [reflexivity|].
       destruct (type_vs_static_view _ _ _ _ _ _ _ Hsuper L F (map (ldyn F) Ts)
@@ -526,13 +533,13 @@ Proof.
       exists Vs''. split; auto. rewrite Hl''. apply (Forall2_length Hle).
     + right. refine (conj _ (conj (fun _ => eq_refl) _)); [left; reflexivity|].
       apply (type_vs_static_view_g _ _ _ _ _ _ _ Hsuper L F qa la).
-      * intros As0 cs ms. apply head_ro_cond; auto.
+      * intros As0 cs ms ks. apply head_ro_cond; auto.
       * apply Forall2_lagree_refl.
   - (* the bottom-qualified type of the class *)
     cbn [ldyn].
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A => A | None => ldefault end) as [qa la Ca Aa].
-    simpl lheadby. left. split; [reflexivity|].
+    remember (fst (lqnth (lf_qargs F) n)) as qa eqn:Hqa0.
+    remember (snd (lqnth (lf_qargs F) n)) as la eqn:Hla0.
+    idtac. left. split; [reflexivity|].
     exists (map (ldyn F) Ts). split; [apply lts_refl|].
     rewrite !length_map. apply (Forall2_length Hargs).
   - eapply lsubt_trans; eauto.
@@ -553,21 +560,21 @@ Proof.
 Qed.
 
 (** A type variable used at its bound, from the fit. *)
-Lemma vb_of_fits : forall P CT Δ h G L next F ca ma qthis,
+Lemma vb_of_fits : forall P CT Δ h G L next F ca ma ka qthis,
   heapL P CT h G L next ->
   mutcL CT h G ->
   frame_fits CT L Δ F ->
   lf_q F = qr2q qthis ->
-  map erase (lf_cargs F) = ca -> map erase (lf_margs F) = ma ->
+  map erase (lf_cargs F) = ca -> map erase (lf_margs F) = ma -> map fst (lf_qargs F) = ka ->
   forall o n B v,
     tv_bound Δ o n = Some B ->
-    wf_r_typable CT h v (TVar TVSub o n) qthis ca ma ->
+    wf_r_typable CT h v (TVar TVSub o n) qthis ca ma ka ->
     lhas CT h G L v (ldyn F (TVar TVSub o n)) ->
     lhas CT h G L v (ldyn F B).
 Proof.
-  intros P CT Δ h G L next F ca ma qthis HG HM Hfit Hq Hec Hem o n B v Hb Hty Hl.
+  intros P CT Δ h G L next F ca ma ka qthis HG HM Hfit Hq Hec Hem Hek o n B v Hb Hty Hl.
   eapply lsubt_sound; eauto.
-  rewrite erase_ldyn. rewrite Hq. rewrite Hec. rewrite Hem. exact Hty.
+  rewrite erase_ldyn. rewrite Hq. rewrite Hec. rewrite Hem. try rewrite Hek. exact Hty.
 Qed.
 
 (** A labelled supertype may be replaced by one it agrees into. *)
@@ -580,10 +587,8 @@ Proof.
   - left. split; auto. exists Vs. split; auto.
     rewrite Hlen. apply (Forall2_length Hargs).
   - right. refine (conj _ (conj _ _)).
-    + unfold rq_sub in *. unfold arg_q_sub in Hq.
-      destruct Hq as [-> | [-> Hm]]; auto.
-      destruct Hrq as [Hx | [Hx | [Hx _]]]; subst;
-        destruct Hm as [Hm | Hm]; try discriminate; auto.
+    + unfold rq_sub in *. unfold arg_q_sub in Hq. clear - Hrq Hq.
+      destruct q1, q2, q2'; intuition congruence.
     + intros Hm. subst q2'.
       unfold arg_q_sub in Hq. destruct Hq as [Hx | [Hx _]]; [|discriminate].
       subst q2. rewrite (Hl eq_refl).
@@ -649,7 +654,7 @@ Proof.
     inversion Hargs; subst. f_equal; auto.
   - inversion Hnm; subst; simpl; auto. rewrite Hfg; auto.
   - inversion Hnm; subst. simpl. f_equal.
-    clear Hnm Hbound. induction H; simpl; auto.
+    clear Hnm. induction H; simpl; auto.
     inversion Hargs; subst. f_equal; auto.
 Qed.
 

@@ -108,11 +108,11 @@ Qed.
 
 (** One step: the type's reading of a header, with its payload, against the
     reading of the protected-mode view in a frame. *)
-Lemma tstatic_step_cond : forall L mt F q0 l qh pn As cs ms,
+Lemma tstatic_step_cond : forall L mt F q0 l qh pn As cs ms ks,
   readonly_state_method_scope mt ->
   (forall As0,
      label_cond2 L (ArgViews.tg q0) (vpa_q mt qh)
-       (mk_lframe q0 l l As0 []) (lf_with_args F cs ms)) ->
+       (mk_lframe q0 l l As0 [] []) (lf_with_args F cs ms ks)) ->
   (qh = Mut ->
    match pn with
    | Some (Lost, _) => False
@@ -120,9 +120,9 @@ Lemma tstatic_step_cond : forall L mt F q0 l qh pn As cs ms,
    | _ => True
    end) ->
   lc2 L (rd_map true (ArgViews.tg q0) pn) (vpa_q mt qh)
-    (hframe q0 l pn As) (lf_with_args F cs ms).
+    (hframe q0 l pn As) (lf_with_args F cs ms ks).
 Proof.
-  intros L mt F q0 l qh pn As cs ms Hrs Hbase Hpay q1.
+  intros L mt F q0 l qh pn As cs ms ks Hrs Hbase Hpay q1.
   destruct (Hbase As q1) as [H1 H2]. cbn [hframe lf_q lf_with_args] in H1, H2 |- *.
   destruct (q_eq_dec q1 Mut) as [-> | Hne].
   - destruct (q_eq_dec qh Mut) as [-> | Hqh].
@@ -158,8 +158,8 @@ Proof.
     split; [exact H1|].
     destruct H2 as [H2 | [H2 | H2]]; auto.
     right. right.
-    assert (Hlab : lab_of (mk_lframe q0 (rd_lab l pn) l As []) (ArgViews.tg q0 q1) =
-                   lab_of (mk_lframe q0 l l As []) (ArgViews.tg q0 q1)).
+    assert (Hlab : lab_of (mk_lframe q0 (rd_lab l pn) l As [] []) (ArgViews.tg q0 q1) =
+                   lab_of (mk_lframe q0 l l As [] []) (ArgViews.tg q0 q1)).
     { destruct q1, q0; simpl; try reflexivity; congruence. }
     rewrite Hlab. exact H2.
 Qed.
@@ -170,9 +170,9 @@ Lemma tview_vs_static : forall CT mt qh C Ts D Vs,
   super_inst CT mt qh C Ts D Vs ->
   forall L F q0 l As,
     readonly_state_method_scope mt ->
-    (forall As0 cs ms,
+    (forall As0 cs ms ks,
        label_cond2 L (ArgViews.tg q0) (vpa_q mt qh)
-         (mk_lframe q0 l l As0 []) (lf_with_args F cs ms)) ->
+         (mk_lframe q0 l l As0 [] []) (lf_with_args F cs ms ks)) ->
     (qh = Mut -> pcoh CT L q0 l C As (lf_mut F)) ->
     Forall2 (lagree L) As (map (ldyn F) Ts) ->
     exists Vs', tview CT q0 l C As D Vs' /\
@@ -185,8 +185,8 @@ Proof.
                 (hstep true q0 (ArgViews.tg q0) l (pclassf CT C As) As Ss)
                 Hrs Hbase) as (Vs' & Hv & Hle).
     { intros Hqh. exact (pcoh_step _ _ _ _ _ _ _ _ _ (Hpc Hqh) Hparent). }
-    { assert (Heq : map (ldyn F) (map (subst Ts []) (map (adapt mt qh) Ss)) =
-                    map (fun S => ldyn (lf_with_args F (map (ldyn F) Ts) [])
+    { assert (Heq : map (ldyn F) (map (subst Ts [] []) (map (adapt mt qh) Ss)) =
+                    map (fun S => ldyn (lf_with_args F (map (ldyn F) Ts) [] [])
                                     (map_qual (vpa_q mt qh) S)) Ss).
       { clear. induction Ss as [|S Ss IH]; simpl; auto.
         f_equal; auto. rewrite ldyn_subst. reflexivity. }
@@ -196,11 +196,12 @@ Proof.
       constructor; [|exact IH].
       apply ldyn_agree2.
       - apply (tstatic_step_cond L mt F q0 l qh (pclassf CT C As) As
-                 (map (ldyn F) Ts) [] Hrs).
+                 (map (ldyn F) Ts) [] _ Hrs).
         + intros As0. apply Hbase.
         + intros Hqh. apply (Hpc Hqh C As). apply v_refl.
       - exact Hargs.
-      - constructor. }
+      - constructor.
+      - reflexivity. }
     exists Vs'. split; auto. unfold tview. eapply v_step; eauto.
 Qed.
 
@@ -279,7 +280,7 @@ Proof.
       * inversion Hp; subst. eapply HB; eauto.
       * eapply IH; eauto.
   - destruct V as [q1 l1 C0 As0].
-    destruct u as [|qv]; [simpl in Hp; discriminate|].
+    destruct u as [|qv|mp]; [simpl in Hp; discriminate| |simpl in Hp; discriminate].
     destruct (q_eq_dec qv Mut) as [-> | Hqv];
       [|destruct qv; simpl in Hp; congruence].
     simpl in Hp. inversion Hp; subst q0 l.
@@ -293,11 +294,8 @@ Proof.
     subst q1. split; auto.
     destruct Hlab as [Hx | [Hx | Hx]]; congruence.
   - destruct V as [q1 l1 C0 As0]. cbn [ldyn map_qual] in Hle.
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A => A | None => ldefault end) as [qa la Ca Aa].
-    simpl lheadby in Hle.
     inversion Hle as [? ? ? ? ? ? ? Hq Hlab Hargs]; subst.
-    rewrite (pwalk_head CT o n C args q1 l1 C As0) in Hp.
+    rewrite (pwalk_head CT n C args q1 l1 C As0) in Hp.
     simpl in Hp. rewrite Nat.eqb_refl in Hp.
     clear Hq Hlab Hle. revert As0 Hargs Hp.
     induction H as [|B Bs HB HBs IH]; intros As0 Hargs Hp;
@@ -366,10 +364,10 @@ Proof.
   unfold pclassf in Hp. rewrite Hfind in Hp.
   revert Hcls Hp. induction Hfits as [|A B As Bs HAB Hrest IH];
     intros Hcls Hp; simpl in Hp; [discriminate|].
-  inversion Hcls as [|? ? HB HBs]; subst.
+  inversion Hcls as [| ? HB HBs]; subst.
   destruct (pfindf CT B A) as [[qx lx]|] eqn:Hx.
   - inversion Hp; subst.
-    destruct B as [qb D Bs0|u o n|? ? ? ?]; [|contradiction..].
+    destruct B as [qb D Bs0|u o n| ? ? ?]; [|contradiction..].
     eapply walk_fit; eauto.
   - apply IH; auto.
 Qed.
@@ -388,7 +386,7 @@ Fixpoint has_mut (T : qualified_type) : bool :=
          end) args
   | TVar (TVQual Mut) _ _ => true
   | TVar _ _ _ => false
-  | THead _ _ _ args =>
+  | THead _ _ args =>
       (fix go (l : list qualified_type) : bool :=
          match l with
          | [] => false
@@ -410,10 +408,10 @@ Proof.
     induction args as [|t r IH]; simpl; auto; rewrite IH; reflexivity.
 Qed.
 
-Lemma has_mut_head : forall o n C args,
-  has_mut (THead o n C args) = has_muts args.
+Lemma has_mut_head : forall n C args,
+  has_mut (THead n C args) = has_muts args.
 Proof.
-  intros o n C args. cbn [has_mut].
+  intros n C args. cbn [has_mut].
   induction args as [|t r IH]; simpl; auto; rewrite IH; reflexivity.
 Qed.
 
@@ -430,7 +428,7 @@ Proof.
     clear Hq. induction H as [|t r Ht Hr IH]; simpl; auto.
     simpl in Hargs. apply orb_false_iff in Hargs. destruct Hargs as [H1 H2].
     f_equal; auto.
-  - destruct u as [|qv]; simpl; auto.
+  - destruct u as [|qv|mp]; simpl; auto.
     destruct qv; simpl in Hn |- *; auto; discriminate.
   - rewrite has_mut_head in Hn. simpl. f_equal.
     induction H as [|t r Ht Hr IH]; simpl; auto.
@@ -463,14 +461,11 @@ Proof.
       * exfalso. exact (HB A0 HA Hm Hx).
       * apply IH; auto.
   - destruct V as [q1 l1 C0 As0].
-    destruct u as [|qv]; [simpl in Hm; discriminate|].
+    destruct u as [|qv|mp]; [simpl in Hm; discriminate| |simpl in Hm; discriminate].
     destruct qv; simpl in Hm |- *; discriminate.
   - destruct V as [q1 l1 C0 As0]. cbn [ldyn map_qual] in Hle.
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A => A | None => ldefault end) as [qa la Ca Aa].
-    simpl lheadby in Hle.
     inversion Hle as [? ? ? ? ? ? ? Hq Hlab Hargs]; subst.
-    rewrite (pwalk_head CT o n C args q1 l1 C As0).
+    rewrite (pwalk_head CT n C args q1 l1 C As0).
     simpl. rewrite Nat.eqb_refl.
     rewrite has_mut_head in Hm.
     clear Hq Hlab Hle. revert As0 Hargs Hm.
@@ -534,8 +529,9 @@ Proof.
     + right. left. destruct q1, q0; simpl; congruence.
   - destruct q1; try congruence; destruct q0; simpl; unfold arg_q_sub;
       (split; [auto | auto]); try (right; left; discriminate).
-  - destruct Hm as [-> | ->]; destruct q0; simpl; unfold arg_q_sub;
-      (split; [auto | auto]); try (right; left; discriminate).
+  - destruct Hm as [-> | [-> | [-> | [-> | ->]]]]; try congruence;
+      destruct q0; simpl; unfold arg_q_sub;
+      (split; [auto 6 | auto]); try (right; left; discriminate).
 Qed.
 
 (** The classes and lengths of a view do not depend on the reader. *)
@@ -570,10 +566,8 @@ Proof.
   - left. split; auto. exists Vs. split; auto.
     rewrite Hlen. apply (Forall2_length Hargs).
   - right. refine (conj _ (conj _ _)).
-    + unfold rq_sub in *. unfold arg_q_sub in Hq.
-      destruct Hq as [-> | [-> Hm]]; auto.
-      destruct Hrq as [Hx | [Hx | [Hx _]]]; subst;
-        destruct Hm as [Hm | Hm]; try discriminate; auto.
+    + unfold rq_sub in *. unfold arg_q_sub in Hq. clear - Hrq Hq.
+      destruct q1, q2, q2'; intuition congruence.
     + intros Hm. subst q2'.
       unfold arg_q_sub in Hq. destruct Hq as [Hx | [Hx _]]; [|discriminate].
       subst q2. rewrite (Hl eq_refl).
@@ -610,10 +604,7 @@ Proof.
     exfalso. subst q2. unfold rq_sub in Hrq12.
     destruct Hrq12 as [Hx | [Hx | [Hx _]]]; congruence.
   - right. refine (conj _ (conj _ _)).
-    + unfold rq_sub in *.
-      destruct Hrq12 as [-> | [-> | [-> Hm]]]; auto.
-      * destruct Hrq23 as [Hx | [Hx | [Hx [Hy | Hy]]]]; subst; auto; discriminate.
-      * destruct Hrq23 as [Hx | [Hx | [Hx [Hy | Hy]]]]; subst; auto; discriminate.
+    + exact (rq_sub_trans _ _ _ Hrq12 Hrq23).
     + intros Hm. subst q3.
       assert (q2 = Mut).
       { unfold rq_sub in Hrq23. destruct Hrq23 as [Hx | [Hx | [Hx _]]]; congruence. }
@@ -658,24 +649,13 @@ Definition insaneA (CT : class_table) (A : ltype) : Prop :=
                               class_qualifier (signature def) = Imm_c
   end.
 
-Lemma lost_free_headby_args : forall U C args,
-  lost_free (headby U C args) -> Forall lost_free args.
+Lemma lost_free_qhead_args : forall a C args,
+  lost_free (qhead a C args) -> Forall lost_free args.
 Proof.
-  intros [q1 C1 a1 | [|qv] o1 n1 | o1 n1 C1 a1] C args H; simpl headby in H.
+  intros [[q0|m]|] C args H; simpl qhead in H.
   - apply lost_free_class in H. tauto.
   - apply lost_free_head in H. exact H.
   - apply lost_free_class in H. tauto.
-  - apply lost_free_head in H. exact H.
-Qed.
-
-Lemma lost_free_headby : forall U C args,
-  lost_free U -> Forall lost_free args -> lost_free (headby U C args).
-Proof.
-  intros [q1 C1 a1 | [|qv] o1 n1 | o1 n1 C1 a1] C args HU Ha; simpl headby.
-  - apply lost_free_class in HU. apply lost_free_class. tauto.
-  - apply lost_free_head. exact Ha.
-  - apply lost_free_class. split; auto.
-  - apply lost_free_head. exact Ha.
 Qed.
 
 Lemma lost_free_dec : forall T, lost_free T \/ ~ lost_free T.
@@ -693,7 +673,7 @@ Proof.
     + destruct Hargs as [Ha | Ha].
       * left. apply lost_free_class. auto.
       * right. intros Hx. apply lost_free_class in Hx. destruct Hx; auto.
-  - destruct u as [|qv]; simpl; auto.
+  - destruct u as [|qv|mp]; simpl; auto.
     destruct (q_eq_dec qv Lost) as [-> | Hq]; auto.
   - assert (Hargs : Forall lost_free args \/ ~ Forall lost_free args).
     { induction H as [|t r Ht Hr IH]; [left; constructor|].
@@ -730,11 +710,11 @@ Qed.
 
 (** An instance of a type that leaves nothing open comes from a type that
     leaves nothing open. *)
-Lemma lost_free_inst_inv : forall f Ss Us T,
+Lemma lost_free_inst_inv : forall f Ss Us Qs T,
   f Lost = Lost ->
-  lost_free (subst Ss Us (map_qual f T)) -> lost_free T.
+  lost_free (subst Ss Us Qs (map_qual f T)) -> lost_free T.
 Proof.
-  intros f Ss Us T Hf. induction T using qualified_type_ind'; intros Hl.
+  intros f Ss Us Qs T Hf. induction T using qualified_type_ind'; intros Hl.
   - cbn [subst map_qual] in Hl. apply lost_free_class in Hl.
     destruct Hl as [Hq Hargs].
     apply (lost_free_class qual C args). split.
@@ -743,14 +723,14 @@ Proof.
       induction H as [|t r Ht Hr IH]; intros Hargs; [constructor|].
       simpl in Hargs. inversion Hargs; subst.
       constructor; [apply Ht; assumption | apply IH; assumption].
-  - destruct u as [|qv]; simpl; auto.
+  - destruct u as [|qv|mp]; simpl; auto.
     intros ->. simpl in Hl. rewrite Hf in Hl.
     destruct (match tv_lookup o Ss Us n with Some U => U | None => default_type end)
-      as [q1 C1 a1 | u1 o1 n1 | o1 n1 C1 a1]; simpl in Hl.
+      as [q1 C1 a1 | u1 o1 n1 | n1 C1 a1]; simpl in Hl.
     + destruct Hl as [Hx _]. congruence.
     + congruence.
     + destruct Hl as [Hx _]. congruence.
-  - cbn [subst map_qual] in Hl. apply lost_free_headby_args in Hl.
+  - cbn [subst map_qual] in Hl. apply lost_free_qhead_args in Hl.
     apply lost_free_head.
     revert Hl. induction H as [|t r Ht Hr IH]; intros Hargs; [constructor|].
     simpl in Hargs. inversion Hargs; subst.
@@ -760,11 +740,11 @@ Qed.
 Lemma lost_free_inst : forall f Ss T,
   (forall q0, q0 <> Lost -> f q0 <> Lost) ->
   Forall lost_free Ss ->
-  lost_free T -> lost_free (subst Ss [] (map_qual f T)).
+  lost_free T -> lost_free (subst Ss [] [] (map_qual f T)).
 Proof.
   intros f Ss T Hf HSs. induction T using qualified_type_ind'; intros Hl.
   - apply lost_free_class in Hl. destruct Hl as [Hq Hargs].
-    simpl. apply (lost_free_class (f qual) C (map (subst Ss []) (map (map_qual f) args))).
+    simpl. apply (lost_free_class (f qual) C (map (subst Ss [] []) (map (map_qual f) args))).
     split; auto.
     clear Hq. revert Hargs.
     induction H as [|t r Ht Hr IH]; intros Hargs; simpl; [constructor|].
@@ -777,22 +757,23 @@ Proof.
         + rewrite Forall_forall in HSs. apply HSs. eapply nth_error_In; eauto.
         + destruct n; discriminate.
       - simpl. split; [discriminate | exact I]. }
-    destruct u as [|qv]; simpl; auto.
-    simpl in Hl.
-    destruct (match tv_lookup o Ss [] n with Some U => U | None => default_type end)
-      as [q1 C1 a1 | u1 o1 n1 | o1 n1 C1 a1]; simpl.
-    + simpl in HU. destruct HU as [_ Ha]. split; auto.
-    + auto.
-    + simpl in HU. split; auto.
-  - assert (HU : lost_free
-              match tv_lookup o Ss [] n with Some U => U | None => default_type end).
-    { destruct (tv_lookup o Ss [] n) as [U|] eqn:Hlk.
-      - destruct o; simpl in Hlk.
-        + rewrite Forall_forall in HSs. apply HSs. eapply nth_error_In; eauto.
-        + destruct n; discriminate.
-      - simpl. split; [discriminate | exact I]. }
-    apply lost_free_head in Hl. cbn [subst map_qual].
-    apply lost_free_headby; [exact HU|].
+    destruct u as [|qv|mp]; simpl; auto.
+    + simpl in Hl.
+      destruct (match tv_lookup o Ss [] n with Some U => U | None => default_type end)
+        as [q1 C1 a1 | u1 o1 n1 | n1 C1 a1]; simpl.
+      * simpl in HU. destruct HU as [_ Ha]. split; auto.
+      * auto.
+      * simpl in HU. split; auto.
+    + replace (nth_error (@nil qarg) mp) with (@None qarg) by (destruct mp; reflexivity).
+      simpl.
+      destruct (match tv_lookup o Ss [] n with Some U => U | None => default_type end)
+        as [q1 C1 a1 | u1 o1 n1 | n1 C1 a1]; simpl.
+      * simpl in HU. destruct HU as [_ Ha]. split; [discriminate | auto].
+      * discriminate.
+      * simpl in HU. split; [discriminate | auto].
+  - apply lost_free_head in Hl. cbn [subst map_qual nth_error qhead].
+    replace (nth_error (@nil qarg) n) with (@None qarg) by (destruct n; reflexivity).
+    cbn [qhead]. apply lost_free_class. split; [discriminate|].
     revert Hl. induction H as [|t r Ht Hr IH]; intros Hargs; simpl; [constructor|].
     inversion Hargs; subst.
     constructor; [apply Ht; assumption | apply IH; assumption].
@@ -981,11 +962,11 @@ Proof.
       * eapply IH; eauto.
   - destruct A as [q1 l1 C0 As0]. apply lbound_node in HA.
     destruct HA as [Hl1 _].
-    destruct u as [|qv]; [simpl in Hp; discriminate|].
+    destruct u as [|qv|mp]; [simpl in Hp; discriminate| |simpl in Hp; discriminate].
     destruct qv; simpl in Hp; try discriminate. inversion Hp; subst. exact Hl1.
   - destruct A as [q1 l1 C0 As0]. apply lbound_node in HA.
     destruct HA as [Hl1 HAs].
-    rewrite (pwalk_head CT o n0 C args q1 l1 C0 As0) in Hp.
+    rewrite (pwalk_head CT n0 C args q1 l1 C0 As0) in Hp.
     destruct (tviewf CT (S C0) q1 l1 C0 As0 C) as [Vs|] eqn:Hv;
       [|discriminate].
     pose proof (tviewf_lbound _ _ _ _ _ _ _ _ _ Hl1 HAs Hv) as HVs.
@@ -1123,7 +1104,7 @@ Definition headmb (T : qualified_type) : Prop :=
   match T with
   | TClass q0 _ _ => q0 = Mut \/ q0 = Bot
   | TVar _ _ _ => False
-  | THead _ _ _ _ => False
+  | THead _ _ _ => False
   end.
 
 Definition reachm (Δ : tv_env) (T : qualified_type) : Prop :=
@@ -1131,7 +1112,8 @@ Definition reachm (Δ : tv_env) (T : qualified_type) : Prop :=
   | TClass q0 _ _ => q0 = Mut \/ q0 = Bot
   | TVar TVSub o n => exists B, tv_bound Δ o n = Some B /\ headmb B
   | TVar (TVQual q0) _ _ => q0 = Mut \/ q0 = Bot
-  | THead _ _ _ _ => False
+  | TVar (TVPoly _) _ _ => False
+  | THead _ _ _ => False
   end.
 
 Lemma q_subtype_mb : forall q1 q2,
@@ -1146,8 +1128,9 @@ Proof.
   - eapply q_subtype_mb; eauto.
   - exists B. split; auto.
     pose proof (Hbc _ _ _ Hbound) as Hc.
-    destruct B as [qb Cb Bsb|u0 o0 n0|? ? ? ?]; [exact Hm | contradiction..].
+    destruct B as [qb Cb Bsb|u0 o0 n0| ? ? ?]; [exact Hm | contradiction..].
   - eapply q_subtype_mb; eauto.
+  - destruct Hm; discriminate.
   - destruct Hm; discriminate.
   - destruct Hm; discriminate.
 Qed.
@@ -1166,11 +1149,11 @@ Definition cohT (CT : class_table) (L : list nat) (F : lframe) (A : ltype)
       | TClass _ C _ =>
           forall Va, tview CT Mut l CA AsA C Va ->
             pcoh CT L Mut l C Va (lf_mut F)
-      | TVar (TVQual _) _ _ =>
+      | TVar (TVQual _) _ _ | TVar (TVPoly _) _ _ =>
           forall C, tview CT Mut l CA AsA C [] ->
             pcoh CT L Mut l C [] (lf_mut F)
       | TVar TVSub _ _ => True
-      | THead _ _ _ _ => True
+      | THead _ _ _ => True
       end
   end.
 
@@ -1235,7 +1218,7 @@ Lemma hvb_of_coh : forall CT L Δ F,
     lsubtp CT L A (ldyn F (TVar TVSub o n)) -> cohT CT L F A B.
 Proof.
   intros CT L Δ F Hwf Hbc Hfit Hcoh o n B A Hb Hmb Hnd Hsn H.
-  destruct B as [qb K Bs|u0 o0 n0|? ? ? ?]; [|contradiction..].
+  destruct B as [qb K Bs|u0 o0 n0| ? ? ?]; [|contradiction..].
   destruct A as [qA lA CA AsA]. simpl. intros -> HlA Va Hva.
   pose proof (Hfit o n _ Hb) as Hf. pose proof (Hcoh o n K Bs) as Hc.
   destruct (ldyn F (TVar TVSub o n)) as [qx lx Cx Asx] eqn:HX.
@@ -1355,11 +1338,11 @@ Proof.
         exact (Hc' eq_refl (Hl eq_refl) Va Hva). }
       destruct (tview_vs_static _ _ _ _ _ _ _ Hsuper L F qA lA Va Hrs)
         as (V' & Hv' & Hle'); auto.
-      * intros As0 cs ms.
+      * intros As0 cs ms ks.
         eapply lc2_trans.
         -- exact (mono_cond L qA lA (dynq (lf_q F) q1) (lab_of F q1) HqA Hrq Hl
                     As0 As0).
-        -- exact (hier_cond L (tv_mode Δ) F q1 As0 cs ms Hrs Hq).
+        -- exact (hier_cond L (tv_mode Δ) F q1 As0 cs ms _ Hrs Hq).
       * intros Hm. exact (proj2 (proj2 (Hpc Hm))).
       * split.
         -- cbn [ldyn]. right. refine (conj Hrq (conj Hl _)).
@@ -1400,7 +1383,7 @@ Proof.
         -- exists Va. split; auto. exact (Forall2_length Hl).
     + intros Hr. apply (Hvb _ _ _ A Hbound); auto.
       pose proof (Hbc _ _ _ Hbound) as Hcl.
-      destruct B as [qb Cb Bsb|u0 o0 n0|? ? ? ?]; [exact Hr | contradiction..].
+      destruct B as [qb Cb Bsb|u0 o0 n0| ? ? ?]; [exact Hr | contradiction..].
   - (* widen the written qualifier of a variable use *)
     split.
     + cbn [ldyn] in H |- *.
@@ -1416,6 +1399,19 @@ Proof.
     destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
               | Some A0 => A0 | None => ldefault end) as [qa la Ca Aa].
     simpl lrehead. destruct A as [qA lA CA AsA].
+    destruct H as [(Hb & Vs & Hv & Hlen) | (Hrq & Hl & Vs & Hv & Hle)].
+    + left. split; auto. exists Vs. split; auto.
+    + right. refine (conj _ (conj _ _)).
+      * right. left. reflexivity.
+      * intros Hm. discriminate.
+      * exists Vs. split; auto.
+  - split; [exact H | exact Hc].
+  - (* a use under a qualifier parameter, viewed as readonly *)
+    split; [|intros Hr; simpl in Hr; destruct Hr; discriminate].
+    cbn [ldyn] in H |- *.
+    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
+              | Some A0 => A0 | None => ldefault end) as [qa la Ca Aa].
+    simpl lrehead in H |- *. destruct A as [qA lA CA AsA].
     destruct H as [(Hb & Vs & Hv & Hlen) | (Hrq & Hl & Vs & Hv & Hle)].
     + left. split; auto. exists Vs. split; auto.
     + right. refine (conj _ (conj _ _)).
@@ -1474,9 +1470,9 @@ Proof.
   - (* a variable-headed class type viewed as readonly *)
     split; [|intros Hr; simpl in Hr; destruct Hr; discriminate].
     cbn [ldyn] in H |- *.
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A0 => A0 | None => ldefault end) as [qa la Ca Aa].
-    simpl lheadby in H. destruct A as [qA lA CA AsA].
+    remember (fst (lqnth (lf_qargs F) n)) as qa eqn:Hqa0.
+    remember (snd (lqnth (lf_qargs F) n)) as la eqn:Hla0.
+    idtac. destruct A as [qA lA CA AsA].
     assert (Hlen : length (map (ldyn F) Ts) = length (map (ldyn F) Us)).
     { rewrite !length_map. apply (Forall2_length Hargs). }
     destruct H as [(Hb & Vs & Hv & Hl) | (Hrq & Hl & Vs & Hv & Hle)].
@@ -1490,18 +1486,18 @@ Proof.
   - (* compatible arguments under the same variable head *)
     split; [|intros Hr; simpl in Hr; contradiction].
     cbn [ldyn] in H |- *.
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A0 => A0 | None => ldefault end) as [qa la Ca Aa].
-    simpl lheadby in H |- *.
+    remember (fst (lqnth (lf_qargs F) n)) as qa eqn:Hqa0.
+    remember (snd (lqnth (lf_qargs F) n)) as la eqn:Hla0.
+    idtac.
     eapply lsubtp_agree_r; [exact H|].
     constructor; [left; reflexivity | right; right; reflexivity |].
     apply map_ldyn_targ_sub. exact Hargs.
   - (* up the hierarchy under the same variable head *)
     split; [|intros Hr; simpl in Hr; contradiction].
     cbn [ldyn] in H |- *.
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A0 => A0 | None => ldefault end) as [qa la Ca Aa].
-    simpl lheadby in H |- *. destruct A as [qA lA CA AsA].
+    remember (fst (lqnth (lf_qargs F) n)) as qa eqn:Hqa0.
+    remember (snd (lqnth (lf_qargs F) n)) as la eqn:Hla0.
+    idtac. destruct A as [qA lA CA AsA].
     destruct (q_eq_dec qA Bot) as [-> | HqA].
     + left. split; [reflexivity|].
       assert (Hv : exists Va, tview CT Bot lA CA AsA C Va /\
@@ -1518,17 +1514,17 @@ Proof.
     + destruct H as [(Hb & _) | (Hrq & Hl & Va & Hva & Hle)]; [contradiction|].
       destruct (tview_vs_static _ _ _ _ _ _ _ Hsuper L F qA lA Va Hrs)
         as (V' & Hv' & Hle'); auto.
-      * intros As0 cs ms.
-        exact (head_ro_cond L (tv_mode Δ) F qA lA As0 cs ms Hrs Hq HqA).
+      * intros As0 cs ms ks.
+        exact (head_ro_cond L (tv_mode Δ) F qA lA As0 cs ms _ Hrs Hq HqA).
       * intros Hm. discriminate.
       * right. refine (conj Hrq (conj Hl _)).
         exists V'. split; auto. unfold tview in *. eapply view_trans; eauto.
   - (* the bottom-qualified type of the class *)
     split; [|intros Hr; simpl in Hr; contradiction].
     cbn [ldyn] in H |- *.
-    destruct (match tv_lookup o (lf_cargs F) (lf_margs F) n with
-              | Some A0 => A0 | None => ldefault end) as [qa la Ca Aa].
-    simpl lheadby. destruct A as [qA lA CA AsA].
+    remember (fst (lqnth (lf_qargs F) n)) as qa eqn:Hqa0.
+    remember (snd (lqnth (lf_qargs F) n)) as la eqn:Hla0.
+    idtac. destruct A as [qA lA CA AsA].
     assert (Hlen : length (map (ldyn F) Ts) = length (map (ldyn F) Us)).
     { rewrite !length_map. apply (Forall2_length Hargs). }
     assert (HqA : qA = Bot).
