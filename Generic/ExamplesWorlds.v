@@ -332,7 +332,7 @@ Proof.
           | constructor | reflexivity
           | constructor | | | constructor | apply method_subtyping_refl | reflexivity | constructor | recv_known].
         - cbn. refl_sub.
-        - cbn. split; [refl_sub|]. cbn. intuition discriminate. }
+        - cbn. refl_sub. }
       eapply ST_Seq; [wfenv | |].
       { (* old = this.d *)
         eapply ST_VarAss with (Tx := RDMD);
@@ -508,7 +508,7 @@ Proof.
     | constructor | reflexivity
     | constructor | | | constructor | apply method_rs_as | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - cbn. split; [refl_sub | discriminate].
+  - cbn. refl_sub.
 Qed.
 
 Lemma main_typed : stmt_typing CT Δ0 sΓ0 AbstractState main sΓA.

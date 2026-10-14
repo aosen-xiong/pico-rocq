@@ -483,7 +483,7 @@ Proof.
   - constructor.
   - constructor.
   - cbn. refl_sub.
-  - cbn. split; [qual_sub | cbn; intuition discriminate].
+  - cbn. qual_sub.
   - constructor; [|constructor]; cbn.
     split; [refl_sub | cbn; intuition discriminate].
 Qed.

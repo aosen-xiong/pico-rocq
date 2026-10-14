@@ -567,7 +567,7 @@ Proof.
     | constructor | reflexivity | constructor | | | constructor
     | apply method_subtyping_refl | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - cbn. split; [apply sub_C_ROP | lf].
+  - cbn. apply sub_C_ROP.
 Qed.
 
 (** r2 = bm.look(): the same on the mutable one. *)
@@ -585,7 +585,7 @@ Proof.
     | constructor | reflexivity | constructor | | | constructor
     | apply method_subtyping_refl | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - cbn. split; [apply sub_C_ROP | lf].
+  - cbn. apply sub_C_ROP.
 Qed.
 
 Lemma run_body_typed :
@@ -846,7 +846,7 @@ Proof.
   - constructor.
   - constructor.
   - cbn. refl_sub.
-  - cbn. split; [qual_sub | lf].
+  - cbn. qual_sub.
   - constructor; [|constructor]; cbn.
     split; [qual_sub | lf].
 Qed.

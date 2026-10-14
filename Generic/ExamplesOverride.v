@@ -370,7 +370,7 @@ Proof.
     - eapply FOM_Here; reflexivity.
     - apply si_refl.
     - cbn. refl_sub.
-    - cbn. split; [refl_sub|]. cbn. intuition discriminate.
+    - cbn. refl_sub.
     - constructor; [|constructor]. cbn. split; [qual_sub|].
       cbn. intuition discriminate. }
   (* y = b.look<@Mut Cell>(c) *)
@@ -388,7 +388,7 @@ Proof.
   - constructor; [|constructor]. cbn. split; [intuition discriminate|].
     intros m. qual_sub.
   - cbn. refl_sub.
-  - cbn. split; [refl_sub|]. cbn. intuition discriminate.
+  - cbn. refl_sub.
   - (* the parameter type @RO X becomes @RO Cell at this call *)
     constructor; [|constructor]. cbn. split; [qual_sub|].
     cbn. intuition discriminate.

@@ -299,9 +299,7 @@ Proof.
     - eapply FOM_Here; reflexivity.
     - apply si_refl; try (cbn; lia).
     - cbn. refl_sub.
-    - cbn. split.
-      + apply qtype_qual; [cbn; lia | qs | apply Forall2_targ_sub_refl].
-      + cbn. intuition discriminate. }
+    - cbn. apply qtype_qual; [cbn; lia | qs | apply Forall2_targ_sub_refl]. }
   (* o = (@RO Person) q *)
   ty_seq.
   { eapply ST_Cast with (Tx := ROPerson) (Ty := MutPerson);

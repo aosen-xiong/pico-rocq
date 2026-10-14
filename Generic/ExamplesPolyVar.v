@@ -365,20 +365,20 @@ Proof.
   ty_seq.
   { ty_call MutPerson MutPerson id_def find_id.
     - cbn. refl_sub.
-    - cbn. split; [apply qtype_qual; [cbn; lia | apply q_rd | constructor] | cbn; discriminate].
+    - cbn. apply qtype_qual; [cbn; lia | apply q_rd | constructor].
     - constructor; [|constructor]; cbn.
       split; [refl_sub | cbn; intuition discriminate]. }
   (* i2 = u.<@Imm; @RO Person>id(i): [Q]X is @Imm Person *)
   ty_seq.
   { ty_call ImmPerson ImmPerson id_def find_id.
     - cbn. refl_sub.
-    - cbn. split; [apply qtype_qual; [cbn; lia | apply q_rd | constructor] | cbn; discriminate].
+    - cbn. apply qtype_qual; [cbn; lia | apply q_rd | constructor].
     - constructor; [|constructor]; cbn.
       split; [refl_sub | cbn; intuition discriminate]. }
   (* r = u.<@Imm; @RO Person>peek(i) *)
   ty_call ROObject ImmPerson peek_def find_peek.
   - cbn. apply sub_Object_RO.
-  - cbn. split; [apply qtype_qual; [cbn; lia | apply q_rd | constructor] | cbn; discriminate].
+  - cbn. apply qtype_qual; [cbn; lia | apply q_rd | constructor].
   - constructor; [|constructor]; cbn.
     split; [refl_sub | cbn; intuition discriminate].
 Qed.

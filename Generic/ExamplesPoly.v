@@ -503,8 +503,7 @@ Proof.
         * constructor.
         * constructor.
         * cbn. apply sub_tQ_refl.
-        * cbn. split; [refl_sub|].
-          cbn. discriminate.
+        * cbn. refl_sub.
         * constructor; [|constructor]. cbn. split; [apply sub_tQ_refl|].
           exact I.
         * constructor; [cbn; lia | constructor].
@@ -569,7 +568,7 @@ Proof.
         * constructor.
         * constructor.
         * cbn. apply sub_tQ_refl.
-        * cbn. split; [apply sub_tQ_refl|]. exact I.
+        * cbn. apply sub_tQ_refl.
         * constructor.
         * constructor; [cbn; lia | constructor].
     - reflexivity.
@@ -824,9 +823,7 @@ Proof.
   - constructor.
   - constructor.
   - cbn. apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
-  - cbn. split.
-    + apply qtype_qual; [cbn; lia | qs | constructor].
-    + cbn. discriminate.
+  - cbn. apply qtype_qual; [cbn; lia | qs | constructor].
   - constructor; [|constructor]. cbn. split.
     + apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
     + cbn. split; [exact Hnl | exact I].
@@ -871,9 +868,7 @@ Proof.
   - constructor.
   - constructor.
   - cbn. apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
-  - cbn. split.
-    + apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
-    + cbn. exact Hnl.
+  - cbn. apply qualified_type_subtype_refl_class; [cbn; lia | exact Hnl].
   - constructor.
   - constructor; [exact Hnl | constructor].
 Qed.
@@ -957,9 +952,7 @@ Proof.
     - constructor.
     - constructor.
     - cbn. refl_sub.
-    - cbn. split.
-      + apply qtype_qual; [cbn; lia | qs | constructor].
-      + cbn. discriminate.
+    - cbn. apply qtype_qual; [cbn; lia | qs | constructor].
     - constructor; [|constructor; [|constructor]]; cbn; (split;
         [refl_sub | cbn; split; [discriminate | exact I]]).
     - constructor; [discriminate|]. constructor; [discriminate | constructor]. }
@@ -999,9 +992,7 @@ Proof.
   - constructor.
   - constructor.
   - cbn. refl_sub.
-  - cbn. split.
-    + apply qtype_qual; [cbn; lia | qs | constructor].
-    + cbn. discriminate.
+  - cbn. apply qtype_qual; [cbn; lia | qs | constructor].
   - constructor; [|constructor]. cbn. split.
     + refl_sub.
     + cbn. split; [discriminate | exact I].

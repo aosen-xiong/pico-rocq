@@ -734,7 +734,7 @@ Proof.
     | constructor | constructor | reflexivity | constructor | | |
     | apply method_subtyping_refl | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - split; [cbn; apply qtype_hier; apply si_refl | discriminate].
+  - cbn; apply qtype_hier; apply si_refl.
   - constructor.
 Qed.
 

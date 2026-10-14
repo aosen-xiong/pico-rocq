@@ -572,7 +572,7 @@ Proof.
     | constructor | reflexivity | constructor | | | constructor
     | apply method_rs_as | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - cbn. split; [qual_sub | lf].
+  - cbn. qual_sub.
 Qed.
 
 Lemma main_typed : stmt_typing CT Δ0 sΓ0 AbstractState main sΓA.

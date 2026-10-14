@@ -384,7 +384,7 @@ Proof.
     | constructor | reflexivity | constructor | | | constructor
     | apply method_subtyping_refl | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - cbn. split; [refl_sub | cbn; intuition discriminate].
+  - cbn. refl_sub.
 Qed.
 
 Lemma work_body_typed :
@@ -627,7 +627,7 @@ Proof.
   - constructor.
   - constructor.
   - cbn. refl_sub.
-  - cbn. split; [qual_sub | cbn; intuition discriminate].
+  - cbn. qual_sub.
   - constructor; [|constructor]; cbn.
     split; [apply sub_Person_ROObject | cbn; intuition discriminate].
 Qed.

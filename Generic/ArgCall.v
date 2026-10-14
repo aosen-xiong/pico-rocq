@@ -296,11 +296,11 @@ Proof.
   { pose proof (find_method_wf _ _ _ _ _ Hct Hfind_m) as ((Hx & _) & _). exact Hx. }
   assert (Hadm_s : radmit (qr2q qr) caD kargs' (mreceiver (msignature mdef))).
   { exact (static_radmit CT Δ h _ qr qthis _ _ _ _ qy Vs Us Qs _ ly Co Ro fso D caD
-             Hct Hfb (proj1 Hrcv_sub) Hrcv_args Hsh_s Hyty Hoy Hhead HsupD). }
+             Hct Hfb Hrcv_sub Hrcv_args Hsh_s Hyty Hoy Hhead HsupD). }
   assert (Hlr_s : lrecv_ok L qr (g_col G ly) lcD (mreceiver (msignature mdef))).
   { intros Hqr j l1 Cj Asj Hj HAj. subst qr.
     pose proof (plsub P CT Δ sΓ rΓ h G L next wf mode lc lm lk o Hrs Hcb Hwf HG HF Hfb
-                  Hfl _ _ _ (proj1 Hrcv_sub) Hyty Hyl) as HyR.
+                  Hfl _ _ _ Hrcv_sub Hyty Hyl) as HyR.
     destruct (ldyn_member_recv_args Fc qy Vs Us Qs _
                 (receiver_shape_cases _ _ _ Hsh_s)) as (q2 & l2 & C0 & HC0 & Hld).
     rewrite Hld in HyR.
@@ -346,7 +346,7 @@ Proof.
   assert (Hlp_s : lrecv_okp L lk' lcD (mreceiver (msignature mdef))).
   { intros j mq l1 Cj Asj Hj HAj Hkq.
     pose proof (plsub P CT Δ sΓ rΓ h G L next wf mode lc lm lk o Hrs Hcb Hwf HG HF Hfb
-                  Hfl _ _ _ (proj1 Hrcv_sub) Hyty Hyl) as HyR.
+                  Hfl _ _ _ Hrcv_sub Hyty Hyl) as HyR.
     destruct (ldyn_member_recv_args Fc qy Vs Us Qs _
                 (receiver_shape_cases _ _ _ Hsh_s)) as (q2 & l2 & C0 & HC0 & Hld).
     rewrite Hld in HyR.
@@ -648,7 +648,7 @@ Proof.
           { apply (proj1 (proj2 Hhd)). rewrite Hreq. left. eauto. }
           assert (HhL : headL Lc (g_col G ly) (fst (lqnth lk' n0))
                           (snd (lqnth lk' n0))).
-          { destruct Hrcv_sub as [Hsub Hok].
+          { pose proof Hrcv_sub as Hsub.
               destruct Hs as [(C0 & a0 & E) | (C0 & a0 & E)]; rewrite E in Hsub.
               + pose proof (plsub P CT Δ sΓ rΓ h G L next wf mode lc lm lk o Hrs Hcb
                               Hwf HG HF Hfb Hfl _ _ _ Hsub Hyty Hyl) as Hm.

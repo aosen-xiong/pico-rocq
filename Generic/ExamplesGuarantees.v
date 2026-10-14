@@ -486,7 +486,7 @@ Proof.
     | reflexivity | constructor | | | | apply method_ts_as | reflexivity
     | constructor | recv_known].
   - cbn. refl_sub.
-  - cbn. split; [apply qtype_qual; [cbn; lia | apply q_rd | constructor] | cbn; discriminate].
+  - cbn. apply qtype_qual; [cbn; lia | apply q_rd | constructor].
   - constructor; [|constructor; [|constructor]]; cbn.
     + split; [refl_sub | cbn; intuition discriminate].
     + split; [apply sub_Object_RO | cbn; intuition discriminate].

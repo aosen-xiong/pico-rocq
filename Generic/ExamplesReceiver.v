@@ -242,8 +242,7 @@ Example call_on_mut_accepted :
   recv_args_known AbstractState RO ROBoxMutE.
 Proof.
   split.
-  - split; [|cbn; discriminate].
-    apply qtype_qual; [cbn; lia | apply q_refl | apply Forall2_targ_sub_refl].
+  - apply qtype_qual; [cbn; lia | apply q_refl | apply Forall2_targ_sub_refl].
   - intros u o n [H | []]. inversion H; subst. cbn. discriminate.
 Qed.
 
@@ -277,10 +276,21 @@ Qed.
 Example call_on_imm_rejected :
   ~ receiver_ok CT Δ0 ROBoxImmPerson (member_recv RO [ImmPerson] [] [] ROBoxMutE).
 Proof.
-  intros [H _]. rewrite recv_seen_imm in H.
+  intros H. rewrite recv_seen_imm in H.
   destruct (box_arg_inv _ _ H _ _ eq_refl) as (q1 & A' & E & Ha).
   inversion E; subst. inversion Ha; subst.
   destruct Hq as [Hq | [Hq _]]; discriminate.
+Qed.
+
+(** A receiver declared [@RDM Box<E>] may be called through a reference of
+    unknown mutability: receiver adaptation passes [Lost] through, and the
+    call only requires the reference to be a subtype of the result.  Inside
+    the callee, [RDM] is the mutability of the receiver object itself. *)
+Example rdm_receiver_through_lost_accepted :
+  receiver_ok CT Δ0 (TClass Lost 2 [MutPerson])
+    (member_recv Lost [MutPerson] [] [] (TClass RDM 2 [TVar TVSub ClassVar 0])).
+Proof.
+  cbn. apply qtype_qual; [cbn; lia | apply q_refl | apply Forall2_targ_sub_refl].
 Qed.
 
 (** A receiver argument that follows the receiver, [@RDM E], cannot be

@@ -337,9 +337,7 @@ Ltac ty_call Tx0 Ty0 q0 A0 :=
     | apply find_get | apply si_refl | discriminate
     | constructor | constructor | reflexivity | constructor
     | cbn; refl_sub
-    | cbn; split;
-        [apply qtype_qual; [cbn; lia | apply q_rd | apply Forall2_targ_sub_refl]
-        | cbn; discriminate]
+    | cbn; apply qtype_qual; [cbn; lia | apply q_rd | apply Forall2_targ_sub_refl]
     | constructor
     | apply method_rs_as | reflexivity
     | constructor; [cbn; discriminate | constructor] | recv_known].

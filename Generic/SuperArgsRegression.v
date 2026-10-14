@@ -377,7 +377,7 @@ Theorem get_receiver_accepted : forall Δ,
     (member_recv RO [TClass Lost 1 []] [] []
        (mreceiver (msignature get))).
 Proof.
-  intros Δ Hm. split; [|discriminate].
+  intros Δ Hm.
   cbn. apply qtype_hier. rewrite Hm. apply super_C_P_lost.
 Qed.
 

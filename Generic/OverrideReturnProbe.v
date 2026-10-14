@@ -388,10 +388,8 @@ Proof.
   - reflexivity.
   - constructor.
   - rewrite call_result_type. refl_sub.
-  - split.
-    + change (qualified_type_subtype CT Δh MutSuperMC (TClass RO 4 [MutCell])).
-      apply qtype_qual; [cbn; lia | apply q_rd | apply Forall2_targ_sub_refl].
-    + cbn. intuition discriminate.
+  - change (qualified_type_subtype CT Δh MutSuperMC (TClass RO 4 [MutCell])).
+    apply qtype_qual; [cbn; lia | apply q_rd | apply Forall2_targ_sub_refl].
   - constructor; [|constructor]. split.
     + change (qualified_type_subtype CT Δh ROC ROC). refl_sub.
     + cbn. intuition discriminate.

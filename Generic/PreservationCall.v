@@ -1095,7 +1095,7 @@ Proof.
   { destruct Hrecv as (args1 & _ & [[qr1 Hreq1] | [n1 Hreq1]]);
       [|rewrite Hreq1; simpl; unfold head_ok; auto].
     pose proof (recv_head_typable _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hfb
-                  (proj1 Hrcv_sub) Hyty Hoy) as Hrt.
+                  Hrcv_sub Hyty Hoy) as Hrt.
     rewrite Hreq1 in Hrt. rewrite Hreq1. simpl in Hrt. simpl.
     destruct Hrt as [-> | Hh].
     - unfold head_ok. right. right. destruct qr; reflexivity.
@@ -1106,7 +1106,7 @@ Proof.
      type arguments, hence what the selected one asks *)
   assert (Hadm_static : radmit (qr2q qr) caD kargs' (mreceiver (msignature mdef))).
   { exact (static_radmit CT Δ h mt qr qctx _ _ _ Ty qy Vs Us Qs _ ly Co Ro fso D caD
-             Hct Hfb (proj1 Hrcv_sub) Hrcv_args Hrecv Hyty Hoy Hhead HsupD). }
+             Hct Hfb Hrcv_sub Hrcv_args Hrecv Hyty Hoy Hhead HsupD). }
   pose proof (proj2 Hhd kargs' Hklen Hadm_static) as Hadm_sel.
   assert (Hrecv_ty :
     loc_has_rtype CT h ly
@@ -1123,7 +1123,7 @@ Proof.
       { apply Hslot. rewrite Hreq2. left. eauto. }
       assert (Hh : head_ok qr (qnth kargs' n2)).
       { pose proof (recv_head_typable _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hfb
-                      (proj1 Hrcv_sub) Hyty Hoy) as Hrt.
+                      Hrcv_sub Hyty Hoy) as Hrt.
         destruct Hs as [(C0 & a0 & E) | (C0 & a0 & E)]; rewrite E in Hrt;
           simpl in Hrt.
         - exact Hrt.

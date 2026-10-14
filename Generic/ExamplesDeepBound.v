@@ -587,7 +587,7 @@ Proof.
     | constructor | reflexivity | constructor | | | constructor
     | apply method_subtyping_refl | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - cbn. split; [refl_sub | lf].
+  - cbn. refl_sub.
 Qed.
 
 (** r.value = this: r is a @Mut Cell, so its value slot is assignable. *)
@@ -895,7 +895,7 @@ Proof.
   - constructor.
   - constructor.
   - cbn. refl_sub.
-  - cbn. split; [qual_sub | lf].
+  - cbn. qual_sub.
   - constructor; [|constructor]; cbn.
     split; [qual_sub | lf].
 Qed.

@@ -273,20 +273,16 @@ Definition member_recv (qrecv : q)
     : qualified_type :=
   subst Vs Us Qs (map_qual (vpa_recv qrecv) T).
 
-(** The qualifier of a type is known: it is not [Lost]. *)
-Definition head_known (T : qualified_type) : Prop :=
-  match T with
-  | TClass q0 _ _ => q0 <> Lost
-  | _ => True
-  end.
-
 (** A reference of static type [A] may be the receiver of a call whose
-    adapted declared receiver is [R]: [A] is a subtype of [R], and the
-    qualifier of [R] is known.  The type arguments of [R] are the reference's
-    own, viewed at the declaring class; they are not required to be known. *)
+    adapted declared receiver is [R]: [A] is a subtype of [R].  The qualifier
+    of [R] may be [Lost]: a receiver declared [RDM] takes the caller's
+    qualifier unchanged, and through a [Lost] reference the callee sees a
+    receiver of either mutability, as through a readonly one.  The type
+    arguments of [R] are the reference's own, viewed at the declaring class;
+    they are not required to be known. *)
 Definition receiver_ok (CT : class_table) (Δ : tv_env)
     (A R : qualified_type) : Prop :=
-  qualified_type_subtype CT Δ A R /\ head_known R.
+  qualified_type_subtype CT Δ A R.
 
 (** The type arguments of a class type. *)
 Definition targs (T : qualified_type) : list qualified_type :=

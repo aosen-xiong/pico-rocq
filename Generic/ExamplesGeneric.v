@@ -516,7 +516,7 @@ Proof.
   - constructor; [|constructor]. cbn. split; [intuition discriminate|].
     intros m. qual_sub.
   - cbn. refl_sub.
-  - cbn. split; [qual_sub | cbn; intuition discriminate].
+  - cbn. qual_sub.
   - constructor; [|constructor; [|constructor]]; cbn.
     + split; [qual_sub | cbn; intuition discriminate].
     + split; [refl_sub | cbn; intuition discriminate].

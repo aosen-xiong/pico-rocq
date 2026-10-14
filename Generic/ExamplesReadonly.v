@@ -372,7 +372,7 @@ Proof.
     | constructor | reflexivity
     | constructor | | | | apply method_rs_as | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - cbn. split; [qual_sub|]. cbn. intuition discriminate.
+  - cbn. qual_sub.
   - constructor; [|constructor]. cbn. split; [qual_sub|].
     cbn. intuition discriminate.
 Qed.
@@ -389,7 +389,7 @@ Proof.
     | constructor | reflexivity
     | constructor | | | | apply method_ts_as | reflexivity | constructor | recv_known].
   - cbn. refl_sub.
-  - cbn. split; [qual_sub|]. cbn. intuition discriminate.
+  - cbn. qual_sub.
   - constructor; [|constructor]. cbn. split; [qual_sub|].
     cbn. intuition discriminate.
 Qed.
