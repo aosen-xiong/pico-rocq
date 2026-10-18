@@ -12,6 +12,16 @@ DECLARATION_RE = re.compile(
     r"^\s*(Theorem|Lemma|Corollary)\s+([A-Za-z_][A-Za-z0-9_']*)\b",
     re.MULTILINE,
 )
+AXIOM_BLOCK_RE = re.compile(r"Axioms:\s*(.*?)(?=\nRocq <|\Z)", re.DOTALL)
+AXIOM_NAME_RE = re.compile(
+    r"^([A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)+)\s*:",
+    re.MULTILINE,
+)
+
+# No global assumption is accepted by this audit: every public result must be
+# closed under the global context.
+ALLOWED_FOUNDATIONAL_AXIOMS: set[str] = set()
+
 QUALIFIED_NAME_RE = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)+$"
 )
@@ -165,12 +175,24 @@ def main() -> int:
         failures.append(f"rocq repl exited with status {result.returncode}")
     if "Error:" in output:
         failures.append("Rocq reported an error while resolving public theorems")
-    if "Axioms:" in output:
-        failures.append("at least one public theorem depends on a global axiom")
-    closed_count = output.count("Closed under the global context")
-    if closed_count != len(manifest):
+    axiom_blocks = AXIOM_BLOCK_RE.findall(output)
+    reported_axioms = {
+        name for block in axiom_blocks for name in AXIOM_NAME_RE.findall(block)
+    }
+    disallowed_axioms = sorted(reported_axioms - ALLOWED_FOUNDATIONAL_AXIOMS)
+    if disallowed_axioms:
         failures.append(
-            f"expected {len(manifest)} closed theorems, observed {closed_count}"
+            "public theorems depend on disallowed global axioms: "
+            + ", ".join(disallowed_axioms)
+        )
+    if any(not AXIOM_NAME_RE.findall(block) for block in axiom_blocks):
+        failures.append("could not parse a public theorem axiom report")
+    closed_count = output.count("Closed under the global context")
+    if closed_count + len(axiom_blocks) != len(manifest):
+        failures.append(
+            f"expected {len(manifest)} audited theorems, observed "
+            f"{closed_count} closed and {len(axiom_blocks)} with allowed "
+            "foundational assumptions"
         )
 
     if failures:
@@ -181,8 +203,8 @@ def main() -> int:
         return 1
 
     print(
-        f"All {len(manifest)} manifest-listed public results are "
-        "closed under the global context; the manifest matches every source "
+        f"All {len(manifest)} manifest-listed public results are closed "
+        "under the global context; the manifest matches every source "
         "Theorem declaration."
     )
     return 0

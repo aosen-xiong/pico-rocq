@@ -2,7 +2,6 @@
 (* Adapted from Celsius project : https://github.com/clementblaudeau/celsius *)
 
 (* Typing *)
-Reserved Notation "q1 ⊑ q2" (at level 40).
 Reserved Notation "T1 <: T2" (at level 40).
 
 (* Updates *)

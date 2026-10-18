@@ -224,7 +224,7 @@ Proof.
 Qed.
 
 Lemma value_eq_dec : forall v1 v2 : value, {v1 = v2} + {v1 <> v2}.
-Proof. decide equality. apply Nat.eq_dec. Qed.
+Proof. decide equality; apply Nat.eq_dec. Qed.
 
 Fixpoint field_ref_dec (fields : list value) (l : Loc) :
   {f | nth_error fields f = Some (Iot l)} +

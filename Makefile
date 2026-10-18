@@ -115,6 +115,18 @@ alectryon-doc: coq
 	  '  <ul>' \
 	  '    <li><a href="WFNOMutationEXP.html">WFNOMutationEXP</a></li>' \
 	  '  </ul>' \
+	  '  <h2>Semantic immutability and derived caches</h2>' \
+	  '  <ul>' \
+	  '    <li><a href="Core.GenericCacheProtocol.html">Generic cache protocol</a></li>' \
+	  '    <li><a href="Core.GenericDerivedCache.html">Derived-cache instance</a></li>' \
+	  '    <li><a href="Core.RelyGuarantee.html">Rely-guarantee specification</a></li>' \
+	  '    <li><a href="PICOBridge.PicoCoreLanguage.html">PICO CESK language</a></li>' \
+	  '    <li><a href="PICOBridge.PicoSemanticConcurrency.html">Invocation pool and parallel rule</a></li>' \
+	  '    <li><a href="PICOBridge.PicoCoreTypeSafety.html">Type safety under interleaving</a></li>' \
+	  '    <li><a href="Examples.PicoConcreteHashProvider.html">Concrete hash provider</a></li>' \
+	  '    <li><a href="Examples.PicoSemanticConcurrencySafety.html">Concurrent hash calls</a></li>' \
+	  '    <li><a href="Examples.PicoHashExecution.html">Positive and negative execution traces</a></li>' \
+	  '  </ul>' \
 	  '</body>' \
 	  '</html>' \
 	  > "$(ALECTRYON_DIR)/index.html"

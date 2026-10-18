@@ -15,6 +15,11 @@ Top-level theorem entry points:
 - `TransitiveStatePreservation.v`: `transitive_state_preservation`
 - `WFNOMutationEXP.v`: `well_typed_no_mutation_exp`
 
+The semantic-immutability and derived-cache development built on this calculus
+(`Core/`, `PICOBridge/`, `MemoryModels/`, `Examples/`, and
+`DerivedCache.v`) is described in
+[SEMANTIC_IMMUTABILITY.md](SEMANTIC_IMMUTABILITY.md).
+
 ## Claims and proofs
 
 | Paper reference | Paper-level claim / premise | Mechanized premise in Rocq | Proved guarantee | Rocq theorem / file |
@@ -40,7 +45,7 @@ Top-level theorem entry points:
 | Theorem 4 support | Readonly field-write safety | Receiver expression has static type `RO`; field-write statement evaluates successfully in `ReadonlyState` or `TransitiveState` scope | Protected field of the readonly-referenced object is unchanged | `readonly_field_write_preservation` in [ReadonlyStatePreservation.v](ReadonlyStatePreservation.v) |
 | Theorem 4, TS clause | Transitive-state preservation | Method call occurs in `TransitiveState` scope; receiver and all parameters are safe | Each protected object still exists with the same runtime type, and every field retains its entry value | `transitive_state_preservation` in [TransitiveStatePreservation.v](TransitiveStatePreservation.v) |
 | Proof-hygiene scan | Submitted proof sources do not use the forbidden commands scanned by the artifact | Every submitted `.v` file excludes literal `Axiom`, `Admitted`, and `admit` | Mechanical forbidden-command scan passes | [scripts/check-no-axioms-admits.py](scripts/check-no-axioms-admits.py) via `make check` |
-| Kernel-assumption audit | Public results do not depend on global axioms | The explicit [public-theorems.txt](scripts/public-theorems.txt) manifest is checked against every source `Theorem`, then each fully qualified theorem, lemma, or corollary entry is inspected with `Print Assumptions` | The manifest and sources agree, and every listed public result is closed under the global context | [scripts/check-public-assumptions.py](scripts/check-public-assumptions.py) via `make check` |
+| Kernel-assumption audit | Public results do not depend on global axioms | The explicit [public-theorems.txt](scripts/public-theorems.txt) manifest is checked against every source `Theorem`, then each fully qualified theorem, lemma, or corollary entry is inspected with `Print Assumptions` | The manifest and sources agree; every listed result is closed under the global context | [scripts/check-public-assumptions.py](scripts/check-public-assumptions.py) via `make check` |
 
 ## Paper/Formalization Notes
 
@@ -64,6 +69,16 @@ Top-level theorem entry points:
   and ordinary parameters are contravariant, after class-bound viewpoint
   adaptation. Call typing checks the corresponding behavioral-subtyping
   obligations for every method that a runtime subtype can select.
+- The calculus extends the paper's PICO with immutable integers: a qualified
+  type's base is either `TInt` or a class reference `TRef C`, expressions
+  include integer literals, statements include the default test `SIfZero`, and a
+  local declaration initialises its slot with `default_value` (null for
+  references, `Int 0` for integers). The default test takes its first branch
+  when the tested variable holds the default value of its type (`Int 0` or
+  null) and its second branch otherwise; like a null test in Java, it does
+  not throw. Integer types are well formed only at
+  `Imm`. The semantic-immutability development uses integers for derived cache
+  values; the PICO claims above are unchanged by the extension.
 - The paper treats `Lost` as a helper qualifier rather than a programmer-written
   type qualifier. Rocq represents it in the common qualifier datatype, but
   `wf_stypeuse` and non-reflexive `Lost` subtyping prevent direct `Lost` type

@@ -132,13 +132,17 @@ Qed.
 
 Lemma env_confined_update : forall Q cutoff rGamma x v,
   env_is_confined Q cutoff rGamma ->
-  (match v with Null_a => True | Iot l => confined_loc Q cutoff l end) ->
+  (match v with
+   | Null_a => True
+   | Iot l => confined_loc Q cutoff l
+   | Int _ => True
+   end) ->
   env_is_confined Q cutoff (update_r_env_value rGamma x v).
 Proof.
   intros Q cutoff rGamma x v Henv Hv y l Hval.
   destruct (Nat.eq_dec y x) as [->|Hneq].
   - apply runtime_getVal_dom in Hval as Hdom.
-    destruct v as [|lv].
+    destruct v as [|lv|n].
     + assert (Hsame : runtime_getVal (update_r_env_value rGamma x Null_a) x = Some Null_a).
       { apply runtime_getVal_update_same. unfold update_r_env_value in Hdom.
         destruct rGamma; simpl in *; rewrite update_length in Hdom; exact Hdom. }
@@ -147,6 +151,10 @@ Proof.
       { apply runtime_getVal_update_same. unfold update_r_env_value in Hdom.
         destruct rGamma; simpl in *; rewrite update_length in Hdom; exact Hdom. }
       rewrite Hval in Hsame. injection Hsame as ->. exact Hv.
+    + assert (Hsame : runtime_getVal (update_r_env_value rGamma x (Int n)) x = Some (Int n)).
+      { apply runtime_getVal_update_same. unfold update_r_env_value in Hdom.
+        destruct rGamma; simpl in *; rewrite update_length in Hdom; exact Hdom. }
+      rewrite Hval in Hsame. discriminate.
   - rewrite runtime_getVal_update_diff in Hval; auto. eapply Henv; eauto.
 Qed.
 
@@ -163,7 +171,8 @@ Proof.
   - destruct Hstate as [Henv Hheap]. split; [|exact Hheap].
     intros y l Hval.
     destruct (Nat.eq_dec y (dom (vars rΓ))) as [->|Hneq].
-    + rewrite runtime_getVal_last in Hval. discriminate.
+    + rewrite runtime_getVal_last in Hval.
+      destruct T as [q [|C]]; simpl in Hval; discriminate.
     + assert (y < dom (vars rΓ)).
       { apply runtime_getVal_dom in Hval. simpl in Hval. rewrite length_app in Hval. simpl in Hval. lia. }
       rewrite runtime_getVal_last2 in Hval; auto.
@@ -172,7 +181,8 @@ Proof.
     replace (set_vars rΓ (update x v2 (vars rΓ))) with
       (update_r_env_value rΓ x v2) by (destruct rΓ; reflexivity).
     apply env_confined_update; [exact Henv|].
-    destruct v2; [trivial|]. eapply eval_expr_preserves_confinement; eauto. split; assumption.
+    destruct v2; [trivial| |trivial].
+    eapply eval_expr_preserves_confinement; eauto. split; assumption.
   - exact Hstate.
   - destruct Hstate as [Henv Hheap]. split; [exact Henv|].
     intros l l' Hconf Hedge.
@@ -206,7 +216,7 @@ Proof.
       (update_r_env_value rΓ x retval) by (destruct rΓ; reflexivity).
     apply env_confined_update.
     + destruct Hstate; assumption.
-    + destruct retval; [trivial|]. eapply Henvbody; eauto.
+    + destruct retval; [trivial| |trivial]. eapply Henvbody; eauto.
   - exact Hstate.
   - eapply IHHeval; eauto.
     destruct Hstate as [Henv Hheap]. split; [|exact Hheap].
@@ -231,6 +241,10 @@ Proof.
   - have Hmid := IHHeval1 Hcutoff Hstate.
     have Hgrow := eval_stmt_preserves_heap_domain_simple CT rΓ h s1 rΓ' h' Heval1.
     exact (IHHeval2 (ltac:(lia)) Hmid).
+  - eapply IHHeval; eauto.
+  - eapply IHHeval; eauto.
+  - eapply IHHeval; eauto.
+  - eapply IHHeval; eauto.
 Qed.
 
 Lemma confined_eval_preserves_old_object :
@@ -273,6 +287,10 @@ Proof.
     assert (Hfirst : vals = mid) by (eapply IHHeval1; eauto).
     assert (Hsecond : mid = vals') by (eapply IHHeval2; eauto; lia).
     congruence.
+  - eapply IHHeval; eauto.
+  - eapply IHHeval; eauto.
+  - eapply IHHeval; eauto.
+  - eapply IHHeval; eauto.
 Qed.
 
 Theorem eval_preserves_old_unreachable_object :

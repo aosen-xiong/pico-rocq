@@ -35,7 +35,8 @@ Proof.
   destruct Hcorr as [Hbase Hqualifer].
   assert (sf_assignability_rel CT (rctype (rt_type o)) f a0).
   {
-    eapply sf_assignability_subtyping; eauto.
+    eapply sf_assignability_subtyping; [|eauto].
+    eapply base_ref_class_subtype; eauto.
   }
   assert (a0 = a).
   {
@@ -63,7 +64,8 @@ Proof.
   destruct Hcorr as [Hbase Hqualifer].
   assert (sf_assignability_rel CT (rctype (rt_type o)) f a0).
   {
-    eapply sf_assignability_subtyping; eauto.
+    eapply sf_assignability_subtyping; [|eauto].
+    eapply base_ref_class_subtype; eauto.
   }
   assert (a0 = a).
   {
@@ -91,7 +93,8 @@ Proof.
   destruct Hcorr as [Hbase Hqualifer].
   assert (sf_assignability_rel CT (rctype (rt_type o)) f a0).
   {
-    eapply sf_assignability_subtyping; eauto.
+    eapply sf_assignability_subtyping; [|eauto].
+    eapply base_ref_class_subtype; eauto.
   }
   assert (a0 = a).
   {
@@ -119,7 +122,8 @@ Proof.
   destruct Hcorr as [Hbase Hqualifer].
   assert (sf_assignability_rel CT (rctype (rt_type o)) f a0).
   {
-    eapply sf_assignability_subtyping; eauto.
+    eapply sf_assignability_subtyping; [|eauto].
+    eapply base_ref_class_subtype; eauto.
   }
   assert (a0 = a).
   {
@@ -165,4 +169,16 @@ Proof.
   - inversion Htyping; subst.
     eapply IHHeval2; eauto.
     eapply preservation_pico; eauto.
+  - (* if-zero *)
+    inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* if-nonzero *)
+    inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* null guard: zero branch *)
+    inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* reference guard: nonzero branch *)
+    inversion Htyping; subst.
+    eapply IHHeval; eauto.
 Qed.

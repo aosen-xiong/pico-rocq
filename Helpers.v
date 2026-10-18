@@ -256,6 +256,15 @@ Qed.
 (* ------------------------------------------------------------------------ *)
 (** ** Additions of new objects *)
 
+Lemma getVal_Some : forall ρ f,
+    f < dom ρ ->
+    exists v, getVal ρ f = Some v.
+Proof.
+  intros.
+  destruct (getVal ρ f) as [|] eqn:?; eauto.
+  exfalso. eapply nth_error_None in Heqo. lia.
+Qed.
+
 Lemma runtime_getObj_last :
   forall σ C ρ,
     runtime_getObj (σ++[mkObj C ρ]) (dom σ) = Some (mkObj C ρ).

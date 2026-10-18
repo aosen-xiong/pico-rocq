@@ -64,7 +64,7 @@ Definition fresh_component_attachment
   root = dom h \/
   exists field D fdef target,
     getVal newobj.(fields_map) field = Some (Iot target) /\
-    base_subtype CT (rctype (rt_type newobj)) D /\
+    class_subtype CT (rctype (rt_type newobj)) D /\
     sf_def_rel CT D field fdef /\
     mutability (ftype fdef) = RDM_f /\
     mutable_connected CT h target root.

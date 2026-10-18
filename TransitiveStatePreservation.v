@@ -34,11 +34,12 @@ Proof.
 Qed.
 
 Lemma transitive_state_preservation_with_end :
-  forall CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
+  forall CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty Cy mdef zs vals ly
          loc_arg C anyrq vals_arg vals_arg' f
     (Hstmt : stmt = (SCall x mindex y zs))
     (Hstatic_type : static_getType sΓ y = Some Ty)
-    (Hmethod_lookup : FindMethodWithName CT (sctype Ty) mindex mdef)
+    (Hreceiver_class : sbase Ty = TRef Cy)
+    (Hmethod_lookup : FindMethodWithName CT Cy mindex mdef)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ TransitiveState stmt sΓ')
     (Heval : eval_stmt CT rΓ h stmt OK rΓ' h')
@@ -49,14 +50,14 @@ Lemma transitive_state_preservation_with_end :
     (Harg_obj' : runtime_getObj h' loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg')),
     nth_error vals_arg f = nth_error vals_arg' f.
 Proof.
-  intros CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
-    loc_arg C anyrq vals_arg vals_arg' f Hstmt Hstatic_type Hmethod_lookup
+  intros CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty Cy mdef zs vals ly
+    loc_arg C anyrq vals_arg vals_arg' f Hstmt Hstatic_type Hreceiver_class Hmethod_lookup
     Hwf Htyping Heval Hget_y Hget_zs HinP Harg_obj Harg_obj'.
   subst stmt.
   have Hcaller_scope : readonly_state_method_scope TransitiveState.
   { right. reflexivity. }
   destruct (successful_typed_safe_call_body CT sΓ TransitiveState rΓ h x
-    mindex y zs sΓ' rΓ' h' Ty mdef vals ly Hstatic_type Hmethod_lookup
+    mindex y zs sΓ' rΓ' h' Ty Cy mdef vals ly Hstatic_type Hreceiver_class Hmethod_lookup
     Hwf Htyping Heval Hget_y Hget_zs Hcaller_scope)
     as [runtime_mdef [body_sΓ' [body_rΓ'
       [Hsignature [Hbody_typed [Hframe_wf
@@ -82,11 +83,12 @@ Qed.
 (** Public TS guarantee with final-object existence and runtime type derived
     from the successful call evaluation. *)
 Theorem transitive_state_preservation :
-  forall CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
+  forall CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty Cy mdef zs vals ly
          loc_arg C anyrq vals_arg f
     (Hstmt : stmt = (SCall x mindex y zs))
     (Hstatic_type : static_getType sΓ y = Some Ty)
-    (Hmethod_lookup : FindMethodWithName CT (sctype Ty) mindex mdef)
+    (Hreceiver_class : sbase Ty = TRef Cy)
+    (Hmethod_lookup : FindMethodWithName CT Cy mindex mdef)
     (Hwf : wf_r_config CT sΓ rΓ h)
     (Htyping : stmt_typing CT sΓ TransitiveState stmt sΓ')
     (Heval : eval_stmt CT rΓ h stmt OK rΓ' h')
@@ -98,8 +100,8 @@ Theorem transitive_state_preservation :
       runtime_getObj h' loc_arg = Some (mkObj (mkruntime_type anyrq C) vals_arg') /\
       nth_error vals_arg f = nth_error vals_arg' f.
 Proof.
-  intros CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty mdef zs vals ly
-    loc_arg C anyrq vals_arg f Hstmt Hstatic_type Hmethod_lookup Hwf Htyping
+  intros CT sΓ rΓ h stmt rΓ' h' sΓ' x y mindex Ty Cy mdef zs vals ly
+    loc_arg C anyrq vals_arg f Hstmt Hstatic_type Hreceiver_class Hmethod_lookup Hwf Htyping
     Heval Hget_y Hget_zs HinP Harg_obj.
   destruct (runtime_preserves_r_type_heap CT rΓ h loc_arg
     (mkruntime_type anyrq C) h' vals_arg stmt rΓ' Harg_obj Heval)

@@ -4,7 +4,7 @@ Import ListNotations.
 Require Import Syntax Helpers ViewpointAdaptation Subtyping Typing Bigstep.
 
 Definition witness_type : qualified_type :=
-  Build_qualified_type RDM 0.
+  Build_qualified_type RDM (TRef 0).
 
 Definition witness_constructor : constructor_def :=
   {| csignature := {| cqualifier := RDM_c; cparams := [] |} |}.
@@ -58,7 +58,7 @@ Definition field_rule_CT : class_table := [witness_class; mut_bound_class].
 
 Definition readonly_mut_bound_field : field_def :=
   {| ftype :=
-       {| assignability := Final; mutability := RO_f; f_base_type := 1 |};
+       {| assignability := Final; mutability := RO_f; f_base_type := TRef 1 |};
      fname := 0 |}.
 
 Example readonly_field_with_mutable_bound_is_well_formed :
@@ -76,16 +76,16 @@ Qed.
 Definition base_touch_signature : method_sig :=
   {| mname := 0;
      mscope := AbstractState;
-     mreceiver := Build_qualified_type RDM 0;
+     mreceiver := Build_qualified_type RDM (TRef 0);
      mparams := [];
-     mret := Build_qualified_type RO 0 |}.
+     mret := Build_qualified_type RO (TRef 0) |}.
 
 Definition mutable_touch_signature : method_sig :=
   {| mname := 0;
      mscope := AbstractState;
-     mreceiver := Build_qualified_type Mut 0;
+     mreceiver := Build_qualified_type Mut (TRef 0);
      mparams := [];
-     mret := Build_qualified_type RO 0 |}.
+     mret := Build_qualified_type RO (TRef 0) |}.
 
 (** In a [Mut]-bounded subclass, the inherited [RDM] receiver adapts to
     [Mut], so a [Mut] receiver override is valid. *)
@@ -98,7 +98,7 @@ Proof.
     vpa_mutability_qq_abstract_state.
   simpl.
   repeat split; try reflexivity.
-  - apply qtype_refl; simpl; try lia; discriminate.
+  - apply qtype_refl; unfold wf_qualified_base; simpl; try lia; discriminate.
   - constructor.
   - constructor. discriminate.
 Qed.
@@ -109,16 +109,16 @@ Qed.
 Definition behavioral_base_signature : method_sig :=
   {| mname := 1;
      mscope := AbstractState;
-     mreceiver := Build_qualified_type RDM 0;
-     mparams := [Build_qualified_type Imm 0];
-     mret := Build_qualified_type RO 0 |}.
+     mreceiver := Build_qualified_type RDM (TRef 0);
+     mparams := [Build_qualified_type Imm (TRef 0)];
+     mret := Build_qualified_type RO (TRef 0) |}.
 
 Definition behavioral_override_signature : method_sig :=
   {| mname := 1;
      mscope := AbstractState;
-     mreceiver := Build_qualified_type Mut 0;
-     mparams := [Build_qualified_type RO 0];
-     mret := Build_qualified_type Imm 0 |}.
+     mreceiver := Build_qualified_type Mut (TRef 0);
+     mparams := [Build_qualified_type RO (TRef 0)];
+     mret := Build_qualified_type Imm (TRef 0) |}.
 
 Example behavioral_return_and_parameter_variance :
   method_override_compatible witness_CT Mut_c
@@ -129,13 +129,13 @@ Proof.
     vpa_mutability_qq_abstract_state.
   simpl.
   repeat split; try reflexivity.
-  - eapply qtype_sub; simpl; try lia.
+  - eapply qtype_sub; unfold wf_qualified_base; simpl; try lia.
     + apply q_rd.
-    + apply base_refl. simpl. lia.
+    + apply base_ref, class_refl. simpl. lia.
   - constructor.
-    + eapply qtype_sub; simpl; try lia.
+    + eapply qtype_sub; unfold wf_qualified_base; simpl; try lia.
       * apply q_rd.
-      * apply base_refl. simpl. lia.
+      * apply base_ref, class_refl. simpl. lia.
     + constructor.
   - constructor. discriminate.
 Qed.
@@ -147,16 +147,16 @@ Qed.
 Definition flexible_return_base_signature : method_sig :=
   {| mname := 2;
      mscope := ReadonlyState;
-     mreceiver := Build_qualified_type RDM 0;
+     mreceiver := Build_qualified_type RDM (TRef 0);
      mparams := [];
-     mret := Build_qualified_type RDM 0 |}.
+     mret := Build_qualified_type RDM (TRef 0) |}.
 
 Definition flexible_return_override_signature : method_sig :=
   {| mname := 2;
      mscope := ReadonlyState;
-     mreceiver := Build_qualified_type RO 0;
+     mreceiver := Build_qualified_type RO (TRef 0);
      mparams := [];
-     mret := Build_qualified_type Mut 0 |}.
+     mret := Build_qualified_type Mut (TRef 0) |}.
 
 Example mutable_bound_allows_mutable_return_through_rdm_contract :
   method_override_compatible witness_CT Mut_c
@@ -167,7 +167,7 @@ Proof.
     vpa_mutability_qq_abstract_state.
   simpl.
   repeat split; try reflexivity.
-  - apply qtype_refl; simpl; try lia; discriminate.
+  - apply qtype_refl; unfold wf_qualified_base; simpl; try lia; discriminate.
   - constructor.
   - apply q_rd.
 Qed.
@@ -191,12 +191,12 @@ Qed.
     subtyping is checked. *)
 Definition constructor_rule_field : field_def :=
   {| ftype :=
-       {| assignability := RDA; mutability := RDM_f; f_base_type := 0 |};
+       {| assignability := RDA; mutability := RDM_f; f_base_type := TRef 0 |};
      fname := 0 |}.
 
 Definition constructor_rule_signature : constructor_sig :=
   {| cqualifier := Imm_c;
-     cparams := [Build_qualified_type RDM 0] |}.
+     cparams := [Build_qualified_type RDM (TRef 0)] |}.
 
 Definition constructor_rule_class : class_def :=
   {| signature :=
@@ -238,11 +238,11 @@ Proof.
         -- reflexivity.
       * split; [reflexivity|].
         constructor.
-        -- eapply qtype_sub; simpl.
+        -- eapply qtype_sub; unfold wf_qualified_base; simpl.
            ++ lia.
            ++ lia.
            ++ constructor. discriminate.
-           ++ apply base_refl. simpl. lia.
+           ++ apply base_ref, class_refl. simpl. lia.
         -- constructor.
 Qed.
 
@@ -306,6 +306,6 @@ Proof.
                 gget, witness_type.
               simpl.
               split.
-              ** constructor. simpl. lia.
+              ** apply base_ref, class_refl. simpl. lia.
               ** exact I.
 Qed.

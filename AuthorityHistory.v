@@ -287,7 +287,8 @@ Proof.
   - intros z l Tz Htype_z Hval_z HinZ.
     destruct (Nat.eq_dec z x) as [->|Hneq].
     + rewrite Hget_x in Htype_z. injection Htype_z as <-.
-      destruct value as [|result].
+      destruct value as [|result|?n];
+        [| |rewrite runtime_getVal_update_same in Hval_z; auto; discriminate].
       * rewrite runtime_getVal_update_same in Hval_z; auto. discriminate.
       * rewrite runtime_getVal_update_same in Hval_z; auto.
         injection Hval_z as <-.
@@ -301,7 +302,7 @@ Proof.
       eapply Henv; eauto.
   - split; [|exact Hconfheap].
     apply env_confined_update; [exact Hconfenv|].
-    destruct value as [|result]; [trivial|].
+    destruct value as [|result|?n]; [trivial| |trivial].
     eapply eval_expr_preserves_confinement; eauto. split; assumption.
   - intros root Hroot.
     destruct (assignment_mut_root_has_old_ancestor CT sGamma mt rGamma h
@@ -320,7 +321,7 @@ Lemma directed_history_after_local :
     stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
     runtime_getVal rGamma x = None ->
     directed_authority_history_state CT P Z M cutoff sGamma'
-      (set_vars rGamma (vars rGamma ++ [Null_a])) h.
+      (set_vars rGamma (vars rGamma ++ [default_value T])) h.
 Proof.
   intros CT P Z M cutoff sGamma mt rGamma h T x sGamma' Hwf Hstate
     Htyping Hrnone.
@@ -333,19 +334,19 @@ Proof.
   refine (conj Hcontains (conj _ (conj _ (conj Hclosed
     (conj Hruntime (conj _ Havoid)))))).
   - intros y l Ty Htype Hval HinZ.
-    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T y Ty l
+    destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T y Ty l
       Hlength Htype Hval) as [Holdtype Holdval].
     eapply Henv; eauto.
   - split; [|exact Hconfheap].
     intros y l Hval.
     destruct (Nat.eq_dec y (dom (vars rGamma))) as [->|Hneq].
-    + rewrite runtime_getVal_last in Hval. discriminate.
+    + rewrite runtime_getVal_last in Hval. default_not_location.
     + assert (Hy : y < dom (vars rGamma)).
       { apply runtime_getVal_dom in Hval. simpl in Hval.
         rewrite length_app in Hval. simpl in Hval. lia. }
       rewrite runtime_getVal_last2 in Hval; auto. eapply Hconfenv; eauto.
   - intros root [y [Ty [Htype [Hval Hmut]]]].
-    destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T y Ty root
+    destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T y Ty root
       Hlength Htype Hval) as [Holdtype Holdval].
     apply Hmutroots. exists y, Ty. repeat split; assumption.
 Qed.
@@ -378,7 +379,7 @@ Proof.
           unfold wf_r_config in Hwf_length.
           destruct Hwf_length as [_ [_ [_ [_ [Hlen _]]]]]. lia. }
         rewrite runtime_getVal_update_same in Hval; auto.
-        destruct value as [|result]; try discriminate.
+        destruct value as [|result|?n]; try discriminate.
         injection Hval as <-. rewrite Hget_x in Htype. injection Htype as <-.
         destruct (extract_receiver_from_wf_config CT sGamma rGamma h Hwf)
           as [this [qcontext [Hrthis [_ Hqcontext]]]].
@@ -420,7 +421,7 @@ Lemma authority_history_after_local :
     stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
     runtime_getVal rGamma x = None ->
     authority_component_history_state CT P Z M cutoff authority sGamma'
-      (set_vars rGamma (vars rGamma ++ [Null_a])) h.
+      (set_vars rGamma (vars rGamma ++ [default_value T])) h.
 Proof.
   intros CT P Z M cutoff authority sGamma mt rGamma h T x sGamma' Hwf
     [Hforward [Hroots [Hsound Hcolors]]] Htyping Hnone.
@@ -431,14 +432,14 @@ Proof.
       inversion Htyping; subst.
       unfold wf_r_config in Hwf.
       destruct Hwf as [_ [_ [_ [_ [Hlength _]]]]].
-      destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T y Ty root
+      destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T y Ty root
         Hlength Htype Hval) as [Holdtype Holdval].
       apply Hroots. exists y, Ty. repeat split; assumption.
     + split.
       * intros Hauth. specialize (Hsound Hauth).
         destruct Hsound as [this [Hthis Hmut]].
         exists this. split; [|exact Hmut].
-        simpl. rewrite get_this_var_mapping_app_null_last. exact Hthis.
+        simpl. rewrite get_this_var_mapping_app_default_last. exact Hthis.
       * have Hcomponent : component_forward_history_state CT P Z M cutoff
             sGamma rGamma h.
         { apply mutable_authority_component_history with

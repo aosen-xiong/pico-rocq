@@ -294,6 +294,18 @@ Proof.
   specialize (preservation_pico CT sΓ mt rΓ h s1 rΓ' h' sΓ'0 Hwf Htype1 Heval1) as Hwf'.
   specialize (IHHeval2 Heqok Hloc_h' vals' Hobj_end values' Hrtype mt Hfield_imm sΓ' sΓ'0 Hwf' Htype2).
   rewrite IHHeval2 in IHHeval1; auto.
+  - (* IfZero *)
+    intros. inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* IfNonzero *)
+    intros. inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* null guard: zero branch *)
+    intros. inversion Htyping; subst.
+    eapply IHHeval; eauto.
+  - (* reference guard: nonzero branch *)
+    intros. inversion Htyping; subst.
+    eapply IHHeval; eauto.
 Qed.
 
 (** Public shallow-immutability statement.  Evaluation preserves the runtime

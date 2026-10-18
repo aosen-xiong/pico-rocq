@@ -202,14 +202,14 @@ Lemma rdm_roots_descend_after_local :
     stmt_typing CT sGamma mt (SLocal T x) sGamma' ->
     runtime_getVal rGamma x = None ->
     rdm_roots_descend_from CT h sGamma rGamma sGamma'
-      (set_vars rGamma (vars rGamma ++ [Null_a])).
+      (set_vars rGamma (vars rGamma ++ [default_value T])).
 Proof.
   intros CT sGamma mt rGamma h T x sGamma' Hwf Htyping Hnone root
     [y [Ty [Htype [Hval Hrdm]]]].
   inversion Htyping; subst.
   unfold wf_r_config in Hwf.
   destruct Hwf as [_ [_ [_ [_ [Hlength _]]]]].
-  destruct (appended_null_nonnull_lookup_is_old sGamma rGamma T y Ty root
+  destruct (appended_default_nonnull_lookup_is_old sGamma rGamma T y Ty root
     Hlength Htype Hval) as [Holdtype Holdval].
   exists root. split.
   - exists y, Ty. repeat split; assumption.

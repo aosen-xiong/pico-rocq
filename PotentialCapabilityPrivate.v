@@ -519,14 +519,15 @@ Qed.
     rather than from a dispatch-side premise. *)
 Lemma refined_mut_return_call_entry_has_no_rdm_roots :
   forall CT sGamma mt rGamma h x method receiver args vals receiver_location
-    receiver_type runtime_mdef static_mdef,
+    receiver_type receiver_class runtime_mdef static_mdef,
     wf_r_config CT sGamma rGamma h ->
     stmt_typing CT sGamma mt (SCall x method receiver args) sGamma ->
     readonly_state_method_scope mt ->
     static_getType sGamma receiver = Some receiver_type ->
     runtime_getVal rGamma receiver = Some (Iot receiver_location) ->
     runtime_lookup_list rGamma args = Some vals ->
-    FindMethodWithName CT (sctype receiver_type) method static_mdef ->
+    sbase receiver_type = TRef receiver_class ->
+    FindMethodWithName CT receiver_class method static_mdef ->
     method_signature_refinement CT
       (msignature runtime_mdef) (msignature static_mdef) ->
     sqtype (mret (msignature static_mdef)) = RDM ->
@@ -539,16 +540,18 @@ Lemma refined_mut_return_call_entry_has_no_rdm_roots :
           (mkr_env (Iot receiver_location :: vals)) root.
 Proof.
   intros CT sGamma mt rGamma h x method receiver args vals
-    receiver_location receiver_type runtime_mdef static_mdef Hwf Htyping
-    Hsafe Hreceiver_type Hreceiver_value Hargs Hfind_static Hrefine
+    receiver_location receiver_type receiver_class runtime_mdef static_mdef
+    Hwf Htyping Hsafe Hreceiver_type Hreceiver_value Hargs Hreceiver_class
+    Hfind_static Hrefine
     Hstatic_return Hruntime_return Hruntime_receiver root
     [variable [T [Htype [Hvalue Hrdm]]]].
   inversion Htyping; subst.
   - destruct Hsafe as [Hrs | Hts]; subst;
       destruct Hscope as [Has | [Hcs _]]; discriminate.
   - assert (Ty = receiver_type) by congruence. subst Ty.
+    assert (C = receiver_class) by congruence. subst C.
     have Hstatic_method :=
-      find_method_with_name_deterministic CT (sctype receiver_type) method
+      find_method_with_name_deterministic CT receiver_class method
         mdef static_mdef Hfind_m Hfind_static.
     subst mdef.
     destruct variable as [|i].
@@ -1156,15 +1159,15 @@ Proof.
   - exact (Forall_inv_tail Hcutoffs).
 Qed.
 
-Lemma caller_null_rdm_roots_descend :
-  forall CT caller_senv caller_renv h destination destination_type,
+Lemma caller_nonlocation_rdm_roots_descend :
+  forall CT caller_senv caller_renv h destination destination_type value,
+    (forall location, value <> Iot location) ->
     wf_r_config CT caller_senv caller_renv h ->
     static_getType caller_senv destination = Some destination_type ->
     rdm_roots_descend_from CT h caller_senv caller_renv caller_senv
-      (update_r_env_value caller_renv destination Null_a).
+      (update_r_env_value caller_renv destination value).
 Proof.
-  intros CT caller_senv caller_renv h destination destination_type Hwf
-    Hdestination root [variable [T [Htype [Hvalue Hrdm]]]].
+  intros CT caller_senv caller_renv h destination destination_type value Hnonlocation Hwf Hdestination root [variable [T [Htype [Hvalue Hrdm]]]].
   destruct (Nat.eq_dec variable destination) as [Heq | Hneq].
   - subst variable.
     have Hdestination_dom := Hdestination.
@@ -1173,10 +1176,11 @@ Proof.
     destruct Hwf as [_ [_ [_ [_ [Hlength Hcorr]]]]].
     assert (Hruntime_dom : destination < dom (vars caller_renv)) by lia.
     have Hupdated := runtime_getVal_update_same caller_renv destination
-      Null_a Hruntime_dom.
-    rewrite Hupdated in Hvalue. discriminate.
+      value Hruntime_dom.
+    rewrite Hupdated in Hvalue. injection Hvalue as Hbad.
+      exfalso. exact (Hnonlocation _ Hbad).
   - have Hunchanged := runtime_getVal_update_diff caller_renv destination
-      variable Null_a.
+      variable value.
     assert (Hdestination_variable : destination <> variable) by congruence.
     specialize (Hunchanged Hdestination_variable).
     rewrite Hunchanged in Hvalue.
@@ -1241,11 +1245,12 @@ Proof.
   eapply potential_adjacent_before_call_pop_included; eauto.
 Qed.
 
-Lemma potential_history_leave_call_null :
+Lemma potential_history_leave_call_nonlocation :
   forall CT P Z cutoff caller_authority caller_senv caller_renv caller_h stack
     destination destination_type receiver_type entry_senv entry_renv return_var
     callee_return_q origins
-    callee_senv callee_renv callee_h,
+    callee_senv callee_renv callee_h value,
+    (forall location, value <> Iot location) ->
     zone_env_safe Z caller_senv caller_renv ->
     env_is_confined P cutoff caller_renv ->
     wf_r_config CT caller_senv caller_renv caller_h ->
@@ -1262,18 +1267,12 @@ Lemma potential_history_leave_call_null :
         (dom caller_h) origins :: stack)
       callee_h ->
     wf_r_config CT caller_senv
-      (update_r_env_value caller_renv destination Null_a) callee_h ->
+      (update_r_env_value caller_renv destination value) callee_h ->
     potential_live_history_state CT P Z cutoff
       (mk_watched_frame caller_authority caller_senv
-        (update_r_env_value caller_renv destination Null_a)) stack callee_h.
+        (update_r_env_value caller_renv destination value)) stack callee_h.
 Proof.
-  intros CT P Z cutoff caller_authority caller_senv caller_renv caller_h stack
-    destination destination_type receiver_type entry_senv entry_renv return_var
-    callee_return_q origins
-    callee_senv callee_renv callee_h Hcaller_zone Hcaller_env Hcaller_wf
-    Hdestination_not_receiver Hdestination_type
-    [Hlive [Hpotential Hcutoffs]]
-    Hcaller_post_wf.
+  intros CT P Z cutoff caller_authority caller_senv caller_renv caller_h stack destination destination_type receiver_type entry_senv entry_renv return_var callee_return_q origins callee_senv callee_renv callee_h value Hnonlocation Hcaller_zone Hcaller_env Hcaller_wf Hdestination_not_receiver Hdestination_type [Hlive [Hpotential Hcutoffs]] Hcaller_post_wf.
   set (callee_frame := mk_watched_frame
     (call_authority caller_authority (sqtype receiver_type))
     callee_senv callee_renv).
@@ -1284,7 +1283,7 @@ Proof.
     (dom caller_h) origins).
   set (caller_old := mk_watched_frame caller_authority caller_senv caller_renv).
   set (caller_post := mk_watched_frame caller_authority caller_senv
-    (update_r_env_value caller_renv destination Null_a)).
+    (update_r_env_value caller_renv destination value)).
   have Hpre_frames : live_frames_wf CT callee_h callee_frame
       (caller_boundary :: stack) := proj1 (proj2 Hlive).
   have Hcaller_current_wf : wf_r_config CT caller_senv caller_renv callee_h.
@@ -1292,8 +1291,9 @@ Proof.
     change (wf_r_config CT caller_senv caller_renv callee_h)
       in Hcaller_boundary_wf.
     exact Hcaller_boundary_wf. }
-  have Hdescend := caller_null_rdm_roots_descend CT caller_senv caller_renv
-    callee_h destination destination_type Hcaller_current_wf Hdestination_type.
+  have Hdescend := caller_nonlocation_rdm_roots_descend CT caller_senv
+    caller_renv callee_h destination destination_type value Hnonlocation
+    Hcaller_current_wf Hdestination_type.
   set (Mpre := live_capability_set CT callee_h callee_frame
     (caller_boundary :: stack)).
   assert (Hpost_separated_pre :
@@ -1301,7 +1301,7 @@ Proof.
   { intros capability protected Hcapability Hprotected Hconnected.
     destruct (potential_connected_after_active_descent_reflects CT callee_h
       caller_authority caller_senv caller_renv caller_senv
-      (update_r_env_value caller_renv destination Null_a) stack capability
+      (update_r_env_value caller_renv destination value) stack capability
       protected Hcaller_current_wf Hdescend Hconnected) as
       [Hold_connected | [anchor [Hanchor_live Hanchor_path]]].
     - apply (Hpotential capability protected Hcapability Hprotected).
@@ -1309,7 +1309,7 @@ Proof.
       eapply potential_connected_before_call_pop_included; eauto.
     - have Hanchor_pre : In Loc Mpre anchor.
       { unfold Mpre, caller_post, callee_frame, caller_boundary in *.
-        eapply call_return_null_live_reachability_reflects_before_pop with
+        eapply call_return_nonlocation_live_reachability_reflects_before_pop with
           (caller_h := caller_h) (destination_type := destination_type);
           eauto. }
       apply (Hpotential anchor protected Hanchor_pre Hprotected).
@@ -1320,7 +1320,7 @@ Proof.
   { intros location Hlocation.
     unfold Mpost, caller_post in Hlocation.
     unfold Mpre, callee_frame, caller_boundary.
-    eapply call_return_null_live_reachability_reflects_before_pop with
+    eapply call_return_nonlocation_live_reachability_reflects_before_pop with
       (caller_h := caller_h) (destination_type := destination_type); eauto. }
   have Hcaller_components_pre :
       component_colors_separated CT callee_h Mpre Z.
@@ -1341,11 +1341,11 @@ Proof.
       (capability_root := capability_root) (zone_root := zone_root); eauto.
     exists capability. split; [eapply Hpost_in_pre; eauto|].
     exact Hcapability_connected. }
-  have Hlive_post := live_history_leave_call_null_given_caller_colors CT P Z
+  have Hlive_post := live_history_leave_call_nonlocation_given_caller_colors CT P Z
     cutoff caller_authority caller_senv caller_renv caller_h stack destination
     destination_type receiver_type entry_senv entry_renv return_var
-    callee_return_q origins callee_senv callee_renv callee_h Hcaller_zone
-    Hcaller_env Hcaller_wf
+    callee_return_q origins callee_senv callee_renv callee_h value Hnonlocation
+    Hcaller_zone Hcaller_env Hcaller_wf
     Hdestination_not_receiver Hdestination_type Hlive Hcaller_post_wf
     (ltac:(unfold Mpost, caller_post in Hcaller_components;
       exact Hcaller_components))
@@ -1355,7 +1355,7 @@ Proof.
   intros capability protected Hcapability Hprotected Hconnected.
   apply (Hpost_separated_pre capability protected).
   - unfold Mpre, caller_post, callee_frame, caller_boundary.
-    eapply call_return_null_live_reachability_reflects_before_pop with
+    eapply call_return_nonlocation_live_reachability_reflects_before_pop with
       (caller_h := caller_h) (destination_type := destination_type); eauto.
   - exact Hprotected.
   - exact Hconnected.
@@ -1392,12 +1392,13 @@ Lemma safe_typed_call_static_result :
     runtime_getVal rGamma y = Some (Iot ly) ->
     r_basetype h ly = Some cy ->
     FindMethodWithName CT cy method runtime_mdef ->
-    exists destination_type receiver_type static_mdef,
+    exists destination_type receiver_type receiver_class static_mdef,
       sGamma' = sGamma /\
       x <> 0 /\
       static_getType sGamma x = Some destination_type /\
       static_getType sGamma y = Some receiver_type /\
-      FindMethodWithName CT (sctype receiver_type) method static_mdef /\
+      sbase receiver_type = TRef receiver_class /\
+      FindMethodWithName CT receiver_class method static_mdef /\
       method_signature_refinement CT
         (msignature runtime_mdef) (msignature static_mdef) /\
       qualified_type_subtype CT
@@ -1408,15 +1409,15 @@ Lemma safe_typed_call_static_result :
           (mreceiver (msignature static_mdef))) \/
        (sqtype receiver_type = RO /\
         sqtype (mreceiver (msignature static_mdef)) = RDM /\
-        base_subtype CT (sctype receiver_type)
-          (sctype (mreceiver (msignature static_mdef))))).
+        base_subtype CT (sbase receiver_type)
+          (sbase (mreceiver (msignature static_mdef))))).
 Proof.
   intros CT sGamma mt rGamma h x method y args sGamma' ly cy runtime_mdef
     Hwf Htyping Hsafe Hvalue Hbase Hfind.
   inversion Htyping; subst.
   - destruct Hsafe as [Hrs | Hts]; subst mt;
       destruct Hscope as [Has | [Hcs Hcallee]]; discriminate.
-  - exists Tx, Ty, mdef. repeat split; try assumption;
+  - exists Tx, Ty, C, mdef. repeat split; try assumption;
       try (exact Hrcv_sub).
     eapply runtime_call_signature_refines; eauto.
 Qed.

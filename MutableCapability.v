@@ -13,7 +13,7 @@ Inductive mutable_edge (CT : class_table) (h : heap) : Loc -> Loc -> Prop :=
 | mutable_edge_rdm : forall l l' o f D fdef,
     runtime_getObj h l = Some o ->
     getVal o.(fields_map) f = Some (Iot l') ->
-    base_subtype CT (rctype (rt_type o)) D ->
+    class_subtype CT (rctype (rt_type o)) D ->
     sf_def_rel CT D f fdef ->
     mutability (ftype fdef) = RDM_f ->
     mutable_edge CT h l l'.
@@ -36,7 +36,7 @@ Inductive retained_mut_edge (CT : class_table) (h : heap) : Loc -> Loc -> Prop :
     runtime_getObj h l = Some o ->
     r_muttype h l = Some Mut_r ->
     getVal o.(fields_map) f = Some (Iot l') ->
-    base_subtype CT (rctype (rt_type o)) D ->
+    class_subtype CT (rctype (rt_type o)) D ->
     sf_def_rel CT D f fdef ->
     mutability (ftype fdef) = Mut_f ->
     retained_mut_edge CT h l l'.
@@ -150,13 +150,14 @@ Definition mutable_members_runtime_mut
   forall l, In Loc M l -> r_muttype h l = Some Mut_r.
 
 Lemma runtime_static_rdm_edge :
-  forall CT sGamma rGamma h x T l o f fdef l'
+  forall CT sGamma rGamma h x T C l o f fdef l'
     (Hwf : wf_r_config CT sGamma rGamma h)
     (Htype : static_getType sGamma x = Some T)
     (Hval : runtime_getVal rGamma x = Some (Iot l))
     (Hobj : runtime_getObj h l = Some o)
     (Hfield : getVal o.(fields_map) f = Some (Iot l'))
-    (Hfld : sf_def_rel CT (sctype T) f fdef)
+    (Href : sbase T = TRef C)
+    (Hfld : sf_def_rel CT C f fdef)
     (Hrdm : mutability (ftype fdef) = RDM_f),
     mutable_edge CT h l l'.
 Proof.
@@ -170,17 +171,22 @@ Proof.
   specialize (Hcorr this qcontext Hthis Hqcontext x Hxdom T Htype).
   rewrite Hval in Hcorr.
   unfold wf_r_typable, r_type in Hcorr. rewrite Hobj in Hcorr.
-  eapply mutable_edge_rdm; eauto. exact (proj1 Hcorr).
+  eapply mutable_edge_rdm; eauto.
+  destruct Hcorr as [Hbase _].
+  destruct (base_subtype_from_ref CT (rctype (rt_type o)) (sbase T) Hbase)
+    as [D [Hsbase Hclass]].
+  rewrite Href in Hsbase. injection Hsbase as <-. exact Hclass.
 Qed.
 
 Lemma runtime_static_mut_field_edge :
-  forall CT sGamma rGamma h x T l o f fdef l'
+  forall CT sGamma rGamma h x T C l o f fdef l'
     (Hwf : wf_r_config CT sGamma rGamma h)
     (Htype : static_getType sGamma x = Some T)
     (Hval : runtime_getVal rGamma x = Some (Iot l))
     (Hobj : runtime_getObj h l = Some o)
     (Hfield : getVal o.(fields_map) f = Some (Iot l'))
-    (Hfld : sf_def_rel CT (sctype T) f fdef)
+    (Href : sbase T = TRef C)
+    (Hfld : sf_def_rel CT C f fdef)
     (Hreceiver : sqtype T = Mut)
     (Hmut : mutability (ftype fdef) = Mut_f),
     retained_mut_edge CT h l l'.
@@ -201,12 +207,15 @@ Proof.
     unfold qualifier_typable_context, vpa_mutability_runtime in Hqual.
     rewrite Hreceiver in Hqual. destruct qcontext; contradiction. }
   eapply retained_edge_mut; eauto.
+  destruct (base_subtype_from_ref CT (rctype (rt_type o)) (sbase T) Hbase)
+    as [D [Hsbase Hclass]].
+  rewrite Href in Hsbase. injection Hsbase as <-. exact Hclass.
 Qed.
 
 Lemma field_defs_agree_at_runtime_subtype :
   forall CT C D1 D2 f fd1 fd2,
-    base_subtype CT C D1 ->
-    base_subtype CT C D2 ->
+    class_subtype CT C D1 ->
+    class_subtype CT C D2 ->
     sf_def_rel CT D1 f fd1 ->
     sf_def_rel CT D2 f fd2 ->
     fd1 = fd2.
@@ -224,7 +233,7 @@ Lemma mutable_edge_after_field_update :
     mutable_edge CT h l l' \/
     (l = lx /\ value = Iot l' /\
       exists D fdef,
-        base_subtype CT (rctype (rt_type old)) D /\
+        class_subtype CT (rctype (rt_type old)) D /\
         sf_def_rel CT D fnew fdef /\
         mutability (ftype fdef) = RDM_f).
 Proof.
@@ -260,7 +269,7 @@ Lemma retained_edge_after_field_update :
     retained_mut_edge CT h l l' \/
     (l = lx /\ value = Iot l' /\
       exists D fdef,
-        base_subtype CT (rctype (rt_type old)) D /\
+        class_subtype CT (rctype (rt_type old)) D /\
         sf_def_rel CT D fnew fdef /\
         (mutability (ftype fdef) = RDM_f \/
          mutability (ftype fdef) = Mut_f)).
@@ -335,7 +344,7 @@ Lemma mutable_edge_after_append :
     mutable_edge CT h l l' \/
     (l = dom h /\ exists f D fdef,
       getVal newobj.(fields_map) f = Some (Iot l') /\
-      base_subtype CT (rctype (rt_type newobj)) D /\
+      class_subtype CT (rctype (rt_type newobj)) D /\
       sf_def_rel CT D f fdef /\
       mutability (ftype fdef) = RDM_f).
 Proof.
@@ -359,7 +368,7 @@ Lemma retained_edge_after_append :
     retained_mut_edge CT h l l' \/
     (l = dom h /\ exists f D fdef,
       getVal newobj.(fields_map) f = Some (Iot l') /\
-      base_subtype CT (rctype (rt_type newobj)) D /\
+      class_subtype CT (rctype (rt_type newobj)) D /\
       sf_def_rel CT D f fdef /\
       (mutability (ftype fdef) = RDM_f \/
        mutability (ftype fdef) = Mut_f)).
