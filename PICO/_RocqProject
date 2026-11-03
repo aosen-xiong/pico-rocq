@@ -1,0 +1,42 @@
+-Q . ""
+-arg -exclude-dir
+-arg _opam
+LibTactics.v
+Tactics.v
+Syntax.v
+Notations.v
+Helpers.v
+ViewpointAdaptation.v
+ConcreteState.v
+Subtyping.v
+Typing.v
+ObjectCreationExamples.v
+Reachability.v
+Bigstep.v
+WellformednessRegression.v
+Properties.v
+SemanticsRegression.v
+Preservation.v
+ExecutionConfinement.v
+AbstractStatePreservation.v
+ConcreteStatePreservation.v
+ReadonlyHelper.v
+MutableCapability.v
+AuthorityCapability.v
+ProtectionHistory.v
+ComponentColoring.v
+ForwardCapabilityHistory.v
+AuthorityHistory.v
+WatchedFrames.v
+LiveCapabilityStack.v
+PotentialCapabilityCore.v
+PotentialCapabilityAtomic.v
+PotentialCapabilityPrivate.v
+PotentialCapabilityResume.v
+PotentialCapabilityRDMPop.v
+PotentialCapability.v
+ProtectedFieldPreservation.v
+ReadonlyNoMutation.v
+ReadonlyStatePreservation.v
+TransitiveStatePreservation.v
+WFNOMutationEXP.v

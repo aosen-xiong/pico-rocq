@@ -32,6 +32,12 @@ jobs:
       - name: Check public theorem assumptions
         run: opam exec -- python3 scripts/check-public-assumptions.py .
 
+      - name: Build the PICO mechanization
+        run: opam exec -- make -C PICO
+
+      - name: Check the PICO mechanization's theorem assumptions
+        run: opam exec -- python3 scripts/check-public-assumptions.py PICO PICO/public-theorems.txt
+
   docs:
     name: Alectryon docs
     runs-on: ubuntu-latest

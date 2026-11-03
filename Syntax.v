@@ -1,12 +1,17 @@
-From Stdlib Require List.
-Require Import Stdlib.Sets.Ensembles.
+From Stdlib Require Import List.
+Import ListNotations.
+
+(** Generic PICO: the flat PICO calculus extended with class and method type
+    parameters with qualified bounds, and a cast statement.  The design follows
+    the GAIT paper and the Lean development's generic immutability instance;
+    evaluation stays big-step. *)
 
 (* ------------------SYNTAX------------------*)
 Definition var : Type := nat.
 Definition method_name : Type := nat.
 Definition class_name : Type := nat.
 
-(** All Mutability Qualifer *)
+(** All mutability qualifiers *)
 Inductive q : Type :=
   (* q_c *)
   | Mut
@@ -18,33 +23,76 @@ Inductive q : Type :=
   | Lost
   | Bot.
 
-(** User-facing Mutability Qualifier  *)
-Inductive q_f : Type :=
-  (* q_c *)
-  | Mut_f
-  | Imm_f
-  | RDM_f
-  (* q_f *)
-  | RO_f.
-
-(** Class Declaration Mutability Qualifier *)
+(** Class declaration / allocation mutability qualifier *)
 Inductive q_c : Type :=
-  (* q_c *)
   | Mut_c
   | Imm_c
   | RDM_c.
 
-(* Assignability Qualifier *)
+(* Assignability qualifier *)
 Inductive a : Type :=
   | Assignable
   | Final
   | RDA.
 
-(* Qualified type  *)
-Record qualified_type := {
-  sqtype: q; (* Type qualifier *)
-  sctype: class_name; (* Class name *)
-}.
+(** Who declared a type variable.  Class parameter [n] and method parameter
+    [n] are different variables. *)
+Inductive tv_owner : Type :=
+  | ClassVar
+  | MethodVar.
+
+(** How a type variable is used.  [TVSub] stands for exactly the supplied
+    type.  [TVQual q] keeps the supplied class and arguments and replaces the
+    outer qualifier by [q].  [TVPoly m] does the same with the [m]-th
+    qualifier parameter of the enclosing method. *)
+Inductive tv_use : Type :=
+  | TVSub
+  | TVQual (qual : q)
+  | TVPoly (param : nat).
+
+(** Qualified types: a qualified class type with type arguments, a use of a
+    declared type variable, or a class type whose qualifier is a qualifier
+    parameter of the enclosing method: [THead n C args] is [C<args>] under
+    the method's [n]-th qualifier parameter. *)
+Inductive qualified_type : Type :=
+  | TClass : q -> class_name -> list qualified_type -> qualified_type
+  | TVar : tv_use -> tv_owner -> nat -> qualified_type
+  | THead : nat -> class_name -> list qualified_type -> qualified_type.
+
+(** A qualifier argument of a call: a written qualifier, or one of the
+    calling method's own qualifier parameters. *)
+Inductive qarg : Type :=
+  | QLit : q -> qarg
+  | QVar : nat -> qarg.
+
+(** Induction principle that also covers the nested argument lists. *)
+Section qualified_type_ind'.
+  Variable P : qualified_type -> Prop.
+  Hypothesis Hclass : forall qual C args,
+    Forall P args -> P (TClass qual C args).
+  Hypothesis Hvar : forall u o n, P (TVar u o n).
+  Hypothesis Hhead : forall n C args,
+    Forall P args -> P (THead n C args).
+
+  Fixpoint qualified_type_ind' (T : qualified_type) : P T :=
+    match T with
+    | TClass qual C args =>
+        Hclass qual C args
+          ((fix go (l : list qualified_type) : Forall P l :=
+              match l with
+              | [] => Forall_nil P
+              | t :: r => Forall_cons t (qualified_type_ind' t) (go r)
+              end) args)
+    | TVar u o n => Hvar u o n
+    | THead n C args =>
+        Hhead n C args
+          ((fix go (l : list qualified_type) : Forall P l :=
+              match l with
+              | [] => Forall_nil P
+              | t :: r => Forall_cons t (qualified_type_ind' t) (go r)
+              end) args)
+    end.
+End qualified_type_ind'.
 
 Definition s_env := list qualified_type.
 
@@ -55,42 +103,27 @@ Inductive expr : Type :=
 
 Inductive stmt: Type :=
   | SSkip: stmt (* skip *)
-  | SLocal: qualified_type -> var -> stmt (* T x*)
+  | SLocal: qualified_type -> var -> stmt (* T x *)
   | SVarAss: var -> expr -> stmt (* x = e *)
   | SFldWrite: var -> var -> var -> stmt (* x.f = y *)
-  | SNew: var -> q_c -> class_name -> list var -> stmt (* x = new q_c C(y1, ..., yn) *)
-  | SCall: var -> var -> method_name -> list var -> stmt (* x = y.m(z1, ..., zn) *)
-  (* | SCast: var -> q -> class_name -> var -> stmt x = (q C) y  *)
+  | SNew: var -> q_c -> class_name -> list qualified_type -> list var -> stmt
+      (* x = new q_c C<Ts>(y1, ..., yn) *)
+  | SCall: var -> method_name -> var -> list qualified_type -> list qarg ->
+           list var -> stmt
+      (* x = y.<Ts; Qs>m(z1, ..., zn): type arguments, then qualifier
+         arguments *)
+  | SCast: var -> qualified_type -> var -> stmt (* x = (T) y *)
   | SSeq: stmt -> stmt -> stmt. (* s1; s2 *)
 
-Record field_type := {
-  assignability: a;
-  mutability: q_f;
-  f_base_type : class_name;
-}.
-
-(* Field declaration with assignability and mutability *)
+(** Field declaration: assignability and declared type.  The declared type may
+    mention the class's type parameters. *)
 Record field_def := {
-  ftype : field_type; (* Field type *)
-  fname : var; (* Field name, the name should match the index from the field list *)
-}.
-
-Record constructor_body :={
-  assignments: list (var * var); (* this.f1 = f_1; ...; this.fn = f_n *)
-}.
-
-Record constructor_sig := {
-  cqualifier: q_c; (* Mutable, Immutable, or RDM *)
-  cparams : list qualified_type; (* T y1, ..., T yn Parameters for field assignment *) (*c -> current*)
-}.
-
-Record constructor_def := {
-  csignature : constructor_sig; (* Constructor signature *)
-  (* cbody : constructor_body; Constructor body removed by directly enforcing assignment in the well-formedness rule. *)
+  assignability : a;
+  ftype : qualified_type;
 }.
 
 Record method_body := {
-  mbody_stmt: stmt; (* Method body expression *)
+  mbody_stmt: stmt; (* Method body statement *)
   mreturn: var; (* Return variable *)
 }.
 
@@ -106,11 +139,24 @@ Definition readonly_state_method_scope (mt : method_scope) : Prop :=
 Definition strict_assignability_method_scope (mt : method_scope) : Prop :=
   mt = ConcreteState \/ mt = TransitiveState.
 
+(** Type-parameter bounds, class parameters first, method parameters second
+    (bounds are non-variable class types, checked by well-formedness),
+    together with the protection mode of the enclosing code.  The mode
+    selects the table through which superclass type arguments are seen. *)
+Record tv_env := mk_tv_env {
+  class_bounds : list qualified_type;
+  method_bounds : list qualified_type;
+  tv_mode : method_scope;
+  qparams : nat; (* number of qualifier parameters of the enclosing method *)
+}.
+
 Record method_sig := {
   mscope: method_scope;
+  mtparams : list qualified_type; (* bounds of the method's type parameters *)
+  mqparams : nat; (* number of the method's qualifier parameters *)
   mret : qualified_type; (* Return type *)
   mname : method_name; (* Method name *)
-  mreceiver: qualified_type; (*T this*)
+  mreceiver: qualified_type; (* T this *)
   mparams : list qualified_type; (* T x1, ..., T xn *)
 }.
 
@@ -121,14 +167,15 @@ Record method_def := {
 
 Record class_body := {
   fields : list field_def; (* Class fields *)
-  constructor: constructor_def; (* Constructor declaration *)
   methods : list method_def; (* Class methods *)
 }.
 
 Record class_sig := {
   class_qualifier : q_c; (* Mutable, Immutable, or RDM *)
-  cname : class_name; (* Class name, need to be the same as the index from class_table *)
-  super : option class_name;
+  cname : class_name; (* Must equal the class's index in the class table *)
+  ctparams : list qualified_type; (* bounds of the class's type parameters *)
+  super : option (class_name * list qualified_type);
+    (* superclass with explicit type arguments over this class's parameters *)
 }.
 
 Record class_def := {
@@ -136,51 +183,81 @@ Record class_def := {
   body : class_body; (* Class body *)
 }.
 
-Record program_def := {
-  classes: list class_def; (* List of class declarations *)
-  main_statement: stmt; (* Main statement *)
-}.
-
 (* Class table is a list of class declarations *)
 Definition class_table := list class_def.
 
 (* ------------------RUNTIME MODEL------------------*)
 
-(** Runtime Mutability Qualifier *)
+(** Runtime object mutability *)
 Inductive q_r : Type :=
   | Mut_r
-  | Imm_r
-  .
+  | Imm_r.
 
-(** Runtime Type *)
+Definition qr2q (qr : q_r) : q :=
+  match qr with
+  | Mut_r => Mut
+  | Imm_r => Imm
+  end.
+
+(** Runtime types are fully resolved class types: no type variables.  They are
+    what an object stores for its type arguments.  Their qualifiers reuse [q];
+    resolution never produces [RDM]. *)
+Inductive rtype : Type :=
+  | RClass : q -> class_name -> list rtype -> rtype.
+
+Section rtype_ind'.
+  Variable P : rtype -> Prop.
+  Hypothesis Hclass : forall qual C args,
+    Forall P args -> P (RClass qual C args).
+
+  Fixpoint rtype_ind' (R : rtype) : P R :=
+    match R with
+    | RClass qual C args =>
+        Hclass qual C args
+          ((fix go (l : list rtype) : Forall P l :=
+              match l with
+              | [] => Forall_nil P
+              | t :: r => Forall_cons t (rtype_ind' t) (go r)
+              end) args)
+    end.
+End rtype_ind'.
+
+(** Runtime object type: mutability, class, and runtime type arguments. *)
 Record runtime_type := mkruntime_type {
   rqtype: q_r; (* Runtime mutability *)
   rctype: class_name; (* Class name *)
+  rtargs: list rtype; (* Runtime type arguments *)
 }.
 
-(** Memory Address *)
+(** Memory address *)
 Definition Loc : Type := nat.
 
-(** Runtime Value *)
+(** Runtime value *)
 Inductive value : Type :=
   | Null_a : value
   | Iot: Loc -> value.
 
-(** Variable Mapping *)
-Definition var_mapping   := list value.
+(** Variable mapping *)
+Definition var_mapping := list value.
 
-(** Runtime Environment *)
+(** Runtime environment of one activation: the variables, the runtime type
+    arguments of the receiver viewed at the class that declares the running
+    method, the runtime type arguments of the method itself, and the
+    qualifiers supplied for the method's qualifier parameters. *)
 Record r_env := mkr_env {
-  vars: var_mapping; (* Variable mapping *)
+  vars: var_mapping;
+  cargs: list rtype;
+  margs: list rtype;
+  qargs: list q; (* the activation's qualifier arguments *)
 }.
 
-Definition set_vars (_ : r_env) (vars' : var_mapping) : r_env :=
-  mkr_env vars'.
+Definition set_vars (rΓ : r_env) (vars' : var_mapping) : r_env :=
+  mkr_env vars' (cargs rΓ) (margs rΓ) (qargs rΓ).
 
-(** Field Mapping *)
-Definition fields_mapping := list value. 
+(** Field mapping *)
+Definition fields_mapping := list value.
 
-(** Runtime Object *)
+(** Runtime object *)
 Record Obj := mkObj {
   rt_type: runtime_type; (* Runtime type *)
   fields_map: fields_mapping; (* Field mapping *)
@@ -190,4 +267,4 @@ Definition set_fields_map (o : Obj) (fields' : fields_mapping) : Obj :=
   mkObj (rt_type o) fields'.
 
 (** Heap *)
-Definition heap          := list Obj.
+Definition heap := list Obj.
