@@ -29,7 +29,7 @@ make check    # build, then run the two checks below
   checks that [scripts/public-theorems.txt](scripts/public-theorems.txt) lists
   every `Theorem` of the sources, then runs `Print Assumptions` on each listed
   result and fails unless every one is closed under the global context. The
-  list has 187 entries, including every result in the table below.
+  list has 189 entries, including every result in the table below.
 
 `make check-pico` does the same for the PICO folder. `dune build @default` is a
 wrapper over the same build and is what the CI runs. `make alectryon-doc`

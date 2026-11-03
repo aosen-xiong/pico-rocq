@@ -189,3 +189,5 @@ ExamplesPolyWrite.callW_not_vacuous
 ExamplesPolyWrite.callW_from_start
 Immutability.reachable_abs_from_imm_points_to_imm
 ArgTheorems.RSFp_start_plain
+Progress.eval_fuel_erase
+Progress.eval_stmt_has_fuel
