@@ -1,6 +1,6 @@
 opam-version: "2.0"
-synopsis: "Pico Coq formalization"
-description: "Pico language formalization and proofs in Rocq/Coq."
+synopsis: "GAIT and PICO Rocq formalizations"
+description: "Generic Abstract Immutability Types (GAIT) and the earlier PICO calculus, formalized in Rocq."
 maintainer: ["pico-coq"]
 authors: ["pico-coq"]
 license: "MIT"

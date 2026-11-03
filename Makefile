@@ -10,7 +10,7 @@ ALECTRYON ?= $(shell command -v alectryon 2>/dev/null || command -v "$(HOME)/Lib
 ALECTRYON_COQ_DRIVER ?= coqc_time
 SITE_DIR ?= $(PROJECT_DIR)site
 
-.PHONY: all coq check doc doc-clean alectryon-doc alectryon-clean site site-clean clean
+.PHONY: all coq check pico check-pico doc doc-clean alectryon-doc alectryon-clean site site-clean clean
 
 all: coq
 
@@ -23,6 +23,12 @@ coq: $(COQMAKEFILE)
 check: coq
 	python3 "$(PROJECT_DIR)scripts/check-no-axioms-admits.py" "$(PROJECT_DIR)"
 	python3 "$(PROJECT_DIR)scripts/check-public-assumptions.py" "$(PROJECT_DIR)"
+
+pico:
+	$(MAKE) -C "$(PROJECT_DIR)PICO"
+
+check-pico:
+	$(MAKE) -C "$(PROJECT_DIR)PICO" check
 
 doc:
 	mkdir -p "$(DOC_DIR)"
@@ -45,7 +51,7 @@ alectryon-doc: coq
 	  '<html lang="en">' \
 	  '<head>' \
 	  '  <meta charset="utf-8">' \
-	  '  <title>Pico (Rocq) — Alectryon Docs</title>' \
+	  '  <title>GAIT (Rocq) — Alectryon Docs</title>' \
 	  '  <link href="project-alectryon.css" rel="stylesheet">' \
 	  '  <style>' \
 	  '    body { max-width: 980px; margin: 3rem auto; padding: 0 1.5rem; font-family: system-ui, sans-serif; line-height: 1.5; }' \
@@ -58,66 +64,12 @@ alectryon-doc: coq
 	  '  </style>' \
 	  '</head>' \
 	  '<body>' \
-	  '  <h1>Pico (Rocq) — Alectryon Docs</h1>' \
-	  '  <p>Rendered Rocq sources for the Pico language mechanization.</p>' \
-	  '  <h2>Foundations</h2>' \
+	  '  <h1>GAIT (Rocq) — Alectryon Docs</h1>' \
+	  '  <p>Rendered Rocq sources of the GAIT mechanization, in build order.</p>' \
 	  '  <ul>' \
-	  '    <li><a href="LibTactics.html">LibTactics</a></li>' \
-	  '    <li><a href="Tactics.html">Tactics</a></li>' \
-	  '    <li><a href="Syntax.html">Syntax</a></li>' \
-	  '    <li><a href="Notations.html">Notations</a></li>' \
-	  '    <li><a href="Helpers.html">Helpers</a></li>' \
-	  '  </ul>' \
-	  '  <h2>Type system</h2>' \
-	  '  <ul>' \
-	  '    <li><a href="ViewpointAdaptation.html">ViewpointAdaptation</a></li>' \
-	  '    <li><a href="Subtyping.html">Subtyping</a></li>' \
-	  '    <li><a href="Typing.html">Typing</a></li>' \
-	  '  </ul>' \
-	  '  <h2>Runtime</h2>' \
-	  '  <ul>' \
-	  '    <li><a href="Reachability.html">Reachability</a></li>' \
-	  '    <li><a href="Bigstep.html">Bigstep</a></li>' \
-	  '    <li><a href="Properties.html">Properties</a></li>' \
-	  '  </ul>' \
-	  '  <h2>Capability history</h2>' \
-	  '  <ul>' \
-	  '    <li><a href="ExecutionConfinement.html">ExecutionConfinement</a></li>' \
-	  '    <li><a href="MutableCapability.html">MutableCapability</a></li>' \
-	  '    <li><a href="AuthorityCapability.html">AuthorityCapability</a></li>' \
-	  '    <li><a href="ProtectionHistory.html">ProtectionHistory</a></li>' \
-	  '    <li><a href="ComponentColoring.html">ComponentColoring</a></li>' \
-	  '    <li><a href="ForwardCapabilityHistory.html">ForwardCapabilityHistory</a></li>' \
-	  '    <li><a href="AuthorityHistory.html">AuthorityHistory</a></li>' \
-	  '    <li><a href="WatchedFrames.html">WatchedFrames</a></li>' \
-	  '    <li><a href="LiveCapabilityStack.html">LiveCapabilityStack</a></li>' \
-	  '    <li><a href="PotentialCapability.html">PotentialCapability</a></li>' \
-	  '    <li><a href="ProtectedFieldPreservation.html">ProtectedFieldPreservation</a></li>' \
-	  '  </ul>' \
-	  '  <h2>Soundness</h2>' \
-	  '  <ul>' \
-	  '    <li><a href="Preservation.html">Preservation</a></li>' \
-	  '  </ul>' \
-	  '  <h2>Immutability</h2>' \
-	  '  <ul>' \
-	  '    <li><a href="AbstractStatePreservation.html">AbstractStatePreservation</a></li>' \
-	  '    <li><a href="ConcreteState.html">ConcreteState</a></li>' \
-	  '    <li><a href="ConcreteStatePreservation.html">ConcreteStatePreservation</a></li>' \
-	  '    <li><a href="TransitiveStatePreservation.html">TransitiveStatePreservation</a></li>' \
-	  '  </ul>' \
-	  '  <h2>Readonly</h2>' \
-	  '  <ul>' \
-	  '    <li><a href="ReadonlyHelper.html">ReadonlyHelper</a></li>' \
-	  '    <li><a href="ReadonlyNoMutation.html">ReadonlyNoMutation</a></li>' \
-	  '    <li><a href="ReadonlyStatePreservation.html">ReadonlyStatePreservation</a></li>' \
-	  '  </ul>' \
-	  '  <h2>Mutation safety</h2>' \
-	  '  <ul>' \
-	  '    <li><a href="WFNOMutationEXP.html">WFNOMutationEXP</a></li>' \
-	  '  </ul>' \
-	  '</body>' \
-	  '</html>' \
 	  > "$(ALECTRYON_DIR)/index.html"
+	cd "$(PROJECT_DIR)" && awk '/[.]v$$/ { m = $$0; sub(/[.]v$$/, "", m); gsub("/", ".", m); printf "    <li><a href=\"%s.html\">%s</a></li>\n", m, m }' _RocqProject >> "$(ALECTRYON_DIR)/index.html"
+	printf '%s\n' '  </ul>' '</body>' '</html>' >> "$(ALECTRYON_DIR)/index.html"
 	set -e; cd "$(PROJECT_DIR)" && awk '/[.]v$$/ { print }' _RocqProject | \
 	  while IFS= read -r f; do \
 	    out="$$(printf '%s\n' "$$f" | sed 's#[/]#.#g; s#[.]v$$#.html#')"; \

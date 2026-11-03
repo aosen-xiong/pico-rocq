@@ -4,7 +4,16 @@ From Stdlib Require String.
 From Stdlib Require Import List.
 Import ListNotations.
 
-(* STATIC HELPER FUNCTIONS *)
+(* ------------------STATIC LOOKUP------------------*)
+
+(** Transport an inherited field declaration to the subclass: the superclass's
+    type parameters are replaced by the declared superclass arguments. *)
+Definition subst_field (Ss : list qualified_type) (fd : field_def) : field_def :=
+  {| assignability := assignability fd;
+     ftype := subst Ss [] [] (ftype fd) |}.
+
+(** All fields of a class, inherited fields first, every declared type
+    expressed over the class's own type parameters. *)
 Inductive CollectFields : class_table -> class_name -> list field_def -> Prop :=
   (* Base case: class not found *)
   | CF_NotFound : forall CT C
@@ -18,12 +27,12 @@ Inductive CollectFields : class_table -> class_name -> list field_def -> Prop :=
       CollectFields CT C []
 
   (* Inductive case: class with superclass *)
-  | CF_Inherit : forall CT C def parent parent_fields own_fields
+  | CF_Inherit : forall CT C def parent Ss parent_fields own_fields
       (Hfind        : find_class CT C = Some def)
-      (Hsuper       : super (signature def) = Some parent)
+      (Hsuper       : super (signature def) = Some (parent, Ss))
       (Hparent_cf   : CollectFields CT parent parent_fields)
       (Hown_fields  : own_fields = Syntax.fields (body def)),
-      CollectFields CT C (parent_fields ++ own_fields).
+      CollectFields CT C (map (subst_field Ss) parent_fields ++ own_fields).
 
 (* Field lookup relation *)
 Inductive FieldLookup : class_table -> class_name -> var -> field_def -> Prop :=
@@ -32,38 +41,25 @@ Inductive FieldLookup : class_table -> class_name -> var -> field_def -> Prop :=
       (Hget : gget fields f = Some fdef),
       FieldLookup CT C f fdef.
 
-(* Relational versions of your lookup functions *)
 Definition sf_def_rel (CT: class_table) (C: class_name) (f: var) (fdef: field_def) : Prop :=
   FieldLookup CT C f fdef.
 
 Definition sf_assignability_rel (CT: class_table) (C: class_name) (f: var) (a: a) : Prop :=
-  exists fdef, FieldLookup CT C f fdef /\ assignability (ftype fdef) = a.
+  exists fdef, FieldLookup CT C f fdef /\ assignability fdef = a.
 
-Definition sf_mutability_rel (CT: class_table) (C: class_name) (f: var) (qf: q_f) : Prop :=
-  exists fdef, FieldLookup CT C f fdef /\ mutability (ftype fdef) = qf.
-
-(* Key properties of relational field collection *)
 Lemma collect_fields_deterministic_rel : forall CT C fields1 fields2
   (Hcf1 : CollectFields CT C fields1)
   (Hcf2 : CollectFields CT C fields2),
   fields1 = fields2.
 Proof.
-  intros CT C fields1 fields2 H1 H2.
+  intros CT C fields1 fields2 H1.
   generalize dependent fields2.
-  induction H1; intros fields2 H3; inversion H3; subst; try reflexivity.
-  - (* CF_NotFound vs CF_Inherit: Hnone contradicts find_class = Some *)
-    congruence.
-  - (* CF_Object vs CF_Inherit: Hsuper contradicts super = Some *)
-    congruence.
-  - (* CF_Inherit vs CF_NotFound: Hfind contradicts find_class = None *)
-    congruence.
-  - (* CF_Inherit vs CF_Object: Hsuper contradicts super = None *)
-    congruence.
-  - (* Both CF_Inherit *)
-    assert (Hdef_eq : def = def0) by congruence. subst def0.
-    assert (Hparent_eq : parent = parent0) by congruence. subst parent0.
-    assert (parent_fields = parent_fields0) by eauto.
-    subst parent_fields0. reflexivity.
+  induction H1; intros fields2 H3; inversion H3; subst; try reflexivity;
+    try congruence.
+  assert (Hdef_eq : def = def0) by congruence. subst def0.
+  rewrite Hsuper in Hsuper0. inversion Hsuper0; subst.
+  assert (parent_fields = parent_fields0) by eauto.
+  subst parent_fields0. reflexivity.
 Qed.
 
 Lemma field_lookup_deterministic_rel : forall CT C f fdef1 fdef2
@@ -78,251 +74,45 @@ Proof.
   subst. rewrite Hget1 in Hget2. injection Hget2. auto.
 Qed.
 
-Lemma field_inheritance_preserves_type : forall CT C parent def f fdef
-  (Hfind         : find_class CT C = Some def)
-  (Hsuper        : super (signature def) = Some parent)
-  (Hparent_lookup : FieldLookup CT parent f fdef),
-  FieldLookup CT C f fdef.
-Proof.
-  intros CT C parent def f fdef Hfind Hsuper Hparent_lookup.
-  inversion Hparent_lookup as [CT' parent' parent_fields f' fdef' Hparent_cf Hparent_get]. subst.
-  apply FL_Found with (parent_fields ++ Syntax.fields (body def)).
-  - eapply CF_Inherit; eauto.
-  - (* Prove gget (parent_fields ++ Syntax.fields (body def)) f = Some fdef *)
-    unfold gget in *.
-    rewrite nth_error_app1.
-    + apply nth_error_Some. rewrite Hparent_get. discriminate.
-    + exact Hparent_get.
-Qed.
-
-(* Transitive field inheritance via subtyping *)
-Lemma field_inheritance_subtyping : forall CT C D f fdef
-  (Hsub    : base_subtype CT C D)
-  (Hlookup : FieldLookup CT D f fdef),
-  FieldLookup CT C f fdef.
-Proof.
-  intros CT C D f fdef Hsub Hlookup.
-  induction Hsub.
-  - (* Reflexivity: C = D *)
-    exact Hlookup.
-  - (* Transitivity: C <: E <: D *)
-    apply IHHsub1.
-    apply IHHsub2.
-    exact Hlookup.
-  - (* Direct inheritance: C extends D *)
-    destruct (find_class CT C) as [def|] eqn:Hfind.
-    apply (field_inheritance_preserves_type CT C D def f fdef); auto.
-    unfold parent_lookup in Hparent.
-    rewrite Hfind in Hparent.
-    simpl in Hparent.
-    exact Hparent.
-    unfold parent_lookup in Hparent.
-    rewrite Hfind in Hparent.
-    discriminate Hparent.
-Qed.
-
-(* Corollary for all field properties *)
-Lemma sf_def_subtyping : forall CT C D f fdef
-  (Hsub    : base_subtype CT C D)
-  (Hlookup : sf_def_rel CT D f fdef),
-  sf_def_rel CT C f fdef.
-Proof.
-  intros CT C D f fdef Hsub Hlookup.
-  unfold sf_def_rel in *.
-  apply (field_inheritance_subtyping CT C D f fdef); auto.
-Qed.
-
-Lemma sf_assignability_subtyping : forall CT C D f a
-  (Hsub    : base_subtype CT C D)
-  (Hlookup : sf_assignability_rel CT D f a),
-  sf_assignability_rel CT C f a.
-Proof.
-  intros CT C D f a Hsub Hlookup.
-  unfold sf_assignability_rel in *.
-  destruct Hlookup as [fdef [Hfield Hassign]].
-  exists fdef. split; auto.
-  apply (sf_def_subtyping CT C D f fdef); auto.
-Qed.
-
 Lemma sf_assignability_deterministic_rel : forall CT C f a1 a2
   (H1 : sf_assignability_rel CT C f a1)
   (H2 : sf_assignability_rel CT C f a2),
   a1 = a2.
 Proof.
   intros CT C f a1 a2 H1 H2.
-  unfold sf_assignability_rel in H1, H2.
   destruct H1 as [fdef1 [Hlookup1 Hassign1]].
   destruct H2 as [fdef2 [Hlookup2 Hassign2]].
-  
-  (* Use field lookup determinism *)
-  assert (Hfdef_eq: fdef1 = fdef2).
-  {
-    eapply field_lookup_deterministic_rel; eauto.
-  }
-  subst fdef2.
-  
-  (* Now assignability (ftype fdef1) = a1 and assignability (ftype fdef1) = a2 *)
-  rewrite -> Hassign1 in Hassign2.
-  exact Hassign2.
-Qed.
-
-(* Look up the constructor for a class *)
-Definition constructor_def_lookup (CT : class_table) (C : class_name) : option constructor_def :=
-  match find_class CT C with
-  | Some def => Some (constructor (body def))
-  | None => None
-  end.
-
-(* Look up the constructor signature for a class *)
-Definition constructor_sig_lookup (CT : class_table) (C : class_name) : option constructor_sig :=
-  match constructor_def_lookup CT C with
-  | Some ctor => Some (csignature ctor)
-  | None => None
-  end.
-
-Lemma constructor_def_lookup_dom : forall CT C ctor
-  (Hctor : constructor_def_lookup CT C = Some ctor),
-  C < dom CT.
-Proof.
-  intros CT C ctor H.
-  unfold constructor_def_lookup in H.
-  destruct (find_class CT C) as [def|] eqn:Hfind; [|discriminate].
-  apply find_class_dom in Hfind.
-  exact Hfind.
-Qed.
-
-Lemma constructor_sig_lookup_dom : forall CT C csig
-  (Hcsig : constructor_sig_lookup CT C = Some csig),
-  C < dom CT.
-Proof.
-  intros CT C csig H.
-  unfold constructor_sig_lookup in H.
-  destruct (constructor_def_lookup CT C) as [ctor|] eqn:Hctor; [|discriminate].
-  apply constructor_def_lookup_dom in Hctor.
-  exact Hctor.
-Qed.
-
-Lemma constructor_sig_lookup_implies_def : forall CT C csig
-  (Hcsig : constructor_sig_lookup CT C = Some csig),
-  exists cdef, constructor_def_lookup CT C = Some cdef /\ csignature cdef = csig.
-Proof.
-  intros CT C csig H.
-  unfold constructor_sig_lookup in H.
-  destruct (constructor_def_lookup CT C) as [ctor|] eqn:Hctor; [|discriminate].
-  exists ctor.
-  split.
-  - reflexivity.
-  - injection H as H. exact H.
+  assert (Hfdef_eq: fdef1 = fdef2)
+    by (eapply field_lookup_deterministic_rel; eauto).
+  subst fdef2. congruence.
 Qed.
 
 (* Helper to compare method names *)
-Definition eq_method_name (m1 m2 : method_name) : bool :=
-  match m1, m2 with
-  | n1, n2 => Nat.eqb n1 n2
-  end.
+Definition eq_method_name (m1 m2 : method_name) : bool := Nat.eqb m1 m2.
 
 Definition gget_method (methods : list method_def) (m : method_name) : option method_def :=
   find (fun mdef => eq_method_name (mname (msignature mdef)) m) methods.
 
-Definition override (parent_methods own_methods : list method_def) : list method_def :=
-  own_methods ++ filter (fun pmdef => 
-    negb (existsb (fun omdef => 
-      eq_method_name (mname (msignature pmdef)) (mname (msignature omdef))) 
-    own_methods)) parent_methods.
-
-Inductive CollectMethods : class_table -> class_name -> list method_def -> Prop :=
-  (* Class not found *)
-  | CM_NotFound : forall CT C
-      (Hnone : find_class CT C = None),
-      CollectMethods CT C []
-
-  (* Object class: no superclass *)
-  | CM_Object : forall CT C def
-      (Hfind  : find_class CT C = Some def)
-      (Hsuper : super (signature def) = None)
-      (Hdom   : C < dom CT),
-      CollectMethods CT C (methods (body def))
-
-  (* Class with superclass *)
-  | CM_Inherit : forall CT C def parent parent_methods own_methods merged
-      (Hfind          : find_class CT C = Some def)
-      (Hsuper         : super (signature def) = Some parent)
-      (Hdom_C         : C < dom CT)
-      (Hdom_parent    : parent < dom CT)
-      (Hordering      : cname (signature def) > parent)
-      (Hparent_cm     : CollectMethods CT parent parent_methods)
-      (Hown_methods   : own_methods = methods (body def))
-      (Hmerged        : merged = override parent_methods own_methods),
-      CollectMethods CT C merged.
- 
-(* STATIC WELLFORMEDNESS CONDITION *)
-(* Well-formedness of type use *)
-Definition wf_stypeuse (CT : class_table) (q_use: q) (c: class_name) : Prop :=
-  match bound CT c with
-  | Some q_bound =>
-                  (* Lost is an internal helper qualifier. Since Lost is not
-                     reflexive in q_subtype, this condition prevents direct
-                     Lost type uses in well-formed static environments. *)
-                  q_subtype (vpa_mutability_bound q_use q_bound) q_use /\
-                   c < dom CT
-  | None => False (* or False, depending on your semantics *)
-  end.
-
-Definition qf2q (qf : q_f) : q :=
-  match qf with
-  | Mut_f => Mut
-  | Imm_f => Imm
-  | RDM_f => RDM
-  | RO_f => RO
-  end.
-
-(** WF-Field embeds a field qualifier in the common qualifier lattice and
-    applies the same adapted-subtyping check as WF-TypeUse. *)
-Definition wf_field (CT : class_table) (fdef: field_def) : Prop :=
-  wf_stypeuse CT (qf2q (mutability (ftype fdef)))
-    (f_base_type (ftype fdef)).
-
-(* Well-formedness of static environment *)
-Definition wf_senv (CT : class_table) (sΓ : s_env) : Prop :=
-  (* The first variable is the receiver and should always be present *)
-  dom sΓ > 0 /\
-  Forall (fun T => wf_stypeuse CT (sqtype T) (sctype T)) sΓ.
-
-Lemma senv_var_domain : forall CT sΓ i T
-  (Hwf_senv : wf_senv CT sΓ)
-  (Hnth     : nth_error sΓ i = Some T),
-  sctype T < dom CT.
-Proof.
-  intros CT sΓ i T Hwf_senv Hnth.
-  unfold wf_senv in Hwf_senv.
-  destruct Hwf_senv as [_ Hforall_wf].
-  assert (Hi_bound : i < dom sΓ).
-  {
-    apply nth_error_Some. rewrite Hnth. discriminate.
-  }
-  eapply Forall_nth_error in Hforall_wf; eauto.
-  unfold wf_stypeuse in Hforall_wf.
-  destruct (bound CT (sctype T)) as [qc|] eqn:Hbound.
-  - destruct Hforall_wf as [_ Hdom]. exact Hdom.
-  - contradiction Hforall_wf.
-Qed.
-
-Inductive FindMethodWithName : class_table -> class_name -> method_name -> method_def -> Prop :=
+(** Method lookup.  Besides the selected declaration it reports the class that
+    declares it, because the declaration's types are written over that class's
+    type parameters. *)
+Inductive FindMethodWithName
+    : class_table -> class_name -> method_name -> class_name -> method_def -> Prop :=
   (* Case 1: method is defined directly in class *)
   | FOM_Here : forall CT C def own_methods m mdef
       (Hfind       : find_class CT C = Some def)
       (Hown        : own_methods = methods (body def))
       (Hget_method : gget_method own_methods m = Some mdef),
-      FindMethodWithName CT C m mdef
+      FindMethodWithName CT C m C mdef
 
   (* Case 2: method not in class, look in superclass *)
-  | FOM_Super : forall CT C def parent m mdef own_methods
+  | FOM_Super : forall CT C def parent Ss m D mdef own_methods
       (Hfind       : find_class CT C = Some def)
       (Hown        : own_methods = methods (body def))
       (Hnot_here   : gget_method own_methods m = None)
-      (Hsuper      : super (signature def) = Some parent)
-      (Hparent_fmn : FindMethodWithName CT parent m mdef),
-      FindMethodWithName CT C m mdef.
+      (Hsuper      : super (signature def) = Some (parent, Ss))
+      (Hparent_fmn : FindMethodWithName CT parent m D mdef),
+      FindMethodWithName CT C m D mdef.
 
 Lemma gget_method_name_consistent : forall methods m mdef
   (Hget : gget_method methods m = Some mdef),
@@ -337,441 +127,764 @@ Proof.
   exact Heq_name.
 Qed.
 
-Lemma find_method_with_name_consistent : forall CT C m mdef
-  (Hfmn : FindMethodWithName CT C m mdef),
+Lemma find_method_with_name_consistent : forall CT C m D mdef
+  (Hfmn : FindMethodWithName CT C m D mdef),
   mname (msignature mdef) = m.
 Proof.
-  intros CT C m mdef H.
+  intros CT C m D mdef H.
   induction H.
-  - (* FOM_Here *)
-    eapply gget_method_name_consistent; eauto.
-  - (* FOM_Super *)
-    exact IHFindMethodWithName.
+  - eapply gget_method_name_consistent; eauto.
+  - exact IHFindMethodWithName.
 Qed.
 
-Lemma find_method_with_name_deterministic : forall CT C m mdef1 mdef2
-  (H1 : FindMethodWithName CT C m mdef1)
-  (H2 : FindMethodWithName CT C m mdef2),
-  mdef1 = mdef2.
+Lemma find_method_with_name_deterministic : forall CT C m D1 mdef1 D2 mdef2
+  (H1 : FindMethodWithName CT C m D1 mdef1)
+  (H2 : FindMethodWithName CT C m D2 mdef2),
+  D1 = D2 /\ mdef1 = mdef2.
 Proof.
-  intros CT C m mdef1 mdef2 H1.
-  generalize dependent mdef2.
-  induction H1; intros mdef2 H2.
-  - (* H1 = FOM_Here *)
-    inversion H2; subst.
-    + (* H2 = FOM_Here: gget_method is functional *)
-      rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
+  intros CT C m D1 mdef1 D2 mdef2 H1.
+  generalize dependent mdef2. generalize dependent D2.
+  induction H1; intros D2 mdef2 H2.
+  - inversion H2; subst.
+    + rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
       rewrite Hget_method0 in Hget_method; injection Hget_method as ?; subst.
-      reflexivity.
-    + (* H2 = FOM_Super: contradicts gget_method = Some vs None *)
-      rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
+      split; reflexivity.
+    + rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
       rewrite Hget_method in Hnot_here; discriminate.
-  - (* H1 = FOM_Super *)
-    inversion H2; subst.
-    + (* H2 = FOM_Here: contradicts None vs Some *)
-      rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
+  - inversion H2; subst.
+    + rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
       rewrite Hget_method in Hnot_here; discriminate.
-    + (* H2 = FOM_Super: both recurse on the same parent *)
-      rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
-      rewrite Hsuper0 in Hsuper; injection Hsuper as ?; subst parent0.
+    + rewrite Hfind0 in Hfind; injection Hfind as Hdef_eq; subst def0.
+      rewrite Hsuper0 in Hsuper; injection Hsuper as ? ?; subst.
       apply IHFindMethodWithName; auto.
 Qed.
 
-(* EXPRESSION TYPING RULES *)
-Inductive expr_has_type : class_table -> s_env -> method_scope -> expr -> qualified_type -> Prop :=
+Lemma find_method_with_name_base : forall CT C m D mdef
+  (Hfmn : FindMethodWithName CT C m D mdef),
+  base_subtype CT C D.
+Proof.
+  intros CT C m D mdef H. induction H.
+  - apply base_refl. eapply find_class_dom; eauto.
+  - eapply base_trans; [|exact IHFindMethodWithName].
+    destruct (base_subtype_domain _ _ _ IHFindMethodWithName) as [Hp _].
+    eapply base_extends; eauto using find_class_dom.
+    unfold parent_lookup. rewrite Hfind. exact Hsuper.
+Qed.
+
+(* ------------------STATIC WELL-FORMEDNESS------------------*)
+
+(** Well-formed type use.  [Lost] may be written anywhere: a class type whose
+    main qualifier is [Lost] skips the check against the class mutability
+    declaration, and a type-variable use may carry [Lost].  A type argument is
+    checked against its declared bound, adapted through the head qualifier. *)
+(** When a use of a type variable may be written.  A use under a qualifier
+    parameter needs that parameter in scope; any other use may always be
+    written, [Lost] included. *)
+Definition tv_use_ok (Δ : tv_env) (u : tv_use) : Prop :=
+  match u with
+  | TVPoly m => m < qparams Δ
+  | _ => True
+  end.
+
+(** A use that is plain or carries a written qualifier, not a qualifier
+    parameter. *)
+Definition tv_concrete (u : tv_use) : Prop :=
+  match u with
+  | TVPoly _ => False
+  | _ => True
+  end.
+
+Inductive wf_stype (CT : class_table) (Δ : tv_env) : qualified_type -> Prop :=
+  | wfs_class : forall q0 C Ts def
+      (Hfind   : find_class CT C = Some def)
+      (Hhead   : q0 = Lost \/
+                 q_subtype
+                   (vpa_mutability_bound q0 (class_qualifier (signature def))) q0)
+      (Hlen    : length Ts = length (ctparams (signature def)))
+      (Hargs   : Forall (wf_stype CT Δ) Ts)
+      (Hbounds : Forall2
+                   (fun T B =>
+                      bound_sub CT Δ T
+                        (subst Ts [] [] (adapt AbstractState q0 B)))
+                   Ts (ctparams (signature def))),
+      wf_stype CT Δ (TClass q0 C Ts)
+  | wfs_var : forall u o n B
+      (Hbound : tv_bound Δ o n = Some B)
+      (Huse   : tv_use_ok Δ u),
+      wf_stype CT Δ (TVar u o n)
+  (* A class type under a qualifier parameter of the enclosing method is
+     checked through its readonly view, the view valid for every qualifier
+     the parameter may stand for. *)
+  | wfs_head : forall n C Ts
+      (Hbound : n < qparams Δ)
+      (Hview  : wf_stype CT Δ (TClass RO C Ts)),
+      wf_stype CT Δ (THead n C Ts).
+
+Definition wf_stypeuse (CT : class_table) (Δ : tv_env) (T : qualified_type) : Prop :=
+  wf_stype CT Δ T.
+
+(* Well-formedness of static environment *)
+Definition wf_senv (CT : class_table) (Δ : tv_env) (sΓ : s_env) : Prop :=
+  (* The first variable is the receiver and should always be present *)
+  dom sΓ > 0 /\
+  Forall (wf_stypeuse CT Δ) sΓ.
+
+(** The class type through which members of a type are looked up: a class type
+    is its own view; a bare type variable is viewed at its declared bound.  A
+    qualified use of a type variable is viewed at its declared bound's class
+    with the written qualifier, the bound's arguments forgotten where they may
+    depend on that qualifier, when those arguments are class types at every
+    depth.  A use under a qualifier parameter is viewed the same way through
+    [RO], the view valid for every qualifier the parameter may stand for. *)
+Definition ubound (Δ : tv_env) (T : qualified_type) : option qualified_type :=
+  match T with
+  | TClass _ _ _ => Some T
+  | TVar TVSub o n =>
+      match tv_bound Δ o n with
+      | Some (TClass qb C Ts) => Some (TClass qb C Ts)
+      | _ => None
+      end
+  | TVar (TVQual q0) o n =>
+      match tv_bound Δ o n with
+      | Some (TClass qb C Ts) =>
+          if forallb class_only_b Ts then Some (TClass q0 C (map widen_args Ts))
+          else None
+      | _ => None
+      end
+  | TVar (TVPoly m) o n =>
+      match tv_bound Δ o n with
+      | Some (TClass qb C Ts) =>
+          if Nat.ltb m (qparams Δ) then
+            if forallb class_only_b Ts then Some (TClass RO C (map widen_args Ts))
+            else None
+          else None
+      | _ => None
+      end
+  | THead n C Ts =>
+      if Nat.ltb n (qparams Δ) then Some (TClass RO C Ts) else None
+  end.
+
+(** A declared member type as seen through a receiver: adapt the written
+    qualifiers through the receiver's qualifier, then substitute the
+    receiver's class arguments [Vs] and the method arguments [Us]. *)
+Definition member_type (mt : method_scope) (qrecv : q)
+    (Vs Us : list qualified_type) (Qs : list qarg) (T : qualified_type)
+    : qualified_type :=
+  subst Vs Us Qs (adapt mt qrecv T).
+
+(* ------------------MODE BRIDGE------------------*)
+
+(** The two adaptation tables differ only at a written [Mut] under a
+    non-mutable receiver, which the read-only-state table sends to [Lost].
+    So wherever the mode's image is not [Lost] it is the abstract-state
+    image, and a lost-free mode image is the abstract-state image. *)
+Lemma vpa_q_mode_bridge : forall mt q1 q2,
+  vpa_q mt q1 q2 <> Lost -> vpa_q mt q1 q2 = vpa_q AbstractState q1 q2.
+Proof. intros [] q1 q2 H; destruct q1, q2; cbn in *; congruence. Qed.
+
+Lemma lost_free_class_inv : forall q0 C args,
+  lost_free (TClass q0 C args) -> q0 <> Lost /\ Forall lost_free args.
+Proof.
+  intros q0 C args [Hq Hargs]. split; [exact Hq|].
+  induction args as [|t r IH]; [constructor|].
+  simpl in Hargs. destruct Hargs as [Ht Hr]. constructor; [exact Ht | exact (IH Hr)].
+Qed.
+
+Lemma lost_free_head_inv : forall n C args,
+  lost_free (THead n C args) -> Forall lost_free args.
+Proof.
+  intros n C args Hargs.
+  induction args as [|t r IH]; [constructor|].
+  simpl in Hargs. destruct Hargs as [Ht Hr]. constructor; [exact Ht | exact (IH Hr)].
+Qed.
+
+Lemma subst_map_qual_bridge : forall (f g : q -> q) cs ms qs,
+  (forall q0, f q0 <> Lost -> f q0 = g q0) ->
+  forall B, lost_free (subst cs ms qs (map_qual f B)) ->
+  subst cs ms qs (map_qual f B) = subst cs ms qs (map_qual g B).
+Proof.
+  intros f g cs ms qs Hfg B.
+  induction B as [q0 C args IH | u o n | n C args IH] using qualified_type_ind';
+    intros Hlf.
+  - simpl in Hlf |- *.
+    destruct (lost_free_class_inv (f q0) C
+                (map (subst cs ms qs) (map (map_qual f) args)) Hlf) as [Hq Hargs].
+    rewrite (Hfg q0 Hq). f_equal.
+    clear Hq Hlf. induction args as [|t r IHr]; [reflexivity|].
+    inversion IH as [|? ? IHt IHrest]; subst.
+    simpl in Hargs. inversion Hargs as [|? ? Ht Hr]; subst.
+    simpl. rewrite (IHt Ht). rewrite (IHr IHrest Hr). reflexivity.
+  - destruct u as [|q0|m]; simpl in Hlf |- *; try reflexivity.
+    destruct (tv_lookup o cs ms n) as [U|];
+      [destruct U as [q1 C1 args1|u1 o1 n1|n1 C1 args1]|]; simpl in Hlf;
+      first [ rewrite (Hfg q0 (proj1 Hlf)); reflexivity
+            | rewrite (Hfg q0 Hlf); reflexivity ].
+  - simpl in Hlf |- *.
+    assert (Hargs : Forall lost_free
+                      (map (subst cs ms qs) (map (map_qual f) args))).
+    { destruct (nth_error qs n) as [[q1|m]|]; simpl in Hlf.
+      - exact (proj2 (lost_free_class_inv q1 C
+                        (map (subst cs ms qs) (map (map_qual f) args)) Hlf)).
+      - exact (lost_free_head_inv m C
+                 (map (subst cs ms qs) (map (map_qual f) args)) Hlf).
+      - exact (proj2 (lost_free_class_inv RO C
+                        (map (subst cs ms qs) (map (map_qual f) args)) Hlf)). }
+    f_equal. clear Hlf.
+    induction args as [|t r IHr]; [reflexivity|].
+    inversion IH as [|? ? IHt IHrest]; subst.
+    simpl in Hargs. inversion Hargs as [|? ? Ht Hr]; subst.
+    simpl. rewrite (IHt Ht). rewrite (IHr IHrest Hr). reflexivity.
+Qed.
+
+Lemma member_type_mode_bridge : forall mt qrecv Vs Us Qs T,
+  lost_free (member_type mt qrecv Vs Us Qs T) ->
+  member_type mt qrecv Vs Us Qs T = member_type AbstractState qrecv Vs Us Qs T.
+Proof.
+  intros mt qrecv Vs Us Qs T Hlf. unfold member_type, adapt in *.
+  apply (subst_map_qual_bridge (vpa_q mt qrecv) (vpa_q AbstractState qrecv));
+    [|exact Hlf].
+  intros q0 Hq. apply vpa_q_mode_bridge. exact Hq.
+Qed.
+
+Lemma Forall2_weaken_pair : forall (A B : Type) (P Q : A -> B -> Prop) l1 l2,
+  (forall a b, P a b -> Q a b) -> Forall2 P l1 l2 -> Forall2 Q l1 l2.
+Proof. intros A B P Q l1 l2 HPQ H. induction H; constructor; auto. Qed.
+
+(** The allocation bound check taken in the allocating code's mode implies
+    the abstract-state form of the same check. *)
+Lemma alloc_bounds_mode_bridge : forall CT Δ mt qc Ts Bs,
+  Forall2 (fun T B => lost_free (member_type mt qc Ts [] [] B) /\
+                      bound_sub CT Δ T (member_type mt qc Ts [] [] B)) Ts Bs ->
+  Forall2 (fun T B => lost_free (member_type AbstractState qc Ts [] [] B) /\
+                      bound_sub CT Δ T (member_type AbstractState qc Ts [] [] B))
+    Ts Bs.
+Proof.
+  intros CT Δ mt qc Ts Bs H.
+  eapply Forall2_weaken_pair; [|exact H]. clear H. intros T B [Hlf Hsub].
+  rewrite <- (member_type_mode_bridge _ _ _ _ _ _ Hlf). split; assumption.
+Qed.
+
+(** The declared receiver of a method as a client with receiver qualifier
+    [qrecv] must supply it: receiver adaptation, then substitution. *)
+Definition member_recv (qrecv : q)
+    (Vs Us : list qualified_type) (Qs : list qarg) (T : qualified_type)
+    : qualified_type :=
+  subst Vs Us Qs (map_qual (vpa_recv qrecv) T).
+
+(** A reference of static type [A] may be the receiver of a call whose
+    adapted declared receiver is [R]: [A] is a subtype of [R].  The qualifier
+    of [R] may be [Lost]: a receiver declared [RDM] takes the caller's
+    qualifier unchanged, and through a [Lost] reference the callee sees a
+    receiver of either mutability, as through a readonly one.  The type
+    arguments of [R] are the reference's own, viewed at the declaring class;
+    they are not required to be known. *)
+Definition receiver_ok (CT : class_table) (Δ : tv_env)
+    (A R : qualified_type) : Prop :=
+  qualified_type_subtype CT Δ A R.
+
+(** The type arguments of a class type. *)
+Definition targs (T : qualified_type) : list qualified_type :=
+  match T with
+  | TClass _ _ args => args
+  | THead _ _ args => args
+  | TVar _ _ _ => []
+  end.
+
+(** A declared receiver may requalify a type parameter of its class.  At a
+    call, such a written qualifier, seen through the caller's view of the
+    receiver in the caller's mode, must be known. *)
+Definition recv_args_known (mt : method_scope) (qrecv : q)
+    (R : qualified_type) : Prop :=
+  forall u o n, List.In (TVar (TVQual u) o n) (targs R) ->
+    vpa_q mt qrecv u <> Lost.
+
+(** A value of static type [A] may be stored where [F] is expected: [F] has
+    no unknown position, and [A] is a subtype of it. *)
+Definition assignable_to (CT : class_table) (Δ : tv_env)
+    (A F : qualified_type) : Prop :=
+  qualified_type_subtype CT Δ A F /\ lost_free F.
+
+(* ------------------EXPRESSION TYPING------------------*)
+Inductive expr_has_type
+    : class_table -> tv_env -> s_env -> method_scope -> expr -> qualified_type -> Prop :=
 
   (* Null typing *)
-  | ET_Null : forall CT Γ mt q class_name
-      (Hwf  : wf_senv CT Γ)
-      (Hdom : class_name < dom CT),
-      expr_has_type CT Γ mt ENull (Build_qualified_type q class_name)
+  | ET_Null : forall CT Δ Γ mt T
+      (Hwf  : wf_senv CT Δ Γ),
+      expr_has_type CT Δ Γ mt ENull T
 
   (* Variable typing *)
-  | ET_Var : forall CT Γ mt x T
-      (Hwf  : wf_senv CT Γ)
+  | ET_Var : forall CT Δ Γ mt x T
+      (Hwf  : wf_senv CT Δ Γ)
       (Hget : static_getType Γ x = Some T),
-      expr_has_type CT Γ mt (EVar x) T
+      expr_has_type CT Δ Γ mt (EVar x) T
 
-  (* Field access typing — AbstractState scope *)
-  | ET_Field_abstract_state : forall CT Γ mt x T fDef f
-      (Hwf      : wf_senv CT Γ)
+  (* Field access typing: adapt the declared type through the receiver in the
+     current mode, then substitute the receiver's type arguments *)
+  | ET_Field : forall CT Δ Γ mt x T qx C Ts fDef f
+      (Hwf      : wf_senv CT Δ Γ)
       (Hget_x   : static_getType Γ x = Some T)
-      (Hfld_def : sf_def_rel CT (sctype T) f fDef)
-      (Hmt      : mt = AbstractState \/ mt = ConcreteState),
-      expr_has_type CT Γ mt (EField x f)
-        (Build_qualified_type
-          (vpa_mutability_stype_fld_abstract_state (sqtype T) (mutability (ftype fDef)))
-          (f_base_type (ftype fDef)))
+      (Hub      : ubound Δ T = Some (TClass qx C Ts))
+      (Hfld_def : sf_def_rel CT C f fDef),
+      expr_has_type CT Δ Γ mt (EField x f)
+        (member_type mt qx Ts [] [] (ftype fDef)).
 
-  (* Field access typing — ReadonlyState / TransitiveState scope *)
-  | ET_Field_readonly_state : forall CT Γ mt x T fDef f
-      (Hwf      : wf_senv CT Γ)
-      (Hget_x   : static_getType Γ x = Some T)
-      (Hfld_def : sf_def_rel CT (sctype T) f fDef)
-      (Hmt      : mt = ReadonlyState \/ mt = TransitiveState),
-      expr_has_type CT Γ mt (EField x f)
-        (Build_qualified_type
-          (vpa_mutability_stype_fld_readonly_state (sqtype T) (mutability (ftype fDef)))
-          (f_base_type (ftype fDef)))
-.
+(* ------------------CASTS------------------*)
 
-Definition qc2q (qi : q_c) : q :=
-  match qi with
-    | RDM_c => RDM
-    | Imm_c => Imm
-    | Mut_c => Mut
-    end.
+(** A narrowing cast moves a readonly view of a class down to the mutability
+    that the class declaration pins for every one of its objects.  The class
+    and the type arguments are unchanged. *)
+Definition cast_narrowing_ok (CT : class_table) (S T : qualified_type) : Prop :=
+  match S, T with
+  | TClass qs Cs args_s, TClass qt Ct args_t =>
+      Cs = Ct /\ args_s = args_t /\
+      (qt = Mut \/ qt = Imm) /\
+      q_subtype qt qs /\ qs <> qt /\
+      exists def, find_class CT Ct = Some def /\
+                  qc2q (class_qualifier (signature def)) = qt
+  | _, _ => False
+  end.
 
-Definition vpa_mutability_constructor_param (qc : q_c) (T : qualified_type) : qualified_type :=
-  Build_qualified_type
-    (vpa_mutability_qq_abstract_state (qc2q qc) (sqtype T))
-    (sctype T).
+Definition cast_source_ok (CT : class_table) (Δ : tv_env) (S T : qualified_type) : Prop :=
+  qualified_type_subtype CT Δ S T \/ cast_narrowing_ok CT S T.
 
-(** Class-bound adaptation used only at an override boundary.  Lookup itself
-    returns the selected declaration unchanged. *)
-Definition vpa_mutability_override (qc : q_c) (T : qualified_type) : qualified_type :=
-  Build_qualified_type
-    (vpa_mutability_qq_abstract_state (qc2q qc) (sqtype T))
-    (sctype T).
+(** The readonly-state and transitive-state modes promise that mutable access
+    never grows, so they allow no narrowing cast. *)
+Definition cast_target_ok_in_scope (CT : class_table) (mt : method_scope)
+    (S T : qualified_type) : Prop :=
+  match mt with
+  | AbstractState | ConcreteState => True
+  | ReadonlyState | TransitiveState => ~ cast_narrowing_ok CT S T
+  end.
 
-(** Viewpoint-adapted behavioral subtyping for one override.  Scope remains
-    invariant.  The return is covariant; the receiver and ordinary parameters
-    are contravariant. *)
-Definition method_override_compatible
-    (CT : class_table) (qc : q_c)
-    (overrider overridden : method_sig) : Prop :=
-  mname overrider = mname overridden /\
-  mscope overrider = mscope overridden /\
-  qualified_type_subtype CT
-    (mret overrider)
-    (vpa_mutability_override qc (mret overridden)) /\
-  Forall2
-    (fun overridden_param overrider_param =>
-      qualified_type_subtype CT
-        (vpa_mutability_override qc overridden_param)
-        overrider_param)
-    (mparams overridden) (mparams overrider) /\
-  q_subtype
-    (sqtype (vpa_mutability_override qc (mreceiver overridden)))
-    (sqtype (mreceiver overrider)).
+(** A qualifier argument of a call: a written qualifier other than [Lost],
+    or one of the calling method's own qualifier parameters. *)
+Definition qarg_ok (Δ : tv_env) (a : qarg) : Prop :=
+  match a with
+  | QLit q0 => q0 <> Lost
+  | QVar m => m < qparams Δ
+  end.
 
-(** Reflexive-transitive refinement across an inheritance chain. *)
-Inductive method_signature_refinement
-    (CT : class_table) : method_sig -> method_sig -> Prop :=
-  | msr_refl : forall msig,
-      method_signature_refinement CT msig msig
-  | msr_override : forall qc overrider overridden,
-      bound CT (sctype (mreceiver overrider)) = Some qc ->
-      base_subtype CT
-        (sctype (mreceiver overrider))
-        (sctype (mreceiver overridden)) ->
-      wf_senv CT (mreceiver overrider :: mparams overrider) ->
-      method_override_compatible CT qc overrider overridden ->
-      method_signature_refinement CT overrider overridden
-  | msr_trans : forall child middle parent,
-      method_signature_refinement CT child middle ->
-      method_signature_refinement CT middle parent ->
-      method_signature_refinement CT child parent.
-
-(** Qualifiers that do not grant direct mutable authority. *)
-Definition is_nonmutable_qualifier (qualifier : q) : Prop :=
-  qualifier = RO \/ qualifier = Lost \/ qualifier = RDM \/ qualifier = Imm.
-
-(** The receiver and ordinary parameters expose no direct mutable roots. *)
-Definition signature_has_no_mutable_roots (msig : method_sig) : Prop :=
-  is_nonmutable_qualifier (sqtype (mreceiver msig)) /\
-  Forall
-    (fun T => is_nonmutable_qualifier (sqtype T))
-    (mparams msig).
+(* ------------------STATEMENT TYPING------------------*)
 
 Definition get_this_qualified_type (sΓ : s_env) : option qualified_type :=
   match sΓ with
   | [] => None
-  | T_this :: _ => 
-      Some T_this
+  | T_this :: _ => Some T_this
   end.
 
-Inductive stmt_typing : class_table -> s_env -> method_scope -> stmt -> s_env -> Prop :=
+Inductive stmt_typing
+    : class_table -> tv_env -> s_env -> method_scope -> stmt -> s_env -> Prop :=
   (* Skip statement *)
-  | ST_Skip : forall CT sΓ mt
-      (Hwf : wf_senv CT sΓ),
-      stmt_typing CT sΓ mt SSkip sΓ
+  | ST_Skip : forall CT Δ sΓ mt
+      (Hwf : wf_senv CT Δ sΓ),
+      stmt_typing CT Δ sΓ mt SSkip sΓ
 
   (* Local variable declaration *)
-  | ST_Local : forall CT sΓ mt T x sΓ'
-      (Hwf       : wf_senv CT sΓ)
-      (Hwf_T     : wf_stypeuse CT (sqtype T) (sctype T))
+  | ST_Local : forall CT Δ sΓ mt T x sΓ'
+      (Hwf       : wf_senv CT Δ sΓ)
+      (Hwf_T     : wf_stypeuse CT Δ T)
       (Hnone     : static_getType sΓ x = None)
       (Henv'     : sΓ' = sΓ ++ [T])
       (Hget_x    : static_getType sΓ' x = Some T),
-      stmt_typing CT sΓ mt (SLocal T x) sΓ'
+      stmt_typing CT Δ sΓ mt (SLocal T x) sΓ'
 
   (* Variable assignment *)
-  | ST_VarAss : forall CT sΓ mt x e Te Tthis Tx
-      (Hwf      : wf_senv CT sΓ)
-      (Htype_e  : expr_has_type CT sΓ mt e Te)
-      (Hthis    : get_this_qualified_type sΓ = Some Tthis)
+  | ST_VarAss : forall CT Δ sΓ mt x e Te Tx
+      (Hwf      : wf_senv CT Δ sΓ)
+      (Htype_e  : expr_has_type CT Δ sΓ mt e Te)
       (Hnot_rcv : x <> 0)
       (Hget_x   : static_getType sΓ x = Some Tx)
-      (Hsub     : qualified_type_subtype CT Te Tx),
-      stmt_typing CT sΓ mt (SVarAss x e) sΓ
+      (Hsub     : qualified_type_subtype CT Δ Te Tx),
+      stmt_typing CT Δ sΓ mt (SVarAss x e) sΓ
 
-  (* Field write — AbstractState scope *)
-  | ST_FldWrite_abstract_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
-      (Hwf         : wf_senv CT sΓ)
+  (* Field write: the mode selects both the mutability adaptation of the
+     declared field type and the assignability adaptation of the slot *)
+  | ST_FldWrite : forall CT Δ sΓ mt x f y Tx Ty qx C Ts fieldT
+      (Hwf         : wf_senv CT Δ sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
-      (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfld_def    : sf_def_rel CT (sctype Tx) f fieldT)
-      (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
-      (Hsub        : qualified_type_subtype CT Ty
-                       (Build_qualified_type
-                         (vpa_mutability_stype_fld_abstract_state (sqtype Tx) (mutability (ftype fieldT)))
-                         (f_base_type (ftype fieldT))))
-      (Hassignable : vpa_assignability (sqtype Tx) a = Assignable),
-      stmt_typing CT sΓ AbstractState (SFldWrite x f y) sΓ
+      (Hub         : ubound Δ Tx = Some (TClass qx C Ts))
+      (Hfld_def    : sf_def_rel CT C f fieldT)
+      (Hsub        : assignable_to CT Δ Ty
+                       (member_type mt qx Ts [] [] (ftype fieldT)))
+      (Hassignable : vpa_a mt qx (assignability fieldT) = Assignable),
+      stmt_typing CT Δ sΓ mt (SFldWrite x f y) sΓ
 
-  (* Field write — ConcreteState uses AS mutability and TS assignability *)
-  | ST_FldWrite_concrete_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
-      (Hwf         : wf_senv CT sΓ)
-      (Hget_x      : static_getType sΓ x = Some Tx)
-      (Hget_y      : static_getType sΓ y = Some Ty)
-      (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfld_def    : sf_def_rel CT (sctype Tx) f fieldT)
-      (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
-      (Hsub        : qualified_type_subtype CT Ty
-                       (Build_qualified_type
-                         (vpa_mutability_stype_fld_abstract_state (sqtype Tx) (mutability (ftype fieldT)))
-                         (f_base_type (ftype fieldT))))
-      (Hassignable : vpa_assignability_cs_ts (sqtype Tx) a = Assignable),
-      stmt_typing CT sΓ ConcreteState (SFldWrite x f y) sΓ
-
-  (* Field write — ReadonlyState scope *)
-  | ST_FldWrite_readonly_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
-      (Hwf         : wf_senv CT sΓ)
-      (Hget_x      : static_getType sΓ x = Some Tx)
-      (Hget_y      : static_getType sΓ y = Some Ty)
-      (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfld_def    : sf_def_rel CT (sctype Tx) f fieldT)
-      (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
-      (Hsub        : qualified_type_subtype CT Ty
-                       (Build_qualified_type
-                         (vpa_mutability_stype_fld_readonly_state (sqtype Tx) (mutability (ftype fieldT)))
-                         (f_base_type (ftype fieldT))))
-      (Hassignable : vpa_assignability (sqtype Tx) a = Assignable),
-      stmt_typing CT sΓ ReadonlyState (SFldWrite x f y) sΓ
-
-  (* Field write — TransitiveState scope *)
-  | ST_FldWrite_transitive_state : forall CT sΓ x f y Tx Ty Tthis fieldT a
-      (Hwf         : wf_senv CT sΓ)
-      (Hget_x      : static_getType sΓ x = Some Tx)
-      (Hget_y      : static_getType sΓ y = Some Ty)
-      (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfld_def    : sf_def_rel CT (sctype Tx) f fieldT)
-      (Hassign_rel : sf_assignability_rel CT (sctype Tx) f a)
-      (Hsub        : qualified_type_subtype CT Ty
-                       (Build_qualified_type
-                         (vpa_mutability_stype_fld_readonly_state (sqtype Tx) (mutability (ftype fieldT)))
-                         (f_base_type (ftype fieldT))))
-      (Hassignable : vpa_assignability_cs_ts (sqtype Tx) a = Assignable),
-      stmt_typing CT sΓ TransitiveState (SFldWrite x f y) sΓ
-
-  (* Object creation *)
-  | S_New : forall CT sΓ mt x Tx (qc:q_c) C args argtypes Tthis consig
-      (Hwf         : wf_senv CT sΓ)
+  (* Object creation: the initializers are checked pointwise against the
+     class's fields, and the type arguments against the class's bounds, both
+     seen through the allocation qualifier and arguments in the mode of the
+     allocating code; the bound images must be lost-free *)
+  | ST_New : forall CT Δ sΓ mt x Tx (qc:q_c) C Ts args argtypes def fds
+      (Hwf         : wf_senv CT Δ sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_args   : static_getType_list sΓ args = Some argtypes)
-      (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hconsig     : constructor_sig_lookup CT C = Some consig)
+      (Hfind       : find_class CT C = Some def)
       (Hnot_rcv    : x <> 0)
-      (Hqc         : vpa_mutability_bound (qc2q qc) (cqualifier consig) = qc2q qc)
-      (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg T)
-                       argtypes (map (vpa_mutability_constructor_param qc) consig.(cparams)))
-      (Hresult_sub : qualified_type_subtype CT (Build_qualified_type (qc2q qc) C) Tx),
-      stmt_typing CT sΓ mt (SNew x qc C args) sΓ
+      (Hqc         : vpa_mutability_bound (qc2q qc)
+                       (class_qualifier (signature def)) = qc2q qc)
+      (Hwf_new     : wf_stypeuse CT Δ (TClass (qc2q qc) C Ts))
+      (Hlost_free  : Forall lost_free Ts)
+      (Hbounds     : Forall2
+                       (fun T B =>
+                          lost_free (member_type mt (qc2q qc) Ts [] [] B) /\
+                          bound_sub CT Δ T
+                            (member_type mt (qc2q qc) Ts [] [] B))
+                       Ts (ctparams (signature def)))
+      (Hfields     : CollectFields CT C fds)
+      (Harg_sub    : Forall2
+                       (fun A fd =>
+                          assignable_to CT Δ A
+                            (member_type mt (qc2q qc) Ts [] [] (ftype fd)))
+                       argtypes fds)
+      (Hresult_sub : qualified_type_subtype CT Δ (TClass (qc2q qc) C Ts) Tx),
+      stmt_typing CT Δ sΓ mt (SNew x qc C Ts args) sΓ
 
-  (* Method call — AbstractState scope *)
-  | ST_Call : forall CT sΓ mt x m y args argtypes Tthis Tx Ty mdef
-      (Hwf         : wf_senv CT sΓ)
+  (* Method call.  The callee's mode must be at least as strong as the
+     caller's, and the caller's mode selects the mutability adaptation. *)
+  | ST_Call : forall CT Δ sΓ mt x m y Us Qs args argtypes Tx Ty qy C Ts D Vs mdef
+      (Hwf         : wf_senv CT Δ sΓ)
       (Hget_x      : static_getType sΓ x = Some Tx)
       (Hget_y      : static_getType sΓ y = Some Ty)
       (Hget_args   : static_getType_list sΓ args = Some argtypes)
-      (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfind_m     : FindMethodWithName CT (sctype Ty) m mdef)
+      (Hub         : ubound Δ Ty = Some (TClass qy C Ts))
+      (Hfind_m     : FindMethodWithName CT C m D mdef)
+      (Hsuper      : super_inst CT mt qy C Ts D Vs)
       (Hnot_rcv    : x <> 0)
-      (Hret_sub    : qualified_type_subtype CT (vpa_mutability_tt_abstract_state Ty (mret (msignature mdef))) Tx)
-      (Hrcv_sub    : qualified_type_subtype CT Ty
-                       (vpa_mutability_tt_abstract_state Ty
-                         (mreceiver (msignature mdef)))
-                     \/ (sqtype Ty = RO /\
-                         mdef.(msignature).(mreceiver).(sqtype) = RDM /\
-                         base_subtype CT (sctype Ty)
-                           mdef.(msignature).(mreceiver).(sctype)))
-      (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_abstract_state Ty T))
+      (Htargs_wf   : Forall (wf_stypeuse CT Δ) Us)
+      (Htargs_lf   : Forall lost_free Us)
+      (Htargs_len  : length Us = length (mtparams (msignature mdef)))
+      (Htargs_bnd  : Forall2
+                       (fun U B =>
+                          lost_free (member_type mt qy Vs Us Qs B) /\
+                          bound_sub CT Δ U (member_type mt qy Vs Us Qs B))
+                       Us (mtparams (msignature mdef)))
+      (Hret_sub    : qualified_type_subtype CT Δ
+                       (member_type mt qy Vs Us Qs (mret (msignature mdef))) Tx)
+      (Hrcv_sub    : receiver_ok CT Δ Ty
+                       (member_recv qy Vs Us Qs (mreceiver (msignature mdef))))
+      (Harg_sub    : Forall2
+                       (fun A P => assignable_to CT Δ A (member_type mt qy Vs Us Qs P))
                        argtypes (mparams (msignature mdef)))
-      (Hscope      : mt = AbstractState \/
-                     (mt = ConcreteState /\ method_scope_subtype mdef.(msignature).(mscope) ConcreteState)),
-      stmt_typing CT sΓ mt (SCall x m y args) sΓ
+      (Hscope      : method_scope_subtype (mscope (msignature mdef)) mt)
+      (Hqargs_len  : length Qs = mqparams (msignature mdef))
+      (Hqargs_ok   : Forall (qarg_ok Δ) Qs)
+      (Hrcv_args   : recv_args_known mt qy (mreceiver (msignature mdef))),
+      stmt_typing CT Δ sΓ mt (SCall x m y Us Qs args) sΓ
 
-  (* Method call — ReadonlyState / TransitiveState scope *)
-  | ST_Call_readonly_state : forall CT sΓ mt x m y args argtypes Tthis Tx Ty mdef
-      (Hwf         : wf_senv CT sΓ)
-      (Hget_x      : static_getType sΓ x = Some Tx)
-      (Hget_y      : static_getType sΓ y = Some Ty)
-      (Hget_args   : static_getType_list sΓ args = Some argtypes)
-      (Hthis       : get_this_qualified_type sΓ = Some Tthis)
-      (Hfind_m     : FindMethodWithName CT (sctype Ty) m mdef)
-      (Hnot_rcv    : x <> 0)
-      (Hmt_not_abs : mdef.(msignature).(mscope) <> AbstractState)
-      (Hmt_not_cs  : mdef.(msignature).(mscope) <> ConcreteState)
-      (Hret_sub    : qualified_type_subtype CT (vpa_mutability_tt_readonly_state Ty (mret (msignature mdef))) Tx)
-      (Hrcv_sub    : qualified_type_subtype CT Ty
-                       (vpa_mutability_tt_readonly_state Ty
-                         (mreceiver (msignature mdef)))
-                     \/ (sqtype Ty = RO /\
-                         mdef.(msignature).(mreceiver).(sqtype) = RDM /\
-                         base_subtype CT (sctype Ty)
-                           mdef.(msignature).(mreceiver).(sctype)))
-      (Harg_sub    : Forall2 (fun arg T => qualified_type_subtype CT arg (vpa_mutability_tt_readonly_state Ty T))
-                       argtypes (mparams (msignature mdef)))
-      (Hmt_not_abs2 : mt <> AbstractState)
-      (Hmt_not_cs2  : mt <> ConcreteState)
-      (Hmt_sub     : method_scope_subtype mdef.(msignature).(mscope) mt),
-      stmt_typing CT sΓ mt (SCall x m y args) sΓ
+  (* Cast.  The value is copied unchanged; the checker admits only casts that
+     cannot fail. *)
+  | ST_Cast : forall CT Δ sΓ mt x T y Tx Ty
+      (Hwf      : wf_senv CT Δ sΓ)
+      (Hget_x   : static_getType sΓ x = Some Tx)
+      (Hget_y   : static_getType sΓ y = Some Ty)
+      (Hnot_rcv : x <> 0)
+      (Hwf_T    : wf_stypeuse CT Δ T)
+      (Hsource  : cast_source_ok CT Δ Ty T)
+      (Hsub     : qualified_type_subtype CT Δ T Tx)
+      (Hscope   : cast_target_ok_in_scope CT mt Ty T),
+      stmt_typing CT Δ sΓ mt (SCast x T y) sΓ
 
   (* Sequence of statements *)
-  | ST_Seq : forall CT sΓ mt s1 sΓ' s2 sΓ''
-      (Hwf    : wf_senv CT sΓ)
-      (Htype1 : stmt_typing CT sΓ mt s1 sΓ')
-      (Htype2 : stmt_typing CT sΓ' mt s2 sΓ''),
-      stmt_typing CT sΓ mt (SSeq s1 s2) sΓ''
+  | ST_Seq : forall CT Δ sΓ mt s1 sΓ' s2 sΓ''
+      (Hwf    : wf_senv CT Δ sΓ)
+      (Htype1 : stmt_typing CT Δ sΓ mt s1 sΓ')
+      (Htype2 : stmt_typing CT Δ sΓ' mt s2 sΓ''),
+      stmt_typing CT Δ sΓ mt (SSeq s1 s2) sΓ''
 .
 
-Lemma stmt_typing_wf_env : forall CT sΓ mt stmt sΓ'
-  (Htyping : stmt_typing CT sΓ mt stmt sΓ'),
-  wf_senv CT sΓ.
+Lemma stmt_typing_wf_env : forall CT Δ sΓ mt stmt sΓ'
+  (Htyping : stmt_typing CT Δ sΓ mt stmt sΓ'),
+  wf_senv CT Δ sΓ.
 Proof.
-  intros CT sΓ mt stmt sΓ' Htyping.
+  intros CT Δ sΓ mt stmt sΓ' Htyping.
   induction Htyping; auto.
 Qed.
 
-Definition wf_constructor_object (CT : class_table) (C : class_name) (ctor : constructor_def) : Prop :=
-  parent_lookup CT C = None /\
-  constructor_def_lookup CT C = Some ctor /\
-  let sig := csignature ctor in
-  let q_c := cqualifier sig in
-  Some q_c = bound CT C /\
-  cparams sig = [] /\
-  CollectFields CT C [].
+(* ------------------DECLARATION WELL-FORMEDNESS------------------*)
 
-Definition wf_constructor (CT : class_table) (c : class_name) (ctor : constructor_sig) : Prop :=
-  (* 1. Constructor qualifier matches class bound *)
-  bound CT c = Some (cqualifier ctor) /\
-  
-  (* 2. Parameter types are well-formed *)
-  Forall (fun T => wf_stypeuse CT (sqtype T) (sctype T)) (cparams ctor) /\
-  
-  (* 3. Parameter count matches field count *)
-  exists field_defs, 
-    CollectFields CT c field_defs /\
-    length (cparams ctor) = length field_defs /\
-    
-  (* 4. Adapted parameter types are compatible with adapted field types *)
-  Forall2 (fun param_type field_def =>
-    qualified_type_subtype CT
-      (vpa_mutability_constructor_param (cqualifier ctor) param_type)
-      {| sqtype := vpa_mutability_constructor_fld (cqualifier ctor) (mutability (ftype field_def));
-         sctype := f_base_type (ftype field_def) |})
-    (cparams ctor) field_defs.
+(** Class bound look up as a full qualifier. *)
+Definition class_tparams (CT : class_table) (C : class_name) : list qualified_type :=
+  match find_class CT C with
+  | Some def => ctparams (signature def)
+  | None => []
+  end.
+
+(** The bound environment in which a method body is checked. *)
+Definition method_tv_env (CT : class_table) (C : class_name) (msig : method_sig) : tv_env :=
+  mk_tv_env (class_tparams CT C) (mtparams msig) (mscope msig) (mqparams msig).
+
+(** The declared receiver of a method of class [C]: [C] applied to its own
+    type parameters, each written plainly or under a qualifier, the whole
+    under a written qualifier or under one of the method's qualifier
+    parameters. *)
+Definition recv_args (n : nat) (args : list qualified_type) : Prop :=
+  length args = n /\
+  forall i T, nth_error args i = Some T -> exists u, T = TVar u ClassVar i.
+
+Definition receiver_shape (CT : class_table) (C : class_name) (T : qualified_type) : Prop :=
+  exists args, recv_args (length (class_tparams CT C)) args /\
+    ((exists qr, T = TClass qr C args) \/ (exists n, T = THead n C args)).
+
+(** The receiver names every type parameter plainly. *)
+Definition receiver_plain (CT : class_table) (C : class_name) (T : qualified_type) : Prop :=
+  (exists qr, T = TClass qr C (class_var_types (length (class_tparams CT C)))) \/
+  (exists n, T = THead n C (class_var_types (length (class_tparams CT C)))).
+
+Lemma recv_args_plain : forall n, recv_args n (class_var_types n).
+Proof.
+  intros n. unfold class_var_types. split; [rewrite length_map; rewrite length_seq; reflexivity|].
+  intros i T H. rewrite nth_error_map in H.
+  destruct (nth_error (seq 0 n) i) as [j|] eqn:Hj; [|discriminate].
+  assert (Hlt : i < length (seq 0 n)) by (apply nth_error_Some; congruence).
+  rewrite length_seq in Hlt.
+  apply (nth_error_nth _ _ 0) in Hj. assert (Hs : nth i (seq 0 n) 0 = 0 + i) by (apply seq_nth; exact Hlt). rewrite Hs in Hj.
+  simpl in Hj. subst j. simpl in H. inversion H. exists TVSub. reflexivity.
+Qed.
+
+Lemma receiver_plain_shape : forall CT C T,
+  receiver_plain CT C T -> receiver_shape CT C T.
+Proof.
+  intros CT C T H. exists (class_var_types (length (class_tparams CT C))).
+  split; [apply recv_args_plain | exact H].
+Qed.
+
+(** What a method well-formedness proof for a plainly written receiver needs. *)
+Lemma receiver_plain_ok : forall CT C T (P Q : Prop),
+  receiver_plain CT C T ->
+  receiver_shape CT C T /\ (P -> receiver_plain CT C T \/ Q).
+Proof. intros. split; [apply receiver_plain_shape; assumption | auto]. Qed.
+
+Lemma plain_targs : forall CT C T,
+  receiver_plain CT C T -> targs T = class_var_types (length (class_tparams CT C)).
+Proof. intros CT C T [[q0 ->] | [n ->]]; reflexivity. Qed.
+
+(** An object of mutability [qr] whose type arguments, at the receiver's
+    class, are [ca] satisfies what the declared receiver [R] asks of them in
+    a call whose qualifier arguments are [ka]. *)
+Definition radmit (qr : q) (ca : list rtype) (ka : list q)
+    (R : qualified_type) : Prop :=
+  forall ma, Forall2 rarg_sub ca (map (dyn qr ca ma ka) (targs R)).
+
+Lemma recv_args_known_plain : forall CT C T mt qrecv,
+  receiver_plain CT C T -> recv_args_known mt qrecv T.
+Proof.
+  intros CT C T mt qrecv H u o n Hin. rewrite (plain_targs _ _ _ H) in Hin.
+  unfold class_var_types in Hin. apply in_map_iff in Hin.
+  destruct Hin as (i & E & _). discriminate.
+Qed.
+
+(** Closes the receiver-argument premise of a call on a concrete signature. *)
+Ltac recv_known :=
+  let H := fresh in
+  intros ? ? ? H; cbn in H; intuition discriminate.
+
+(** A type moved to the class and the arguments of another type, keeping its
+    qualifier. *)
+Definition rehead (T : qualified_type) (C : class_name)
+    (args : list qualified_type) : qualified_type :=
+  match T with
+  | TClass q0 _ _ => TClass q0 C args
+  | THead n _ _ => THead n C args
+  | TVar _ _ _ => T
+  end.
+
+Definition rebase (T R : qualified_type) : qualified_type :=
+  match R with
+  | TClass _ C args => rehead T C args
+  | THead _ C args => rehead T C args
+  | TVar _ _ _ => T
+  end.
+
+(** A type moved onto the class of [R] with the given arguments, keeping its
+    qualifier. *)
+Definition rebase_args (T R : qualified_type) (args : list qualified_type)
+    : qualified_type :=
+  match R with
+  | TClass _ C _ => rehead T C args
+  | THead _ C _ => rehead T C args
+  | TVar _ _ _ => T
+  end.
+
+(** The overriding receiver [R] seen as a type of the overridden method's
+    class: its own arguments substituted into the superclass arguments [Vs]
+    of the extends clause, moved onto the class of [S], the inherited
+    receiver seen from the overriding class. *)
+Definition recv_up (Vs : list qualified_type) (R S : qualified_type) : qualified_type :=
+  rebase_args R S (map (subst (targs R) [] []) Vs).
+
+(** Every type parameter that the receiver arguments [args] qualify, or put
+    under a qualifier parameter, is passed plainly to the overridden
+    method's class by the extends clause, so that the inherited receiver can
+    speak about it.  A parameter passed under a written qualifier reaches
+    that class with its qualifier replaced, and a requirement there says
+    nothing about the parameter itself. *)
+Definition recv_qual_passed (Vs args : list qualified_type) : Prop :=
+  forall u o j, List.In (TVar u o j) args -> u <> TVSub ->
+    List.In (TVar TVSub ClassVar j) Vs.
+
+(** Closes [recv_qual_passed] for a receiver that names every parameter
+    plainly. *)
+Ltac recv_passed_plain :=
+  let Hin := fresh "Hin" in let Hne := fresh "Hne" in
+  intros ? ? ? Hin Hne; cbn in Hin;
+  repeat (destruct Hin as [Hin | Hin];
+          [injection Hin as Hin ? ?; subst; exfalso; apply Hne; reflexivity|]);
+  destruct Hin.
+
+(** Viewpoint-adapted behavioral subtyping for one override.  [Vs] expresses
+    the overridden method's declaring class over the overriding class's type
+    parameters.  Scope, the method type-parameter bounds and the number of
+    qualifier parameters are invariant; the return is covariant; the ordinary
+    parameters are contravariant.  The receiver is a parameter and so
+    contravariant too: the overridden receiver, seen from the overriding
+    class, is a subtype of the overriding receiver seen as a type of the
+    overridden method's class through the extends clause.  Type arguments
+    are invariant, so an override may neither narrow the receiver's
+    qualifier nor ask a qualifier of a type argument that the overridden
+    receiver does not ask.  The overriding receiver may qualify only the
+    parameters the extends clause passes plainly, the ones the overridden
+    receiver can speak about. *)
+Definition method_override_compatible
+    (CT : class_table) (Δ : tv_env) (qc : q_c) (Vs : list qualified_type)
+    (overrider overridden : method_sig) : Prop :=
+  let ms := method_var_types (length (mtparams overridden)) in
+  let ks := qvar_args (mqparams overridden) in
+  let view := member_type AbstractState (qc2q qc) Vs ms ks in
+  mname overrider = mname overridden /\
+  mscope overrider = mscope overridden /\
+  (mtparams overrider = map view (mtparams overridden) /\
+   mqparams overrider = mqparams overridden) /\
+  qualified_type_subtype CT Δ (mret overrider) (view (mret overridden)) /\
+  Forall2
+    (fun overridden_param overrider_param =>
+      qualified_type_subtype CT Δ (view overridden_param) overrider_param)
+    (mparams overridden) (mparams overrider) /\
+  (qualified_type_subtype CT Δ (view (mreceiver overridden))
+     (recv_up Vs (mreceiver overrider) (view (mreceiver overridden))) /\
+   recv_qual_passed Vs (targs (mreceiver overrider))).
+
+(** No mutable position in a type's own syntax: no written [Mut] at a class
+    type or at a qualified use, with a type variable as a leaf.  This is the
+    paper's predicate on a readonly-state or transitive-state signature; the
+    bounds of the variables in scope are required to satisfy it separately,
+    so a bound may mention its own variable, as in [E extends Comparable<E>]. *)
+Inductive no_mut (Δ : tv_env) : qualified_type -> Prop :=
+  | nm_class : forall q0 C Ts
+      (Hq : q0 <> Mut)
+      (Hargs : Forall (no_mut Δ) Ts),
+      no_mut Δ (TClass q0 C Ts)
+  | nm_var : forall o n B
+      (Hbound : tv_bound Δ o n = Some B),
+      no_mut Δ (TVar TVSub o n)
+  | nm_qvar : forall q0 o n qb C Ts
+      (Hq : q0 <> Mut)
+      (Hbound : tv_bound Δ o n = Some (TClass qb C Ts)),
+      no_mut Δ (TVar (TVQual q0) o n)
+  | nm_pvar : forall m o n qb C Ts
+      (Hbound : tv_bound Δ o n = Some (TClass qb C Ts)),
+      no_mut Δ (TVar (TVPoly m) o n)
+  | nm_head : forall n C Ts
+      (Hargs : Forall (no_mut Δ) Ts),
+      no_mut Δ (THead n C Ts).
+
+(** A readonly-state or transitive-state signature: the receiver, the
+    parameters, and every class bound in scope reach no mutable position.
+    The class bounds are listed here because a type variable is a leaf of
+    [no_mut]; the method bounds are required separately by [wf_method]. *)
+Definition signature_has_no_mutable_roots (Δ : tv_env) (msig : method_sig) : Prop :=
+  no_mut Δ (mreceiver msig) /\ Forall (no_mut Δ) (mparams msig) /\
+  Forall (no_mut Δ) (class_bounds Δ).
+
+(** A type-parameter bound is a non-variable class type. *)
+Definition is_class_type (T : qualified_type) : Prop :=
+  match T with
+  | TClass _ _ _ => True
+  | TVar _ _ _ => False
+  | THead _ _ _ => False
+  end.
+
+(** The receiver of a readonly-state or transitive-state method may requalify
+    a type parameter of its class, but not as mutable, and then the bounds of
+    the class's type parameters reach no mutable position.  (With a plainly written receiver the same follows from the
+    rule on the receiver type.) *)
+Definition recv_protected (Δ : tv_env) (R : qualified_type) : Prop :=
+  Forall (no_mut Δ) (class_bounds Δ) /\
+  forall u o n, List.In (TVar (TVQual u) o n) (targs R) -> u <> Mut.
 
 Definition wf_method (CT : class_table) (C : class_name) (mdef : method_def) : Prop :=
-  let mscope := mdef.(msignature).(mscope) in
   let msig := msignature mdef in
   let methodbody := mbody mdef in
-  let mbodystmt := mbody_stmt methodbody in
-  let sΓ := msig.(mreceiver) :: msig.(mparams) in
-  wf_stypeuse CT (sqtype (mret msig)) (sctype (mret msig)) /\
-  exists sΓ' mbodyrettype,
-    stmt_typing CT sΓ mscope mbodystmt sΓ' /\
-    let mbodyretvar := mreturn methodbody in
-    mbodyretvar < dom sΓ' /\
-    nth_error sΓ' mbodyretvar = Some mbodyrettype /\
-    qualified_type_subtype CT mbodyrettype (mret msig) /\
-    (forall parent_def parent mdef_parent qc,
-      find_class CT C = Some parent_def ->
-      super (signature parent_def) = Some parent ->
-      bound CT C = Some qc ->
-      FindMethodWithName CT parent (mname msig) mdef_parent ->
-      method_override_compatible CT qc msig (msignature mdef_parent)) /\
-    sctype (mreceiver msig) = C /\
-    (readonly_state_method_scope mscope ->
-      signature_has_no_mutable_roots msig).
+  let Δ := method_tv_env CT C msig in
+  let sΓ := mreceiver msig :: mparams msig in
+  (receiver_shape CT C (mreceiver msig) /\
+   (readonly_state_method_scope (mscope msig) ->
+    receiver_plain CT C (mreceiver msig) \/ recv_protected Δ (mreceiver msig))) /\
+  Forall (fun B => is_class_type B /\ wf_stypeuse CT Δ B /\
+                   (readonly_state_method_scope (mscope msig) -> no_mut Δ B))
+    (mtparams msig) /\
+  wf_stypeuse CT Δ (mret msig) /\
+  (exists sΓ' mbodyrettype,
+    stmt_typing CT Δ sΓ (mscope msig) (mbody_stmt methodbody) sΓ' /\
+    nth_error sΓ' (mreturn methodbody) = Some mbodyrettype /\
+    qualified_type_subtype CT Δ mbodyrettype (mret msig)) /\
+  (forall def parent Ss D mdef_parent Vs,
+      find_class CT C = Some def ->
+      super (signature def) = Some (parent, Ss) ->
+      FindMethodWithName CT parent (mname msig) D mdef_parent ->
+      super_inst CT AbstractState (qc2q (class_qualifier (signature def))) C
+        (class_var_types (length (ctparams (signature def)))) D Vs ->
+      method_override_compatible CT Δ (class_qualifier (signature def)) Vs
+        msig (msignature mdef_parent)) /\
+  (readonly_state_method_scope (mscope msig) ->
+      signature_has_no_mutable_roots Δ msig).
 
-Lemma wf_method_receiver_class : forall CT C mdef,
-  wf_method CT C mdef ->
-  sctype (mreceiver (msignature mdef)) = C.
-Proof.
-  intros CT C mdef Hwf.
-  unfold wf_method in Hwf; simpl in Hwf.
-  destruct Hwf as
-    [_ [sΓ' [mbodyrettype
-      [_ [_ [_ [_ [_ [Hreceiver _]]]]]]]]].
-  exact Hreceiver.
-Qed.
-
-Lemma wf_method_readonly_roots : forall CT C mdef,
-  wf_method CT C mdef ->
-  readonly_state_method_scope (mscope (msignature mdef)) ->
-  signature_has_no_mutable_roots (msignature mdef).
-Proof.
-  intros CT C mdef Hwf Hscope.
-  unfold wf_method in Hwf; simpl in Hwf.
-  destruct Hwf as
-    [_ [sΓ' [mbodyrettype
-      [_ [_ [_ [_ [_ Hroots_pair]]]]]]]].
-  destruct Hroots_pair as [_ Hroots].
-  exact (Hroots Hscope).
-Qed.
+Definition wf_field (CT : class_table) (Δ : tv_env) (fdef : field_def) : Prop :=
+  wf_stypeuse CT Δ (ftype fdef).
 
 (* Well-formedness of class *)
 Inductive wf_class : class_table -> class_def -> Prop :=
 
 (* Object class *)
-| WFObjectDef : forall CT cdef class_name
+| WFObjectDef : forall CT cdef
     (Hno_super    : cdef.(signature).(super) = None)
     (Hrdm         : cdef.(signature).(class_qualifier) = RDM_c)
+    (Hno_tparams  : cdef.(signature).(ctparams) = [])
     (Hno_fields   : cdef.(body).(Syntax.fields) = [])
-    (Hno_methods  : cdef.(body).(methods) = [])
-    (Hcname       : cdef.(signature).(cname) = class_name)
-    (Hwf_ctor     : wf_constructor_object CT class_name cdef.(body).(constructor))
-    (Hwf_fields   : Forall (wf_field CT) cdef.(body).(Syntax.fields))
-    (Hnodup       : NoDup (map (fun mdef => mname (msignature mdef)) cdef.(body).(methods))),
+    (Hno_methods  : cdef.(body).(methods) = []),
     wf_class CT cdef
 
 (* Other class *)
-| WFOtherDef : forall CT cdef superC thisC
-    (Hsuper    : cdef.(signature).(super) = Some superC)
-    (Hcname    : cdef.(signature).(cname) = thisC)
-    (Hordering : thisC > superC),
+| WFOtherDef : forall CT cdef superC Ss super_def
+    (Hsuper     : cdef.(signature).(super) = Some (superC, Ss))
+    (Hordering  : cdef.(signature).(cname) > superC)
+    (Hsuper_def : find_class CT superC = Some super_def),
     let sig := cdef.(signature) in
     let bod := cdef.(body) in
     let C := cname sig in
     let qC := class_qualifier sig in
-    (wf_constructor CT C (csignature (constructor bod)) /\
-    Forall (wf_method CT C) (methods bod) /\
-    NoDup (map (fun mdef => mname (msignature mdef)) (methods bod)) /\
-    match bound CT superC with
-    | Some q_super =>
-        exists fs, CollectFields CT C fs /\
-        (qC = q_super \/ q_super = RDM_c) /\
-        Forall (wf_field CT) fs
-    | None =>
-        CollectFields CT C []
-    end) ->
+    let Δ := mk_tv_env (ctparams sig) [] AbstractState 0 in
+    (* type-parameter bounds are well-formed class types *)
+    Forall (fun B => is_class_type B /\ wf_stypeuse CT Δ B) (ctparams sig) ->
+    (* the superclass type is well formed and its arguments are fully known
+       and satisfy the superclass's bounds *)
+    wf_stypeuse CT Δ (TClass (qc2q qC) superC Ss) ->
+    Forall lost_free Ss ->
+    Forall2
+      (fun T B =>
+         lost_free (member_type AbstractState (qc2q qC) Ss [] [] B) /\
+         bound_sub CT Δ T (member_type AbstractState (qc2q qC) Ss [] [] B))
+      Ss (ctparams (signature super_def)) ->
+    (* a subclass keeps a pinned superclass mutability *)
+    (qC = class_qualifier (signature super_def) \/
+     class_qualifier (signature super_def) = RDM_c) ->
+    Forall (wf_field CT Δ) (Syntax.fields bod) ->
+    Forall (wf_method CT C) (methods bod) ->
+    NoDup (map (fun mdef => mname (msignature mdef)) (methods bod)) ->
     wf_class CT cdef
 .
 
-(* Enhanced class table well-formedness *)
+(* Class table well-formedness *)
 Definition wf_class_table (CT : class_table) : Prop :=
   let object_class_at_zero :=
     exists obj_def, find_class CT 0 = Some obj_def /\
@@ -786,976 +899,3 @@ Definition wf_class_table (CT : class_table) : Prop :=
   object_class_at_zero /\
   non_object_classes_extend_object /\
   class_name_matches_index.
-
-Lemma find_class_cname_consistent : forall CT i def
-  (Hwf_ct : wf_class_table CT)
-  (Hfind  : find_class CT i = Some def),
-  cname (signature def) = i.
-Proof.
-  intros CT i def Hwf_ct Hfind.
-  unfold wf_class_table in Hwf_ct.
-  destruct Hwf_ct as [_ Hcname_consistent].
-  apply Hcname_consistent; exact Hfind.
-Qed.
-
-(* Well-formedness of program. Put it at the end because the main statement needs to be well-typed. *)
-Lemma parent_implies_strict_ordering : forall CT C D cdef_C
-  (Hwf    : wf_class_table CT)
-  (Hcdom  : C < dom CT)
-  (Hfind  : find_class CT C = Some cdef_C)
-  (Hsuper : super (signature cdef_C) = Some D),
-  D < C.
-Proof.
-  intros CT C D cdef_C Hwf Hcdom Hfind Hsuper.
-  
-  (* From well-formed class table, get wf_class for C *)
-  assert (Hwf_class_C : wf_class CT cdef_C).
-  {
-    unfold wf_class_table in Hwf.
-    destruct Hwf as [Hforall_wf _].
-    eapply Forall_nth_error; eauto.
-  }
-  
-  (* From wf_class, parent relationship implies strict ordering *)
-  inversion Hwf_class_C; subst.
-  - (* WFObjectDef - contradiction since C has parent *)
-    rewrite Hno_super in Hsuper. discriminate.
-  - (* WFOtherDef *)
-    assert (Hcname_eq : cname (signature cdef_C) = C).
-    {
-      unfold wf_class_table in Hwf.
-      destruct Hwf as [_ [_ [_ Hcname_consistent]]].
-      apply Hcname_consistent.
-      exact Hfind.
-    }
-    rewrite Hsuper0 in Hsuper.
-    injection Hsuper as Heq.
-    subst D.
-    rewrite Hcname_eq in Hordering.
-    exact Hordering.
-Qed.
-
-Lemma collect_fields_exists : forall CT c
-  (Hwf_classtable : wf_class_table CT)
-  (Hdom           : c < dom CT),
-  exists field_defs, CollectFields CT c field_defs.
-Proof.
-  intros CT c Hwf_classtable.
-  induction c using lt_wf_ind.
-  intros Hdom.
-  assert (Hfind : exists def, find_class CT c = Some def).
-  {
-    apply find_class_Some. exact Hdom.
-  }
-  destruct Hfind as [def Hfind].
-  destruct (super (signature def)) as [parent|] eqn:Hsuper.
-  - (* Case: class has superclass *)
-    assert (Hparent_dom : parent < c).
-    {
-      eapply parent_implies_strict_ordering with (cdef_C:= def); eauto.
-    }
-    assert (Hparent_in_ct : parent < dom CT).
-    {
-      lia.
-    }
-    (* Apply induction hypothesis *)
-    destruct (H parent Hparent_dom Hparent_in_ct) as [parent_fields Hparent_collect].
-    exists (parent_fields ++ Syntax.fields (body def)).
-    apply CF_Inherit with (def := def) (parent := parent) (parent_fields := parent_fields) (own_fields := Syntax.fields (body def)); auto.
-  - (* Case: Object class (no superclass) *)
-    exists ([] : list field_def).
-    apply CF_Object with def; auto.
-Qed.
-
-Lemma find_overriding_method_deterministic : forall CT C mname mdef1 mdef2
-  (Hwf_ct : wf_class_table CT)
-  (Hbound : C < dom CT)
-  (Hfind1 : FindMethodWithName CT C mname mdef1)
-  (Hfind2 : FindMethodWithName CT C mname mdef2),
-  mdef1 = mdef2.
-Proof.
-  intros CT C mname mdef1 mdef2 Hwf_ct Hbound Hfind1 Hfind2.
-  (* Strong induction on C *)
-  induction C using lt_wf_ind.
-  intros.
-  
-  inversion Hfind1; subst.
-  inversion Hfind2; subst.
-  
-  (* Case analysis on both calls *)
-  - (* Both find locally *)
-    (* Establish same class definition *)
-    assert (Heq_def : def = def0).
-    { 
-      rewrite Hfind in Hfind0.
-      injection Hfind0 as Heq.
-      exact Heq.
-    }
-    subst def0.
-    rewrite Hget_method in Hget_method0.
-    injection Hget_method0 as Heq.
-    exact Heq.
-    
-  - (* First local, second parent - contradiction *)
-    exfalso.
-    assert (Heq_def : def = def0).
-    { 
-      rewrite Hfind in Hfind0.
-      injection Hfind0 as Heq.
-      exact Heq.
-    }
-    subst def0.
-    rewrite Hget_method in Hnot_here.
-    discriminate Hnot_here.
-    
-  - (* First parent, second local - contradiction *)
-    {
-      inversion Hfind2; subst.
-      - (* Case: Hfind2 finds method locally - contradiction *)
-        assert (Heq_def : def = def0).
-        { 
-          rewrite Hfind in Hfind0.
-          injection Hfind0 as Heq.
-          exact Heq.
-        }
-        subst def0.
-        rewrite Hget_method in Hnot_here.
-        discriminate Hnot_here.
-      - (* Case: Hfind2 also goes to parent *)
-        assert (Heq_def : def = def0).
-        { 
-          rewrite Hfind in Hfind0.
-          injection Hfind0 as Heq.
-          exact Heq.
-        }
-        subst def0.
-        assert (Heq_parent : parent = parent0).
-        {
-          rewrite Hsuper in Hsuper0.
-          injection Hsuper0 as Heq.
-          exact Heq.
-        }
-        subst parent0.
-        
-        (* Apply induction hypothesis *)
-        apply (H parent).
-        + (* parent < C *)
-          eapply parent_implies_strict_ordering; eauto.
-        + 
-          assert (parent < C). 
-          {eapply parent_implies_strict_ordering; eauto.
-          }
-          lia.
-        + exact Hparent_fmn.
-        + exact Hparent_fmn0. 
-    }
-Qed.
-
-Lemma method_lookup_wf_class: forall CT C mdef cdef
-  (Hwf_ct  : wf_class_table CT)
-  (Hdom    : C < dom CT)
-  (HfindC  : find_class CT C = Some cdef)
-  (Hlookup : In mdef (methods (body cdef))),
-  wf_method CT C mdef.
-Proof.
-  intros CT C mdef cdef Hwf_ct Hdom HfindC Hlookup.
-  (* Get the well-formed class from the class table *)
-  assert (Hwf_class : wf_class CT cdef).
-  {
-    unfold wf_class_table in Hwf_ct.
-    destruct Hwf_ct as [Hforall_wf _].
-    eapply Forall_nth_error; eauto.
-  }
-  
-  (* Extract the methods well-formedness from the class well-formedness *)
-  inversion Hwf_class; subst.
-    - (* WFObjectDef case *)
-    exfalso.
-    (* Object class has no methods, contradiction *)
-    rewrite Hno_methods in Hlookup.
-    simpl in Hlookup.
-    exact Hlookup.
-  - (* WFOtherDef case *)
-    destruct H as [_ [Hforall_methods _]].
-    (* Apply Forall to get wf_method for our specific mdef *)
-    apply In_nth_error in Hlookup.
-    destruct Hlookup as [n Hnth].
-    assert (HC0_eq : C0 = C).
-    {
-      unfold C0.
-      unfold wf_class_table in Hwf_ct.
-      destruct Hwf_ct as [_ Hcname_consistent].
-      apply Hcname_consistent.
-      exact HfindC.
-    }
-    rewrite HC0_eq in Hforall_methods.
-    eapply Forall_nth_error; eauto.
-Qed.
-
-Lemma method_lookup_in_wellformed_inherited: forall CT C m mdef
-  (Hwf_ct  : wf_class_table CT)
-  (Hdom    : C < dom CT)
-  (Hlookup : FindMethodWithName CT C m mdef),
-  exists D ddef, base_subtype CT C D /\ find_class CT D = Some ddef /\ In mdef (methods (body ddef)) /\ wf_method CT D mdef.
-Proof.
-  intros CT C m mdef Hwf_ct Hdom Hlookup.
-  induction C as [C IH] using lt_wf_ind.
-  inversion Hlookup; subst.
-  - (* FOM_Here case *)
-    exists C, def.
-    split; [apply base_refl; exact Hdom | split; [exact Hfind | split]].
-    + unfold gget_method in Hget_method.
-      apply find_some in Hget_method.
-      destruct Hget_method as [Hin _].
-      (* rewrite <- H0. *)
-      exact Hin.
-    + eapply method_lookup_wf_class; eauto.
-      unfold gget_method in Hget_method.
-      apply find_some in Hget_method.
-      destruct Hget_method as [Hin _].
-      (* rewrite <- H0. *)
-      exact Hin.
-  - (* FOM_Super case *)
-    assert (Hparent_lt : parent < C).
-    {
-      eapply parent_implies_strict_ordering; eauto.
-    }
-    assert (Hparent_dom : parent < dom CT) by lia.
-    destruct (IH parent Hparent_lt Hparent_dom Hparent_fmn) as
-      [D [ddef [Hsub [Hfind_D [Hin_D Hwf_D]]]]].
-    exists D, ddef.
-    split.
-    + eapply base_trans.
-      * eapply base_extends; eauto.
-        unfold parent_lookup.
-        rewrite Hfind.
-        simpl.
-        exact Hsuper.
-      * exact Hsub.
-    + split; [exact Hfind_D | split; [exact Hin_D | exact Hwf_D]].
-Qed.
-
-Lemma method_inheritance_exists : forall CT C D m mdef
-  (Hwf_ct : wf_class_table CT)
-  (Hsub   : base_subtype CT C D)
-  (Hfind  : FindMethodWithName CT D m mdef),
-  exists mdef', FindMethodWithName CT C m mdef'.
-Proof.
-  intros CT C D m mdef Hwf_ct Hsub.
-  revert mdef.
-  induction Hsub; intros mdef Hfind.
-  - (* Reflexive *) exists mdef. exact Hfind.
-  - (* Transitive *)
-    assert (HD_dom : D < dom CT) by (eapply base_subtype_domain; eauto).
-    apply IHHsub2 in Hfind; auto.
-    destruct Hfind as [mdef_D HfindD].
-    apply IHHsub1 in HfindD; auto.
-  - (* Direct inheritance *)
-    destruct (find_class CT C) as [def|] eqn:HfindC; [|unfold parent_lookup in Hparent; rewrite HfindC in Hparent; discriminate].
-    destruct (gget_method (methods (body def)) m) as [mdef'|] eqn:Hget.
-    + exists mdef'. eapply FOM_Here; eauto.
-    + exists mdef. eapply FOM_Super; eauto.
-      unfold parent_lookup in Hparent. rewrite HfindC in Hparent. simpl in Hparent. exact Hparent.
-Qed.
-
-Lemma method_signature_refines_subtype : forall CT C D m mdef1 mdef2
-  (Hwf_ct : wf_class_table CT)
-  (Hsub   : base_subtype CT C D)
-  (Hfind1 : FindMethodWithName CT C m mdef1)
-  (Hfind2 : FindMethodWithName CT D m mdef2),
-  method_signature_refinement CT (msignature mdef1) (msignature mdef2).
-Proof.
-  intros CT C D m mdef1 mdef2 Hwf_ct Hsub Hfind1 Hfind2.
-  generalize dependent mdef1. generalize dependent mdef2.
-  induction Hsub; intros.
-  - (* Reflexive *) 
-    assert (mdef1 = mdef2) by (eapply find_overriding_method_deterministic; eauto).
-    subst. constructor.
-  - (* Transitive *)
-    assert (HD_dom : D < dom CT) by (eapply base_subtype_domain; eauto).
-    (* Method m exists in E, and D <: E, so by inheritance m must exist in D *)
-    assert (Hexists_D : exists mdef_D, FindMethodWithName CT D m mdef_D).
-    {
-      eapply method_inheritance_exists; eauto.
-    }
-    destruct Hexists_D as [mdef_D HfindD].
-    eapply msr_trans.
-    + eapply IHHsub1; eauto.
-    + eapply IHHsub2; eauto.
-  - (* Direct inheritance *)
-    destruct (find_class CT C) as [def|] eqn:Hfind; [|unfold parent_lookup in Hparent; rewrite Hfind in Hparent; discriminate].
-    assert (Hwf_class : wf_class CT def) by (unfold wf_class_table in Hwf_ct; destruct Hwf_ct as [Hforall _]; eapply Forall_nth_error; eauto).
-    inversion Hwf_class; subst.
-    + unfold parent_lookup in Hparent. rewrite Hfind in Hparent. simpl in Hparent. 
-      exfalso. rewrite Hno_super in Hparent. discriminate.
-    +
-      destruct H as [_ [Hforall_methods _]].
-      inversion Hfind1; subst.
-  * (* mdef1 found locally in C *)
-    assert (Heq_def : def = def0) by (rewrite Hfind in Hfind0; injection Hfind0; auto).
-    subst def0.
-    assert (Hin1 : In mdef1 (methods (body def))).
-    { unfold gget_method in Hget_method. apply find_some in Hget_method. destruct Hget_method. exact H. }
-    apply In_nth_error in Hin1.
-    destruct Hin1 as [n Hn].
-    eapply Forall_nth_error in Hforall_methods; eauto.
-    unfold wf_method in Hforall_methods.
-    destruct Hforall_methods as
-      [_ [sΓ' [mbodyrettype
-        [Hmethod_body [_ [_ [_ [Hoverride [Hreceiver_base _]]]]]]]]].
-    unfold parent_lookup in Hparent. rewrite Hfind in Hparent. simpl in Hparent.
-    assert (HC0_eq : C0 = C) by
-      (unfold wf_class_table in Hwf_ct;
-       destruct Hwf_ct as [_ [_ [_ Hcname]]];
-       apply Hcname; exact Hfind).
-    eapply msr_override with (qc := qC).
-    { rewrite Hreceiver_base. rewrite HC0_eq.
-      unfold bound. rewrite Hfind. reflexivity. }
-    { destruct (method_lookup_in_wellformed_inherited
-          CT D m mdef2 Hwf_ct Hdom_D Hfind2)
-        as [E [edef [HDE [HfindE [HinE HwfE]]]]].
-      unfold wf_method in HwfE; simpl in HwfE.
-      destruct HwfE as
-        [_ [sΓE [retE [_ [_ [_ [_ [_ [Hreceiver_E _]]]]]]]]].
-      rewrite Hreceiver_base. rewrite HC0_eq. rewrite Hreceiver_E.
-      eapply base_trans.
-      - eapply base_extends; eauto.
-        unfold parent_lookup. rewrite Hfind. exact Hparent.
-      - exact HDE. }
-    { eapply stmt_typing_wf_env. exact Hmethod_body. }
-    { eapply Hoverride.
-      - rewrite HC0_eq. exact Hfind.
-      - unfold parent_lookup in Hparent. exact Hparent.
-      - rewrite HC0_eq. unfold bound. rewrite Hfind. reflexivity.
-      - assert (Hm_eq : mname (msignature mdef1) = m) by
-          (eapply find_method_with_name_consistent; eauto).
-        rewrite Hm_eq. exact Hfind2. }
-    * (* mdef1 inherited from parent - use determinism *)
-      assert (Heq_def : def = def0) by (rewrite Hfind in Hfind0; injection Hfind0; auto).
-      subst def0.
-      assert (Heq_parent : parent = D).
-      {
-        unfold parent_lookup in Hparent.
-        rewrite Hfind in Hparent.
-        simpl in Hparent.
-        rewrite Hsuper0 in Hparent.
-        injection Hparent as Heq.
-        exact Heq.
-      }
-      subst parent.
-      assert (mdef1 = mdef2). {
-        eapply find_overriding_method_deterministic with (C:=D); eauto.
-      }
-      subst. constructor.
-Qed.
-
-Lemma method_signature_refinement_scope_eq : forall CT child parent,
-  method_signature_refinement CT child parent ->
-  mscope child = mscope parent.
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine.
-  - reflexivity.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat; tauto
-    end.
-  - congruence.
-Qed.
-
-Lemma method_signature_refinement_params_length : forall CT child parent,
-  method_signature_refinement CT child parent ->
-  length (mparams child) = length (mparams parent).
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine.
-  - reflexivity.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [_ [Hparams _]]]];
-        symmetry; eapply Forall2_length; exact Hparams
-    end.
-  - lia.
-Qed.
-
-Lemma method_signature_refinement_ro_receiver :
-  forall CT child parent,
-    method_signature_refinement CT child parent ->
-    sqtype (mreceiver parent) = RO ->
-    sqtype (mreceiver child) = RO.
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine; intros Hparent.
-  - exact Hparent.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [_ [_ Hreceiver]]]]
-    end.
-    unfold vpa_mutability_override in Hreceiver. simpl in Hreceiver.
-    rewrite Hparent in Hreceiver.
-    destruct qc;
-      destruct (sqtype (mreceiver overrider));
-      simpl in Hreceiver;
-      inversion Hreceiver;
-      reflexivity.
-  - apply IHHrefine1. apply IHHrefine2. exact Hparent.
-Qed.
-
-Definition is_mut_or_ro (qualifier : q) : Prop :=
-  qualifier = Mut \/ qualifier = RO.
-
-Lemma method_signature_refinement_mut_receiver :
-  forall CT child parent,
-    method_signature_refinement CT child parent ->
-    sqtype (mreceiver parent) = Mut ->
-    is_mut_or_ro (sqtype (mreceiver child)).
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine; intros Hparent.
-  - unfold is_mut_or_ro. rewrite Hparent. auto.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [_ [_ Hreceiver]]]]
-    end.
-    unfold vpa_mutability_override in Hreceiver. simpl in Hreceiver.
-    rewrite Hparent in Hreceiver.
-    unfold is_mut_or_ro.
-    destruct qc;
-      destruct (sqtype (mreceiver overrider));
-      simpl in Hreceiver;
-      inversion Hreceiver;
-      subst;
-      auto.
-  - have Hmiddle := IHHrefine2 Hparent.
-    unfold is_mut_or_ro in Hmiddle.
-    destruct Hmiddle as [Hmiddle | Hmiddle].
-    + apply IHHrefine1. exact Hmiddle.
-    + right. eapply method_signature_refinement_ro_receiver; eauto.
-Qed.
-
-Definition is_rdm_or_bot (qualifier : q) : Prop :=
-  qualifier = RDM \/ qualifier = Bot.
-
-Definition is_concrete_or_rdm_or_bot (qualifier : q) : Prop :=
-  qualifier = Mut \/ qualifier = Imm \/ qualifier = RDM \/ qualifier = Bot.
-
-Definition is_mut_or_bot (qualifier : q) : Prop :=
-  qualifier = Mut \/ qualifier = Bot.
-
-Lemma override_qualifier_rdm_or_bot_backwards :
-  forall qc parent_qualifier child_qualifier,
-    q_subtype
-      (vpa_mutability_qq_abstract_state
-        (qc2q qc) parent_qualifier)
-      child_qualifier ->
-    is_rdm_or_bot child_qualifier ->
-    is_rdm_or_bot parent_qualifier.
-Proof.
-  intros qc parent_qualifier child_qualifier Hsub Hchild.
-  unfold is_rdm_or_bot in *.
-  destruct Hchild as [Hchild | Hchild]; rewrite Hchild in Hsub.
-  - destruct qc, parent_qualifier;
-      simpl in Hsub; inversion Hsub; subst; auto.
-  - destruct qc, parent_qualifier;
-      simpl in Hsub; inversion Hsub; subst; auto.
-Qed.
-
-Lemma override_parameter_rdm_or_bot_backwards :
-  forall CT qc parent_type child_type,
-    qualified_type_subtype CT
-      (vpa_mutability_override qc parent_type) child_type ->
-    is_rdm_or_bot (sqtype child_type) ->
-    is_rdm_or_bot (sqtype parent_type).
-Proof.
-  intros CT qc parent_type child_type Hsub Hchild.
-  apply qualified_type_subtype_q_subtype in Hsub.
-  unfold vpa_mutability_override in Hsub. simpl in Hsub.
-  eapply override_qualifier_rdm_or_bot_backwards; eauto.
-Qed.
-
-Lemma override_parameter_bot_backwards :
-  forall CT qc parent_type child_type,
-    qualified_type_subtype CT
-      (vpa_mutability_override qc parent_type) child_type ->
-    sqtype child_type = Bot ->
-    sqtype parent_type = Bot.
-Proof.
-  intros CT qc parent_type child_type Hsub Hchild.
-  apply qualified_type_subtype_q_subtype in Hsub.
-  unfold vpa_mutability_override in Hsub. simpl in Hsub.
-  rewrite Hchild in Hsub.
-  destruct qc, (sqtype parent_type); simpl in Hsub;
-    inversion Hsub; reflexivity.
-Qed.
-
-Lemma method_signature_refinement_receiver_rdm_or_bot : forall CT child parent,
-  method_signature_refinement CT child parent ->
-  is_rdm_or_bot (sqtype (mreceiver child)) ->
-  is_rdm_or_bot (sqtype (mreceiver parent)).
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine; intros Hchild.
-  - exact Hchild.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [_ [_ Hreceiver]]]];
-        unfold vpa_mutability_override in Hreceiver; simpl in Hreceiver;
-        eapply override_qualifier_rdm_or_bot_backwards; eauto
-    end.
-  - apply IHHrefine2. apply IHHrefine1. exact Hchild.
-Qed.
-
-Lemma method_signature_refinement_parameter_rdm_or_bot :
-  forall CT child parent i child_type parent_type,
-    method_signature_refinement CT child parent ->
-    nth_error (mparams child) i = Some child_type ->
-    nth_error (mparams parent) i = Some parent_type ->
-    is_rdm_or_bot (sqtype child_type) ->
-    is_rdm_or_bot (sqtype parent_type).
-Proof.
-  intros CT child parent i child_type parent_type Hrefine.
-  generalize dependent child_type.
-  generalize dependent parent_type.
-  induction Hrefine; intros parent_type child_type Hchild Hparent Hrdm.
-  - rewrite Hchild in Hparent. injection Hparent as <-. exact Hrdm.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [_ [Hparams _]]]];
-        have Hsub := Hparams;
-        eapply Forall2_nth_error in Hsub; eauto;
-        eapply override_parameter_rdm_or_bot_backwards; eauto
-    end.
-  - have Hchild_index : i < length (mparams child).
-    { apply nth_error_Some. rewrite Hchild. discriminate. }
-    have Hchild_middle_length :=
-      method_signature_refinement_params_length CT child middle Hrefine1.
-    destruct (nth_error (mparams middle) i) as [middle_type|]
-      eqn:Hmiddle.
-    2:{ apply nth_error_None in Hmiddle. lia. }
-    have Hmiddle_rdm : is_rdm_or_bot (sqtype middle_type).
-    { eapply IHHrefine1; eauto. }
-    eapply IHHrefine2; eauto.
-Qed.
-
-Lemma method_signature_refinement_parameter_bot_backwards :
-  forall CT child parent i child_type parent_type,
-    method_signature_refinement CT child parent ->
-    nth_error (mparams child) i = Some child_type ->
-    nth_error (mparams parent) i = Some parent_type ->
-    sqtype child_type = Bot ->
-    sqtype parent_type = Bot.
-Proof.
-  intros CT child parent i child_type parent_type Hrefine.
-  generalize dependent child_type.
-  generalize dependent parent_type.
-  induction Hrefine; intros parent_type child_type Hchild Hparent Hbot.
-  - rewrite Hchild in Hparent. injection Hparent as <-. exact Hbot.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [_ [Hparams _]]]];
-        have Hsub := Hparams;
-        eapply Forall2_nth_error in Hsub; eauto;
-        eapply override_parameter_bot_backwards; eauto
-    end.
-  - have Hchild_index : i < length (mparams child).
-    { apply nth_error_Some. rewrite Hchild. discriminate. }
-    have Hchild_middle_length :=
-      method_signature_refinement_params_length CT child middle Hrefine1.
-    destruct (nth_error (mparams middle) i) as [middle_type|]
-      eqn:Hmiddle.
-    2:{ apply nth_error_None in Hmiddle. lia. }
-    have Hmiddle_bot : sqtype middle_type = Bot.
-    { eapply IHHrefine1; eauto. }
-    eapply IHHrefine2; eauto.
-Qed.
-
-Lemma override_rdm_return_to_mut_rdm_parameter_requires_parent_bot :
-  forall CT qc child_return parent_return child_parameter parent_parameter,
-    qualified_type_subtype CT child_return
-      (vpa_mutability_override qc parent_return) ->
-    sqtype parent_return = RDM ->
-    sqtype child_return = Mut ->
-    qualified_type_subtype CT
-      (vpa_mutability_override qc parent_parameter) child_parameter ->
-    sqtype child_parameter = RDM ->
-    sqtype parent_parameter = Bot.
-Proof.
-  intros CT qc child_return parent_return child_parameter parent_parameter
-    Hreturn Hparent_return Hchild_return Hparameter Hchild_parameter.
-  apply qualified_type_subtype_q_subtype in Hreturn.
-  apply qualified_type_subtype_q_subtype in Hparameter.
-  unfold vpa_mutability_override in Hreturn, Hparameter.
-  simpl in Hreturn, Hparameter.
-  rewrite Hparent_return in Hreturn.
-  rewrite Hchild_return in Hreturn.
-  rewrite Hchild_parameter in Hparameter.
-  destruct qc, (sqtype parent_parameter);
-    simpl in Hreturn, Hparameter;
-    inversion Hreturn;
-    inversion Hparameter;
-    reflexivity.
-Qed.
-
-Lemma override_return_concrete_or_rdm_or_bot :
-  forall qc child_qualifier parent_qualifier,
-    q_subtype child_qualifier
-      (vpa_mutability_qq_abstract_state (qc2q qc) parent_qualifier) ->
-    is_concrete_or_rdm_or_bot parent_qualifier ->
-    is_concrete_or_rdm_or_bot child_qualifier.
-Proof.
-  intros qc child_qualifier parent_qualifier Hsub Hparent.
-  unfold is_concrete_or_rdm_or_bot in *.
-  destruct Hparent as [-> | [-> | [-> | ->]]];
-    destruct qc, child_qualifier;
-    simpl in Hsub; inversion Hsub; subst; auto.
-Qed.
-
-Lemma method_signature_refinement_return_concrete_or_rdm_or_bot :
-  forall CT child parent,
-    method_signature_refinement CT child parent ->
-    is_concrete_or_rdm_or_bot (sqtype (mret parent)) ->
-    is_concrete_or_rdm_or_bot (sqtype (mret child)).
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine; intros Hparent.
-  - exact Hparent.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [Hreturn _]]];
-        apply qualified_type_subtype_q_subtype in Hreturn;
-        unfold vpa_mutability_override in Hreturn; simpl in Hreturn;
-        eapply override_return_concrete_or_rdm_or_bot; eauto
-    end.
-  - apply IHHrefine1. apply IHHrefine2. exact Hparent.
-Qed.
-
-Lemma override_return_bot :
-  forall qc child_qualifier,
-    q_subtype child_qualifier
-      (vpa_mutability_qq_abstract_state (qc2q qc) Bot) ->
-    child_qualifier = Bot.
-Proof.
-  intros qc child_qualifier Hsub.
-  destruct qc, child_qualifier; simpl in Hsub;
-    inversion Hsub; reflexivity.
-Qed.
-
-Lemma method_signature_refinement_return_bot :
-  forall CT child parent,
-    method_signature_refinement CT child parent ->
-    sqtype (mret parent) = Bot ->
-    sqtype (mret child) = Bot.
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine; intros Hparent.
-  - exact Hparent.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [Hreturn _]]];
-        apply qualified_type_subtype_q_subtype in Hreturn;
-        unfold vpa_mutability_override in Hreturn; simpl in Hreturn;
-        rewrite Hparent in Hreturn;
-        eapply override_return_bot; eauto
-    end.
-  - apply IHHrefine1. apply IHHrefine2. exact Hparent.
-Qed.
-
-Lemma override_return_mut_or_bot :
-  forall qc child_qualifier,
-    q_subtype child_qualifier
-      (vpa_mutability_qq_abstract_state (qc2q qc) Mut) ->
-    is_mut_or_bot child_qualifier.
-Proof.
-  intros qc child_qualifier Hsub.
-  unfold is_mut_or_bot.
-  destruct qc, child_qualifier; simpl in Hsub;
-    inversion Hsub; subst; auto.
-Qed.
-
-Lemma method_signature_refinement_return_mut_or_bot :
-  forall CT child parent,
-    method_signature_refinement CT child parent ->
-    sqtype (mret parent) = Mut ->
-    is_mut_or_bot (sqtype (mret child)).
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine; intros Hparent.
-  - unfold is_mut_or_bot. rewrite Hparent. auto.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [Hreturn _]]];
-        apply qualified_type_subtype_q_subtype in Hreturn;
-        unfold vpa_mutability_override in Hreturn; simpl in Hreturn;
-        rewrite Hparent in Hreturn;
-        eapply override_return_mut_or_bot; eauto
-    end.
-  - have Hmiddle : is_mut_or_bot (sqtype (mret middle)).
-    { apply IHHrefine2. exact Hparent. }
-    unfold is_mut_or_bot in Hmiddle.
-    destruct Hmiddle as [Hmiddle | Hmiddle].
-    + apply IHHrefine1. exact Hmiddle.
-    + right. eapply method_signature_refinement_return_bot; eauto.
-Qed.
-
-Definition is_imm_or_bot (qualifier : q) : Prop :=
-  qualifier = Imm \/ qualifier = Bot.
-
-Lemma method_signature_refinement_return_imm_or_bot :
-  forall CT child parent,
-    method_signature_refinement CT child parent ->
-    sqtype (mret parent) = Imm ->
-    is_imm_or_bot (sqtype (mret child)).
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine; intros Hparent.
-  - unfold is_imm_or_bot. rewrite Hparent. auto.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [Hreturn _]]];
-        apply qualified_type_subtype_q_subtype in Hreturn
-    end.
-    unfold vpa_mutability_override in Hreturn. simpl in Hreturn.
-    rewrite Hparent in Hreturn.
-    unfold is_imm_or_bot.
-    destruct qc;
-      destruct (sqtype (mret overrider));
-      simpl in Hreturn;
-      inversion Hreturn;
-      subst;
-      auto.
-  - have Hmiddle := IHHrefine2 Hparent.
-    unfold is_imm_or_bot in Hmiddle.
-    destruct Hmiddle as [Hmiddle | Hmiddle].
-    + apply IHHrefine1. exact Hmiddle.
-    + right. eapply method_signature_refinement_return_bot; eauto.
-Qed.
-
-Lemma method_signature_refinement_mut_return_rdm_parameter_parent_bot :
-  forall CT child parent i child_parameter parent_parameter,
-    method_signature_refinement CT child parent ->
-    sqtype (mret parent) = RDM ->
-    sqtype (mret child) = Mut ->
-    nth_error (mparams child) i = Some child_parameter ->
-    nth_error (mparams parent) i = Some parent_parameter ->
-    sqtype child_parameter = RDM ->
-    sqtype parent_parameter = Bot.
-Proof.
-  intros CT child parent i child_parameter parent_parameter Hrefine.
-  generalize dependent child_parameter.
-  generalize dependent parent_parameter.
-  induction Hrefine;
-    intros parent_parameter child_parameter Hparent_return Hchild_return
-      Hchild_parameter Hparent_parameter Hchild_rdm.
-  - congruence.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [Hreturn [Hparams _]]]];
-        have Hparameter := Hparams;
-        eapply Forall2_nth_error in Hparameter; eauto;
-        eapply override_rdm_return_to_mut_rdm_parameter_requires_parent_bot;
-          eauto
-    end.
-  - have Hchild_index : i < length (mparams child).
-    { apply nth_error_Some. rewrite Hchild_parameter. discriminate. }
-    have Hchild_middle_length :=
-      method_signature_refinement_params_length CT child middle Hrefine1.
-    destruct (nth_error (mparams middle) i) as [middle_parameter|]
-      eqn:Hmiddle_parameter.
-    2:{ apply nth_error_None in Hmiddle_parameter. lia. }
-    have Hmiddle_return_cases :
-        is_concrete_or_rdm_or_bot (sqtype (mret middle)).
-    { apply (method_signature_refinement_return_concrete_or_rdm_or_bot
-        CT middle parent Hrefine2).
-      unfold is_concrete_or_rdm_or_bot. auto. }
-    have Hmiddle_parameter_cases :
-        is_rdm_or_bot (sqtype middle_parameter).
-    { apply (method_signature_refinement_parameter_rdm_or_bot
-        CT child middle i child_parameter middle_parameter Hrefine1
-        Hchild_parameter Hmiddle_parameter).
-      unfold is_rdm_or_bot. auto. }
-    unfold is_concrete_or_rdm_or_bot in Hmiddle_return_cases.
-    unfold is_rdm_or_bot in Hmiddle_parameter_cases.
-    destruct Hmiddle_return_cases as
-      [Hmiddle_mut | [Hmiddle_imm | [Hmiddle_rdm | Hmiddle_return_bot]]];
-      destruct Hmiddle_parameter_cases as
-        [Hmiddle_parameter_rdm | Hmiddle_parameter_bot].
-    + eapply IHHrefine2; eauto.
-    + eapply method_signature_refinement_parameter_bot_backwards; eauto.
-    + have Hchild_cases :=
-        method_signature_refinement_return_imm_or_bot
-          CT child middle Hrefine1 Hmiddle_imm.
-      unfold is_imm_or_bot in Hchild_cases.
-      destruct Hchild_cases; congruence.
-    + have Hchild_cases :=
-        method_signature_refinement_return_imm_or_bot
-          CT child middle Hrefine1 Hmiddle_imm.
-      unfold is_imm_or_bot in Hchild_cases.
-      destruct Hchild_cases; congruence.
-    + have Hmiddle_bot : sqtype middle_parameter = Bot.
-      { eapply IHHrefine1; eauto. }
-      eapply method_signature_refinement_parameter_bot_backwards; eauto.
-    + eapply method_signature_refinement_parameter_bot_backwards; eauto.
-    + have Hchild_bot :=
-        method_signature_refinement_return_bot
-          CT child middle Hrefine1 Hmiddle_return_bot.
-      congruence.
-    + have Hchild_bot :=
-        method_signature_refinement_return_bot
-          CT child middle Hrefine1 Hmiddle_return_bot.
-      congruence.
-Qed.
-
-Lemma method_signature_refinement_from_rdm_receiver_shape :
-  forall CT child parent,
-    method_signature_refinement CT child parent ->
-    sqtype (mret parent) = RDM ->
-    (sqtype (mreceiver parent) = RDM \/
-     sqtype (mreceiver parent) = RO) ->
-    (sqtype (mret child) = Mut ->
-       is_mut_or_ro (sqtype (mreceiver child))) /\
-    (sqtype (mret child) = RDM ->
-       sqtype (mreceiver child) = RDM \/
-       sqtype (mreceiver child) = RO).
-Proof.
-  intros CT child parent Hrefine.
-  induction Hrefine; intros Hparent_return Hparent_receiver.
-  - split; intros Hchild_return.
-    + congruence.
-    + exact Hparent_receiver.
-  - match goal with
-    | Hcompat : method_override_compatible _ _ _ _ |- _ =>
-        unfold method_override_compatible in Hcompat;
-        destruct Hcompat as [_ [_ [Hreturn [_ Hreceiver]]]];
-        apply qualified_type_subtype_q_subtype in Hreturn
-    end.
-    unfold vpa_mutability_override in Hreturn, Hreceiver.
-    simpl in Hreturn, Hreceiver.
-    destruct Hparent_receiver as [Hparent_receiver | Hparent_receiver];
-      rewrite Hparent_return in Hreturn;
-      rewrite Hparent_receiver in Hreceiver;
-      destruct qc;
-      destruct (sqtype (mret overrider));
-      destruct (sqtype (mreceiver overrider));
-      simpl in Hreturn, Hreceiver;
-      split;
-      intros Hchild_return;
-      try discriminate;
-      inversion Hreturn;
-      inversion Hreceiver;
-      subst;
-      auto.
-    all: unfold is_mut_or_ro; auto.
-  - have Hmiddle_cases :
-        is_concrete_or_rdm_or_bot (sqtype (mret middle)).
-    { eapply method_signature_refinement_return_concrete_or_rdm_or_bot;
-        eauto.
-      unfold is_concrete_or_rdm_or_bot. auto. }
-    unfold is_concrete_or_rdm_or_bot in Hmiddle_cases.
-    destruct Hmiddle_cases as
-      [Hmiddle_mut | [Hmiddle_imm | [Hmiddle_rdm | Hmiddle_bot]]].
-    + have Hmiddle_receiver :=
-        proj1 (IHHrefine2 Hparent_return Hparent_receiver) Hmiddle_mut.
-      split; intros Hchild_return.
-      * unfold is_mut_or_ro in Hmiddle_receiver |- *.
-        destruct Hmiddle_receiver as [Hmiddle_receiver | Hmiddle_receiver].
-        -- eapply method_signature_refinement_mut_receiver; eauto.
-        -- right. eapply method_signature_refinement_ro_receiver; eauto.
-      * have Hchild_cases :=
-          method_signature_refinement_return_mut_or_bot
-            CT child middle Hrefine1 Hmiddle_mut.
-        unfold is_mut_or_bot in Hchild_cases.
-        destruct Hchild_cases; congruence.
-    + have Hchild_cases :=
-        method_signature_refinement_return_imm_or_bot
-          CT child middle Hrefine1 Hmiddle_imm.
-      unfold is_imm_or_bot in Hchild_cases.
-      split; intros Hchild_return; destruct Hchild_cases; congruence.
-    + have Hmiddle_receiver :=
-        proj2 (IHHrefine2 Hparent_return Hparent_receiver) Hmiddle_rdm.
-      exact (IHHrefine1 Hmiddle_rdm Hmiddle_receiver).
-    + have Hchild_bot :=
-        method_signature_refinement_return_bot
-          CT child middle Hrefine1 Hmiddle_bot.
-      split; intros Hchild_return; congruence.
-Qed.
-
-Lemma method_signature_refinement_mut_from_rdm_has_ro_receiver :
-  forall CT child parent,
-    method_signature_refinement CT child parent ->
-    signature_has_no_mutable_roots child ->
-    sqtype (mret parent) = RDM ->
-    (sqtype (mreceiver parent) = RDM \/
-     sqtype (mreceiver parent) = RO) ->
-    sqtype (mret child) = Mut ->
-    sqtype (mreceiver child) = RO.
-Proof.
-  intros CT child parent Hrefine Hsafe Hparent_return Hparent_receiver
-    Hchild_return.
-  have Hshape :=
-    proj1 (method_signature_refinement_from_rdm_receiver_shape
-      CT child parent Hrefine Hparent_return Hparent_receiver)
-      Hchild_return.
-  unfold is_mut_or_ro in Hshape.
-  destruct Hshape as [Hmut | Hro]; [|exact Hro].
-  destruct Hsafe as [Hreceiver_safe _].
-  unfold is_nonmutable_qualifier in Hreceiver_safe.
-  rewrite Hmut in Hreceiver_safe.
-  destruct Hreceiver_safe as
-    [Hbad | [Hbad | [Hbad | Hbad]]]; discriminate.
-Qed.
-
-Lemma subtype_mut_or_bot :
-  forall CT child parent,
-    qualified_type_subtype CT child parent ->
-    sqtype parent = Mut ->
-    is_mut_or_bot (sqtype child).
-Proof.
-  intros CT child parent Hsub Hparent.
-  apply qualified_type_subtype_q_subtype in Hsub.
-  unfold is_mut_or_bot.
-  rewrite Hparent in Hsub.
-  destruct (sqtype child); inversion Hsub; subst; auto.
-Qed.
-
-Lemma subtype_concrete_or_rdm_or_bot :
-  forall CT child parent,
-    qualified_type_subtype CT child parent ->
-    is_concrete_or_rdm_or_bot (sqtype parent) ->
-    is_concrete_or_rdm_or_bot (sqtype child).
-Proof.
-  intros CT child parent Hsub Hparent.
-  apply qualified_type_subtype_q_subtype in Hsub.
-  unfold is_concrete_or_rdm_or_bot in *.
-  destruct Hparent as [Hparent | [Hparent | [Hparent | Hparent]]];
-    rewrite Hparent in Hsub;
-    destruct (sqtype child);
-    inversion Hsub; subst; auto.
-Qed.
-
-Lemma method_signature_refinement_receiver_base : forall CT child parent,
-  method_signature_refinement CT child parent ->
-  sctype (mreceiver child) < dom CT ->
-  base_subtype CT
-    (sctype (mreceiver child))
-    (sctype (mreceiver parent)).
-Proof.
-  intros CT child parent Hrefine Hdom.
-  induction Hrefine.
-  - apply base_refl. exact Hdom.
-  - assumption.
-  - have Hchild_middle := IHHrefine1 Hdom.
-    eapply base_trans; [exact Hchild_middle|].
-    apply IHHrefine2.
-    eapply base_subtype_domain; eauto.
-Qed.

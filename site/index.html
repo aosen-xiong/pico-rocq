@@ -3,18 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pico Rocq Mechanization</title>
-  <meta name="description" content="Rocq mechanization for PICO: transitive, abstract, and class polymorphic immutability.">
+  <title>GAIT Rocq Mechanization</title>
+  <meta name="description" content="Rocq mechanization of GAIT: generic abstract immutability types.">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="page">
     <header class="header">
       <p class="kicker">Rocq proof artifact</p>
-      <h1>Pico Rocq Mechanization</h1>
+      <h1>GAIT Rocq Mechanization</h1>
       <p class="summary">
-        A mechanized formalization of the Pico core calculus for transitive,
-        abstract, and class polymorphic immutability.
+        A mechanized formalization of Generic Abstract Immutability Types:
+        abstract immutability with type parameters, qualifier parameters,
+        qualified type-variable uses, and a qualifier downcast.
       </p>
       <nav class="links" aria-label="Project links">
         <a href="https://github.com/aosen-xiong/pico-rocq">Source repository</a>
@@ -57,8 +58,8 @@
               <td><a href="proofs/Syntax.html">Syntax.v</a></td>
             </tr>
             <tr>
-              <td>Viewpoint adaptation</td>
-              <td><code>vpa_mutability_tt_abstract_state</code>, <code>vpa_assignability</code></td>
+              <td>Viewpoint adaptation and dynamization</td>
+              <td><code>vpa_mutability_qq_abstract_state</code>, <code>vpa_mutability_qq_readonly_state</code>, <code>dynq</code></td>
               <td><a href="proofs/ViewpointAdaptation.html">ViewpointAdaptation.v</a></td>
             </tr>
             <tr>
@@ -68,38 +69,38 @@
             </tr>
             <tr>
               <td>Operational semantics</td>
-              <td><code>eval_expr</code>, <code>eval_stmt</code></td>
+              <td><code>eval_stmt</code></td>
               <td><a href="proofs/Bigstep.html">Bigstep.v</a></td>
             </tr>
             <tr>
-              <td>Theorem 1: preservation and mutation safety</td>
-              <td><code>preservation_pico</code>, <code>well_typed_no_mutation_exp</code></td>
-              <td><a href="proofs/Preservation.html">Preservation.v</a>, <a href="proofs/WFNOMutationEXP.html">WFNOMutationEXP.v</a></td>
+              <td>Preservation</td>
+              <td><code>preservation_pico</code></td>
+              <td><a href="proofs/Preservation.html">Preservation.v</a></td>
             </tr>
             <tr>
-              <td>Theorem 2: shallow abstract immutability</td>
-              <td><code>shallow_abstract_immutability</code></td>
-              <td><a href="proofs/AbstractStatePreservation.html">AbstractStatePreservation.v</a></td>
+              <td>Mutation-exception freedom</td>
+              <td><code>well_typed_no_mutation_exp</code></td>
+              <td><a href="proofs/MutationSafety.html">MutationSafety.v</a></td>
             </tr>
             <tr>
-              <td>Theorem 3 (AS clause): abstract-state preservation</td>
-              <td><code>abstract_state_preservation</code></td>
-              <td><a href="proofs/AbstractStatePreservation.html">AbstractStatePreservation.v</a></td>
+              <td>Progress for the fuel-based interpreter, and its agreement with the big-step semantics</td>
+              <td><code>run_progress</code>, <code>run_sound</code>, <code>run_complete</code></td>
+              <td><a href="proofs/Interp.html">Interp.v</a></td>
             </tr>
             <tr>
-              <td>Theorem 3 (CS clause): concrete-state preservation</td>
-              <td><code>concrete_state_preservation</code></td>
-              <td><a href="proofs/ConcreteStatePreservation.html">ConcreteStatePreservation.v</a></td>
+              <td>Abstract-state and concrete-state preservation</td>
+              <td><code>abstract_state_preservation</code>, <code>concrete_state_preservation</code></td>
+              <td><a href="proofs/Immutability.html">Immutability.v</a></td>
             </tr>
             <tr>
-              <td>Theorem 4 (RS clause): readonly-state preservation</td>
-              <td><code>readonly_state_preservation</code></td>
-              <td><a href="proofs/ReadonlyStatePreservation.html">ReadonlyStatePreservation.v</a></td>
+              <td>Readonly-state and transitive-state preservation</td>
+              <td><code>rs_ts_preservation_all_calls</code></td>
+              <td><a href="proofs/ArgTheorems.html">ArgTheorems.v</a></td>
             </tr>
             <tr>
-              <td>Theorem 4 (TS clause): transitive-state preservation</td>
-              <td><code>transitive_state_preservation</code></td>
-              <td><a href="proofs/TransitiveStatePreservation.html">TransitiveStatePreservation.v</a></td>
+              <td>Types with only null values</td>
+              <td><code>pinned_class_uninhabited</code></td>
+              <td><a href="proofs/Inhabitants.html">Inhabitants.v</a></td>
             </tr>
           </tbody>
         </table>
@@ -110,10 +111,11 @@
       <div>
         <h2>Proof Organization</h2>
         <ul class="file-list">
-          <li><a href="proofs/Subtyping.html">Subtyping.v</a> defines qualifier, base, method, and qualified-type subtyping.</li>
-          <li><a href="proofs/Reachability.html">Reachability.v</a> defines ordinary and abstract-state reachability.</li>
-          <li><a href="proofs/Properties.html">Properties.v</a> contains preservation support lemmas.</li>
-          <li><a href="proofs/WFNOMutationEXP.html">WFNOMutationEXP.v</a> proves mutation-exception safety.</li>
+          <li><a href="proofs/Subtyping.html">Subtyping.v</a> defines qualifier, class, and qualified-type subtyping.</li>
+          <li><a href="proofs/PreservationCall.html">PreservationCall.v</a> holds the method-call case of preservation.</li>
+          <li><a href="proofs/ReadonlyFlat.html">ReadonlyFlat.v</a> and <a href="proofs/ReadonlyWorlds.html">ReadonlyWorlds.v</a> prove readonly-state preservation without type parameters.</li>
+          <li><a href="proofs/ArgTheorems.html">ArgTheorems.v</a> ends the general readonly-state and transitive-state proof.</li>
+          <li>The PICO mechanization without generics is kept in the <code>PICO/</code> folder of the repository.</li>
         </ul>
       </div>
       <div id="build">
@@ -129,7 +131,7 @@ open site/index.html</code></pre>
     </section>
 
     <footer class="footer">
-      <span>Pico Rocq Mechanization</span>
+      <span>GAIT Rocq Mechanization</span>
       <span>Rocq/Coq 9.1.0</span>
     </footer>
   </main>

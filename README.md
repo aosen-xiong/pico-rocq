@@ -1,176 +1,98 @@
-# PICO Rocq Formalization
+# GAIT: Rocq mechanization
 
-This directory contains the Rocq/Coq mechanization for the paper
-**Transitive, Abstract, and Class Polymorphic Immutability**. The core artifact
-claims are organized around type soundness, immutability, and readonly
-guarantees.
+This repository holds the Rocq mechanization of the paper **Generic Abstract
+Immutability Types** (GAIT). GAIT extends PICO's abstract immutability with
+class and method type parameters, qualifier parameters, qualified type-variable
+uses, and a qualifier downcast. The development has 64 files and about 47,000
+lines, not counting the third-party tactic library `LibTactics.v`. About 15,900
+of the lines are examples and regression programs. No file uses `Axiom`,
+`Admitted` or `admit`.
 
-Top-level theorem entry points:
+The earlier mechanization without generics, from the PICO paper, is kept in
+[PICO/](PICO/README.md) and builds on its own.
 
-- `Preservation.v`: `preservation_pico`
-- `AbstractStatePreservation.v`: `shallow_abstract_immutability`, `abstract_state_preservation`
-- `ConcreteStatePreservation.v`: `concrete_state_preservation`
-- `ReadonlyStatePreservation.v`: `readonly_field_write_preservation`,
-  `readonly_state_preservation`
-- `TransitiveStatePreservation.v`: `transitive_state_preservation`
-- `WFNOMutationEXP.v`: `well_typed_no_mutation_exp`
+## Build and check
 
-## Claims and proofs
-
-| Paper reference | Paper-level claim / premise | Mechanized premise in Rocq | Proved guarantee | Rocq theorem / file |
-|---|---|---|---|---|
-| Syntax figures | Pico syntax: qualifiers, expressions, statements, fields, classes, methods, runtime values, heaps | Inductive datatypes and records encode the paper grammar | Source language and runtime configurations used by all later judgments | `q`, `q_f`, `q_c`, `a`, `expr`, `stmt`, `field_type`, `method_sig`, `class_def`, `runtime_type`, `r_env`, `Obj` in [Syntax.v](Syntax.v) |
-| Viewpoint adaptation rules | Mutability, assignability, field, constructor, and runtime viewpoint adaptation | Scope-specific functions encode AS, CS, RS, and TS as independent mutability/assignability choices | Adapted qualifiers used by typing, field access/write, constructors, and runtime typability | `vpa_mutability_qq_abstract_state`, `vpa_mutability_tt_abstract_state`, `vpa_mutability_qq_readonly_state`, `vpa_mutability_tt_readonly_state`, `vpa_assignability`, `vpa_assignability_cs_ts` in [ViewpointAdaptation.v](ViewpointAdaptation.v) |
-| Subtyping rules | Qualifier, class/base, method-scope, and qualified-type subtyping | Inductive relations encode the subtype premises consumed by typing | Subtyping derivations used by statement typing and well-formedness | `q_subtype`, `base_subtype`, `method_scope_subtype`, `qualified_type_subtype` in [Subtyping.v](Subtyping.v) |
-| Static typing | Statement typing and well-formed field, constructor, class, method, and table conditions | Static environments, method scopes, receiver/argument adaptation, and class-table checks are explicit premises | Well-typed statements and well-formed declarations used by preservation and immutability proofs | `stmt_typing`, `wf_stypeuse`, `wf_field`, `wf_constructor`, `wf_method`, `wf_class`, `wf_class_table` in [Typing.v](Typing.v) |
-| Dynamic semantics | Big-step expression and statement evaluation with success, null-pointer, and mutation-exception outcomes | Evaluation relates expressions and statements in an initial runtime configuration to an outcome and final configuration | Operational behavior used by preservation, mutation safety, and the immutability proofs | `eval_expr`, `eval_stmt` and their determinism theorems in [Bigstep.v](Bigstep.v) |
-| Runtime well-formedness | Runtime configuration consistency between static environments, runtime environments, heaps, and class tables | Runtime typability and heap/object well-formedness are bundled in `wf_r_config` | Starting assumption and final guarantee for preservation | `wf_rtypeuse`, `wf_obj`, `wf_heap`, `wf_renv`, `wf_r_config` in [Bigstep.v](Bigstep.v) |
-| Reachability definitions | Ordinary reachability and abstract-state reachability | `reachable` follows arbitrary heap edges; `reachable_abs` and `protected_locset` encode RAS protection; `reachable_locations_from_initial_env` collects the objects reachable from call roots | Reachability sets used by shallow abstract immutability and the four state-preservation guarantees | `reachable`, `reachable_abs`, `protected_locset` in [Reachability.v](Reachability.v); `reachable_locations_from_initial_env` in [Bigstep.v](Bigstep.v) |
-| Theorem 1 | Preservation and mutation safety | The initial runtime configuration is well-formed and the statement is well-typed; preservation additionally assumes a successful `OK` evaluation, while safety considers an evaluation producing `MUTATIONEXP` | Successful evaluation preserves runtime well-formedness, and no well-typed statement can produce the mutation exception | `preservation_pico` in [Preservation.v](Preservation.v) and `well_typed_no_mutation_exp` in [WFNOMutationEXP.v](WFNOMutationEXP.v) |
-| Theorem 1 support | Big-step evaluation determinism | The same expression or statement evaluates twice from the same initial configuration | The two evaluations produce the same result/configuration | `eval_expr_deterministic` and `eval_stmt_deterministic` in [Bigstep.v](Bigstep.v) |
-| Theorem 1 support | Local variable declaration preserves well-formedness | `SLocal T x` is well-typed and evaluates by `eval_stmt` | Extending runtime/static environments with the local binding preserves `wf_r_config` | `preservation_local_ok` in [Properties.v](Properties.v) |
-| Theorem 1 support | Variable assignment preserves well-formedness | `SVarAss x e` is well-typed and evaluates by `eval_stmt` | Updating `x` with the evaluated value preserves `wf_r_config` | `preservation_varass_ok` in [Properties.v](Properties.v) |
-| Theorem 1 support | Field write preserves well-formedness under permitted writes | `SFldWrite x f y` is well-typed and evaluates successfully by `eval_stmt` | Heap update preserves `wf_r_config` | `preservation_fldwrite_ok` plus scope-specific lemmas in [Properties.v](Properties.v) |
-| Theorem 1 support | Object creation preserves well-formedness | `SNew x q_c c ys` is well-typed and evaluates by `eval_stmt` | Extending the heap and assigning the fresh object preserves `wf_r_config` | `preservation_new_ok` in [Properties.v](Properties.v) |
-| Theorem 2 | Shallow abstract immutability | Immutable object exists at entry; field is `Final` or `RDA`; statement is well-typed and evaluates successfully | The object still exists with the same runtime type, and the protected field value is unchanged | `shallow_abstract_immutability` in [AbstractStatePreservation.v](AbstractStatePreservation.v) |
-| Lemma 1 | Reachable-abstract-state reachability from an immutable root preserves immutability | Object is reachable from an immutable root through abstract-state fields | The reachable object is also immutable | `reachable_abs_from_imm_points_to_imm` in [AbstractStatePreservation.v](AbstractStatePreservation.v) |
-| Theorem 3, AS clause | Abstract-state preservation | Object is reachable from an immutable root through abstract state; statement is well-typed and evaluates successfully | The reachable object still exists with the same runtime type, and every non-`Assignable` field retains its entry value | `abstract_state_preservation` in [AbstractStatePreservation.v](AbstractStatePreservation.v) |
-| Theorem 3, CS clause | Concrete-state preservation | Object is reachable through abstract state from an immutable root; statement is well-typed in `ConcreteState` scope | The reachable object still exists with the same runtime type, and every field retains its entry value, including fields declared `Assignable` | `concrete_state_preservation` in [ConcreteStatePreservation.v](ConcreteStatePreservation.v), supported by [ConcreteState.v](ConcreteState.v) |
-| Theorem 4, RS clause | Readonly-state preservation | Method call occurs in `ReadonlyState` scope through protected receiver/arguments and evaluates successfully | Each protected object still exists with the same runtime type, and its non-`Assignable` fields retain their entry values | `readonly_state_preservation` in [ReadonlyStatePreservation.v](ReadonlyStatePreservation.v) |
-| Theorem 4 support | Readonly field-write safety | Receiver expression has static type `RO`; field-write statement evaluates successfully in `ReadonlyState` or `TransitiveState` scope | Protected field of the readonly-referenced object is unchanged | `readonly_field_write_preservation` in [ReadonlyStatePreservation.v](ReadonlyStatePreservation.v) |
-| Theorem 4, TS clause | Transitive-state preservation | Method call occurs in `TransitiveState` scope; receiver and all parameters are safe | Each protected object still exists with the same runtime type, and every field retains its entry value | `transitive_state_preservation` in [TransitiveStatePreservation.v](TransitiveStatePreservation.v) |
-| Proof-hygiene scan | Submitted proof sources do not use the forbidden commands scanned by the artifact | Every submitted `.v` file excludes literal `Axiom`, `Admitted`, and `admit` | Mechanical forbidden-command scan passes | [scripts/check-no-axioms-admits.py](scripts/check-no-axioms-admits.py) via `make check` |
-| Kernel-assumption audit | Public results do not depend on global axioms | The explicit [public-theorems.txt](scripts/public-theorems.txt) manifest is checked against every source `Theorem`, then each fully qualified theorem, lemma, or corollary entry is inspected with `Print Assumptions` | The manifest and sources agree, and every listed public result is closed under the global context | [scripts/check-public-assumptions.py](scripts/check-public-assumptions.py) via `make check` |
-
-## Paper/Formalization Notes
-
-- Variable index `0` is reserved for `this`. Following Java, `this` is not a
-  reassignable variable, so variable assignment, object creation, and
-  method-call typing require their destination variable to differ from `0`.
-- The constructor model omits executable constructor bodies and explicit
-  superclass-constructor calls. Consequently, the paper's `checkSuperCall`
-  premise has no separate Rocq judgment; this is part of the declared
-  constructor-body simplification.
-- The development proves declaration-, statement-, and configuration-level
-  results rather than a separate `WF-Prog`/`OS-P-Prog` wrapper judgment.
-- `wf_field` and `wf_constructor` implement the paper's viewpoint-adapted
-  well-formedness checks, and `wf_method` checks its declared return type with
-  `wf_stypeuse`. [WellformednessRegression.v](WellformednessRegression.v)
-  exercises both formerly divergent field/constructor cases and supplies
-  a positive runtime-configuration witness.
-- Method overriding specializes the explicit receiver through the overriding
-  class bound: the class-adapted inherited receiver must be a subtype of the
-  overriding receiver. Method scope remains invariant; returns are covariant,
-  and ordinary parameters are contravariant, after class-bound viewpoint
-  adaptation. Call typing checks the corresponding behavioral-subtyping
-  obligations for every method that a runtime subtype can select.
-- The paper treats `Lost` as a helper qualifier rather than a programmer-written
-  type qualifier. Rocq represents it in the common qualifier datatype, but
-  `wf_stypeuse` and non-reflexive `Lost` subtyping prevent direct `Lost` type
-  uses in well-formed static environments.
-- The RS/TS preservation theorems carry no explicit non-mutability premise:
-  `wf_method` requires `signature_has_no_mutable_roots` for every RS/TS-scoped
-  method, so the condition holds for every possible dynamic target by class-table
-  well-formedness (discharged via `wf_method_readonly_roots`).
-
-## Toolchain
-
-- Rocq/Coq: `9.1.1`
-- OCaml: `5.2.1`
-
-## Artifact verification
-
-The recommended reviewer command is:
+Requirements: Rocq 9.1 (the CI uses 9.1.1, OCaml 5.2.1 and the opam file
+`pico-coq.opam`) and Python 3.
 
 ```sh
-make check
+make          # build every file, serially (about 5 minutes)
+make check    # build, then run the two checks below
 ```
 
-This builds all Rocq sources, checks that every submitted `.v` file avoids the
-forbidden `Axiom`, `Admitted`, and `admit` commands, verifies that the explicit
-public-theorem manifest matches the source declarations, and checks that every
-manifest entry is closed under the global context.
+`make check` runs two scripts:
 
-The same checks can be run separately:
+- [scripts/check-no-axioms-admits.py](scripts/check-no-axioms-admits.py) scans
+  every `.v` file for `Axiom`, `Admitted` and `admit`.
+- [scripts/check-public-assumptions.py](scripts/check-public-assumptions.py)
+  checks that [scripts/public-theorems.txt](scripts/public-theorems.txt) lists
+  every `Theorem` of the sources, then runs `Print Assumptions` on each listed
+  result and fails unless every one is closed under the global context. The
+  list has 189 entries, including every result in the table below.
 
-```sh
-JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || printf 1)"
-dune build @default -j"$JOBS"
-python3 scripts/check-no-axioms-admits.py .
-python3 scripts/check-public-assumptions.py .
-```
+`make check-pico` does the same for the PICO folder. `dune build @default` is a
+wrapper over the same build and is what the CI runs. `make alectryon-doc`
+renders the sources as web pages in `alectryon/`.
 
-## Rendered proof documentation
+## The paper's results
 
-This artifact can also render browsable Alectryon proof pages:
+| Paper | Rocq name | File |
+| --- | --- | --- |
+| Theorem (Preservation) | `preservation_pico` | [Preservation.v](Preservation.v) |
+| Theorem (Mutation-exception freedom) | `well_typed_no_mutation_exp` | [MutationSafety.v](MutationSafety.v) |
+| Theorem (Progress), for the fuel-based interpreter | `run_progress` | [Interp.v](Interp.v) |
+| The interpreter agrees with the big-step semantics | `run_sound`, `run_complete`, `run_agrees` | [Interp.v](Interp.v) |
+| The same, between the budgeted evaluation and the big-step one | `eval_fuel_erase`, `eval_stmt_has_fuel` | [Progress.v](Progress.v) |
+| Lemma (abstract-state reachability preserves immutability) | `reachable_abs_from_imm_points_to_imm` | [Immutability.v](Immutability.v) |
+| Theorem (Abstract-state and concrete-state preservation) | `abstract_state_preservation`, `concrete_state_preservation` | [Immutability.v](Immutability.v) |
+| Theorem (Readonly-state and transitive-state preservation) | `rs_ts_preservation_all_calls` | [ArgTheorems.v](ArgTheorems.v) |
+| A type that contradicts its class's declared mutability has only null values | `pinned_class_uninhabited` | [Inhabitants.v](Inhabitants.v) |
+| A value has a type that contains `@Lost` exactly when it has some reading of that type without `@Lost` | `lost_is_some_reading` | [LostReading.v](LostReading.v) |
 
-```sh
-make alectryon-doc
-```
+The qualifier downcast needs no theorem of its own. Preservation covers it,
+because the downcast has no runtime test.
 
-The generated index is `alectryon/index.html`. The rendered documentation is a
-generated artifact and is intentionally ignored by git.
+### The readonly-state and transitive-state theorem
 
-## Local project page preview
+`rs_ts_preservation_all_calls` starts from a *start state*: a well-formed
+configuration with no type parameter in scope whose objects all belong to
+classes without type parameters. The first state of a program, which holds only
+the main object, is one. From a start state, run any well-typed statement. Every
+call made during that run, at any depth, that selects a readonly-state or
+transitive-state method leaves unchanged the protected fields of every object
+that existed when the call started, however the call ends. Readonly state
+protects the fields that are not assignable, and transitive state protects all
+fields.
 
-The repository includes a static landing page prototype in `site/`. To render
-the proof documentation under that page and preview the future GitHub Pages
-layout, run:
+The statement uses only the language's own definitions: typing, big-step
+evaluation and the heap. The general form of the theorem,
+`rs_ts_call_preservation_final_any` in [ArgTheorems.v](ArgTheorems.v), starts at
+the call instead. It assumes a well-formed configuration whose stored type
+arguments, in the heap and in the current frame, satisfy their bounds when read
+in readonly state, and that the bounds in scope of readonly-state and
+transitive-state methods contain no `@Mut`, which well-formedness requires.
+`RSFp_start_plain` shows that a start state meets the first assumption, and
+`rsfp_preservation` shows that every well-typed statement that finishes
+normally keeps it.
 
-```sh
-make site
-open site/index.html
-```
+## Files
 
-The generated proof pages live under `site/proofs/` and are ignored by git.
+The files build in the order of [_RocqProject](_RocqProject).
 
-## Build (current Make-based workflow)
+| Part | Files |
+| --- | --- |
+| Language: syntax, adaptation, subtyping, typing, big-step semantics | `Syntax.v`, `Notations.v`, `Helpers.v`, `ViewpointAdaptation.v`, `Subtyping.v`, `Typing.v`, `NoMutEquiv.v`, `Bigstep.v` |
+| Type safety | `DynLemmas.v`, `RuntimeTyping.v`, `ConfigLemmas.v`, `PreservationCases.v`, `PreservationCall.v`, `LostReading.v`, `Inhabitants.v`, `Preservation.v`, `MutationSafety.v`, `Progress.v`, `Interp.v` |
+| Abstract-state and concrete-state preservation | `Immutability.v` |
+| Readonly-state and transitive-state preservation, first without type parameters, then with them | `ReadonlyWrite.v`, `ReadonlyFlat.v`, `ReadonlyWorlds.v`, `ReadonlyGeneric.v` |
+| Readonly-state and transitive-state preservation, general case | `GhostLabels.v`, `ArgViews.v`, `GhostTyping.v`, `GhostForget.v`, `GhostFit.v`, `GhostShadow.v`, `ArgTyping.v`, `GhostInvariant.v`, `ArgFit.v`, `ArgInvariant.v`, `ArgStatements.v`, `ArgOverriding.v`, `OverrideCheck.v`, `ArgCalls.v`, `ArgEntry.v`, `ArgTheorems.v` |
+| Examples | `Examples*.v` |
+| Regression programs | `SuperArgsRegression.v`, `OverrideReturnProbe.v`, `DeepBoundProbe.v`, `DeepBoundProbe2.v` |
 
-1. Generate the Makefile:
-   ```sh
-   coq_makefile -f _RocqProject -o Makefile
-   ```
-2. Build:
-   ```sh
-   JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || printf 1)"
-   make -j"$JOBS"
-   ```
-
-## Build with dune (recommended command)
-
-```sh
-JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || printf 1)"
-dune build @default -j"$JOBS"
-```
-
-This repository currently uses dune as a frontend wrapper over the existing
-`_RocqProject` + `coq_makefile` build, so `dune build` and CI stay reliable.
-Generated files such as `CoqMakefile*`, `.vo`, `.vos`, `.vok`, `.glob`, and
-`_build/` are ignored and are not part of the source artifact.
-
-## Reproducible setup with opam
-
-This repository includes `pico-coq.opam` so dependencies can be installed in an
-isolated switch.
-
-```sh
-# From the repo root
-opam switch create . 5.2.1
-eval "$(opam env)"
-
-# Pin this package and install only its dependencies
-opam pin add . -n
-opam install . --deps-only
-
-# Build (dune wrapper)
-JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || printf 1)"
-dune build @default -j"$JOBS"
-```
-
-## Notes
-
-- `dune` and `_RocqProject` builds are both available during transition.
-- The opam package build uses `dune build`.
-- `WFNOMutationEXP.v` proves a preservation-style mutation-safety claim:
-  no well-typed statement, including nested method calls and sequences,
-  produces a mutation exception.
+Each file opens with a comment that gives its role. The example files write out
+concrete class tables and programs, derive their typing and evaluation, and
+apply the theorems to them. [ExamplesInterp.v](ExamplesInterp.v) runs the
+example programs with the interpreter. Each regression program records a rule
+variant that the proof effort found unsound, and proves that the current rules
+reject it.

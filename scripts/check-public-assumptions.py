@@ -63,8 +63,7 @@ def source_results(root: Path, sources: list[Path]) -> tuple[list[str], list[str
     return results, theorems
 
 
-def manifest_theorems(root: Path) -> tuple[list[str], list[str]]:
-    manifest = root / "scripts" / "public-theorems.txt"
+def manifest_theorems(root: Path, manifest: Path) -> tuple[list[str], list[str]]:
     failures = []
     if not manifest.is_file():
         return [], [f"missing public theorem manifest: {manifest}"]
@@ -102,10 +101,12 @@ def compiled_project_root(root: Path, modules: list[str]) -> Optional[Path]:
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    manifest_path = (Path(sys.argv[2]).resolve() if len(sys.argv) > 2
+                     else root / "scripts" / "public-theorems.txt")
     sources = project_sources(root)
     modules = [source.relative_to(root).with_suffix("").as_posix().replace("/", ".")
                for source in sources]
-    manifest, failures = manifest_theorems(root)
+    manifest, failures = manifest_theorems(root, manifest_path)
     declared_results, source_theorems = source_results(root, sources)
 
     manifest_set = set(manifest)
